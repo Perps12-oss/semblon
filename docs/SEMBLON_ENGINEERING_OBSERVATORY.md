@@ -126,6 +126,34 @@ Git history should read like: *feature X — accuracy unchanged, throughput +14%
 
 ---
 
+## Automation (small)
+
+Does not run on every `ingest` / `cluster`. Those stay S1 work.
+
+After a dump you are willing to call “known-good”:
+
+```text
+semblon lab observatory freeze --store STORE --run R --stage S1
+```
+
+Writes `observatory/golden-S1.json` next to the store (not in git unless you choose).
+
+When you **start the next stage** (0.4 = S3, later 1.0 = S4):
+
+```text
+semblon lab observatory enter --stage S3 --store STORE --run R
+```
+
+That is the auto-evoke: check the **completed** stage golden (S3 checks S1; S2 is parallel). Missing golden → `not_measurable`, exit 0. Regression → printed, still exit 0.
+
+`--promote` is the only stick: exit 3 on unexplained regression. Use it when claiming a stage is done, not while experimenting.
+
+0.4 `name` / `merge` / `split` should call `enter_stage(..., "S3")` once at process start the same way — warn, do not refuse to name people.
+
+Accuracy stays `not_measurable` until FACE-002 confirmatory sets exist. The S1 board is effort / clusters / RSS / timings from the store.
+
+---
+
 ## Do not
 
 - Merge this into the Maturity Blueprint  
