@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.insightface/
+*.onnx
+store.sqlite
+.pytest_cache/
+dist/
+*.egg-info/
