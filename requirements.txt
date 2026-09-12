@@ -1,0 +1,6 @@
+# Semblon runtime (CPU). Python >= 3.11. Match pyproject.toml.
+# Native arch only: ARM64 Windows → ARM64 Python + this file, not x64.
+insightface
+onnxruntime
+opencv-python-headless
+numpy
