@@ -31,6 +31,7 @@ DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`
 |---|---|
 | `docs/SEMBLON_MATURITY_BLUEPRINT.md` | capability North Star (S0–S9) |
 | `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` | scavenging / value / absorb process |
+| `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` | measurement spine (not a gate) |
 | `docs/PRODUCT.md` | frozen v1 product |
 | `docs/CONTRACTS.md` | schema / CLI / runtime |
 | `docs/runtime.md` | FACE-000 output (fill on each machine) |
