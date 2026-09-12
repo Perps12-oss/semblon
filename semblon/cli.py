@@ -1,4 +1,4 @@
-"""Semblon CLI. 0.3: lab profile + ingest + cluster + export."""
+"""Semblon CLI. 0.3: lab profile + ingest + cluster + export. Observatory is not a dump gate."""
 
 from __future__ import annotations
 
@@ -17,6 +17,37 @@ def main(argv: list[str] | None = None) -> int:
     prof = lab_sub.add_parser("profile", help="FACE-000 runtime probe")
     prof.add_argument("--image", required=True, type=Path)
     prof.add_argument("--out", type=Path, default=Path("docs/runtime.md"))
+
+    obs = lab_sub.add_parser("observatory", help="measurement spine — not a development gate")
+    obs_sub = obs.add_subparsers(dest="obscmd", required=True)
+
+    def _obs_io(sp):
+        sp.add_argument("--store", required=True, type=Path)
+        sp.add_argument("--run", required=True)
+
+    snap = obs_sub.add_parser("snapshot", help="print a board from a run (read-only)")
+    _obs_io(snap)
+
+    frz = obs_sub.add_parser("freeze", help="write golden-{stage}.json beside the store")
+    _obs_io(frz)
+    frz.add_argument("--stage", required=True)
+    frz.add_argument("--out", type=Path, default=None)
+
+    cmp_ = obs_sub.add_parser("compare", help="compare a run to a golden file")
+    _obs_io(cmp_)
+    cmp_.add_argument("--against", required=True, type=Path)
+
+    ent = obs_sub.add_parser(
+        "enter",
+        help="auto-check completed-stage golden when starting a new stage",
+    )
+    _obs_io(ent)
+    ent.add_argument("--stage", required=True, help="stage being entered, e.g. S3")
+    ent.add_argument(
+        "--promote",
+        action="store_true",
+        help="exit 3 on unexplained regression (maturity claim only)",
+    )
 
     ing = sub.add_parser("ingest", help="0.2 folder stills → store")
     ing.add_argument("folder", type=Path)
@@ -47,6 +78,27 @@ def main(argv: list[str] | None = None) -> int:
         rec = run_profile(args.image, args.out)
         print(json.dumps({k: rec[k] for k in ("pack_id", "arch", "execution", "one_image")}, indent=2))
         print(f"wrote {args.out}", file=sys.stderr)
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "observatory":
+        from semblon.observatory import ObservatoryError, compare_run, enter_stage, freeze, snapshot
+
+        try:
+            if args.obscmd == "snapshot":
+                rec = snapshot(args.store, args.run)
+            elif args.obscmd == "freeze":
+                rec = freeze(args.store, args.run, args.stage, out=args.out)
+            elif args.obscmd == "compare":
+                rec = compare_run(args.store, args.run, args.against)
+            else:
+                rec = enter_stage(args.store, args.run, args.stage, promote=args.promote)
+        except ObservatoryError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2, default=str))
+        if args.obscmd == "enter" and args.promote and rec.get("verdict") == "regression":
+            print("unexplained regression — not mature", file=sys.stderr)
+            return 3
         return 0
 
     if args.cmd == "ingest":
