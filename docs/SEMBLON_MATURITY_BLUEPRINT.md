@@ -8,6 +8,7 @@
 This document answers *what Semblon is growing into*.  
 `docs/PRODUCT.md` answers *what v1 ships*.  
 `docs/CONTRACTS.md` answers *schema / CLI / runtime*.  
+`docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` answers *how each stage scavenges and absorbs capability without feature creep*.  
 FACE tickets answer *what to code next*.
 
 Do not implement S5–S9 because this document exists.
@@ -21,6 +22,7 @@ Do not implement S5–S9 because this document exists.
 | `docs/PRODUCT.md` | v1 product (in / out / ship test) | Frozen 2026-09-12 |
 | `docs/CONTRACTS.md` | Schema, CLI, pack_id, metrics | Authoritative until a contract revision |
 | **This file** | Capability North Star | V1 freeze. Revisable only via §16 |
+| `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` | Discovery / value / absorb process | Companion V1. Does not remap S0–S9 |
 | FACE tickets / build versions 0.x | Staging / engineering | Current: **0.3 on `main`**. Next code: dump-gate, then 0.4 |
 
 Three different clocks:
@@ -29,6 +31,7 @@ Three different clocks:
 PRODUCT v1 ........ ship a local stills CLI with reviewed persons
 BUILD 0.1–1.0 ..... tickets under S0–S4
 MATURITY S0–S9 .... capability generations (this file)
+DISCOVERY ......... scavenging loop inside each stage (companion file)
 ```
 
 They must not be collapsed. FACE-004 is not “Semblon is mature.” S9 is not a v1 backlog.
@@ -800,7 +803,7 @@ Do not start S5–S9 from this paper.
 
 This file is **alive**. It is not a second frozen PRODUCT.md.
 
-At every maturity transition, look **outward** (models, hardware, local AI, photo software, CV, tracking, search, privacy, storage, user expectation) and **inward** (what this Semblon actually learned on this user's data). Then apply exactly one verb per candidate:
+At every maturity transition, look **outward** and **inward** using `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` (scavenge → evidence card → three-level benchmark → accuracy/performance firewalls). Then apply exactly one verb per candidate:
 
 ```
 KEEP · MERGE · PROMOTE · DEFER · REPLACE · REMOVE · REJECT
@@ -814,7 +817,9 @@ Rules:
 3. No generation may repeal §3 invariants.  
 4. Do not open S(n+2) tickets because S(n) is boring.  
 5. “A GitHub app has it” is not a promotion criterion. Dump evidence is.  
-6. Version this file (V1, V1.1, …) with a dated changelog at the bottom.
+6. Version this file (V1, V1.1, …) with a dated changelog at the bottom.  
+7. Discovery KEEP ≠ maturity ADD. A scavenged KEEP is eligibility for a named stage, not a ticket.  
+8. Do not remap S0–S9 because a discovery draft used different labels (video is S7, extra evidence channels are S6+, search is S8).
 
 ---
 
@@ -841,6 +846,7 @@ Donors are not ground truth (`docs/REFERENCES.md`).
 | Ver | Date | Note |
 |---|---|---|
 | V1 | 2026-09-12 | First North Star. S7 renamed Temporal vision. FACE mapped. v1 build path unchanged. |
+| V1.0.1 | 2026-09-12 | Pointer to Capability Discovery companion. No stage remap. |
 
 ---
 
