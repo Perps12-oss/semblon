@@ -1,4 +1,4 @@
-"""FACE-000 CLI: lab profile only."""
+"""Semblon CLI. 0.2: lab profile + ingest."""
 
 from __future__ import annotations
 
@@ -18,7 +18,12 @@ def main(argv: list[str] | None = None) -> int:
     prof.add_argument("--image", required=True, type=Path)
     prof.add_argument("--out", type=Path, default=Path("docs/runtime.md"))
 
+    ing = sub.add_parser("ingest", help="0.2 folder stills → store")
+    ing.add_argument("folder", type=Path)
+    ing.add_argument("--store", required=True, type=Path)
+
     args = p.parse_args(argv)
+
     if args.cmd == "lab" and args.labcmd == "profile":
         from semblon.profile import run_profile
 
@@ -26,6 +31,18 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({k: rec[k] for k in ("pack_id", "arch", "execution", "one_image")}, indent=2))
         print(f"wrote {args.out}", file=sys.stderr)
         return 0
+
+    if args.cmd == "ingest":
+        from semblon.ingest import ingest
+
+        try:
+            rec = ingest(args.folder, args.store)
+        except FileNotFoundError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
     return 2
 
 
