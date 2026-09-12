@@ -8,6 +8,20 @@ Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
+## Install
+
+Python **3.11+**, Windows x64 or ARM64 **native** (not x64 Python on ARM64).
+
+```text
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+pip install -U pip
+pip install -r requirements.txt
+pip install -e .
+```
+
+`buffalo_l` downloads on first `lab profile` / `ingest` into `%USERPROFILE%\.insightface\models\buffalo_l` (internal evaluation only).
+
 ## Commands
 
 ```text
