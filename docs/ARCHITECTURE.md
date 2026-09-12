@@ -1,11 +1,23 @@
 # Architecture
 
-Capability North Star: `docs/SEMBLON_MATURITY_BLUEPRINT.md` (S0–S9).  
-Contracts: `docs/CONTRACTS.md` — what the current stage must guarantee.  
-Observatory: `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` — did the build get better or worse?  
-Discovery habit: `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` (do not grow extra process docs).  
-v1 product (frozen): `docs/PRODUCT.md`.
+**Operating model — frozen 2026-09-12.** Do not reopen.
 
-Observatory is not a development gate. Do not remap stage numbers.
+| Doc | Job |
+|---|---|
+| `docs/PRODUCT.md` | what the current user can actually do (v1 frozen) |
+| `docs/CONTRACTS.md` | what the implementation must guarantee |
+| `docs/SEMBLON_MATURITY_BLUEPRINT.md` | what Semblon can eventually become (S0–S9) |
+| `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` | scavenge useful behaviour (not install every donor) |
+| `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` | did this build get better? Not a development gate |
 
-Current engineering: 0.3 on `main` (S1). Next: real dump on `review.html`, then 0.4.
+```
+BUILD → SCAVENGE → MEASURE → KEEP/ADAPT/DEFER/REJECT → GOLDEN (if justified) → PROMOTE → NEXT STAGE
+```
+
+`review.html` is evidence. Use it to decide whether DBSCAN survives; it does not automatically kill an algorithm.
+
+Observatory answers “did S3→S4 actually get better?”, not “may we experiment today?”
+
+Do not remap stage names. Do not start a GUI because S8 exists on paper.
+
+Current engineering: 0.3 on `main` (S1). Immediate action: real dump → ingest → cluster → review.html → look → optional S1 golden. Then 0.4.

@@ -234,7 +234,7 @@ folder → hash → detect → filter → embed → compare → conservative clu
 
 **The review page is the first sensory feedback loop**, not a pretty artifact. Mixed vs strong vs junk is the acceptance test.
 
-**Exit.** A real dump produces a page on which mixed, strong, and junk are distinguishable. DBSCAN knobs are hypotheses killed from that page.
+**Exit.** A real dump produces a page on which mixed, strong, and junk are distinguishable. Use that page to decide whether DBSCAN (and its knobs) survive.
 
 **Disposition**
 
@@ -851,6 +851,7 @@ Donors are not ground truth (`docs/REFERENCES.md`).
 | V1 | 2026-09-12 | First North Star. S7 renamed Temporal vision. FACE mapped. v1 build path unchanged. |
 | V1.0.1 | 2026-09-12 | Pointer to Capability Discovery companion. No stage remap. |
 | V1.0.2 | 2026-09-12 | Pointer to Engineering Observatory. Measurement only; not a gate. |
+| V1.0.3 | 2026-09-12 | Wording: review page is evidence, not an automatic kill. Operating model frozen. |
 
 ---
 

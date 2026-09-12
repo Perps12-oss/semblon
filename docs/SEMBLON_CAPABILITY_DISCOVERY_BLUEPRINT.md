@@ -324,6 +324,8 @@ A capability may later be: added, removed, replaced, promoted, demoted, split, s
 
 Scavenge **inside** the current stage. Do not pull S8 search into S1.
 
+Scavenging is **not** a requirement to install or study every donor. Investigate what mature products already do well; reproduce only useful behaviour; measure against Semblon invariants; absorb, adapt, defer, or reject.
+
 ### S0 — Born · runtime
 
 **Look for:** InsightFace / ORT configs, native ARM64, load time, CPU/GPU/NPU, RSS, pack hashing.
@@ -448,7 +450,7 @@ Generic photo chatbot: REJECT as core.
 - Does not create a research backlog that blocks the dump.  
 - Does not authorise FAISS, FastAPI, or dashboards because a donor has them.
 
-**Current stage (S1) scavenging, if any:** Facet / FaceSorter / PhotoPrism *review and clustering behaviour*, measured against our `review.html`. That is observation (level 1). Implementation wait until the dump says DBSCAN is wrong.
+**Current stage (S1) scavenging, if any:** Facet / FaceSorter / PhotoPrism *review and clustering behaviour*, measured against our `review.html`. That is observation (level 1). Use the dump page to decide whether DBSCAN survives; do not replace it first.
 
 ---
 

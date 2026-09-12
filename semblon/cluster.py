@@ -11,7 +11,7 @@ import numpy as np
 from semblon.compare import CompareError, compare
 from semblon.store import connect, init_db
 
-# Hypothesis — not frozen. Tune after reading review.html, not a new constitution.
+# Hypothesis — not frozen. Use review.html to decide whether this survives.
 DEFAULT_EPS = 0.40  # distance = 1 - cosine; keep together only if sim >= 0.60
 DEFAULT_MIN_SAMPLES = 2
 METRIC = "1-dot"
