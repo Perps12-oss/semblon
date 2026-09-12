@@ -24,7 +24,7 @@ semblon lab observatory enter --stage S3 --store D:\semblon\store.sqlite --run R
 
 Double-click `review.html`. No server. Page order: counts → REVIEW REQUIRED → STRONG → UNASSIGNED → REJECTED.
 
-DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Rework it from the page.
+DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Use `review.html` to decide whether it survives.
 
 0.4 (`name` / `merge` / `split`) is next.
 
