@@ -1,0 +1,38 @@
+"""compare() contract: pack_id + dim + payload. No clustering here."""
+
+from __future__ import annotations
+
+import struct
+
+
+class CompareError(ValueError):
+    pass
+
+
+def _norm(vec: bytes, dim: int) -> None:
+    if vec is None:
+        raise CompareError("NULL embedding")
+    if dim is None or dim <= 0:
+        raise CompareError("invalid dim")
+    if len(vec) != 4 * dim:
+        raise CompareError("embedding length != 4 * dim")
+
+
+def compare(
+    pack_a: str,
+    dim_a: int,
+    blob_a: bytes,
+    pack_b: str,
+    dim_b: int,
+    blob_b: bytes,
+) -> float:
+    if pack_a != pack_b:
+        raise CompareError("pack_id mismatch")
+    if dim_a != dim_b:
+        raise CompareError("dimension mismatch")
+    _norm(blob_a, dim_a)
+    _norm(blob_b, dim_b)
+    n = dim_a
+    a = struct.unpack(f"<{n}f", blob_a)
+    b = struct.unpack(f"<{n}f", blob_b)
+    return float(sum(x * y for x, y in zip(a, b)))
