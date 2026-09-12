@@ -9,6 +9,7 @@ This document answers *what Semblon is growing into*.
 `docs/PRODUCT.md` answers *what v1 ships*.  
 `docs/CONTRACTS.md` answers *schema / CLI / runtime*.  
 `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` answers *how each stage scavenges and absorbs capability without feature creep*.  
+`docs/SEMBLON_ENGINEERING_OBSERVATORY.md` answers *did this build get better or worse?*  
 FACE tickets answer *what to code next*.
 
 Do not implement S5–S9 because this document exists.
@@ -23,6 +24,7 @@ Do not implement S5–S9 because this document exists.
 | `docs/CONTRACTS.md` | Schema, CLI, pack_id, metrics | Authoritative until a contract revision |
 | **This file** | Capability North Star | V1 freeze. Revisable only via §16 |
 | `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` | Discovery / value / absorb process | Companion V1. Does not remap S0–S9 |
+| `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` | Measurement spine | Not a gate. Promotion evidence only |
 | FACE tickets / build versions 0.x | Staging / engineering | Current: **0.3 on `main`**. Next code: dump-gate, then 0.4 |
 
 Three different clocks:
@@ -32,6 +34,7 @@ PRODUCT v1 ........ ship a local stills CLI with reviewed persons
 BUILD 0.1–1.0 ..... tickets under S0–S4
 MATURITY S0–S9 .... capability generations (this file)
 DISCOVERY ......... scavenging loop inside each stage (companion file)
+OBSERVATORY ....... measure vs golden / promotion (not a build gate)
 ```
 
 They must not be collapsed. FACE-004 is not “Semblon is mature.” S9 is not a v1 backlog.
@@ -847,6 +850,7 @@ Donors are not ground truth (`docs/REFERENCES.md`).
 |---|---|---|
 | V1 | 2026-09-12 | First North Star. S7 renamed Temporal vision. FACE mapped. v1 build path unchanged. |
 | V1.0.1 | 2026-09-12 | Pointer to Capability Discovery companion. No stage remap. |
+| V1.0.2 | 2026-09-12 | Pointer to Engineering Observatory. Measurement only; not a gate. |
 
 ---
 
