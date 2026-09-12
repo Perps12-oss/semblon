@@ -1,30 +1,37 @@
 # Semblon
 
-Local face intelligence. Working name `SEMBLON` (`SEM-blon`), provisional pending clearance.
+Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
-**Current milestone: FACE-000** — prove InsightFace `buffalo_l` on Windows x64 native and Windows ARM64 (native, or fail + emulated).
+Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-Do not implement ingest, cluster, export, FAISS, or a review UI in this milestone.
+**Current: 0.3** — `ingest` on `main`; `cluster` + static `review.html`.
+
+`cluster → review → person → name`. Never `cluster = person`.
+
+## Commands
+
+```text
+semblon lab profile --image PATH\to\a.jpg --out docs/runtime.md
+
+semblon ingest D:\photos\dump --store D:\semblon\store.sqlite
+
+semblon cluster --run RUN_ID --store D:\semblon\store.sqlite
+semblon export --run RUN_ID --store D:\semblon\store.sqlite --out review.html
+```
+
+Double-click `review.html`. No server. Page order: counts → REVIEW REQUIRED → STRONG → UNASSIGNED → REJECTED.
+
+DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Rework it from the page.
+
+0.4 (`name` / `merge` / `split`) is next.
 
 ## Docs (authority)
 
 | File | Role |
 |---|---|
-| `docs/SEMBLON_IMPLEMENTATION_PLAN.md` | when to build |
+| `docs/PRODUCT.md` | frozen v1 product |
 | `docs/CONTRACTS.md` | schema / CLI / runtime |
 | `docs/runtime.md` | FACE-000 output (fill on each machine) |
-| `docs/CURSOR_INSTRUCTION.txt` | agent brief |
-
-## FACE-000 on this machine
-
-```text
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e .
-semblon lab profile --image PATH\to\a.jpg --out docs/runtime.md
-```
-
-Record `arch` and `execution` (`native` vs `emulated`). Never label x64-on-ARM64 as native.
 
 `pack_id` includes weight hashes. `buffalo_l` is a family name, not the compare key.
 
