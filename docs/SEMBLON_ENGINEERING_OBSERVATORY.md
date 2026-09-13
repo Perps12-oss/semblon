@@ -1,14 +1,17 @@
 # SEMBLON — Engineering Observatory V1
 
 **Status:** Measurement spine. Not a North Star. Not a contract. Not a development gate.  
-**Date:** 2026-09-12  
+**Date:** 2026-09-12 (pointer 2026-09-13: ARCHITECTURE is structure, not a score)  
 **Length limit:** stay short. If this file grows into a planning system, cut it.
 
 ```
-Maturity Blueprint  →  where we are going
-Contracts           →  what this stage must guarantee
-Observatory         →  did what we built get better or worse?
+PRODUCT / CONTRACTS → what v1 is and what this stage must guarantee
+ARCHITECTURE        → system structure (not a ticket list)
+Maturity Blueprint  → capability generations S0–S9
+Observatory         → did what we built get better or worse?
 ```
+
+Measure the identity path that exists. Do not invent CLIP / geometry / vector-DB scores. No composite “Semblon score.”
 
 Does not tell development what to build.  
 Does not block experiments, 0.3 dump, or 0.4.  

@@ -1,14 +1,15 @@
-# SEMBLON — Capability Discovery & Product-Value Blueprint V1
+# SEMBLON — Capability Discovery & Product-Value Blueprint V1.1
 
-**Status:** Companion to Maturity Blueprint V1. Operating discipline.  
-**Date:** 2026-09-12  
-**Does not replace:** `docs/SEMBLON_MATURITY_BLUEPRINT.md`, `docs/PRODUCT.md`, `docs/CONTRACTS.md`, FACE stage gates.
+**Status:** Companion to Maturity Blueprint. Operating discipline.  
+**Date:** 2026-09-12 (V1.1 note 2026-09-13)  
+**Does not replace:** `docs/PRODUCT.md`, `docs/CONTRACTS.md`, `docs/ARCHITECTURE.md`, `docs/SEMBLON_MATURITY_BLUEPRINT.md`, FACE stage gates.
 
 This file answers: **how does Semblon continuously discover, evaluate and absorb better capabilities while protecting accuracy, speed, privacy and simplicity?**
 
-The maturity blueprint answers: **what is Semblon, and how does it mature?**
+The maturity blueprint answers: **what capability generations does Semblon grow through?**  
+`docs/ARCHITECTURE.md` answers: **what is the long-term system structure?**
 
-Together they are the project's operating system. They are two documents on purpose.
+Together they are the project's operating system. They are separate documents on purpose.
 
 ---
 
@@ -18,11 +19,14 @@ Incorporating this into the North Star would mix **destination** with **process*
 
 | File | Question | Role |
 |---|---|---|
-| Maturity Blueprint V1 | Where are we going? | North Star |
-| **This file** | What could make *this stage* better, and may we absorb it? | Discovery OS |
 | PRODUCT.md | What does v1 ship? | Frozen product |
 | CONTRACTS.md | Schema / CLI / runtime | Frozen until contract revision |
+| ARCHITECTURE.md | How is the system structured? | System-structure North Star |
+| Maturity Blueprint | Which capability generation? | S0–S9 clock |
+| **This file** | What could make *this stage* better, and may we absorb it? | Discovery OS |
 | FACE / 0.x | What to code next | Staging |
+
+Do not create OBS / SIM / VISION ticket numbers because a scavenged candidate looks like a new product line.
 
 **Do not remap maturity stage numbers.** A draft of this material used S4 = “visual intelligence”, S5 = “video”, S6 = “search”. Those labels are **wrong**. Canonical names stay in the maturity blueprint:
 
@@ -39,7 +43,7 @@ Incorporating this into the North Star would mix **destination** with **process*
 | S8 | Conversing | Search, evidence UI, later multimodal query |
 | S9 | Mature | Fusion, extensions, clients |
 
-Clothing / body / scene / OCR do **not** become S4. They are candidate **evidence channels** from S6+, behind the accuracy firewall. They must not silently vote on identity.
+Clothing / body / scene / OCR / CLIP / MediaPipe geometry do **not** become S4. They are candidate **non-identity spaces** (appearance / semantic / geometry) from later stages, behind the **identity firewall** in `docs/ARCHITECTURE.md`. They must not silently vote on identity, raise identity confidence, or glue false splits.
 
 ---
 
@@ -102,7 +106,7 @@ This prevents both:
 - building the original plan blindly, and
 - chasing every interesting discovery.
 
-The original plan is the North Star, **not a prison**. Semblon is allowed to change its mind when evidence says so. Changing its mind is not an excuse to skip the dump-gate or reopen `cluster = person`.
+The original plan (PRODUCT + ARCHITECTURE + this maturity clock) is the destination, **not a prison**. Semblon is allowed to change its mind when evidence says so. Changing its mind is not an excuse to skip the dump-gate, reopen `cluster = person`, or silently feed non-identity features into identity.
 
 ---
 
@@ -252,7 +256,7 @@ Do not treat donor clusters as labels.
 
 ---
 
-## 9. Accuracy firewall
+## 9. Accuracy firewall and identity firewall
 
 ```
                  NEW ENGINE
@@ -262,29 +266,31 @@ Do not treat donor clusters as labels.
                      │
               ┌──────┴──────┐
               ↓             ↓
-          Evidence       Failure
-              │             │
-              ↓             ↓
-        May inform       Must not
-        a decision       override
-              │
-              ↓
-         Evidence fusion
-              │
-              ↓
-        confidence / UNKNOWN
+     May later support    Must not
+     an *explicit*        enter identity
+     relationship query   clustering /
+     or sit beside review identification
 ```
 
 No new model silently makes identity decisions because it looks impressive.
 
-**Convergent evidence, not unanimous vote.**
+**Identity space is isolated** (`docs/ARCHITECTURE.md`). FaceKit embeddings under a `pack_id` are the only representations that may affect identity clustering, thresholds, person assignment, gallery assignment, or 1:N identification.
+
+Withdrawn: “appearance agrees → identity confidence may rise.” That was a fusion leak.
 
 ```
-Face: A · appearance: A · track: consistent  →  confidence may rise
-Face: A · appearance: B · context: unknown   →  uncertainty must rise
+Face: A · appearance: A · track: consistent
+    → identity decision unchanged; other spaces may be shown or queried *explicitly*
+Face: A · appearance: B · context: unknown
+    → uncertainty / UNKNOWN may rise; identity is not “fixed” by the other space
 ```
 
-Disagreement increases UNKNOWN. It does not trigger majority-vote identity.
+Disagreement increases UNKNOWN. It does not trigger majority-vote identity.  
+Agreement in geometry / appearance / semantic spaces does **not** glue identity false splits and is **not** a new identity threshold.
+
+CLIP is a candidate semantic representation, not a landmark model and not an identity engine.  
+MediaPipe is a candidate future geometry observer, not a FaceKit replacement.  
+A vector database is retrieval infrastructure, not intelligence.
 
 ---
 
@@ -368,7 +374,7 @@ Scavenging is **not** a requirement to install or study every donor. Investigate
 
 **Donors:** Immich people actions (name, merge, feature photo) as *workflow*, not as “clusters are people.” CompreFace 1:1 vs 1:N.
 
-**Firewall:** extra attributes (clothes, body) may be *recorded* but must not drive ACCEPT.
+**Firewall:** extra attributes (clothes, body, CLIP, landmarks) may later be *recorded* but must not drive ACCEPT, alter identity thresholds, or merge clusters.
 
 ### S5 — Useful · unattended stills
 
@@ -380,30 +386,31 @@ Scavenging is **not** a requirement to install or study every donor. Investigate
 
 **Look for:** timeline, GPS, co-appearance, event grouping from time/folder/burst — first as **discoveries, not identity claims**.
 
-**Candidate engines (independent test, then maybe inform — never override face identity):**
+**Candidate engines (independent test; never identity; explicit query only):**
 
-- clothing / colour / accessories
-- body appearance
-- pose
-- objects / scenes
-- image similarity
+- clothing / colour / accessories (appearance)
+- body appearance (appearance)
+- pose / landmarks / hands (geometry; MediaPipe Tasks is a candidate, not authorized)
+- objects / scenes (object / semantic)
+- CLIP or successor (semantic representation — not landmarks, not identity)
+- image similarity inside the space that produced the vector
 
 ```
               OBSERVATION
                    │
        ┌───────────┼───────────┐
        ↓           ↓           ↓
-     FACE        BODY        SCENE
-   identity    appearance    context
-       └───────────┼───────────┘
+    identity    geometry     appearance / semantic
+       │           │           │
+       └───────────┴───────────┘
+                   │
+            explicit query
                    ↓
-             EVIDENCE MODEL
-                   ↓
-          USER-RELEVANT CONCLUSION
-          (or UNKNOWN)
+            relationships
+            (or UNKNOWN)
 ```
 
-Proven independently before influencing a decision. Disagreement → more UNKNOWN.
+Spaces stay separate. Do not fuse them into a composite identity score. Disagreement → more UNKNOWN.
 
 ### S7 — Temporal vision
 
@@ -426,19 +433,19 @@ Generic photo chatbot: REJECT as core.
 
 **Look for:** isolated extensions, ACC as client, licensed packs, optional encryption, explicit external lookup.
 
-**More engines ≠ more certainty.** Fusion remains conservative.
+**More engines ≠ more certainty.** Spaces remain separate. Fusion, if it ever exists, is an explicit relationship query — not a new identity threshold.
 
 ```
- FACE · BODY · OBJECT · VIDEO · SCENE · OCR
+ identity · geometry · appearance · semantic
                   ↓
-           OBSERVATION MODEL
+           explicit relationship query
                   ↓
-           EVIDENCE / CONTEXT
-                  ↓
-          CONFIDENCE + UNKNOWN
+           review / UNKNOWN
                   ↓
             USER / CLIENT
 ```
+
+A vector index, if ever justified, stores and retrieves vectors. It does not observe or decide.
 
 ---
 
@@ -446,9 +453,10 @@ Generic photo chatbot: REJECT as core.
 
 - Does not modify FACE-000 / 0.2 / 0.3 contracts.  
 - Does not move 0.4 earlier.  
-- Does not promote clothing or CLIP into S1–S4.  
+- Does not promote clothing, CLIP, MediaPipe, or a vector database into S1–S4.  
 - Does not create a research backlog that blocks the dump.  
-- Does not authorise FAISS, FastAPI, or dashboards because a donor has them.
+- Does not authorise FAISS, FastAPI, or dashboards because a donor has them.  
+- Does not create an OBS / SIM roadmap clock.
 
 **Current stage (S1) scavenging, if any:** Facet / FaceSorter / PhotoPrism *review and clustering behaviour*, measured against our `review.html`. That is observation (level 1). Use the dump page to decide whether DBSCAN survives; do not replace it first.
 
@@ -469,6 +477,7 @@ A candidate KEEP here may become a maturity ADD/PROMOTE at the **named stage**, 
 | Ver | Date | Note |
 |---|---|---|
 | V1 | 2026-09-12 | Companion OS. Canonical S0–S9 mapping. Convergent evidence. Firewalls. |
+| V1.1 | 2026-09-13 | Identity firewall: extra spaces must not raise identity confidence. CLIP / MediaPipe / vector DB classified. Spaces stay separate. |
 
 ---
 

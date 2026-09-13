@@ -1,18 +1,19 @@
-# SEMBLON MATURITY BLUEPRINT — V1
+# SEMBLON MATURITY BLUEPRINT — V1.1
 
-**Status:** North Star (capability). Not the implementation plan. Not the schema.  
-**Date:** 2026-09-12  
+**Status:** North Star (capability generations S0–S9). Not the implementation plan. Not the schema. Not the system-structure document.  
+**Date:** 2026-09-12 (V1.1 note 2026-09-13)  
 **Working name:** Semblon (`SEM-blon`)  
 **Scope:** S0 → S9. Still images, temporal vision, evidence, privacy, extensions.
 
-This document answers *what Semblon is growing into*.  
+This document answers *what capability generations Semblon grows through*.  
 `docs/PRODUCT.md` answers *what v1 ships*.  
 `docs/CONTRACTS.md` answers *schema / CLI / runtime*.  
+`docs/ARCHITECTURE.md` answers *system structure* (sources, observers, representation spaces, identity firewall). It does not remap S0–S9.  
 `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` answers *how each stage scavenges and absorbs capability without feature creep*.  
 `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` answers *did this build get better or worse?*  
 FACE tickets answer *what to code next*.
 
-Do not implement S5–S9 because this document exists.
+Do not implement S5–S9 because this document exists. Do not implement future observers because `docs/ARCHITECTURE.md` exists.
 
 ---
 
@@ -22,32 +23,44 @@ Do not implement S5–S9 because this document exists.
 |---|---|---|
 | `docs/PRODUCT.md` | v1 product (in / out / ship test) | Frozen 2026-09-12 |
 | `docs/CONTRACTS.md` | Schema, CLI, pack_id, metrics | Authoritative until a contract revision |
-| **This file** | Capability North Star | V1 freeze. Revisable only via §16 |
-| `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` | Discovery / value / absorb process | Companion V1. Does not remap S0–S9 |
+| `docs/ARCHITECTURE.md` | System-structure North Star | Operating model frozen. Trajectory A1 2026-09-13 |
+| **This file** | Capability-generation North Star | V1 + V1.1. Revisable only via §16 |
+| `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` | Discovery / value / absorb process | Companion. Does not remap S0–S9 |
 | `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` | Measurement spine | Not a gate. Promotion evidence only |
-| FACE tickets / build versions 0.x | Staging / engineering | Current: **0.3 on `main`**. Next code: dump-gate, then 0.4 |
+| FACE tickets / build versions 0.x | Staging / engineering | Queue unchanged: dump-gate → FACE-002 → FACE-003 → FACE-004 → FACE-005. 0.4 code exists; dump-gate still open. |
 
-Three different clocks:
+Three clocks only (do not add a fourth):
 
 ```
 PRODUCT v1 ........ ship a local stills CLI with reviewed persons
-BUILD 0.1–1.0 ..... tickets under S0–S4
+BUILD 0.1–1.0 ..... FACE tickets under S0–S4
 MATURITY S0–S9 .... capability generations (this file)
-DISCOVERY ......... scavenging loop inside each stage (companion file)
-OBSERVATORY ....... measure vs golden / promotion (not a build gate)
 ```
 
-They must not be collapsed. FACE-004 is not “Semblon is mature.” S9 is not a v1 backlog.
+Architecture is structure, not a clock. Discovery and Observatory are process / measurement, not clocks. Do not invent OBS / SIM / VISION ticket numbers.
+
+They must not be collapsed. FACE-004 is not “Semblon is mature.” S9 is not a v1 backlog. The architectural trajectory does not redefine v1.
 
 ---
 
 ## 1. North Star
 
-Semblon is a **local visual-intelligence system** that develops from observing faces, to organising them, to learning from human review, to conservatively recognising people, to maintaining visual memory across time and context — while keeping **evidence, uncertainty, privacy and human control** at the centre.
+Semblon is a **local visual-intelligence system**. Capability generations in this file still run:
+
+```
+observe faces → organise → measure → review as evidence → recognise
+  → remember time/place → see sequences → interrogate → extend
+```
+
+The **system-structure** destination (sources → one decode path → observation engine → **separate** representation spaces → explicit relationships → review → human meaning → identification → later video/live → public information → ACC) lives in `docs/ARCHITECTURE.md`. This file does not replace that structure with a single universal embedding space.
+
+Current product remains the stills / FaceKit / identity slice. Broader observers are future architecture, not S1–S4 work.
 
 **Developmental rule:** every generation must leave Semblon *more capable*, not more complicated and not more impressive-looking.
 
 **Maturity is accumulated capability, not accumulated features.**
+
+**Implementation rule:** architecture may anticipate the future; implementation must earn it.
 
 ---
 
@@ -85,17 +98,18 @@ see → group → measure → review-as-evidence → recognise → run unattende
 These bind every generation. A later stage may *add* a capability. It may not repeal these.
 
 1. **`cluster → review → person → name`.** Never `cluster = person`.
-2. **Unknown is valid.** Refusal to identify is a feature.
+2. **Unknown is valid.** Refusal to identify is a feature. Wrong identity > unknown. False merge > false split.
 3. **Evidence before confidence.** Similarity is not identity. Top-1 / top-2 / margin / quality / gallery size / condition belong in the decision, not a single score.
 4. **Human corrections are evidence, not silent truth and not model training.** Record the decision. Do not pretend a merge retrained buffalo_l.
 5. **Local-first. No hidden network.** External lookup, if it ever exists, is explicit, auditable, off by default.
 6. **`pack_id` is the compare key.** Family name (`insightface/buffalo_l`) is a label. Weights + adapter + version are identity. Mismatched packs do not compare.
 7. **Files stay put.** SQLite + originals are authoritative. Export folders are views.
 8. **One user, personal, Windows CLI for v1.** Multi-user / sharing / mobile / ACC-in-process are out of v1 and are S9 *clients*, not a rewrite of the engine.
-9. **Still images are the birth environment. Temporal vision is a second modality**, not a plugin bolted onto a stills-only brain. Today's contracts must not make video impossible. (`observations.frame_id`, `media.source_type` in `{folder,video,live}` already exist — keep them.)
+9. **Still images are the birth environment. Temporal vision is a second modality**, not a plugin bolted onto a stills-only brain. Today's contracts must not make video impossible. (`observations.frame_id`, `media.source_type` in `{folder,video,live}` already exist — keep them.) Folder-first validation is not skipped because video exists on paper.
 10. **Tracking is not a recogniser.** Detection, tracking, embedding, comparison, clustering, identification are distinct.
-11. **`compare()` is a primitive**, not a product subsystem.
+11. **`compare()` is a primitive**, not a product subsystem. FaceKit / InsightFace remains the identity engine.
 12. **buffalo_l is internal evaluation only** until a licensed pack decision. Fallback path (YuNet + SFace) is recorded, not a current ticket.
+13. **Identity firewall.** Geometry, appearance, object, and semantic representations (landmarks, hands, pose, colour, CLIP, …) must not silently influence identity clustering, thresholds, person assignment, gallery assignment, or 1:N identification. No composite identity score. Other spaces, if they ever exist, are queried explicitly. See `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -123,13 +137,16 @@ Design:
                     ↓
             OBSERVATION ENGINE
                     │
+     FaceKit identity (current)
+     geometry / appearance / semantic (future; separate spaces)
+                    │
           detect / quality / tracking*
                     ↓
-                 embed
+         represent (per space — not one global vector)
                     ↓
-                compare()
+         compare inside that space
               ↙         ↘
-         cluster       identify
+   identity cluster    identify (identity only)
               ↘         ↙
                 review
                    ↓
@@ -144,10 +161,12 @@ Design:
 
 \* Tracking is active only for temporal sources.
 
-A photograph is **one observation**.  
+Current implementation is the **identity slice** of this engine (FaceKit detect → filter → embed → `compare()` → conservative cluster). Future observers must not collapse into that identity `compare()`.
+
+A photograph is **one source frame**. Today's `observations` row is that frame slot, not a typed multi-kind record.  
 Video is **a stream of observations belonging to evolving entities**.
 
-That is why S7 is a generation, not a codec ticket.
+That is why S7 is a generation, not a codec ticket. Broader observers are not S7 either — they are architectural candidates mapped later, never an OBS-* clock.
 
 ---
 
@@ -248,7 +267,7 @@ folder → hash → detect → filter → embed → compare → conservative clu
 
 **Must not.** Name people. Identify. Watch folders. Serve HTTP.
 
-**Engineering.** FACE-001 / builds 0.2–0.3. **Current position.**
+**Engineering.** FACE-001 / builds 0.2–0.3. Code on `main`. **Acceptance = dump-gate**, still open.
 
 ---
 
@@ -326,7 +345,7 @@ cluster → human review → merge / split / reject / assign
 
 | Item | Verb |
 |---|---|
-| 0.4 name / merge / split | ADD after 0.3 dump survives |
+| 0.4 name / merge / split | KEEP (code on `main`); dump-gate still required before treating S3 as closed |
 | `decisions` rows | KEEP (schema already) |
 | Merge *suggestions* | DEFER unless the dump shows they are needed to finish 0.4 |
 | Neural fine-tuning on the user's album | REJECT |
@@ -334,7 +353,7 @@ cluster → human review → merge / split / reject / assign
 
 **Must not.** Auto-promote a cluster to a person because it is STRONG.
 
-**Engineering.** FACE-003 + build 0.4. v1 product requires this.
+**Engineering.** FACE-003 + build 0.4 (code on `main`). v1 product requires this. Queue position after dump-gate is unchanged.
 
 ---
 
@@ -437,7 +456,7 @@ This is where `cluster ≠ person` becomes: **cluster → reviewed identity**.
 | Timeline / co-appearance | ADD at S6 |
 | LLM event titles | DEFER / EXPERIMENT; first pass is structured signals |
 | Maps product | DEFER |
-| Semantic CLIP search | DEFER (presentation, not identity) |
+| Semantic CLIP search | DEFER (candidate **semantic** representation — not identity, not landmarks) |
 
 **Must not.** Build a Google Photos clone before identification is trustworthy.
 
@@ -558,9 +577,9 @@ temporal source
 | Stage | Name | Major new capability | Product transformation | Build now? |
 |---|---|---|---|---|
 | S0 | Born | See faces | Engine exists | FACE-000 (finish runtime rows) |
-| S1 | Aware | Group observations | Organises dumps | **Current (0.3). Dump-gate.** |
+| S1 | Aware | Group observations | Organises dumps | **0.3 on main. Dump-gate still open.** |
 | S2 | Disciplined | Measure accuracy | Knows its limits | FACE-002 after dump |
-| S3 | Learning | Human evidence | Gets better through review | 0.4 / FACE-003 |
+| S3 | Learning | Human evidence | Gets better through review | 0.4 / FACE-003 code on main |
 | S4 | Recognising | Reviewed people | Identifies known people | 1.0 / FACE-004 · **v1 ship** |
 | S5 | Useful | Incremental operation | Effortless stills | FACE-005+ · post-v1 |
 | S6 | Remembering | Time / place / events | Visual memory | Future |
@@ -605,9 +624,9 @@ Hard rules:
 | Maturity | Engineering | Build version | Status 2026-09-12 |
 |---|---|---|---|
 | S0 | FACE-000 runtime | 0.1 | Code on `main`. Fill `runtime.md` on both Windows executions. |
-| S1 | FACE-001 ingest + first reviewable result | 0.2 ingest, **0.3 cluster/export** | On `main`. **Acceptance = real dump.** |
+| S1 | FACE-001 ingest + first reviewable result | 0.2 ingest, **0.3 cluster/export** | On `main`. **Acceptance = real dump (still open).** |
 | S2 | FACE-002 confirmatory eval | — | Not started. Schema ready. |
-| S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | After 0.3 dump |
+| S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump-gate still precedes treating this closed. |
 | S4 | FACE-004 persons + identify | **1.0** | After 0.4 · v1 ship test |
 | S5 | FACE-005 hardening / incremental | post-1.0 | Reassess; do not pre-build |
 | S6–S9 | future | v2 / later | Do not open tickets from this blueprint |
@@ -768,20 +787,21 @@ Do not:
 ```
 S0  FACE-000     code exists; Windows runtime rows still to be filled
 S1  0.2 + 0.3    on main; NOT dump-accepted
-S2–S9            not started
-v1 ship          = S4 stills slice, after 0.4 and 1.0
+S2  FACE-002     not started
+S3  0.4          name/merge/split code on main; not closed until dump-gate
+S4–S9            not started (identify = FACE-004)
+v1 ship          = S4 stills slice, after dump-gate, 0.4 evidence, and 1.0
 ```
 
 Immediate engineering path is unchanged:
 
 ```
-prove dump on 0.3 review.html
-  → 0.4 name / merge / split
-  → 1.0 identify vs persons + unknown
-  → stop and look at the actual Semblon
+dump-gate → FACE-002 → FACE-003 → FACE-004 → FACE-005
 ```
 
-Do not start S5–S9 from this paper.
+Honest code state: ingest / cluster / export / name / merge / split exist. That does not skip dump-gate or FACE-002, and it does not authorize geometry / semantic / video work.
+
+Do not start S5–S9 from this paper. Do not start MediaPipe / CLIP / vector-DB work from `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -852,6 +872,7 @@ Donors are not ground truth (`docs/REFERENCES.md`).
 | V1.0.1 | 2026-09-12 | Pointer to Capability Discovery companion. No stage remap. |
 | V1.0.2 | 2026-09-12 | Pointer to Engineering Observatory. Measurement only; not a gate. |
 | V1.0.3 | 2026-09-12 | Wording: review page is evidence, not an automatic kill. Operating model frozen. |
+| V1.1 | 2026-09-13 | Point to architectural North Star. Identity firewall. Spaces ≠ one embedding. Status: 0.4 code exists; dump-gate queue unchanged. No new clock. |
 
 ---
 

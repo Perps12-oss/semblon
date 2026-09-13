@@ -1,9 +1,11 @@
 # SEMBLON — Contracts V1.1-corrected
 **Status:** AUTHORITATIVE schema / CLI / runtime  
 **Date:** 2026-09-09  
+**Note:** 2026-09-13 — staging pointer and CLI surface clarified. No column changes.
 
 This file is the only schema authority.  
-The implementation plan is the only staging authority.  
+Staging authority is FACE / build 0.x as mapped in `docs/SEMBLON_MATURITY_BLUEPRINT.md` §9. There is no `SEMBLON_IMPLEMENTATION_PLAN.md` and no OBS / SIM clock.  
+`docs/ARCHITECTURE.md` is system structure only; it does not invent columns.  
 Do not invent columns. Do not implement the pre-correction V1.1 draft.
 
 ## Pack identity
@@ -37,9 +39,11 @@ Full SQL is in the planning pack; do not invent columns.
 
 ## CLI
 
-`semblon lab profile --image` is implemented (FACE-000).  
-ingest/cluster/export/stats/report require `--run` when added.  
-report is read-only. Exit 0/2/3 as specified.
+Implemented now: `lab profile` (FACE-000); `ingest`; `cluster --run`; `export --run` (read-only); `name` / `merge` / `split` (FACE-003); `lab observatory` snapshot / freeze / compare / enter.
+
+Not implemented: `stats`, `report`, `identify`. When added, ingest-family commands that address a stored run require `--run`. `report` is read-only. Exit 0/2/3 as specified.
+
+`observations` is a source/frame slot (`media_id`, `frame_id`, `run_id`) for the current identity path. It is not a typed multi-kind observation schema. Do not add kind / space / payload columns to satisfy the architectural North Star.
 
 ## Metrics
 
