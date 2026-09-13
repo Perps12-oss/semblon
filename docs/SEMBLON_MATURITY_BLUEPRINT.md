@@ -1,8 +1,8 @@
-# SEMBLON — Plan (maturity blueprint V1.2)
+# SEMBLON — Plan (maturity blueprint V1.3)
 
 **Status:** The one long-term plan. System structure + S0–S9 + how to absorb + how to measure.  
 **Not:** a schema, a ticket list, or a v1 rewrite.  
-**Date:** 2026-09-12 (V1.2 hygiene 2026-09-13)  
+**Date:** 2026-09-12 (V1.3 S1 closed 2026-09-13)  
 **Working name:** Semblon (`SEM-blon`)
 
 **Core docs only**
@@ -17,7 +17,7 @@
 
 `docs/ARCHITECTURE.md`, `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md`, and `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` are **pointers** here. Do not maintain a second plan in those files.
 
-FACE / 0.x is what to code next. Queue unchanged: dump-gate → FACE-002 → FACE-003 → FACE-004 → FACE-005.
+FACE / 0.x is what to code next. Queue: FACE-002 → FACE-003 → FACE-004 → FACE-005. **S1 PASS — closed.**
 
 Do not implement S5–S9, MediaPipe, CLIP, video, live, public lookup, ACC, or a vector database because this file is extensive.
 
@@ -392,14 +392,14 @@ folder → hash → detect → filter → embed → compare → conservative clu
 | Item | Verb |
 |---|---|
 | 0.2 ingest | KEEP (on `main`) |
-| 0.3 cluster + `review.html` | KEEP (on `main`; **not accepted until dump**) |
+| 0.3 cluster + `review.html` | KEEP (on `main`; **S1 PASS — closed** on `20260913T153515Z-1e915abe`) |
 | Interactive dashboard | REJECT for this stage (DEFER to S8) |
 | FAISS / HDBSCAN-as-architecture | REJECT until evidence |
 | cluster = person | REJECT |
 
 **Must not.** Name people. Identify. Watch folders. Serve HTTP.
 
-**Engineering.** FACE-001 / builds 0.2–0.3. Code on `main`. **Acceptance = dump-gate**, still open.
+**Engineering.** FACE-001 / builds 0.2–0.3. Code on `main`. **Acceptance = dump-gate. S1 PASS — closed.**
 
 ---
 
@@ -436,7 +436,7 @@ top1, top2, margin, gallery size, quality, condition, confirmatory operating poi
 
 | Item | Verb |
 |---|---|
-| FACE-002 eval harness | ADD (next scientific stage after S1 dump) |
+| FACE-002 eval harness | ADD (next scientific stage; S1 closed) |
 | Printing precision without `--eval-set confirmatory` | REJECT |
 | Remine refreshing confirmatory | REJECT (already in CONTRACTS) |
 | Public accuracy marketing | REJECT |
@@ -477,7 +477,7 @@ cluster → human review → merge / split / reject / assign
 
 | Item | Verb |
 |---|---|
-| 0.4 name / merge / split | KEEP (code on `main`); dump-gate still required before treating S3 as closed |
+| 0.4 name / merge / split | KEEP (code on `main`); S1 closed; S3 still open (after FACE-002) |
 | `decisions` rows | KEEP (schema already) |
 | Merge *suggestions* | DEFER unless the dump shows they are needed to finish 0.4 |
 | Neural fine-tuning on the user's album | REJECT |
@@ -709,7 +709,7 @@ temporal source
 | Stage | Name | Major new capability | Product transformation | Build now? |
 |---|---|---|---|---|
 | S0 | Born | See faces | Engine exists | FACE-000 (finish runtime rows) |
-| S1 | Aware | Group observations | Organises dumps | **0.3 on main. Dump-gate still open.** |
+| S1 | Aware | Group observations | Organises dumps | **S1 PASS — closed.** Next: FACE-002. |
 | S2 | Disciplined | Measure accuracy | Knows its limits | FACE-002 after dump |
 | S3 | Learning | Human evidence | Gets better through review | 0.4 / FACE-003 code on main |
 | S4 | Recognising | Reviewed people | Identifies known people | 1.0 / FACE-004 · **v1 ship** |
@@ -756,7 +756,7 @@ Hard rules:
 | Maturity | Engineering | Build version | Status 2026-09-12 |
 |---|---|---|---|
 | S0 | FACE-000 runtime | 0.1 | Code on `main`. Fill `runtime.md` on both Windows executions. |
-| S1 | FACE-001 ingest + first reviewable result | 0.2 ingest, **0.3 cluster/export** | On `main`. **Acceptance = real dump (still open).** |
+| S1 | FACE-001 ingest + first reviewable result | 0.2 ingest, **0.3 cluster/export** | On `main`. **S1 PASS — closed** (`20260913T153515Z-1e915abe`). |
 | S2 | FACE-002 confirmatory eval | — | Not started. Schema ready. |
 | S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump-gate still precedes treating this closed. |
 | S4 | FACE-004 persons + identify | **1.0** | After 0.4 · v1 ship test |
@@ -924,20 +924,20 @@ Do not:
 
 ```
 S0  FACE-000     code exists; Windows runtime rows still to be filled
-S1  0.2 + 0.3    on main; NOT dump-accepted
-S2  FACE-002     not started
-S3  0.4          name/merge/split code on main; not closed until dump-gate
+S1  0.2 + 0.3    S1 PASS — closed (`20260913T153515Z-1e915abe`)
+S2  FACE-002     not started (next gate)
+S3  0.4          name/merge/split code on main; not closed
 S4–S9            not started (identify = FACE-004)
-v1 ship          = S4 stills slice, after dump-gate, 0.4 evidence, and 1.0
+v1 ship          = S4 stills slice, after FACE-002, 0.4 evidence, and 1.0
 ```
 
-Immediate engineering path is unchanged:
+Immediate engineering path:
 
 ```
-dump-gate → FACE-002 → FACE-003 → FACE-004 → FACE-005
+FACE-002 → FACE-003 → FACE-004 → FACE-005
 ```
 
-Honest code state: ingest / cluster / export / name / merge / split exist. That does not skip dump-gate or FACE-002, and it does not authorize geometry / semantic / video work.
+Honest code state: ingest / cluster / export / name / merge / split exist. S1 identity-quality is closed (no observed false merge on the 90-image dump). That does not skip FACE-002, and it does not authorize geometry / semantic / video work.
 
 Do not start S5–S9, MediaPipe, CLIP, or vector-DB work from this paper.
 
@@ -1067,7 +1067,7 @@ semblon lab observatory enter --stage S3 --store STORE --run R
 
 `freeze` writes `observatory/golden-S1.json` beside the store. `--notes` stores the human dump-gate sentence on that golden. `enter` checks the completed-stage golden (S3 checks S1; S2 is parallel). Missing golden or regression: warn, exit 0. `--promote` is the only stick (exit 3). `name` / `merge` / `split` call enter S3 once — warn only.
 
-S1 dump `20260913T013631Z-e22e1fa6` (Win ARM64 native, 90 stills): no false merges; false splits from blur/occlusion accepted; do not retune `eps=0.40`. Freeze that run before treating 0.4 as open.
+**S1 PASS — closed.** Authoritative dump `20260913T153515Z-1e915abe` (Win ARM64 native, 90 `.jpg`): 85 faces, 78 ok, 10 clusters, 63 clustered, 15 eligible unassigned; no observed false merge; clusters are not people. Do not retune `eps=0.40`. Pin with `freeze --notes` on the Windows store when convenient. Next: FACE-002.
 
 Accuracy stays `not_measurable` until FACE-002. Print precision only on frozen confirmatory sets.
 
@@ -1091,6 +1091,7 @@ A vector store is retrieval infrastructure, not intelligence. Do not add a parke
 | V1.0.3 | 2026-09-12 | Wording: review page is evidence, not an automatic kill. Operating model frozen. |
 | V1.1 | 2026-09-13 | Identity firewall. Spaces ≠ one embedding. 0.4 code exists; dump-gate queue unchanged. |
 | V1.2 | 2026-09-13 | Hygiene: structure + absorb + measure live here. Companion files are pointers. No features dropped. |
+| V1.3 | 2026-09-13 | S1 PASS — closed on `20260913T153515Z-1e915abe`. Next: FACE-002. |
 
 ---
 
