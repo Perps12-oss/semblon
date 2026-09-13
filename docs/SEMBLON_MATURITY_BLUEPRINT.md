@@ -1,8 +1,8 @@
-# SEMBLON — Plan (maturity blueprint V1.3)
+# SEMBLON — Plan (maturity blueprint V1.4)
 
 **Status:** The one long-term plan. System structure + S0–S9 + how to absorb + how to measure.  
 **Not:** a schema, a ticket list, or a v1 rewrite.  
-**Date:** 2026-09-12 (V1.3 S1 closed 2026-09-13)  
+**Date:** 2026-09-12 (V1.4 FACE-002 harness on path 2026-09-15)  
 **Working name:** Semblon (`SEM-blon`)
 
 **Core docs only**
@@ -17,7 +17,7 @@
 
 `docs/ARCHITECTURE.md`, `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md`, and `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` are **pointers** here. Do not maintain a second plan in those files.
 
-FACE / 0.x is what to code next. Queue: FACE-002 → FACE-003 → FACE-004 → FACE-005. **S1 PASS — closed.**
+FACE / 0.x is what to code next. Queue: FACE-002 → FACE-003 → FACE-004 → FACE-005. **S1 PASS — closed.** FACE-002 harness exists on the `lab eval` path; the stage is not closed until a powered frozen confirmatory set exists.
 
 Do not implement S5–S9, MediaPipe, CLIP, video, live, public lookup, ACC, or a vector database because this file is extensive.
 
@@ -436,14 +436,14 @@ top1, top2, margin, gallery size, quality, condition, confirmatory operating poi
 
 | Item | Verb |
 |---|---|
-| FACE-002 eval harness | ADD (next scientific stage; S1 closed) |
+| FACE-002 eval harness | KEEP harness on path (`semblon lab eval`; precision only on frozen confirmatory). Stage open. |
 | Printing precision without `--eval-set confirmatory` | REJECT |
 | Remine refreshing confirmatory | REJECT (already in CONTRACTS) |
 | Public accuracy marketing | REJECT |
 
 **Must not.** Change identity rules because a number looked nice.
 
-**Engineering.** FACE-002. Schema already has `eval_sets` / `eval_pairs`.
+**Engineering.** FACE-002 harness on the `lab eval` path; the stage stays open. Schema already has `eval_sets` / `eval_pairs`. A real dump stays underpowered until a frozen confirmatory set has enough same, different, and hard-negative pairs.
 
 ---
 
@@ -709,8 +709,8 @@ temporal source
 | Stage | Name | Major new capability | Product transformation | Build now? |
 |---|---|---|---|---|
 | S0 | Born | See faces | Engine exists | FACE-000 (finish runtime rows) |
-| S1 | Aware | Group observations | Organises dumps | **S1 PASS — closed.** Next: FACE-002. |
-| S2 | Disciplined | Measure accuracy | Knows its limits | FACE-002 after dump |
+| S1 | Aware | Group observations | Organises dumps | **S1 PASS — closed.** Next: FACE-002 (open). |
+| S2 | Disciplined | Measure accuracy | Knows its limits | FACE-002 harness on path; stage open. Rates only if powered. |
 | S3 | Learning | Human evidence | Gets better through review | 0.4 / FACE-003 code on main |
 | S4 | Recognising | Reviewed people | Identifies known people | 1.0 / FACE-004 · **v1 ship** |
 | S5 | Useful | Incremental operation | Effortless stills | FACE-005+ · post-v1 |
@@ -757,7 +757,7 @@ Hard rules:
 |---|---|---|---|
 | S0 | FACE-000 runtime | 0.1 | Code on `main`. Fill `runtime.md` on both Windows executions. |
 | S1 | FACE-001 ingest + first reviewable result | 0.2 ingest, **0.3 cluster/export** | On `main`. **S1 PASS — closed** (`20260913T153515Z-1e915abe`). |
-| S2 | FACE-002 confirmatory eval | — | Not started. Schema ready. |
+| S2 | FACE-002 confirmatory eval | `lab eval` | Harness on path. Underpowered until a powered confirmatory set exists. Stage open. |
 | S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump-gate still precedes treating this closed. |
 | S4 | FACE-004 persons + identify | **1.0** | After 0.4 · v1 ship test |
 | S5 | FACE-005 hardening / incremental | post-1.0 | Reassess; do not pre-build |
@@ -925,10 +925,10 @@ Do not:
 ```
 S0  FACE-000     code exists; Windows runtime rows still to be filled
 S1  0.2 + 0.3    S1 PASS — closed (`20260913T153515Z-1e915abe`)
-S2  FACE-002     not started (next gate)
-S3  0.4          name/merge/split code on main; not closed
+S2  FACE-002     harness (`lab eval`); dump remains underpowered until labeled; stage open (current gate)
+S3  0.4          review + name/merge/split code on main; not closed
 S4–S9            not started (identify = FACE-004)
-v1 ship          = S4 stills slice, after FACE-002, 0.4 evidence, and 1.0
+v1 ship          = S4 stills slice, after powered confirmatory evidence, 0.4, and 1.0
 ```
 
 Immediate engineering path:
@@ -937,7 +937,9 @@ Immediate engineering path:
 FACE-002 → FACE-003 → FACE-004 → FACE-005
 ```
 
-Honest code state: ingest / cluster / export / name / merge / split exist. S1 identity-quality is closed (no observed false merge on the 90-image dump). That does not skip FACE-002, and it does not authorize geometry / semantic / video work.
+FACE-002 remains the current gate. Harness-on-path is not a stage close.
+
+Honest code state: ingest / cluster / export / review / name / merge / split / eval exist. S1 identity-quality is closed. FACE-002 harness exists and refuses fake FAR/FRR; the stage is not closed until a powered frozen confirmatory set exists. That does not close S3, and it does not authorize geometry / semantic / video work.
 
 Do not start S5–S9, MediaPipe, CLIP, or vector-DB work from this paper.
 
@@ -1067,9 +1069,9 @@ semblon lab observatory enter --stage S3 --store STORE --run R
 
 `freeze` writes `observatory/golden-S1.json` beside the store. `--notes` stores the human dump-gate sentence on that golden. `enter` checks the completed-stage golden (S3 checks S1; S2 is parallel). Missing golden or regression: warn, exit 0. `--promote` is the only stick (exit 3). `name` / `merge` / `split` call enter S3 once — warn only.
 
-**S1 PASS — closed.** Authoritative dump `20260913T153515Z-1e915abe` (Win ARM64 native, 90 `.jpg`): 85 faces, 78 ok, 10 clusters, 63 clustered, 15 eligible unassigned; no observed false merge; clusters are not people. Do not retune `eps=0.40`. Pin with `freeze --notes` on the Windows store when convenient. Next: FACE-002.
+**S1 PASS — closed.** Authoritative dump `20260913T153515Z-1e915abe` (Win ARM64 native, 90 `.jpg`): 85 faces, 78 ok, 10 clusters, 63 clustered, 15 eligible unassigned; no observed false merge; clusters are not people. Do not retune `eps=0.40`. Pin with `freeze --notes` on the Windows store when convenient.
 
-Accuracy stays `not_measurable` until FACE-002. Print precision only on frozen confirmatory sets.
+FACE-002: `semblon lab eval`. Print precision only on a frozen confirmatory set that meets the powered floor (10 same, 10 different, ≥1 hard-negative near the identity boundary). Otherwise underpowered — counts only, no FAR/FRR. Remine writes `mined_discovery` only. FACE-002 remains open until a powered frozen confirmatory set exists.
 
 ---
 
@@ -1092,6 +1094,7 @@ A vector store is retrieval infrastructure, not intelligence. Do not add a parke
 | V1.1 | 2026-09-13 | Identity firewall. Spaces ≠ one embedding. 0.4 code exists; dump-gate queue unchanged. |
 | V1.2 | 2026-09-13 | Hygiene: structure + absorb + measure live here. Companion files are pointers. No features dropped. |
 | V1.3 | 2026-09-13 | S1 PASS — closed on `20260913T153515Z-1e915abe`. Next: FACE-002. |
+| V1.4 | 2026-09-15 | FACE-002 eval harness on the `lab eval` path. Precision only on powered frozen confirmatory. Stage remains open; FACE-003 is not the next closable gate solely because harness code exists. |
 
 ---
 

@@ -1,6 +1,7 @@
 """Semblon CLI. lab + ingest + cluster + export + review + name/merge/split.
 
 Observatory is not a dump gate. cluster → review → person → name.
+FACE-002: lab eval. Precision only on frozen confirmatory sets.
 """
 
 from __future__ import annotations
@@ -56,6 +57,50 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="exit 3 on unexplained regression (maturity claim only)",
     )
+
+    ev = lab_sub.add_parser("eval", help="FACE-002 confirmatory eval harness")
+    ev_sub = ev.add_subparsers(dest="evalcmd", required=True)
+
+    ev_c = ev_sub.add_parser("create", help="create an eval set (unfrozen)")
+    ev_c.add_argument("--store", required=True, type=Path)
+    ev_c.add_argument("--eval-set", required=True)
+    ev_c.add_argument(
+        "--kind",
+        required=True,
+        choices=("confirmatory_hard", "mined_discovery", "soft_impostor", "genuine"),
+    )
+    ev_c.add_argument("--pack", default=None)
+    ev_c.add_argument("--notes", default=None)
+
+    ev_p = ev_sub.add_parser("pair", help="add a labeled pair (refused if frozen)")
+    ev_p.add_argument("--store", required=True, type=Path)
+    ev_p.add_argument("--eval-set", required=True)
+    ev_p.add_argument("--faces", nargs=2, required=True, metavar="FACE")
+    ev_p.add_argument("--label", required=True, choices=("same", "different"))
+    ev_p.add_argument("--stratum", required=True)
+
+    ev_f = ev_sub.add_parser("freeze", help="freeze a set (confirmatory becomes immutable)")
+    ev_f.add_argument("--store", required=True, type=Path)
+    ev_f.add_argument("--eval-set", required=True)
+
+    ev_m = ev_sub.add_parser("mine", help="remine discovery tail — never confirmatory")
+    ev_m.add_argument("--store", required=True, type=Path)
+    ev_m.add_argument("--run", required=True)
+    ev_m.add_argument("--eval-set", required=True)
+    ev_m.add_argument("--min-sim", type=float, default=None)
+    ev_m.add_argument("--max-pairs", type=int, default=None)
+
+    ev_s = ev_sub.add_parser(
+        "score",
+        help="score a set; FAR/FRR only for --eval-set confirmatory (frozen)",
+    )
+    ev_s.add_argument("--store", required=True, type=Path)
+    ev_s.add_argument(
+        "--eval-set",
+        required=True,
+        help="set id, or 'confirmatory' for the single frozen confirmatory_hard set",
+    )
+    ev_s.add_argument("--threshold", type=float, default=None)
 
     ing = sub.add_parser("ingest", help="0.2 folder stills → store")
     ing.add_argument("folder", type=Path)
@@ -160,6 +205,62 @@ def main(argv: list[str] | None = None) -> int:
         if args.obscmd == "enter" and args.promote and rec.get("verdict") == "regression":
             print("unexplained regression — not mature", file=sys.stderr)
             return 3
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "eval":
+        from semblon.eval import (
+            DEFAULT_MINE_MAX,
+            DEFAULT_THRESHOLD,
+            EvalError,
+            HARD_NEAR,
+            add_pair,
+            create_set,
+            freeze_set,
+            mine_discovery,
+            score_set,
+        )
+
+        try:
+            if args.evalcmd == "create":
+                rec = create_set(
+                    args.store,
+                    args.eval_set,
+                    args.kind,
+                    pack_id=args.pack,
+                    notes=args.notes,
+                )
+            elif args.evalcmd == "pair":
+                rec = add_pair(
+                    args.store,
+                    args.eval_set,
+                    args.faces[0],
+                    args.faces[1],
+                    args.label,
+                    args.stratum,
+                )
+            elif args.evalcmd == "freeze":
+                rec = freeze_set(args.store, args.eval_set)
+            elif args.evalcmd == "mine":
+                kwargs = {}
+                if args.min_sim is not None:
+                    kwargs["min_sim"] = args.min_sim
+                else:
+                    kwargs["min_sim"] = HARD_NEAR
+                if args.max_pairs is not None:
+                    kwargs["max_pairs"] = args.max_pairs
+                else:
+                    kwargs["max_pairs"] = DEFAULT_MINE_MAX
+                rec = mine_discovery(args.store, args.run, args.eval_set, **kwargs)
+            else:
+                rec = score_set(
+                    args.store,
+                    args.eval_set,
+                    threshold=DEFAULT_THRESHOLD if args.threshold is None else args.threshold,
+                )
+        except EvalError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2, default=str))
         return 0
 
     if args.cmd == "ingest":
