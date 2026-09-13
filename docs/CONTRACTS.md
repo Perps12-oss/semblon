@@ -5,7 +5,7 @@
 
 This file is the only schema authority.  
 Staging authority is FACE / build 0.x as mapped in `docs/SEMBLON_MATURITY_BLUEPRINT.md` §9. There is no `SEMBLON_IMPLEMENTATION_PLAN.md` and no OBS / SIM clock.  
-`docs/ARCHITECTURE.md` is system structure only; it does not invent columns.  
+The plan does not invent columns.  
 Do not invent columns. Do not implement the pre-correction V1.1 draft.
 
 ## Pack identity

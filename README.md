@@ -48,19 +48,17 @@ DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`
 
 Corrections write `decisions` rows. Naming links `cluster_person` and stamps `faces.person_id`; the cluster id is never the person id.
 
-## Docs (authority)
+## Docs (core)
 
 | File | Role |
 |---|---|
-| `docs/PRODUCT.md` | frozen v1 product (folder-first, face-first, local-first) |
+| `docs/PRODUCT.md` | frozen v1 (folder-first, face-first, local-first) |
 | `docs/CONTRACTS.md` | schema / CLI / runtime |
-| `docs/ARCHITECTURE.md` | system-structure North Star (spaces, identity firewall; not a ticket list) |
-| `docs/SEMBLON_MATURITY_BLUEPRINT.md` | capability generations S0–S9 |
-| `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` | scavenging / value / absorb process |
-| `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` | measurement spine (not a gate) |
+| `docs/SEMBLON_MATURITY_BLUEPRINT.md` | long-term plan: structure + S0–S9 + absorb + measure |
 | `docs/runtime.md` | FACE-000 output (fill on each machine) |
+| `docs/licenses.md` | weights / licence record |
 
-Architecture may anticipate the future. Implementation must earn it. FaceKit / InsightFace is the identity engine. Other spaces (geometry, appearance, semantic) must not silently influence identity.
+Architecture may anticipate the future. Implementation must earn it. FaceKit / InsightFace is the identity engine. Other spaces must not silently influence identity.
 
 `pack_id` includes weight hashes. `buffalo_l` is a family name, not the compare key.
 
