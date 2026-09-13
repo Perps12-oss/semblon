@@ -1,23 +1,5 @@
 # Architecture
 
-**Operating model — frozen 2026-09-12.** Do not reopen.
+Merged into `docs/SEMBLON_MATURITY_BLUEPRINT.md` (the plan: structure §1, generations S0–S9, absorb §18, measure §19).
 
-| Doc | Job |
-|---|---|
-| `docs/PRODUCT.md` | what the current user can actually do (v1 frozen) |
-| `docs/CONTRACTS.md` | what the implementation must guarantee |
-| `docs/SEMBLON_MATURITY_BLUEPRINT.md` | what Semblon can eventually become (S0–S9) |
-| `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` | scavenge useful behaviour (not install every donor) |
-| `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` | did this build get better? Not a development gate |
-
-```
-BUILD → SCAVENGE → MEASURE → KEEP/ADAPT/DEFER/REJECT → GOLDEN (if justified) → PROMOTE → NEXT STAGE
-```
-
-`review.html` is evidence. Use it to decide whether DBSCAN survives; it does not automatically kill an algorithm.
-
-Observatory answers “did S3→S4 actually get better?”, not “may we experiment today?”
-
-Do not remap stage names. Do not start a GUI because S8 exists on paper.
-
-Current engineering: 0.4 name/merge/split (S3). Dump-gate (FACE-001) remains on the owner's Windows machine; observatory is not a gate.
+Do not maintain a second architecture here. PRODUCT v1 and CONTRACTS are unchanged.

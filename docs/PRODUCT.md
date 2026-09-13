@@ -4,6 +4,8 @@ Semblon v1 is a **personal, local-first** Windows CLI. One user. No cloud. No AC
 
 **Successful day:** drop a folder of stills → conservative face groups → review and name people you care about → those people become a gallery for later identification.
 
+The long-term plan in `docs/SEMBLON_MATURITY_BLUEPRINT.md` does **not** redefine this v1. Folder-first, face-first, local-first remains the current product. Future observers, spaces, sources, and integrations stay out until this file is explicitly amended.
+
 ## v1 in
 
 - Folders of still photographs (~10k first target; do not design *only* for 10k)

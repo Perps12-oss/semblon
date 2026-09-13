@@ -1,15 +1,21 @@
 SEMBLON — standing instruction for Cursor
 
-Follow docs/SEMBLON_IMPLEMENTATION_PLAN.md and docs/CONTRACTS.md.
-CONTRACTS.md is V1.1-corrected. Do not implement the pre-correction draft.
-Do not invent schema columns.
-Implement only the current FACE id. Current id: FACE-000.
-Do not add libraries from docs/backlog-libraries.md.
+Core docs: docs/PRODUCT.md (frozen v1) → docs/CONTRACTS.md (schema/CLI/runtime) → docs/SEMBLON_MATURITY_BLUEPRINT.md (the plan) → FACE / 0.x (what to code).
+Do not grow a parallel architecture / discovery / observatory plan. Those files are pointers.
+There is no SEMBLON_IMPLEMENTATION_PLAN.md. Do not create OBS/SIM/VISION ticket numbers.
+
+CONTRACTS.md is V1.1-corrected. Do not invent schema columns.
+Architecture may anticipate the future. Implementation must earn the future.
+Do not implement MediaPipe, CLIP, hands, pose, objects, semantic clustering, video, live, public lookup, ACC, or a vector database unless the current FACE id explicitly requires it.
+
+Authorized queue: dump-gate → FACE-002 → FACE-003 → FACE-004 → FACE-005.
+0.2 / 0.3 / 0.4 code exist. Dump-gate is still on the owner's Windows machine. Do not skip it. Do not retune identity thresholds to beautify clusters.
+
+FaceKit / InsightFace is the identity engine. No cross-pack compare. pack_id includes weight hashes.
+Do not add libraries from the plan §20 parked list.
 Do not treat cluster as person.
+Unknown is valid. False merge > false split. Wrong identity > unknown.
 Do not print precision without --eval-set confirmatory.
-pack_id is not the string buffalo_l. Include weight hashes.
 report must not write to the store.
 Record native vs emulated. Never call x64-on-ARM64 native.
-Stop when FACE-000 acceptance is met: runtime.md filled for x64 native and ARM64 (native or fail+emulated); one image detect+embed; pack_id present.
-
-Do not implement ingest, cluster, export, UI, FAISS, or five adapters.
+Identity firewall: geometry, appearance, objects, and semantic similarity must not silently influence identity.
