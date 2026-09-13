@@ -1061,11 +1061,13 @@ Three references, not interchangeable: **A** our golden baseline (commit / pack_
 Verdicts: improvement · trade-off (accepted in writing) · regression (unexplained red → not mature) · not_measurable (do not fake it).
 
 ```text
-semblon lab observatory freeze --store STORE --run R --stage S1
+semblon lab observatory freeze --store STORE --run R --stage S1 --notes "HUMAN REVIEW SENTENCE"
 semblon lab observatory enter --stage S3 --store STORE --run R
 ```
 
-`freeze` writes `observatory/golden-S1.json` beside the store. `enter` checks the completed-stage golden (S3 checks S1; S2 is parallel). Missing golden or regression: warn, exit 0. `--promote` is the only stick (exit 3). `name` / `merge` / `split` call enter S3 once — warn only.
+`freeze` writes `observatory/golden-S1.json` beside the store. `--notes` stores the human dump-gate sentence on that golden. `enter` checks the completed-stage golden (S3 checks S1; S2 is parallel). Missing golden or regression: warn, exit 0. `--promote` is the only stick (exit 3). `name` / `merge` / `split` call enter S3 once — warn only.
+
+S1 dump `20260913T013631Z-e22e1fa6` (Win ARM64 native, 90 stills): no false merges; false splits from blur/occlusion accepted; do not retune `eps=0.40`. Freeze that run before treating 0.4 as open.
 
 Accuracy stays `not_measurable` until FACE-002. Print precision only on frozen confirmatory sets.
 

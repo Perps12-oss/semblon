@@ -4,9 +4,11 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: 0.4** — `name` / `merge` / `split` after `cluster` + `review.html`.
+**Current: 0.3 dump gate passed (2026-09-13)** — S1 freeze next, then use 0.4 (`name` / `merge` / `split`).
 
 `cluster → review → person → name`. Never `cluster = person`.
+
+Same-person baseline + 90-still dump: **no false merges**. False splits from blur/occlusion are accepted — do not retune `eps`. Freeze S1 on run `20260913T013631Z-e22e1fa6` before treating 0.4 as open.
 
 ## Install
 
@@ -36,7 +38,7 @@ semblon name --cluster CLUSTER_ID --as "Alice" --run RUN_ID --store "D:\semblon\
 semblon merge --clusters SURVIVOR DONOR... --run RUN_ID --store "D:\semblon\store.sqlite"
 semblon split --cluster CLUSTER_ID --faces FACE_ID... --run RUN_ID --store "D:\semblon\store.sqlite"
 
-semblon lab observatory freeze --store "D:\semblon\store.sqlite" --run RUN_ID --stage S1
+semblon lab observatory freeze --store "D:\semblon\store.sqlite" --run RUN_ID --stage S1 --notes "HUMAN REVIEW SENTENCE"
 semblon lab observatory enter --stage S3 --store "D:\semblon\store.sqlite" --run RUN_ID
 ```
 

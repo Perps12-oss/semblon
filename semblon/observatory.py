@@ -160,13 +160,24 @@ def snapshot(store: Path, run_id: str, strong_min_intra: float = STRONG_MIN_INTR
     }
 
 
-def freeze(store: Path, run_id: str, stage: str, out: Path | None = None) -> dict:
+def freeze(
+    store: Path,
+    run_id: str,
+    stage: str,
+    out: Path | None = None,
+    notes: str | None = None,
+) -> dict:
+    """Write golden-{stage}.json beside the store. Optional human-review notes."""
     stage = stage.upper()
     if stage not in STAGES:
         raise ObservatoryError(f"unknown stage: {stage}")
     board = snapshot(store, run_id)
     board["stage"] = stage
     board["frozen"] = True
+    if notes is not None:
+        text = str(notes).strip()
+        if text:
+            board["notes"] = text
     path = Path(out) if out else golden_path(store, stage)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(board, indent=2), encoding="utf-8")
