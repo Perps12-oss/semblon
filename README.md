@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: S1 PASS — closed (2026-09-13).** Next planned gate: FACE-002 confirmatory hard negatives. Do not retune clustering. Do not start architecture expansion.
+**Current: FACE-002 eval harness on `main` path.** S1 PASS — closed. Next planned gate: FACE-003 (name/merge/split as closed evidence, not just code). Do not retune clustering. Do not start architecture expansion.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
@@ -40,6 +40,11 @@ semblon split --cluster CLUSTER_ID --faces FACE_ID... --run RUN_ID --store "D:\s
 
 semblon lab observatory freeze --store "D:\semblon\store.sqlite" --run RUN_ID --stage S1 --notes "HUMAN REVIEW SENTENCE"
 semblon lab observatory enter --stage S3 --store "D:\semblon\store.sqlite" --run RUN_ID
+
+semblon lab eval create --store "D:\semblon\store.sqlite" --eval-set hard1 --kind confirmatory_hard --pack PACK_ID
+semblon lab eval pair --store "D:\semblon\store.sqlite" --eval-set hard1 --faces FACE_A FACE_B --label different --stratum lookalike
+semblon lab eval freeze --store "D:\semblon\store.sqlite" --eval-set hard1
+semblon lab eval score --store "D:\semblon\store.sqlite" --eval-set confirmatory
 ```
 
 Quote Windows paths. Put a space between `--out` and the next argument — do not glue `docs\runtime.md` onto another path.
