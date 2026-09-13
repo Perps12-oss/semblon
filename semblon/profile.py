@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -12,6 +13,38 @@ from pathlib import Path
 
 from semblon import __version__
 from semblon.engine import PACK_FAMILY, discover_weight_hashes, embed_image, load_app, pack_id
+
+# Windows paste hazard: --out docs/runtime.mdC:\Users\...\Scripts (missing space/newline)
+_GLUED_PATH = re.compile(r"\.(md|html|json|txt)([A-Za-z]:[\\/])", re.IGNORECASE)
+
+
+class ProfileError(ValueError):
+    pass
+
+
+def validate_out_path(out: Path) -> Path:
+    """Reject clearly-glued Windows paths before mkdir blows up with WinError 123."""
+    raw = str(out)
+    m = _GLUED_PATH.search(raw)
+    if m:
+        intended = raw[: m.start() + 1 + len(m.group(1))]
+        raise ProfileError(
+            f"invalid --out path (two paths glued together):\n  {raw}\n"
+            f"Use a single file path, e.g.:\n"
+            f'  --out "{intended}"\n'
+            f'Full example:\n'
+            f'  semblon lab profile --image "D:\\photos\\face.jpg" --out "docs\\runtime.md"'
+        )
+    # Colon only allowed as drive letter (C:\...)
+    norm = raw.replace("/", "\\")
+    if ":" in norm:
+        drive_ok = bool(re.match(r"^[A-Za-z]:\\", norm)) and norm.count(":") == 1
+        if not drive_ok:
+            raise ProfileError(
+                f"invalid --out path (bad ':' in path): {raw}\n"
+                f'Example: --out "docs\\runtime.md"'
+            )
+    return out
 
 
 def _rss_mb() -> float | None:
@@ -45,6 +78,8 @@ def _arch() -> str:
 
 
 def run_profile(image: Path, out: Path) -> dict:
+    out = validate_out_path(Path(out))
+
     import cv2
     import insightface
     import onnxruntime as ort
@@ -97,7 +132,14 @@ def run_profile(image: Path, out: Path) -> dict:
         },
         "notes": "FACE-000 probe. detect_ms/embed_ms not split; see detect_embed_ms.",
     }
-    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if out.parent != Path(".") and str(out.parent) != "":
+            out.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise ProfileError(
+            f"cannot create output directory for --out {out}: {e}\n"
+            f'Example: semblon lab profile --image "D:\\photos\\face.jpg" --out "docs\\runtime.md"'
+        ) from e
     out.write_text(
         "# Runtime record (FACE-000)\n\n```json\n" + json.dumps(rec, indent=2) + "\n```\n",
         encoding="utf-8",
