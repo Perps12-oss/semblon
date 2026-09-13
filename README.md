@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: S1 PASS — closed (2026-09-13).** Next planned gate: FACE-002 confirmatory hard negatives. Do not retune clustering. Do not start architecture expansion.
+**Current: 0.4 review decisions.** S1 golden locked (`docs/S1-GOLDEN.md`). Do not retune clustering. Do not re-ingest the frozen dump.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
@@ -34,9 +34,11 @@ semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite"
 semblon cluster --run RUN_ID --store "D:\semblon\store.sqlite"
 semblon export --run RUN_ID --store "D:\semblon\store.sqlite" --out "review.html"
 
-semblon name --cluster CLUSTER_ID --as "Alice" --run RUN_ID --store "D:\semblon\store.sqlite"
-semblon merge --clusters SURVIVOR DONOR... --run RUN_ID --store "D:\semblon\store.sqlite"
-semblon split --cluster CLUSTER_ID --faces FACE_ID... --run RUN_ID --store "D:\semblon\store.sqlite"
+semblon review --run RUN_ID --store "D:\semblon\store.sqlite" merge --clusters SURVIVOR DONOR
+semblon review --run RUN_ID --store "D:\semblon\store.sqlite" split --cluster CLUSTER_ID --faces FACE_ID
+semblon review --run RUN_ID --store "D:\semblon\store.sqlite" ignore --cluster CLUSTER_ID --as not_a_person
+semblon review --run RUN_ID --store "D:\semblon\store.sqlite" ignore --face FACE_ID --as singleton
+semblon review --run RUN_ID --store "D:\semblon\store.sqlite" note --cluster CLUSTER_ID --text "same person, two groups"
 
 semblon lab observatory freeze --store "D:\semblon\store.sqlite" --run RUN_ID --stage S1 --notes "HUMAN REVIEW SENTENCE"
 semblon lab observatory enter --stage S3 --store "D:\semblon\store.sqlite" --run RUN_ID

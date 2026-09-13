@@ -7,7 +7,15 @@ import struct
 from pathlib import Path
 
 from semblon.cluster import cluster_run
-from semblon.review import ReviewError, merge_clusters, name_cluster, split_cluster
+from semblon.export import export_review
+from semblon.review import (
+    ReviewError,
+    ignore_subject,
+    merge_clusters,
+    name_cluster,
+    note_subject,
+    split_cluster,
+)
 from semblon.store import init_db
 
 
@@ -212,3 +220,127 @@ def test_cli_name_merge_split(tmp_path):
     assert main(["name", "--cluster", "missing", "--as", "X", "--run", "r1", "--store", str(store)]) == 2
     # other cluster still distinct
     assert c2 == assigned["f3"]
+
+
+def test_merge_is_not_a_person_and_survives_recluster(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    c1 = assigned["f1"]
+    c2 = assigned["f3"]
+    rec = merge_clusters(store, "r1", [c1, c2])
+    assert rec["person_id"] is None
+
+    conn = sqlite3.connect(str(store))
+    n_person = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    n_link = conn.execute("SELECT COUNT(*) FROM cluster_person").fetchone()[0]
+    assert n_person == 0
+    assert n_link == 0
+    before = conn.execute(
+        "SELECT COUNT(*) FROM decisions WHERE kind='merge'"
+    ).fetchone()[0]
+    conn.close()
+
+    cluster_run(store, "r1", eps=0.15, min_samples=2)
+    conn = sqlite3.connect(str(store))
+    faces = {
+        r[0]: r[1]
+        for r in conn.execute("SELECT face_id, cluster_id FROM faces WHERE status='ok'")
+    }
+    assert faces["f1"] == faces["f2"] == faces["f3"] == faces["f4"] == c1
+    assert faces["f5"] is None
+    after = conn.execute("SELECT COUNT(*) FROM decisions WHERE kind='merge'").fetchone()[0]
+    assert after == before == 1
+    status = conn.execute(
+        "SELECT status FROM clusters WHERE cluster_id=?", (c1,)
+    ).fetchone()[0]
+    assert status == "merged"
+    n_person = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    assert n_person == 0
+    conn.close()
+
+
+def test_ignore_and_note_export_without_person(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    c1 = assigned["f1"]
+    ign = ignore_subject(store, "r1", cluster_id=c1, disposition="not_a_person")
+    assert ign["person_id"] is None
+    note = note_subject(store, "r1", "same person split across groups", cluster_id=c1)
+    assert note["person_id"] is None
+    mark = ignore_subject(store, "r1", face_id="f5", disposition="singleton")
+    assert mark["disposition"] == "singleton"
+
+    cluster_run(store, "r1", eps=0.15, min_samples=2)
+    conn = sqlite3.connect(str(store))
+    assert conn.execute("SELECT cluster_id FROM faces WHERE face_id='f1'").fetchone()[0] == c1
+    assert conn.execute("SELECT cluster_id FROM faces WHERE face_id='f5'").fetchone()[0] is None
+    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+    conn.close()
+
+    out = tmp_path / "review.html"
+    export_review(store, "r1", out)
+    text = out.read_text(encoding="utf-8")
+    assert "DECISIONS" in text
+    assert "not_a_person" in text
+    assert "singleton" in text
+    assert "same person split across groups" in text
+
+
+def test_cli_review_merge_ignore(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    c1 = assigned["f1"]
+    c2 = assigned["f3"]
+    from semblon.cli import main
+
+    assert (
+        main(
+            [
+                "review",
+                "--run",
+                "r1",
+                "--store",
+                str(store),
+                "merge",
+                "--clusters",
+                c1,
+                c2,
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "review",
+                "--run",
+                "r1",
+                "--store",
+                str(store),
+                "ignore",
+                "--face",
+                "f5",
+                "--as",
+                "junk",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "review",
+                "--run",
+                "r1",
+                "--store",
+                str(store),
+                "note",
+                "--cluster",
+                c1,
+                "--text",
+                "held as review identity, not a name",
+            ]
+        )
+        == 0
+    )
+    assert main(["review", "--run", "r1", "--store", str(store), "ignore"]) == 2

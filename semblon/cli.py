@@ -1,4 +1,4 @@
-"""Semblon CLI. 0.4: lab + ingest + cluster + export + name/merge/split.
+"""Semblon CLI. lab + ingest + cluster + export + review + name/merge/split.
 
 Observatory is not a dump gate. cluster → review → person → name.
 """
@@ -99,6 +99,24 @@ def main(argv: list[str] | None = None) -> int:
     spl.add_argument("--faces", nargs="+", required=True)
     spl.add_argument("--run", required=True)
     spl.add_argument("--store", required=True, type=Path)
+
+    rev = sub.add_parser("review", help="0.4 persist review decisions (does not rewrite DBSCAN)")
+    rev.add_argument("--run", required=True)
+    rev.add_argument("--store", required=True, type=Path)
+    rev_sub = rev.add_subparsers(dest="reviewcmd", required=True)
+    r_m = rev_sub.add_parser("merge", help="same review identity; not a person")
+    r_m.add_argument("--clusters", nargs="+", required=True, help="survivor first, then donors")
+    r_s = rev_sub.add_parser("split", help="move faces into a new cluster")
+    r_s.add_argument("--cluster", required=True)
+    r_s.add_argument("--faces", nargs="+", required=True)
+    r_i = rev_sub.add_parser("ignore", help="not a person, or unassigned singleton/junk/needs-review")
+    r_i.add_argument("--cluster", default=None)
+    r_i.add_argument("--face", default=None)
+    r_i.add_argument("--as", dest="disposition", default=None)
+    r_n = rev_sub.add_parser("note", help="durable review note")
+    r_n.add_argument("--cluster", default=None)
+    r_n.add_argument("--face", default=None)
+    r_n.add_argument("--text", required=True)
 
     args = p.parse_args(argv)
 
@@ -218,6 +236,42 @@ def main(argv: list[str] | None = None) -> int:
 
         try:
             rec = split_cluster(args.store, args.run, args.cluster, args.faces)
+        except ReviewError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "review":
+        from semblon.review import (
+            ReviewError,
+            ignore_subject,
+            merge_clusters,
+            note_subject,
+            split_cluster,
+        )
+
+        try:
+            if args.reviewcmd == "merge":
+                rec = merge_clusters(args.store, args.run, args.clusters)
+            elif args.reviewcmd == "split":
+                rec = split_cluster(args.store, args.run, args.cluster, args.faces)
+            elif args.reviewcmd == "ignore":
+                rec = ignore_subject(
+                    args.store,
+                    args.run,
+                    cluster_id=args.cluster,
+                    face_id=args.face,
+                    disposition=args.disposition,
+                )
+            else:
+                rec = note_subject(
+                    args.store,
+                    args.run,
+                    args.text,
+                    cluster_id=args.cluster,
+                    face_id=args.face,
+                )
         except ReviewError as e:
             print(str(e), file=sys.stderr)
             return 2
