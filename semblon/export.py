@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import base64
 import html
+import json
 from pathlib import Path
 
 import sqlite3
 
 from semblon.compare import CompareError, compare
+
+EVIDENCE_SCHEMA = "1"
+EVIDENCE_SCRIPT_ID = "semblon-run-evidence"
 
 # Hypothesis — clusters with min_intra below this are REVIEW REQUIRED.
 STRONG_MIN_INTRA = 0.50
@@ -22,6 +26,60 @@ class ExportError(ValueError):
 
 def _esc(s) -> str:
     return html.escape("" if s is None else str(s))
+
+
+def _stored_json(raw):
+    """Parse a SQLite JSON column only when it is valid JSON. No other rewrite."""
+    if raw is None:
+        return None
+    if isinstance(raw, (dict, list, int, float, bool)):
+        return raw
+    if not isinstance(raw, str):
+        return raw
+    if raw == "":
+        return ""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def _evidence_payload(run, clusters, counts: dict, strong_min_intra: float) -> dict:
+    return {
+        "schema_version": EVIDENCE_SCHEMA,
+        "run_id": run["run_id"],
+        "started_at": run["started_at"],
+        "finished_at": run["finished_at"],
+        "software_version": run["software_version"],
+        "pack_id": run["pack_id"],
+        "embedding_dim": run["embedding_dim"],
+        "embedding_norm": run["embedding_norm"],
+        "config_json": _stored_json(run["config_json"]),
+        "runtime_json": _stored_json(run["runtime_json"]),
+        "arch": run["arch"],
+        "execution": run["execution"],
+        "ort_version": run["ort_version"],
+        "peak_rss_mb": run["peak_rss_mb"],
+        "timings_json": _stored_json(run["timings_json"]),
+        "strong_min_intra": strong_min_intra,
+        "counts": counts,
+        "clusters": [
+            {
+                "cluster_id": c["cluster_id"],
+                "strategy": c["strategy"],
+                "face_count": c["face_count"],
+                "min_intra": c["min_intra"],
+                "status": c["status"],
+            }
+            for c in clusters
+        ],
+    }
+
+
+def _evidence_script(payload: dict) -> str:
+    # Neutralize </script so a stored path cannot close the tag. \/ is valid JSON.
+    body = json.dumps(payload, ensure_ascii=False, default=str).replace("</", "<\\/")
+    return f'<script type="application/json" id="{EVIDENCE_SCRIPT_ID}">{body}</script>'
 
 
 def _file_uri(path: str) -> str:
@@ -218,6 +276,19 @@ def render_review_html(run, clusters, faces, strong_min_intra: float = STRONG_MI
     n_lq = sum(1 for f in faces if f["status"] == "low_quality")
     n_rej = len(rejected)
     timings = run["timings_json"] or ""
+    counts = {
+        "faces": len(faces),
+        "ok": n_ok,
+        "low_quality": n_lq,
+        "rejected": n_rej,
+        "clusters": len(clusters),
+        "review_required": len(review_cs),
+        "strong": len(strong_cs),
+        "unassigned": len(unassigned),
+    }
+    evidence = _evidence_script(
+        _evidence_payload(run, clusters, counts, strong_min_intra)
+    )
 
     body_clusters_review = "\n".join(
         _render_cluster(c, m, pack_id, "review") for c, m in review_cs
@@ -226,7 +297,7 @@ def render_review_html(run, clusters, faces, strong_min_intra: float = STRONG_MI
         _render_cluster(c, m, pack_id, "strong") for c, m in strong_cs
     ) or "<p>none</p>"
 
-    return f"""<!DOCTYPE html>
+    page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -292,6 +363,7 @@ timings { _esc(timings) }</p>
 </body>
 </html>
 """
+    return page.replace("</body>", evidence + "\n</body>", 1)
 
 
 def _connect_ro(store: Path) -> sqlite3.Connection:

@@ -39,7 +39,7 @@ Full SQL is in the planning pack; do not invent columns.
 
 ## CLI
 
-Implemented now: `lab profile` (FACE-000); `ingest`; `cluster --run`; `export --run` (read-only); `name` / `merge` / `split` (FACE-003); `lab observatory` snapshot / freeze / compare / enter.
+Implemented now: `lab profile` (FACE-000); `ingest`; `cluster --run`; `export --run` (read-only HTML; includes a JSON evidence block, no embeddings); `name` / `merge` / `split` (FACE-003); `lab observatory` snapshot / freeze / compare / enter.
 
 Not implemented: `stats`, `report`, `identify`. When added, ingest-family commands that address a stored run require `--run`. `report` is read-only. Exit 0/2/3 as specified.
 
