@@ -399,7 +399,7 @@ folder → hash → detect → filter → embed → compare → conservative clu
 
 **Must not.** Name people. Identify. Watch folders. Serve HTTP.
 
-**Engineering.** FACE-001 / builds 0.2–0.3. Code on `main`. **Acceptance = dump-gate**, still open.
+**Engineering.** FACE-001 / builds 0.2–0.3. Dump reviewed (false-merge pass). **S1 freeze not yet written** — see §14.
 
 ---
 
@@ -477,7 +477,7 @@ cluster → human review → merge / split / reject / assign
 
 | Item | Verb |
 |---|---|
-| 0.4 name / merge / split | KEEP (code on `main`); dump-gate still required before treating S3 as closed |
+| 0.4 name / merge / split | KEEP (code on `main`); S1 freeze still required before treating S3 as open |
 | `decisions` rows | KEEP (schema already) |
 | Merge *suggestions* | DEFER unless the dump shows they are needed to finish 0.4 |
 | Neural fine-tuning on the user's album | REJECT |
@@ -709,7 +709,7 @@ temporal source
 | Stage | Name | Major new capability | Product transformation | Build now? |
 |---|---|---|---|---|
 | S0 | Born | See faces | Engine exists | FACE-000 (finish runtime rows) |
-| S1 | Aware | Group observations | Organises dumps | **0.3 on main. Dump-gate still open.** |
+| S1 | Aware | Group observations | Organises dumps | **Dump reviewed. Freeze S1 next.** |
 | S2 | Disciplined | Measure accuracy | Knows its limits | FACE-002 after dump |
 | S3 | Learning | Human evidence | Gets better through review | 0.4 / FACE-003 code on main |
 | S4 | Recognising | Reviewed people | Identifies known people | 1.0 / FACE-004 · **v1 ship** |
@@ -756,7 +756,7 @@ Hard rules:
 | Maturity | Engineering | Build version | Status 2026-09-12 |
 |---|---|---|---|
 | S0 | FACE-000 runtime | 0.1 | Code on `main`. Fill `runtime.md` on both Windows executions. |
-| S1 | FACE-001 ingest + first reviewable result | 0.2 ingest, **0.3 cluster/export** | On `main`. **Acceptance = real dump (still open).** |
+| S1 | FACE-001 ingest + first reviewable result | 0.2 ingest, **0.3 cluster/export** | Dump reviewed 2026-09-13 (false-merge pass). **S1 freeze not yet written.** |
 | S2 | FACE-002 confirmatory eval | — | Not started. Schema ready. |
 | S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump-gate still precedes treating this closed. |
 | S4 | FACE-004 persons + identify | **1.0** | After 0.4 · v1 ship test |
@@ -922,22 +922,40 @@ Do not:
 
 ## 14. Current position (honest)
 
+**Dump-gate reviewed 2026-09-13** on Windows ARM64 native · Python 3.14.4 · `python -m semblon.cli` from `SEMBRON\`.
+
+Pack: `insightface/buffalo_l@2.0/adapter-1/sha256:20a9264f823c3c3c`  
+Defaults **unchanged**: DBSCAN `eps=0.40`, `min_samples=2`, metric `1-dot`, `STRONG_MIN_INTRA=0.50`.
+
+| | Baseline | Dump |
+|---|---|---|
+| `run_id` | `20260913T010116Z-df8f5d50` | `20260913T013631Z-e22e1fa6` |
+| Input | 3 same-person stills | 90 files |
+| faces / ok | 3 / 3 | 85 / 78 |
+| low_quality / rejected / failed | 0 / 0 / 0 | 1 / 6 / 0 |
+| clusters / clustered / unassigned | 1 / 3 / 0 | 10 / 63 / 15 |
+| min_intra (first cluster) | 0.709 STRONG | judged accurate |
+| export | | `review.html` overwritten, 360 KB |
+
+Human review (dump): **false merge none**. False split yes — same person in different clusters; weaker pairs = blur / obstruction. Unassigned ≈ fuzzy / eyes hidden (glasses, palm, branches) — model is eye-centric. Rejected ≈ face away from camera. Clusters are not persons.
+
+Gates: Stage-1 same-person baseline **pass**. Dump false-merge **pass**. Official S1 observatory freeze **ready to write, not yet run**. Do not start 0.4 as S3 evidence until that freeze. Do not retune `eps` to collapse splits.
+
 ```
-S0  FACE-000     code exists; Windows runtime rows still to be filled
-S1  0.2 + 0.3    on main; NOT dump-accepted
-S2  FACE-002     not started
-S3  0.4          name/merge/split code on main; not closed until dump-gate
+S0  FACE-000     ARM64 native dump ran; fill runtime.md rows still
+S1  0.2 + 0.3    dump reviewed; freeze S1 on …e22e1fa6 next
+S2  FACE-002     not started; may measure hidden-eye tail in parallel
+S3  0.4          code on main; closed only after S1 freeze + review evidence
 S4–S9            not started (identify = FACE-004)
-v1 ship          = S4 stills slice, after dump-gate, 0.4 evidence, and 1.0
 ```
 
-Immediate engineering path is unchanged:
+Owner action (store that holds `20260913T013631Z-e22e1fa6`):
 
-```
-dump-gate → FACE-002 → FACE-003 → FACE-004 → FACE-005
+```text
+python -m semblon.cli lab observatory freeze --store STORE --run 20260913T013631Z-e22e1fa6 --stage S1 --notes "Dump false-merge gate pass (90 stills): no false merges; false splits from blur/occlusion accepted; unassigned ≈ eye-obscured (glasses, palm, branches); rejected ≈ face-away; clusters are not persons; do not retune eps=0.40 / min_samples=2 / STRONG_MIN_INTRA=0.50. Win ARM64 native, buffalo_l@2.0/adapter-1/sha256:20a9264f823c3c3c."
 ```
 
-Honest code state: ingest / cluster / export / name / merge / split exist. That does not skip dump-gate or FACE-002, and it does not authorize geometry / semantic / video work.
+Then `enter --stage S3` on the same run. Then 0.4 `name` / `merge` / `split` as S3 evidence. Invariant: `cluster → review → person → name`.
 
 Do not start S5–S9, MediaPipe, CLIP, or vector-DB work from this paper.
 
@@ -1036,7 +1054,7 @@ Scavenge **inside** the current stage (S1: review/clustering behaviour; S2: eval
 
 ## 19. Measure (not a development gate)
 
-The observatory prevents unexplained regression from being mistaken for progress. It does not block dump-gate or 0.4. CLI lives in `semblon lab observatory` (`snapshot` / `freeze` / `compare` / `enter`). Code is the behaviour; this section is the rule.
+The observatory prevents unexplained regression from being mistaken for progress. It does not replace human dump review. CLI lives in `python -m semblon.cli lab observatory` (`snapshot` / `freeze` / `compare` / `enter`). Code is the behaviour; this section is the rule.
 
 No composite “Semblon score.” Measure the identity path that exists. Do not invent CLIP / geometry / vector-DB scores.
 
@@ -1061,11 +1079,11 @@ Three references, not interchangeable: **A** our golden baseline (commit / pack_
 Verdicts: improvement · trade-off (accepted in writing) · regression (unexplained red → not mature) · not_measurable (do not fake it).
 
 ```text
-semblon lab observatory freeze --store STORE --run R --stage S1
-semblon lab observatory enter --stage S3 --store STORE --run R
+python -m semblon.cli lab observatory freeze --store STORE --run R --stage S1 --notes "…"
+python -m semblon.cli lab observatory enter --stage S3 --store STORE --run R
 ```
 
-`freeze` writes `observatory/golden-S1.json` beside the store. `enter` checks the completed-stage golden (S3 checks S1; S2 is parallel). Missing golden or regression: warn, exit 0. `--promote` is the only stick (exit 3). `name` / `merge` / `split` call enter S3 once — warn only.
+`freeze` writes `observatory/golden-S1.json` beside the store. `--notes` stores the human dump-gate sentence on the golden. `enter` checks the completed-stage golden (S3 checks S1; S2 is parallel). Missing golden or regression: warn, exit 0. `--promote` is the only stick (exit 3). `name` / `merge` / `split` call enter S3 once — warn only. Do not treat 0.4 as S3 evidence until S1 is frozen on `20260913T013631Z-e22e1fa6`.
 
 Accuracy stays `not_measurable` until FACE-002. Print precision only on frozen confirmatory sets.
 
@@ -1089,6 +1107,7 @@ A vector store is retrieval infrastructure, not intelligence. Do not add a parke
 | V1.0.3 | 2026-09-12 | Wording: review page is evidence, not an automatic kill. Operating model frozen. |
 | V1.1 | 2026-09-13 | Identity firewall. Spaces ≠ one embedding. 0.4 code exists; dump-gate queue unchanged. |
 | V1.2 | 2026-09-13 | Hygiene: structure + absorb + measure live here. Companion files are pointers. No features dropped. |
+| V1.2.1 | 2026-09-13 | Dump-gate reviewed (ARM64 native, 90 stills, no false merges). Freeze S1 next; do not retune eps. |
 
 ---
 

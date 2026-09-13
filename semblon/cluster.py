@@ -11,7 +11,7 @@ import numpy as np
 from semblon.compare import CompareError, compare
 from semblon.store import connect, init_db
 
-# Hypothesis — not frozen. Use review.html to decide whether this survives.
+# Dump 2026-09-13: false-merge pass; false splits accepted. Do not retune to collapse splits.
 DEFAULT_EPS = 0.40  # distance = 1 - cosine; keep together only if sim >= 0.60
 DEFAULT_MIN_SAMPLES = 2
 METRIC = "1-dot"

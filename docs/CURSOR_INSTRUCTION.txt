@@ -9,7 +9,7 @@ Architecture may anticipate the future. Implementation must earn the future.
 Do not implement MediaPipe, CLIP, hands, pose, objects, semantic clustering, video, live, public lookup, ACC, or a vector database unless the current FACE id explicitly requires it.
 
 Authorized queue: dump-gate → FACE-002 → FACE-003 → FACE-004 → FACE-005.
-0.2 / 0.3 / 0.4 code exist. Dump-gate is still on the owner's Windows machine. Do not skip it. Do not retune identity thresholds to beautify clusters.
+Dump reviewed 2026-09-13 (run 20260913T013631Z-e22e1fa6): false-merge pass; false splits accepted. Official S1 freeze not yet written. Do not treat 0.4 as open until that freeze. Do not retune eps=0.40 / min_samples=2 / STRONG_MIN_INTRA=0.50. FACE-002 may measure the hidden-eye tail in parallel.
 
 FaceKit / InsightFace is the identity engine. No cross-pack compare. pack_id includes weight hashes.
 Do not add libraries from the plan §20 parked list.
