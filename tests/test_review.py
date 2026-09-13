@@ -6,6 +6,8 @@ import sqlite3
 import struct
 from pathlib import Path
 
+import pytest
+
 from semblon.cluster import cluster_run
 from semblon.export import export_review
 from semblon.review import (
@@ -220,6 +222,58 @@ def test_cli_name_merge_split(tmp_path):
     assert main(["name", "--cluster", "missing", "--as", "X", "--run", "r1", "--store", str(store)]) == 2
     # other cluster still distinct
     assert c2 == assigned["f3"]
+
+
+def test_delete_all_clusters_is_blocked_after_merge(tmp_path):
+    """S1 traceback: DELETE FROM clusters WHERE run_id=? after a merge decision.
+
+    The FK is correct. cluster_run must not use that wipe.
+    """
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    merge_clusters(store, "r1", [assigned["f1"], assigned["f3"]])
+    conn = sqlite3.connect(str(store))
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("UPDATE faces SET cluster_id=NULL WHERE run_id='r1'")
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        conn.execute("DELETE FROM clusters WHERE run_id='r1'")
+    conn.close()
+
+
+def test_cli_merge_then_cluster_then_export_keeps_review_identity(tmp_path):
+    """Exact ship path: cluster → merge → cluster again → export."""
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    c1 = assigned["f1"]
+    c2 = assigned["f3"]
+    from semblon.cli import main
+
+    assert (
+        main(["merge", "--clusters", c1, c2, "--run", "r1", "--store", str(store)])
+        == 0
+    )
+    rec = cluster_run(store, "r1", eps=0.15, min_samples=2)
+    assert rec["ok_faces"] == 5
+    assert rec["review_locked"] > 0
+
+    conn = sqlite3.connect(str(store))
+    conn.row_factory = sqlite3.Row
+    faces = {
+        r["face_id"]: r["cluster_id"]
+        for r in conn.execute("SELECT face_id, cluster_id FROM faces WHERE status='ok'")
+    }
+    assert faces["f1"] == faces["f2"] == faces["f3"] == faces["f4"] == c1
+    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM decisions WHERE kind='merge'").fetchone()[0] == 1
+    assert conn.execute("SELECT status FROM clusters WHERE cluster_id=?", (c1,)).fetchone()[0] == "merged"
+    conn.close()
+
+    out = tmp_path / "review.html"
+    export_review(store, "r1", out)
+    text = out.read_text(encoding="utf-8")
+    assert "DECISIONS" in text
+    assert "merge" in text
+    assert c1[:8] in text or c1 in text
 
 
 def test_merge_is_not_a_person_and_survives_recluster(tmp_path):

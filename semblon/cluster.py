@@ -60,7 +60,13 @@ def _strategy(eps: float, min_samples: int) -> str:
 
 
 def _review_locks(conn, run_id: str) -> tuple[set[str], set[str]]:
-    """Faces and clusters covered by human decisions. Re-cluster must not move these."""
+    """Faces and clusters covered by human decisions. Re-cluster must not move these.
+
+    Auto clusters are computed and replaceable. A merge/split/ignore decision
+    is durable: decisions.cluster_id REFERENCES clusters(cluster_id) with no
+    ON DELETE CASCADE. That FK is the guard — do not DELETE every cluster
+    for a run after a review decision exists.
+    """
     faces: set[str] = set()
     clusters: set[str] = set()
     for d in conn.execute("SELECT * FROM decisions WHERE run_id=?", (run_id,)):

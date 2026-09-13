@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: 0.4 review decisions.** S1 golden locked (`docs/S1-GOLDEN.md`). Do not retune clustering. Do not re-ingest the frozen dump.
+**Current: S1 identity-quality PASS — closed.** Reviewer-durable merge proof is not closed. Do not retune clustering. Do not re-ingest the frozen dump.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
@@ -46,7 +46,7 @@ semblon lab observatory enter --stage S3 --store "D:\semblon\store.sqlite" --run
 
 Quote Windows paths. Put a space between `--out` and the next argument — do not glue `docs\runtime.md` onto another path.
 
-Double-click `review.html`. No server. Page order: counts → REVIEW REQUIRED → STRONG → UNASSIGNED → REJECTED.
+Double-click `review.html`. No server. Page order: counts → REVIEW REQUIRED → STRONG → UNASSIGNED → REJECTED → DECISIONS.
 
 DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Use `review.html` to decide whether it survives.
 
