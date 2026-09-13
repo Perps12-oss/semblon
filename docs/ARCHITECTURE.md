@@ -20,4 +20,4 @@ Observatory answers “did S3→S4 actually get better?”, not “may we experi
 
 Do not remap stage names. Do not start a GUI because S8 exists on paper.
 
-Current engineering: 0.3 on `main` (S1). Immediate action: real dump → ingest → cluster → review.html → look → optional S1 golden. Then 0.4.
+Current engineering: 0.4 name/merge/split (S3). Dump-gate (FACE-001) remains on the owner's Windows machine; observatory is not a gate.
