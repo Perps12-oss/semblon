@@ -35,6 +35,11 @@ def main(argv: list[str] | None = None) -> int:
     _obs_io(frz)
     frz.add_argument("--stage", required=True)
     frz.add_argument("--out", type=Path, default=None)
+    frz.add_argument(
+        "--notes",
+        default=None,
+        help="human review sentence stored on the golden (S1 dump gate, etc.)",
+    )
 
     cmp_ = obs_sub.add_parser("compare", help="compare a run to a golden file")
     _obs_io(cmp_)
@@ -119,7 +124,13 @@ def main(argv: list[str] | None = None) -> int:
             if args.obscmd == "snapshot":
                 rec = snapshot(args.store, args.run)
             elif args.obscmd == "freeze":
-                rec = freeze(args.store, args.run, args.stage, out=args.out)
+                rec = freeze(
+                    args.store,
+                    args.run,
+                    args.stage,
+                    out=args.out,
+                    notes=args.notes,
+                )
             elif args.obscmd == "compare":
                 rec = compare_run(args.store, args.run, args.against)
             else:
