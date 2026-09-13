@@ -236,6 +236,7 @@ def test_export_evidence_block_has_run_and_clusters_not_embeddings(tmp_path):
     assert payload["counts"]["faces"] == 7
     assert payload["counts"]["low_quality"] == 1
     assert payload["counts"]["rejected"] == 1
+    assert payload["counts"]["unassigned"] == 1
     assert isinstance(payload["counts"]["faces"], int)
     assert len(payload["clusters"]) == 2
     for c in payload["clusters"]:
@@ -246,6 +247,36 @@ def test_export_evidence_block_has_run_and_clusters_not_embeddings(tmp_path):
     # Review chrome stays; do not scan the HTML source for the word "embedding".
     assert 'id="review"' in text
     assert "not a person" in text
+
+
+def test_export_unassigned_is_ok_faces_without_cluster(tmp_path):
+    """OK+clustered / OK+none / low_quality / rejected — only OK+none is unassigned."""
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    rec = cluster_run(store, "r1", eps=0.15, min_samples=2)
+    assert rec["clustered"] == 4
+    assert rec["unassigned"] == 1
+
+    conn = sqlite3.connect(str(store))
+    conn.row_factory = sqlite3.Row
+    rows = {
+        r["face_id"]: (r["status"], r["cluster_id"])
+        for r in conn.execute("SELECT face_id, status, cluster_id FROM faces")
+    }
+    conn.close()
+    assert rows["f1"][0] == "ok" and rows["f1"][1] is not None
+    assert rows["f2"][0] == "ok" and rows["f2"][1] is not None
+    assert rows["f5"] == ("ok", None)
+    assert rows["f7"] == ("low_quality", None)
+    assert rows["f6"] == ("rejected", None)
+
+    out = tmp_path / "review.html"
+    export_review(store, "r1", out, strong_min_intra=0.50)
+    text = out.read_text(encoding="utf-8")
+    counts = _parse_evidence(text)["counts"]
+    assert counts["unassigned"] == rec["unassigned"] == 1
+    assert "UNASSIGNED 1" in text
+    assert "UNASSIGNED (1)" in text
 
 
 def test_evidence_script_neutralizes_script_close():

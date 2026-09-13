@@ -4,11 +4,11 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: 0.3 dump gate passed (2026-09-13)** — S1 freeze next, then use 0.4 (`name` / `merge` / `split`).
+**Current: S1 PASS — closed (2026-09-13).** Next planned gate: FACE-002 confirmatory hard negatives. Do not retune clustering. Do not start architecture expansion.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
-Same-person baseline + 90-still dump: **no false merges**. False splits from blur/occlusion are accepted — do not retune `eps`. Freeze S1 on run `20260913T013631Z-e22e1fa6` before treating 0.4 as open.
+Authoritative dump `20260913T153515Z-1e915abe` (Win ARM64 native, 90 `.jpg`): 85 faces, 78 ok, 10 clusters, 63 clustered, 15 eligible unassigned. No observed false merge. Clusters remain clusters. Export evidence `unassigned` matches the cluster CLI (OK faces with no assignment only).
 
 ## Install
 

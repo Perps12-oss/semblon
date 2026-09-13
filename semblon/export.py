@@ -256,7 +256,8 @@ def render_review_html(run, clusters, faces, strong_min_intra: float = STRONG_MI
             rejected.append(d)
         elif d["cluster_id"]:
             by_cluster.setdefault(d["cluster_id"], []).append(d)
-        else:
+        elif d["status"] == "ok":
+            # Same eligibility as cluster CLI: only OK faces can be unassigned.
             unassigned.append(d)
 
     review_cs = []
