@@ -1,9 +1,12 @@
 .venv/
+semblon/.venv/
 __pycache__/
 *.pyc
 .insightface/
 *.onnx
 store.sqlite
+*.sqlite
+review.html
 .pytest_cache/
 dist/
 *.egg-info/

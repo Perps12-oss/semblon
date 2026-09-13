@@ -8,17 +8,39 @@ Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
+**Stage-1 baseline (2026-09-13):** same-person folder (3 stills) → ingest → cluster → `review.html` passed on Windows ARM64 native. Next gate: multi-person separation (hard negatives). Do not retune `eps` from the same-person run alone.
+
 ## Install
 
 Python **3.11+**, Windows x64 or ARM64 **native** (not x64 Python on ARM64).
 
+Work from the **repository root** (`...\GITHUB\SEMBRON`), not from inside `semblon\`. Put `.venv` at the repo root — never inside the package folder.
+
 ```text
+cd C:\Users\S8633\Documents\GITHUB\SEMBRON
+
 py -3.12 -m venv .venv
-.venv\Scripts\activate
-pip install -U pip
-pip install -r requirements.txt
-pip install -e .
+.\.venv\Scripts\Activate.ps1
+
+python -c "import sys; print(sys.executable)"
+# expect: ...\SEMBRON\.venv\Scripts\python.exe
+
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
+
+semblon --help
 ```
+
+`pip install -r requirements.txt` then `pip install -e .` is required. That pulls `insightface`, `onnxruntime`, `opencv-python-headless`, and `numpy`, and registers the `semblon` console script. Do not discover those packages one failure at a time.
+
+Equivalent module entry (same code path):
+
+```text
+python -m semblon --help
+```
+
+Do **not** run `python semblon\cli.py ...` from inside the package — that breaks imports (`No module named 'semblon'`).
 
 `buffalo_l` downloads on first `lab profile` / `ingest` into `%USERPROFILE%\.insightface\models\buffalo_l` (internal evaluation only).
 
@@ -44,7 +66,7 @@ Quote Windows paths. Put a space between `--out` and the next argument — do no
 
 Double-click `review.html`. No server. Page order: counts → REVIEW REQUIRED → STRONG → UNASSIGNED → REJECTED.
 
-DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Use `review.html` to decide whether it survives.
+DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Use `review.html` to decide whether it survives — including whether different people stay separated on a mixed dump.
 
 Corrections write `decisions` rows. Naming links `cluster_person` and stamps `faces.person_id`; the cluster id is never the person id.
 
