@@ -8,7 +8,7 @@ Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
-Authoritative dump `20260913T153515Z-1e915abe` (Win ARM64 native, 90 `.jpg`): 85 faces, 78 ok, 10 clusters, 63 clustered, 15 eligible unassigned. No observed false merge. Clusters remain clusters. Export evidence `unassigned` matches the cluster CLI (OK faces with no assignment only).
+S1 golden (repo record): `docs/S1-GOLDEN.md` — run `20260913T153515Z-1e915abe`, Windows ARM64, 90/85/78, 10/63/15, false merge 0, params frozen.
 
 ## Install
 
