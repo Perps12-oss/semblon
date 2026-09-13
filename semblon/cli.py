@@ -73,9 +73,16 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     if args.cmd == "lab" and args.labcmd == "profile":
-        from semblon.profile import run_profile
+        from semblon.profile import ProfileError, run_profile
 
-        rec = run_profile(args.image, args.out)
+        try:
+            rec = run_profile(args.image, args.out)
+        except ProfileError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        except FileNotFoundError as e:
+            print(str(e), file=sys.stderr)
+            return 2
         print(json.dumps({k: rec[k] for k in ("pack_id", "arch", "execution", "one_image")}, indent=2))
         print(f"wrote {args.out}", file=sys.stderr)
         return 0
