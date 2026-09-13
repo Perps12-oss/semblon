@@ -1,4 +1,7 @@
-"""Semblon CLI. 0.3: lab profile + ingest + cluster + export. Observatory is not a dump gate."""
+"""Semblon CLI. 0.4: lab + ingest + cluster + export + name/merge/split.
+
+Observatory is not a dump gate. cluster → review → person → name.
+"""
 
 from __future__ import annotations
 
@@ -69,6 +72,28 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="min_intra ≥ this → STRONG (default 0.50)",
     )
+
+    nam = sub.add_parser("name", help="0.4 name a reviewed cluster → person (not cluster=person)")
+    nam.add_argument("--cluster", required=True)
+    nam.add_argument("--as", dest="display_name", required=True, help="display name")
+    nam.add_argument("--run", required=True)
+    nam.add_argument("--store", required=True, type=Path)
+
+    mer = sub.add_parser("merge", help="0.4 merge clusters into the first id (correction)")
+    mer.add_argument(
+        "--clusters",
+        nargs="+",
+        required=True,
+        help="survivor first, then donors",
+    )
+    mer.add_argument("--run", required=True)
+    mer.add_argument("--store", required=True, type=Path)
+
+    spl = sub.add_parser("split", help="0.4 move faces into a new cluster")
+    spl.add_argument("--cluster", required=True)
+    spl.add_argument("--faces", nargs="+", required=True)
+    spl.add_argument("--run", required=True)
+    spl.add_argument("--store", required=True, type=Path)
 
     args = p.parse_args(argv)
 
@@ -150,6 +175,39 @@ def main(argv: list[str] | None = None) -> int:
                 strong_min_intra=STRONG_MIN_INTRA if args.strong_min_intra is None else args.strong_min_intra,
             )
         except ExportError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "name":
+        from semblon.review import ReviewError, name_cluster
+
+        try:
+            rec = name_cluster(args.store, args.run, args.cluster, args.display_name)
+        except ReviewError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "merge":
+        from semblon.review import ReviewError, merge_clusters
+
+        try:
+            rec = merge_clusters(args.store, args.run, args.clusters)
+        except ReviewError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "split":
+        from semblon.review import ReviewError, split_cluster
+
+        try:
+            rec = split_cluster(args.store, args.run, args.cluster, args.faces)
+        except ReviewError as e:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2))

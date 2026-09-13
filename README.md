@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: 0.3** — `ingest` on `main`; `cluster` + static `review.html`.
+**Current: 0.4** — `name` / `merge` / `split` after `cluster` + `review.html`.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
@@ -32,6 +32,10 @@ semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite"
 semblon cluster --run RUN_ID --store "D:\semblon\store.sqlite"
 semblon export --run RUN_ID --store "D:\semblon\store.sqlite" --out "review.html"
 
+semblon name --cluster CLUSTER_ID --as "Alice" --run RUN_ID --store "D:\semblon\store.sqlite"
+semblon merge --clusters SURVIVOR DONOR... --run RUN_ID --store "D:\semblon\store.sqlite"
+semblon split --cluster CLUSTER_ID --faces FACE_ID... --run RUN_ID --store "D:\semblon\store.sqlite"
+
 semblon lab observatory freeze --store "D:\semblon\store.sqlite" --run RUN_ID --stage S1
 semblon lab observatory enter --stage S3 --store "D:\semblon\store.sqlite" --run RUN_ID
 ```
@@ -42,7 +46,7 @@ Double-click `review.html`. No server. Page order: counts → REVIEW REQUIRED �
 
 DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Use `review.html` to decide whether it survives.
 
-0.4 (`name` / `merge` / `split`) is next.
+Corrections write `decisions` rows. Naming links `cluster_person` and stamps `faces.person_id`; the cluster id is never the person id.
 
 ## Docs (authority)
 
