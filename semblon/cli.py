@@ -1,7 +1,8 @@
-"""Semblon CLI. lab + ingest + cluster + export + review + name/merge/split.
+"""Semblon CLI. lab + ingest + cluster + export + review + name/merge/split + identify.
 
 Observatory is not a dump gate. cluster → review → person → name.
 FACE-002: lab eval. Precision only on frozen confirmatory sets.
+FACE-004: identify vs persons, never clusters. Unknown is valid.
 """
 
 from __future__ import annotations
@@ -144,6 +145,13 @@ def main(argv: list[str] | None = None) -> int:
     spl.add_argument("--faces", nargs="+", required=True)
     spl.add_argument("--run", required=True)
     spl.add_argument("--store", required=True, type=Path)
+
+    ident = sub.add_parser("identify", help="1.0 1:N vs reviewed persons (not clusters)")
+    ident.add_argument("--run", required=True)
+    ident.add_argument("--store", required=True, type=Path)
+    ident.add_argument("--face", default=None, help="existing face_id on this run")
+    ident.add_argument("--image", default=None, type=Path, help="new still; not enrolled")
+    ident.add_argument("--threshold", type=float, default=None)
 
     rev = sub.add_parser("review", help="0.4 persist review decisions (does not rewrite DBSCAN)")
     rev.add_argument("--run", required=True)
@@ -338,6 +346,29 @@ def main(argv: list[str] | None = None) -> int:
         try:
             rec = split_cluster(args.store, args.run, args.cluster, args.faces)
         except ReviewError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "identify":
+        from semblon.eval import DEFAULT_THRESHOLD
+        from semblon.identify import IdentifyError, identify_face, identify_image
+
+        if bool(args.face) == bool(args.image):
+            print("identify requires exactly one of --face or --image", file=sys.stderr)
+            return 2
+        threshold = DEFAULT_THRESHOLD if args.threshold is None else args.threshold
+        try:
+            if args.face:
+                rec = identify_face(
+                    args.store, args.run, args.face, threshold=threshold
+                )
+            else:
+                rec = identify_image(
+                    args.store, args.run, args.image, threshold=threshold
+                )
+        except IdentifyError as e:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2))

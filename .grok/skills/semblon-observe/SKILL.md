@@ -17,7 +17,7 @@ Folder-first, face-first, local-first. Still photographs in, conservative groups
 
 ## Queue
 
-Only dump-gate, FACE-002, FACE-003, FACE-004, FACE-005. FACE-002 = eval harness + confirmatory set, not threshold fishing.
+FACE-004 `identify` ships (vs persons, never clusters). FACE-002 = eval harness + confirmatory set on the owner dump, not threshold fishing. FACE-005 is post-v1.
 
 Do not print precision without `--eval-set confirmatory`.
 

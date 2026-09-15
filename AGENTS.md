@@ -16,8 +16,7 @@ Unknown is valid. False merge > false split. Wrong identity > unknown.
 
 S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do not retune clustering. Do not re-ingest that dump. Do not start architecture expansion.
 
-Authorized queue: dump-gate → FACE-002 → FACE-003 ↔ FACE-004 → FACE-005.
-FACE-002 eval harness exists; stage is open until a labeled confirmatory set exists. Do not print precision without `--eval-set confirmatory`.
+Authorized queue: FACE-005 is post-v1 (reassess before building). FACE-004 `identify` ships on `grok/FACE-004`. FACE-002 harness is on `lab eval`; a powered confirmatory set lives on the owner dump store, not in git. Do not print precision without `--eval-set confirmatory`.
 
 ## Forbidden unless the current FACE id explicitly requires it
 

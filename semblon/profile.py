@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import platform
 import re
 import sys
@@ -12,7 +11,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from semblon import __version__
-from semblon.engine import PACK_FAMILY, discover_weight_hashes, embed_image, load_app, pack_id
+from semblon.engine import (
+    PACK_FAMILY,
+    discover_weight_hashes,
+    embed_image,
+    load_app,
+    pack_id,
+    process_arch,
+    process_execution,
+)
 
 # Windows paste hazard: --out docs/runtime.mdC:\Users\...\Scripts (missing space/newline)
 _GLUED_PATH = re.compile(r"\.(md|html|json|txt)([A-Za-z]:[\\/])", re.IGNORECASE)
@@ -57,24 +64,11 @@ def _rss_mb() -> float | None:
 
 
 def _execution() -> str:
-    proc = platform.machine().lower()
-    if proc in {"amd64", "x86_64"}:
-        os_arch = os.environ.get("PROCESSOR_ARCHITECTURE", "")
-        if os_arch.upper() == "ARM64":
-            return "emulated"
-        return "native"
-    if proc in {"arm64", "aarch64"}:
-        return "native"
-    return "unknown"
+    return process_execution()
 
 
 def _arch() -> str:
-    m = platform.machine().lower()
-    if m in {"amd64", "x86_64"}:
-        return "x64"
-    if m in {"arm64", "aarch64"}:
-        return "arm64"
-    return m
+    return process_arch()
 
 
 def run_profile(image: Path, out: Path) -> dict:
