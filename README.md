@@ -56,6 +56,9 @@ semblon identify --run RUN_ID --store "D:\semblon\store.sqlite"
 
 semblon inbox --run RUN_ID --store "D:\semblon\store.sqlite"
 semblon name --face FACE_ID --as "P4" --run RUN_ID --store "D:\semblon\store.sqlite"
+
+semblon stats --run RUN_ID --store "D:\semblon\store.sqlite"
+semblon report --run RUN_ID --store "D:\semblon\store.sqlite" --out "report.md"
 ```
 
 Quote Windows paths. Put a space between `--out` and the next argument — do not glue `docs\runtime.md` onto another path.

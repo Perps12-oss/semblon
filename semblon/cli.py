@@ -1,4 +1,4 @@
-"""Semblon CLI. lab + ingest + cluster + export + review + name/merge/split + identify + inbox.
+"""Semblon CLI. lab + ingest + cluster + export + review + name/merge/split + identify + inbox + stats + report.
 
 Observatory is not a dump gate. cluster → review → person → name.
 FACE-002: lab eval. Precision only on frozen confirmatory sets.
@@ -165,6 +165,15 @@ def main(argv: list[str] | None = None) -> int:
     box.add_argument("--run", required=True)
     box.add_argument("--store", required=True, type=Path)
     box.add_argument("--threshold", type=float, default=None)
+
+    st = sub.add_parser("stats", help="read-only run counts (does not write the store)")
+    st.add_argument("--run", required=True)
+    st.add_argument("--store", required=True, type=Path)
+
+    rp = sub.add_parser("report", help="read-only markdown; writes --out only")
+    rp.add_argument("--run", required=True)
+    rp.add_argument("--store", required=True, type=Path)
+    rp.add_argument("--out", required=True, type=Path)
 
     rev = sub.add_parser("review", help="0.4 persist review decisions (does not rewrite DBSCAN)")
     rev.add_argument("--run", required=True)
@@ -446,6 +455,28 @@ def main(argv: list[str] | None = None) -> int:
                     face_id=args.face,
                 )
         except ReviewError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "stats":
+        from semblon.stats import StatsError, stats as run_stats
+
+        try:
+            rec = run_stats(args.store, args.run)
+        except StatsError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2, default=str))
+        return 0
+
+    if args.cmd == "report":
+        from semblon.report import ReportError, write_report
+
+        try:
+            rec = write_report(args.store, args.run, args.out)
+        except ReportError as e:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2))
