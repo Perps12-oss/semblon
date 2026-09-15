@@ -4,6 +4,6 @@ Folded into `docs/SEMBLON_MATURITY_BLUEPRINT.md` (the plan: shape §1, generatio
 
 Do not keep a second architecture here. PRODUCT v1 and CONTRACTS stay as they are.
 
-**S1 PASS — closed (2026-09-13).** Authoritative dump `20260913T153515Z-1e915abe` (Win ARM64 native, 90 `.jpg`): no observed false merge; clusters are not people. Next: FACE-002. Do not retune `eps`.
+**S1 PASS — closed (2026-09-13).** Authoritative dump `20260913T153515Z-1e915abe` (Win ARM64 native, 90 `.jpg`): no observed false merge; clusters are not people. FACE-002 eval harness is on the `lab eval` path; the stage stays open until a powered frozen confirmatory set exists. Do not retune `eps`.
 
 Invariant: `cluster → review → person → name`. Clusters are not persons.

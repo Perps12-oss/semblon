@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: S1 identity-quality PASS — closed.** Reviewer-durable merge proof is not closed. Do not retune clustering. Do not re-ingest the frozen dump.
+**Current: S1 identity-quality PASS — closed.** Reviewer-durable merge proof is not closed. FACE-002 eval harness is on the `lab eval` path; the S1 dump stays underpowered until a labeled confirmatory set exists. FACE-002 remains open (harness exists; stage not closed). Do not retune clustering. Do not re-ingest the frozen dump. Do not start architecture expansion.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
@@ -42,6 +42,11 @@ semblon review --run RUN_ID --store "D:\semblon\store.sqlite" note --cluster CLU
 
 semblon lab observatory freeze --store "D:\semblon\store.sqlite" --run RUN_ID --stage S1 --notes "HUMAN REVIEW SENTENCE"
 semblon lab observatory enter --stage S3 --store "D:\semblon\store.sqlite" --run RUN_ID
+
+semblon lab eval create --store "D:\semblon\store.sqlite" --eval-set hard1 --kind confirmatory_hard --pack PACK_ID
+semblon lab eval pair --store "D:\semblon\store.sqlite" --eval-set hard1 --faces FACE_A FACE_B --label different --stratum lookalike
+semblon lab eval freeze --store "D:\semblon\store.sqlite" --eval-set hard1
+semblon lab eval score --store "D:\semblon\store.sqlite" --eval-set confirmatory
 ```
 
 Quote Windows paths. Put a space between `--out` and the next argument — do not glue `docs\runtime.md` onto another path.
