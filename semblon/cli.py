@@ -1,9 +1,10 @@
-"""Semblon CLI. lab + ingest + cluster + export + review + name/merge/split + identify + inbox + stats + report.
+"""Semblon CLI. lab + ingest + cluster + export + review + name/merge/split + identify + inbox + stats + report + memory.
 
 Observatory is not a dump gate. cluster → review → person → name.
 FACE-002: lab eval. Precision only on frozen confirmatory sets.
 FACE-004: identify vs persons, never clusters. Unknown is valid.
 FACE-005: incremental ingest + inbox. No watcher.
+S6: memory history / together / events. Time/place are not identity.
 """
 
 from __future__ import annotations
@@ -174,6 +175,19 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--run", required=True)
     rp.add_argument("--store", required=True, type=Path)
     rp.add_argument("--out", required=True, type=Path)
+
+    mem = sub.add_parser("memory", help="S6 visual memory (when/where/with whom); not identity")
+    mem_sub = mem.add_subparsers(dest="memcmd", required=True)
+    mh = mem_sub.add_parser("history", help="person × time/place")
+    mh.add_argument("--person", required=True, help="person_id or display_name")
+    mh.add_argument("--store", required=True, type=Path)
+    mh.add_argument("--run", default=None)
+    mt = mem_sub.add_parser("together", help="named people on the same still")
+    mt.add_argument("--store", required=True, type=Path)
+    mt.add_argument("--run", default=None)
+    me = mem_sub.add_parser("events", help="burst/day/folder signals; no LLM titles")
+    me.add_argument("--store", required=True, type=Path)
+    me.add_argument("--run", default=None)
 
     rev = sub.add_parser("review", help="0.4 persist review decisions (does not rewrite DBSCAN)")
     rev.add_argument("--run", required=True)
@@ -480,6 +494,22 @@ def main(argv: list[str] | None = None) -> int:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "memory":
+        from semblon.memory import MemoryError, events, history, together
+
+        try:
+            if args.memcmd == "history":
+                rec = history(args.store, person=args.person, run_id=args.run)
+            elif args.memcmd == "together":
+                rec = together(args.store, run_id=args.run)
+            else:
+                rec = events(args.store, run_id=args.run)
+        except MemoryError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2, default=str))
         return 0
 
     return 2

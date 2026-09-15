@@ -761,7 +761,8 @@ Hard rules:
 | S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump-gate still precedes treating this closed. |
 | S4 | FACE-004 persons + identify | **1.0** | After 0.4 · v1 ship test |
 | S5 | FACE-005 hardening / incremental | **1.1** | Incremental ingest + inbox on `grok/FACE-005`. No watcher. |
-| S6–S9 | future | v2 / later | Do not open tickets from this blueprint |
+| S6 | visual memory | **1.2** | `memory history/together/events` on `grok/S6`. No new columns. |
+| S7–S9 | future | v2 / later | Do not open tickets from this blueprint |
 
 PRODUCT.md later-row mapping:
 

@@ -43,6 +43,8 @@ Implemented now: `lab profile` (FACE-000); `ingest` (FACE-005: skip sha256 alrea
 
 `stats --run --store` (read-only JSON counts; FAR/FRR only if confirmatory is measurable). `report --run --store --out` (read-only markdown; writes `--out` only, never the store).
 
+`memory history --person --store` / `memory together --store` / `memory events --store` (S6; read-only; optional `--run`; time from EXIF then filename then `mtime_ns`; place is folder plus GPS if EXIF has it; no geocoding; no new columns). Time/place/co-appearance must not change `compare()` or clustering.
+
 Not implemented: folder watcher. Ingest-family commands that address a stored run require `--run`. Exit 0/2/3 as specified. `identify` unknown is exit 0.
 
 `observations` is a source/frame slot (`media_id`, `frame_id`, `run_id`) for the current identity path. It is not a typed multi-kind observation schema. Do not add kind / space / payload columns to satisfy the architectural North Star.
