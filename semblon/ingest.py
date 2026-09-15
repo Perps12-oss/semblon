@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import platform
 import sys
 import time
@@ -21,6 +20,8 @@ from semblon.engine import (
     embed_image,
     load_app,
     pack_id,
+    process_arch,
+    process_execution,
     _sha256_file,
 )
 from semblon.store import connect, init_db
@@ -45,23 +46,11 @@ def size_band(w: int, h: int) -> str:
 
 
 def _arch() -> str:
-    m = platform.machine().lower()
-    if m in {"amd64", "x86_64"}:
-        return "x64"
-    if m in {"arm64", "aarch64"}:
-        return "arm64"
-    return m
+    return process_arch()
 
 
 def _execution() -> str:
-    proc = platform.machine().lower()
-    if proc in {"amd64", "x86_64"}:
-        if os.environ.get("PROCESSOR_ARCHITECTURE", "").upper() == "ARM64":
-            return "emulated"
-        return "native"
-    if proc in {"arm64", "aarch64"}:
-        return "native"
-    return "unknown"
+    return process_execution()
 
 
 def ingest(folder: Path, store: Path) -> dict:

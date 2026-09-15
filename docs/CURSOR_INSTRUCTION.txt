@@ -8,8 +8,7 @@ CONTRACTS.md is V1.1-corrected. Do not invent schema columns.
 Architecture may anticipate the future. Implementation must earn the future.
 Do not implement MediaPipe, CLIP, hands, pose, objects, semantic clustering, video, live, public lookup, ACC, or a vector database unless the current FACE id explicitly requires it.
 
-Authorized queue: dump-gate → FACE-002 → FACE-003 → FACE-004 → FACE-005.
-0.2 / 0.3 / 0.4 code exist. Dump-gate is still on the owner's Windows machine. Do not skip it. Do not retune identity thresholds to beautify clusters.
+Authorized queue: FACE-005 is post-v1. FACE-004 identify ships. FACE-002 confirmatory labels stay on the owner dump store. Do not retune identity thresholds to beautify clusters.
 
 FaceKit / InsightFace is the identity engine. No cross-pack compare. pack_id includes weight hashes.
 Do not add libraries from the plan §20 parked list.

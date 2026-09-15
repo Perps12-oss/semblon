@@ -3,12 +3,53 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import platform
+import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 from semblon import ADAPTER_VERSION
+
+
+def process_arch() -> str:
+    """Architecture of this Python process, not the OS.
+
+    x64 CPython on ARM64 Windows must report x64. Never call that native ARM64.
+    """
+    ver = sys.version.lower()
+    if "amd64" in ver or "x86_64" in ver:
+        return "x64"
+    m = platform.machine().lower()
+    if m in {"amd64", "x86_64"}:
+        return "x64"
+    if m in {"arm64", "aarch64"}:
+        return "arm64"
+    return m
+
+
+def process_execution() -> str:
+    """native vs emulated. x64 Python on ARM64 Windows is always emulated.
+
+    An x64 process often sees PROCESSOR_ARCHITECTURE=AMD64 even on ARM64 OS.
+    platform.machine() on recent Windows ARM64 reports arm64 for that case.
+    """
+    arch = process_arch()
+    machine = platform.machine().lower()
+    env_arch = os.environ.get("PROCESSOR_ARCHITECTURE", "").upper()
+    env_native = os.environ.get("PROCESSOR_ARCHITEW6432", "").upper()
+    os_is_arm = (
+        env_arch == "ARM64"
+        or env_native == "ARM64"
+        or machine in {"arm64", "aarch64"}
+    )
+    if os_is_arm and arch == "x64":
+        return "emulated"
+    if arch in {"x64", "arm64"}:
+        return "native"
+    return "unknown"
 
 PACK_FAMILY = "insightface/buffalo_l"
 

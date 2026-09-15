@@ -1,6 +1,6 @@
 [project]
 name = "semblon"
-version = "0.0.1"
+version = "1.0.0"
 description = "Local face intelligence — folder-first observation engine"
 readme = "README.md"
 requires-python = ">=3.11"

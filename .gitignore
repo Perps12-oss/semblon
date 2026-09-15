@@ -4,6 +4,13 @@ __pycache__/
 .insightface/
 *.onnx
 store.sqlite
+*-store
+*-store-shm
+*-store-wal
 .pytest_cache/
 dist/
 *.egg-info/
+_r4_locked_snapshot/
+s1-90-review*.html
+review.html
+semblon/observatory/
