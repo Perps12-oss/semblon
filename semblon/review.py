@@ -286,6 +286,84 @@ def name_cluster(
     }
 
 
+def name_face(
+    store: Path,
+    run_id: str,
+    face_id: str,
+    display_name: str,
+) -> dict:
+    """Enrol an unassigned inbox face as a person. Does not create a cluster."""
+    display_name = (display_name or "").strip()
+    if not display_name:
+        raise ReviewError("display name must be non-empty")
+
+    _warn_enter_s3(store, run_id)
+    conn = connect(store)
+    init_db(conn)
+    run = _require_run(conn, run_id)
+    pack_id = run["pack_id"]
+    face = conn.execute(
+        "SELECT * FROM faces WHERE face_id=? AND run_id=?",
+        (face_id, run_id),
+    ).fetchone()
+    if face is None:
+        conn.close()
+        raise ReviewError(f"unknown face for run: {face_id}")
+    if face["status"] != "ok":
+        conn.close()
+        raise ReviewError(f"face is not nameable (status={face['status']})")
+    if face["cluster_id"]:
+        conn.close()
+        raise ReviewError("face is in a cluster; name the cluster, not the face")
+    if face["person_id"]:
+        conn.close()
+        raise ReviewError("face already has a person")
+
+    row = conn.execute(
+        """SELECT person_id FROM persons
+           WHERE status='active' AND display_name=?
+           ORDER BY person_id LIMIT 1""",
+        (display_name,),
+    ).fetchone()
+    created = False
+    if row:
+        person_id = row[0]
+    else:
+        person_id = uuid.uuid4().hex
+        conn.execute(
+            """INSERT INTO persons(person_id, display_name, status, created_run)
+               VALUES (?,?,?,?)""",
+            (person_id, display_name, "active", run_id),
+        )
+        created = True
+    conn.execute("UPDATE faces SET person_id=? WHERE face_id=?", (person_id, face_id))
+    decision_id = _record_decision(
+        conn,
+        kind="name",
+        run_id=run_id,
+        pack_id=pack_id,
+        face_id=face_id,
+        person_id=person_id,
+        policy={
+            "display_name": display_name,
+            "created_person": created,
+            "source": "inbox_face",
+        },
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "run_id": run_id,
+        "face_id": face_id,
+        "person_id": person_id,
+        "display_name": display_name,
+        "faces_named": 1,
+        "created_person": created,
+        "decision_id": decision_id,
+        "note": "cluster is not a person; unassigned face enrolled as person",
+    }
+
+
 def merge_clusters(
     store: Path,
     run_id: str,

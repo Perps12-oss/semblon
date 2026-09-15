@@ -53,7 +53,35 @@ def _execution() -> str:
     return process_execution()
 
 
-def ingest(folder: Path, store: Path) -> dict:
+def media_skip_reason(
+    conn,
+    digest: str,
+    run_id: str,
+    *,
+    reprocess: bool,
+) -> tuple[str | None, str | None]:
+    """Why this sha256 should be skipped, plus media_id if known.
+
+    None reason → process (new file, or --reprocess of an old hash on this run).
+    `seen` → already ingested on an earlier run (FACE-005 incremental).
+    `same_run` → already observed on this run.
+    """
+    row = conn.execute("SELECT media_id FROM media WHERE sha256=?", (digest,)).fetchone()
+    if row is None:
+        return None, None
+    media_id = row[0]
+    same = conn.execute(
+        "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NULL",
+        (media_id, run_id),
+    ).fetchone()
+    if same:
+        return "same_run", media_id
+    if not reprocess:
+        return "seen", media_id
+    return None, media_id
+
+
+def ingest(folder: Path, store: Path, *, reprocess: bool = False) -> dict:
     folder = folder.resolve()
     if not folder.is_dir():
         raise FileNotFoundError(folder)
@@ -98,6 +126,8 @@ def ingest(folder: Path, store: Path) -> dict:
         "cluster_min_side": CLUSTER_MIN_SIDE,
         "det_size": list(DET_SIZE),
         "folder": str(folder),
+        "reprocess": bool(reprocess),
+        "incremental": not reprocess,
     }
     conn.execute(
         """INSERT INTO runs(run_id, started_at, software_version, pack_id,
@@ -123,7 +153,7 @@ def ingest(folder: Path, store: Path) -> dict:
     files = sorted(
         p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() in STILL_EXT
     )
-    n_media = n_skip = n_faces = n_ok = n_lq = n_rej = n_fail = 0
+    n_media = n_skip_seen = n_skip_same = n_faces = n_ok = n_lq = n_rej = n_fail = 0
     t0 = time.perf_counter()
 
     for path in files:
@@ -133,17 +163,14 @@ def ingest(folder: Path, store: Path) -> dict:
             n_fail += 1
             continue
 
-        row = conn.execute("SELECT media_id FROM media WHERE sha256=?", (digest,)).fetchone()
-        if row:
-            media_id = row[0]
-            exists = conn.execute(
-                "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NULL",
-                (media_id, run_id),
-            ).fetchone()
-            if exists:
-                n_skip += 1
-                continue
-        else:
+        reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
+        if reason == "seen":
+            n_skip_seen += 1
+            continue
+        if reason == "same_run":
+            n_skip_same += 1
+            continue
+        if media_id is None:
             img0 = cv2.imread(str(path))
             if img0 is None:
                 n_fail += 1
@@ -213,12 +240,15 @@ def ingest(folder: Path, store: Path) -> dict:
         "ingest_s": time.perf_counter() - t0,
         "files": len(files),
         "new_media": n_media,
-        "skipped": n_skip,
+        "skipped": n_skip_seen + n_skip_same,
+        "skipped_seen": n_skip_seen,
+        "skipped_same_run": n_skip_same,
         "faces": n_faces,
         "ok": n_ok,
         "low_quality": n_lq,
         "rejected": n_rej,
         "failed": n_fail,
+        "incremental": not reprocess,
     }
     conn.execute(
         "UPDATE runs SET finished_at=?, timings_json=? WHERE run_id=?",

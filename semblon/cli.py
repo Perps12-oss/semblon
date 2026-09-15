@@ -1,8 +1,9 @@
-"""Semblon CLI. lab + ingest + cluster + export + review + name/merge/split + identify.
+"""Semblon CLI. lab + ingest + cluster + export + review + name/merge/split + identify + inbox.
 
 Observatory is not a dump gate. cluster → review → person → name.
 FACE-002: lab eval. Precision only on frozen confirmatory sets.
 FACE-004: identify vs persons, never clusters. Unknown is valid.
+FACE-005: incremental ingest + inbox. No watcher.
 """
 
 from __future__ import annotations
@@ -103,9 +104,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     ev_s.add_argument("--threshold", type=float, default=None)
 
-    ing = sub.add_parser("ingest", help="0.2 folder stills → store")
+    ing = sub.add_parser("ingest", help="0.2/FACE-005 folder stills → store (incremental by default)")
     ing.add_argument("folder", type=Path)
     ing.add_argument("--store", required=True, type=Path)
+    ing.add_argument(
+        "--reprocess",
+        action="store_true",
+        help="re-embed hashes already in the store (default skips them)",
+    )
 
     clu = sub.add_parser("cluster", help="0.3 DBSCAN on ok faces for a run")
     clu.add_argument("--run", required=True)
@@ -124,8 +130,9 @@ def main(argv: list[str] | None = None) -> int:
         help="min_intra ≥ this → STRONG (default 0.50)",
     )
 
-    nam = sub.add_parser("name", help="0.4 name a reviewed cluster → person (not cluster=person)")
-    nam.add_argument("--cluster", required=True)
+    nam = sub.add_parser("name", help="0.4/FACE-005 name a cluster or unassigned face → person")
+    nam.add_argument("--cluster", default=None)
+    nam.add_argument("--face", default=None, help="unassigned inbox face (not a clustered face)")
     nam.add_argument("--as", dest="display_name", required=True, help="display name")
     nam.add_argument("--run", required=True)
     nam.add_argument("--store", required=True, type=Path)
@@ -146,12 +153,17 @@ def main(argv: list[str] | None = None) -> int:
     spl.add_argument("--run", required=True)
     spl.add_argument("--store", required=True, type=Path)
 
-    ident = sub.add_parser("identify", help="1.0 1:N vs reviewed persons (not clusters)")
+    ident = sub.add_parser("identify", help="1.0/FACE-005 1:N vs reviewed persons (not clusters)")
     ident.add_argument("--run", required=True)
     ident.add_argument("--store", required=True, type=Path)
     ident.add_argument("--face", default=None, help="existing face_id on this run")
     ident.add_argument("--image", default=None, type=Path, help="new still; not enrolled")
     ident.add_argument("--threshold", type=float, default=None)
+
+    box = sub.add_parser("inbox", help="FACE-005 KNOWN/UNKNOWN/REVIEW_REQUIRED/REJECTED")
+    box.add_argument("--run", required=True)
+    box.add_argument("--store", required=True, type=Path)
+    box.add_argument("--threshold", type=float, default=None)
 
     rev = sub.add_parser("review", help="0.4 persist review decisions (does not rewrite DBSCAN)")
     rev.add_argument("--run", required=True)
@@ -275,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
         from semblon.ingest import ingest
 
         try:
-            rec = ingest(args.folder, args.store)
+            rec = ingest(args.folder, args.store, reprocess=args.reprocess)
         except FileNotFoundError as e:
             print(str(e), file=sys.stderr)
             return 2
@@ -319,10 +331,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "name":
-        from semblon.review import ReviewError, name_cluster
+        from semblon.review import ReviewError, name_cluster, name_face
 
+        if bool(args.cluster) == bool(args.face):
+            print("name requires exactly one of --cluster or --face", file=sys.stderr)
+            return 2
         try:
-            rec = name_cluster(args.store, args.run, args.cluster, args.display_name)
+            if args.cluster:
+                rec = name_cluster(args.store, args.run, args.cluster, args.display_name)
+            else:
+                rec = name_face(args.store, args.run, args.face, args.display_name)
         except ReviewError as e:
             print(str(e), file=sys.stderr)
             return 2
@@ -353,10 +371,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "identify":
         from semblon.eval import DEFAULT_THRESHOLD
-        from semblon.identify import IdentifyError, identify_face, identify_image
+        from semblon.identify import IdentifyError, identify_face, identify_image, identify_run
 
-        if bool(args.face) == bool(args.image):
-            print("identify requires exactly one of --face or --image", file=sys.stderr)
+        if args.face and args.image:
+            print("identify accepts at most one of --face or --image", file=sys.stderr)
             return 2
         threshold = DEFAULT_THRESHOLD if args.threshold is None else args.threshold
         try:
@@ -364,11 +382,26 @@ def main(argv: list[str] | None = None) -> int:
                 rec = identify_face(
                     args.store, args.run, args.face, threshold=threshold
                 )
-            else:
+            elif args.image:
                 rec = identify_image(
                     args.store, args.run, args.image, threshold=threshold
                 )
+            else:
+                rec = identify_run(args.store, args.run, threshold=threshold)
         except IdentifyError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "inbox":
+        from semblon.eval import DEFAULT_THRESHOLD
+        from semblon.inbox import InboxError, inbox
+
+        threshold = DEFAULT_THRESHOLD if args.threshold is None else args.threshold
+        try:
+            rec = inbox(args.store, args.run, threshold=threshold)
+        except InboxError as e:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2))

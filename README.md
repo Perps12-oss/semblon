@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: FACE-004 identify ships (1.0).** S1 identity-quality PASS is closed. 0.4 review is on path. FACE-002 harness is on `lab eval`; a powered confirmatory set is owner-dump local, not in git. Do not retune clustering. Do not re-ingest the frozen dump. Do not start architecture expansion.
+**Current: FACE-005 incremental ingest + inbox (1.1).** FACE-004 identify ships. S1 identity-quality PASS is closed. Do not retune clustering. Do not re-ingest the frozen dump. No watcher. Do not start architecture expansion.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
@@ -30,6 +30,7 @@ pip install -e .
 semblon lab profile --image "D:\photos\face.jpg" --out "docs\runtime.md"
 
 semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite"
+semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite" --reprocess
 
 semblon cluster --run RUN_ID --store "D:\semblon\store.sqlite"
 semblon export --run RUN_ID --store "D:\semblon\store.sqlite" --out "review.html"
@@ -50,6 +51,10 @@ semblon lab eval score --store "D:\semblon\store.sqlite" --eval-set confirmatory
 
 semblon identify --face FACE_ID --run RUN_ID --store "D:\semblon\store.sqlite"
 semblon identify --image "D:\photos\probe.jpg" --run RUN_ID --store "D:\semblon\store.sqlite"
+semblon identify --run RUN_ID --store "D:\semblon\store.sqlite"
+
+semblon inbox --run RUN_ID --store "D:\semblon\store.sqlite"
+semblon name --face FACE_ID --as "P4" --run RUN_ID --store "D:\semblon\store.sqlite"
 ```
 
 Quote Windows paths. Put a space between `--out` and the next argument — do not glue `docs\runtime.md` onto another path.

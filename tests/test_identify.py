@@ -128,7 +128,7 @@ def test_cli_identify_face(tmp_path):
     assigned = _clustered(store)
     name_cluster(store, "r1", assigned["f1"], "Alice")
     assert main(["identify", "--face", "f2", "--run", "r1", "--store", str(store)]) == 0
-    assert main(["identify", "--run", "r1", "--store", str(store)]) == 2
+    assert main(["identify", "--run", "r1", "--store", str(store)]) == 0
     assert main(["identify", "--face", "f2", "--image", "x.jpg", "--run", "r1", "--store", str(store)]) == 2
 
 
