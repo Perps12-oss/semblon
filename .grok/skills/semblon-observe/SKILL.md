@@ -17,7 +17,7 @@ Folder-first, face-first, local-first. Still photographs in, conservative groups
 
 ## Queue
 
-FACE-005 incremental ingest + inbox (no watcher, no new schema columns). FACE-004 `identify` vs persons, never clusters. FACE-002 = eval harness + confirmatory set on the owner dump, not threshold fishing.
+S6 visual memory (history/together/events). FACE-005 closed. FACE-004 `identify` vs persons, never clusters. Time/place/co-appearance must not change identity scores.
 
 Do not print precision without `--eval-set confirmatory`.
 

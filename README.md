@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: FACE-005 incremental ingest + inbox (1.1).** FACE-004 identify ships. S1 identity-quality PASS is closed. Do not retune clustering. Do not re-ingest the frozen dump. No watcher. Do not start architecture expansion.
+**Current: S6 visual memory (1.2) on `grok/S6`.** FACE-005 inbox is closed. FACE-004 identify ships. Time/place/together do not change identity. Do not retune clustering. Do not re-ingest the frozen dump.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
@@ -59,6 +59,10 @@ semblon name --face FACE_ID --as "P4" --run RUN_ID --store "D:\semblon\store.sql
 
 semblon stats --run RUN_ID --store "D:\semblon\store.sqlite"
 semblon report --run RUN_ID --store "D:\semblon\store.sqlite" --out "report.md"
+
+semblon memory history --person "Alice" --store "D:\semblon\store.sqlite"
+semblon memory together --store "D:\semblon\store.sqlite"
+semblon memory events --store "D:\semblon\store.sqlite"
 ```
 
 Quote Windows paths. Put a space between `--out` and the next argument — do not glue `docs\runtime.md` onto another path.
