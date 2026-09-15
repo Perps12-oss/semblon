@@ -36,19 +36,18 @@ def _require_run(conn, run_id: str):
     return run
 
 
-def _gallery(conn, run_id: str, pack_id: str, exclude_face: str | None = None):
-    """Active persons' ok faces on this run and pack. Not clusters."""
+def _gallery(conn, pack_id: str, exclude_face: str | None = None):
+    """Active persons' ok faces, any run, this pack. Not clusters."""
     rows = conn.execute(
         """
         SELECT f.face_id, f.embedding, f.embedding_pack, f.embedding_dim,
                f.person_id, p.display_name
         FROM faces f
         JOIN persons p ON p.person_id = f.person_id
-        WHERE f.run_id=? AND f.status='ok' AND f.embedding IS NOT NULL
+        WHERE f.status='ok' AND f.embedding IS NOT NULL
           AND p.status='active' AND f.person_id IS NOT NULL
         ORDER BY f.face_id
         """,
-        (run_id,),
     ).fetchall()
     out = []
     for r in rows:
@@ -178,7 +177,7 @@ def identify_face(
         if face["embedding_pack"] != pack_id:
             raise IdentifyError("face pack_id does not match run")
 
-        gallery = _gallery(conn, run_id, pack_id, exclude_face=face_id)
+        gallery = _gallery(conn, pack_id, exclude_face=face_id)
         ranked = _person_scores(face, gallery, pack_id)
         verdict = _decide(ranked, threshold)
         decision_id = _write_decision(
@@ -230,7 +229,7 @@ def identify_image(
         run = _require_run(conn, run_id)
         pack_id = run["pack_id"]
         dim = int(run["embedding_dim"])
-        gallery = _gallery(conn, run_id, pack_id)
+        gallery = _gallery(conn, pack_id)
         app = load_app()
         faces = embed_image(app, image)
         probes = []
@@ -284,3 +283,40 @@ def identify_image(
         }
     finally:
         conn.close()
+
+
+def identify_run(
+    store: Path,
+    run_id: str,
+    *,
+    threshold: float = DEFAULT_THRESHOLD,
+) -> dict:
+    """1:N every unnamed ok face on this run against the person gallery."""
+    conn = _open(store)
+    try:
+        _require_run(conn, run_id)
+        rows = conn.execute(
+            """
+            SELECT face_id FROM faces
+            WHERE run_id=? AND status='ok' AND embedding IS NOT NULL
+              AND person_id IS NULL
+            ORDER BY face_id
+            """,
+            (run_id,),
+        ).fetchall()
+        ids = [r["face_id"] for r in rows]
+    finally:
+        conn.close()
+    results = [
+        identify_face(store, run_id, fid, threshold=threshold) for fid in ids
+    ]
+    n_accept = sum(1 for r in results if r["decision"] == "ACCEPT")
+    return {
+        "run_id": run_id,
+        "faces": len(results),
+        "accept": n_accept,
+        "unknown": len(results) - n_accept,
+        "threshold": threshold,
+        "results": results,
+        "note": "identify vs persons; cluster is not a person; person_id not auto-assigned",
+    }

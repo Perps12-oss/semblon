@@ -760,7 +760,7 @@ Hard rules:
 | S2 | FACE-002 confirmatory eval | `lab eval` | Harness on path. Underpowered until a powered confirmatory set exists. Stage open. |
 | S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump-gate still precedes treating this closed. |
 | S4 | FACE-004 persons + identify | **1.0** | After 0.4 · v1 ship test |
-| S5 | FACE-005 hardening / incremental | post-1.0 | Reassess; do not pre-build |
+| S5 | FACE-005 hardening / incremental | **1.1** | Incremental ingest + inbox on `grok/FACE-005`. No watcher. |
 | S6–S9 | future | v2 / later | Do not open tickets from this blueprint |
 
 PRODUCT.md later-row mapping:
