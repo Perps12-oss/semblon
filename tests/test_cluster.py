@@ -21,7 +21,6 @@ _VECTOR_KEYS = frozenset({
     "person_id",
     "sha256",
     "decision_id",
-    "decisions",
 })
 _EVIDENCE_KEYS = {
     "schema_version",
@@ -42,6 +41,7 @@ _EVIDENCE_KEYS = {
     "strong_min_intra",
     "counts",
     "clusters",
+    "decisions",
 }
 _COUNT_KEYS = {
     "faces",
@@ -52,6 +52,7 @@ _COUNT_KEYS = {
     "review_required",
     "strong",
     "unassigned",
+    "decisions",
 }
 
 
@@ -192,6 +193,7 @@ def test_export_sections_and_readonly(tmp_path):
     assert "STRONG" in text
     assert "UNASSIGNED" in text
     assert "REJECTED" in text
+    assert "DECISIONS" in text
     assert "not a person" in text
     assert rec["clusters"] == 2
     conn = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
@@ -237,6 +239,8 @@ def test_export_evidence_block_has_run_and_clusters_not_embeddings(tmp_path):
     assert payload["counts"]["low_quality"] == 1
     assert payload["counts"]["rejected"] == 1
     assert payload["counts"]["unassigned"] == 1
+    assert payload["counts"]["decisions"] == 0
+    assert payload["decisions"] == []
     assert isinstance(payload["counts"]["faces"], int)
     assert len(payload["clusters"]) == 2
     for c in payload["clusters"]:

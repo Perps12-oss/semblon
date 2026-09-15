@@ -4,11 +4,11 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: S1 PASS — closed (2026-09-13).** Next planned gate: FACE-002 confirmatory hard negatives. Do not retune clustering. Do not start architecture expansion.
+**Current: S1 identity-quality PASS — closed.** Reviewer-durable merge proof is not closed. Do not retune clustering. Do not re-ingest the frozen dump.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
-Authoritative dump `20260913T153515Z-1e915abe` (Win ARM64 native, 90 `.jpg`): 85 faces, 78 ok, 10 clusters, 63 clustered, 15 eligible unassigned. No observed false merge. Clusters remain clusters. Export evidence `unassigned` matches the cluster CLI (OK faces with no assignment only).
+S1 golden (repo record): `docs/S1-GOLDEN.md` — run `20260913T153515Z-1e915abe`, Windows ARM64, 90/85/78, 10/63/15, false merge 0, params frozen.
 
 ## Install
 
@@ -34,9 +34,11 @@ semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite"
 semblon cluster --run RUN_ID --store "D:\semblon\store.sqlite"
 semblon export --run RUN_ID --store "D:\semblon\store.sqlite" --out "review.html"
 
-semblon name --cluster CLUSTER_ID --as "Alice" --run RUN_ID --store "D:\semblon\store.sqlite"
-semblon merge --clusters SURVIVOR DONOR... --run RUN_ID --store "D:\semblon\store.sqlite"
-semblon split --cluster CLUSTER_ID --faces FACE_ID... --run RUN_ID --store "D:\semblon\store.sqlite"
+semblon review --run RUN_ID --store "D:\semblon\store.sqlite" merge --clusters SURVIVOR DONOR
+semblon review --run RUN_ID --store "D:\semblon\store.sqlite" split --cluster CLUSTER_ID --faces FACE_ID
+semblon review --run RUN_ID --store "D:\semblon\store.sqlite" ignore --cluster CLUSTER_ID --as not_a_person
+semblon review --run RUN_ID --store "D:\semblon\store.sqlite" ignore --face FACE_ID --as singleton
+semblon review --run RUN_ID --store "D:\semblon\store.sqlite" note --cluster CLUSTER_ID --text "same person, two groups"
 
 semblon lab observatory freeze --store "D:\semblon\store.sqlite" --run RUN_ID --stage S1 --notes "HUMAN REVIEW SENTENCE"
 semblon lab observatory enter --stage S3 --store "D:\semblon\store.sqlite" --run RUN_ID
@@ -44,7 +46,7 @@ semblon lab observatory enter --stage S3 --store "D:\semblon\store.sqlite" --run
 
 Quote Windows paths. Put a space between `--out` and the next argument — do not glue `docs\runtime.md` onto another path.
 
-Double-click `review.html`. No server. Page order: counts → REVIEW REQUIRED → STRONG → UNASSIGNED → REJECTED.
+Double-click `review.html`. No server. Page order: counts → REVIEW REQUIRED → STRONG → UNASSIGNED → REJECTED → DECISIONS.
 
 DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Use `review.html` to decide whether it survives.
 

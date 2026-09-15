@@ -44,7 +44,17 @@ def _stored_json(raw):
         return raw
 
 
-def _evidence_payload(run, clusters, counts: dict, strong_min_intra: float) -> dict:
+def _decision_public(row) -> dict:
+    return {
+        "kind": row["kind"],
+        "cluster_id": row["cluster_id"],
+        "face_id": row["face_id"],
+        "created_at": row["created_at"],
+        "policy": _stored_json(row["policy_json"]),
+    }
+
+
+def _evidence_payload(run, clusters, counts: dict, strong_min_intra: float, decisions=()) -> dict:
     return {
         "schema_version": EVIDENCE_SCHEMA,
         "run_id": run["run_id"],
@@ -73,6 +83,7 @@ def _evidence_payload(run, clusters, counts: dict, strong_min_intra: float) -> d
             }
             for c in clusters
         ],
+        "decisions": [_decision_public(d) for d in decisions],
     }
 
 
@@ -181,7 +192,11 @@ def _load(conn, run_id: str):
         """,
         (run_id,),
     ).fetchall()
-    return run, clusters, faces
+    decisions = conn.execute(
+        """SELECT * FROM decisions WHERE run_id=? ORDER BY created_at, decision_id""",
+        (run_id,),
+    ).fetchall()
+    return run, clusters, faces, decisions
 
 
 def _face_dict(row) -> dict:
@@ -245,7 +260,43 @@ def _render_faces(title: str, anchor: str, rows: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def render_review_html(run, clusters, faces, strong_min_intra: float = STRONG_MIN_INTRA) -> str:
+def _render_decisions(decisions) -> str:
+    parts = ['<section id="decisions">', f"<h2>DECISIONS ({len(decisions)})</h2>"]
+    parts.append(
+        '<p class="meta">Human review. Merge does not create a person. '
+        "rejected / low_quality stay held-out.</p>"
+    )
+    if not decisions:
+        parts.append("<p>none</p></section>")
+        return "\n".join(parts)
+    parts.append("<ol>")
+    for d in decisions:
+        pol = _stored_json(d["policy_json"])
+        if not isinstance(pol, dict):
+            pol = {"raw": pol}
+        action = pol.get("action") or d["kind"]
+        disp = pol.get("disposition") or pol.get("text") or ""
+        target = d["cluster_id"] or d["face_id"] or ""
+        parts.append(
+            "<li>"
+            f"<strong>{_esc(d['kind'])}</strong>"
+            f" {_esc(action)}"
+            f" {_esc(disp)}"
+            f" {_esc(target[:12] if target else '')}"
+            f" <span class=\"meta\">{_esc(d['created_at'])}</span>"
+            "</li>"
+        )
+    parts.append("</ol></section>")
+    return "\n".join(parts)
+
+
+def render_review_html(
+    run,
+    clusters,
+    faces,
+    strong_min_intra: float = STRONG_MIN_INTRA,
+    decisions=(),
+) -> str:
     pack_id = run["pack_id"]
     by_cluster: dict[str, list[dict]] = {}
     unassigned: list[dict] = []
@@ -286,9 +337,10 @@ def render_review_html(run, clusters, faces, strong_min_intra: float = STRONG_MI
         "review_required": len(review_cs),
         "strong": len(strong_cs),
         "unassigned": len(unassigned),
+        "decisions": len(decisions),
     }
     evidence = _evidence_script(
-        _evidence_payload(run, clusters, counts, strong_min_intra)
+        _evidence_payload(run, clusters, counts, strong_min_intra, decisions)
     )
 
     body_clusters_review = "\n".join(
@@ -336,6 +388,7 @@ img.thumb, img.worstimg {{ display: block; background: #222; }}
   <span>REVIEW REQUIRED {len(review_cs)}</span>
   <span>STRONG {len(strong_cs)}</span>
   <span>UNASSIGNED {len(unassigned)}</span>
+  <span>DECISIONS {len(decisions)}</span>
 </p>
 <p class="meta">cluster → review → person → name. Clusters are not persons.
 STRONG means min_intra ≥ {strong_min_intra:.2f} (hypothesis). Open originals via the thumbnails.
@@ -345,6 +398,7 @@ timings { _esc(timings) }</p>
   <a href="#strong">STRONG</a>
   <a href="#unassigned">UNASSIGNED</a>
   <a href="#rejected">REJECTED</a>
+  <a href="#decisions">DECISIONS</a>
 </nav>
 
 <section id="review">
@@ -361,6 +415,7 @@ timings { _esc(timings) }</p>
 
 {_render_faces("UNASSIGNED", "unassigned", unassigned)}
 {_render_faces("REJECTED", "rejected", rejected)}
+{_render_decisions(decisions)}
 </body>
 </html>
 """
@@ -383,8 +438,10 @@ def export_review(
     strong_min_intra: float = STRONG_MIN_INTRA,
 ) -> dict:
     conn = _connect_ro(store)
-    run, clusters, faces = _load(conn, run_id)
-    html_text = render_review_html(run, clusters, faces, strong_min_intra=strong_min_intra)
+    run, clusters, faces, decisions = _load(conn, run_id)
+    html_text = render_review_html(
+        run, clusters, faces, strong_min_intra=strong_min_intra, decisions=decisions
+    )
     conn.close()
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)

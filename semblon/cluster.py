@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from pathlib import Path
@@ -58,16 +59,72 @@ def _strategy(eps: float, min_samples: int) -> str:
     return f"dbscan:eps={eps}:min_samples={min_samples}:metric={METRIC}"
 
 
-def _clear_run_clusters(conn, run_id: str) -> None:
+def _review_locks(conn, run_id: str) -> tuple[set[str], set[str]]:
+    """Faces and clusters covered by human decisions. Re-cluster must not move these.
+
+    Auto clusters are computed and replaceable. A merge/split/ignore decision
+    is durable: decisions.cluster_id REFERENCES clusters(cluster_id) with no
+    ON DELETE CASCADE. That FK is the guard — do not DELETE every cluster
+    for a run after a review decision exists.
+    """
+    faces: set[str] = set()
+    clusters: set[str] = set()
+    for d in conn.execute("SELECT * FROM decisions WHERE run_id=?", (run_id,)):
+        if d["cluster_id"]:
+            clusters.add(d["cluster_id"])
+        if d["face_id"]:
+            faces.add(d["face_id"])
+        try:
+            pol = json.loads(d["policy_json"] or "{}")
+        except json.JSONDecodeError:
+            pol = {}
+        if not isinstance(pol, dict):
+            continue
+        for key in ("survivor", "from_cluster", "new_cluster"):
+            if pol.get(key):
+                clusters.add(str(pol[key]))
+        for cid in pol.get("merged") or []:
+            clusters.add(str(cid))
+        extra_faces = pol.get("moved_faces")
+        if isinstance(extra_faces, list):
+            for fid in extra_faces:
+                faces.add(str(fid))
+        for fid in pol.get("faces") or []:
+            if isinstance(fid, str):
+                faces.add(fid)
+    for r in conn.execute(
+        """SELECT cluster_id FROM clusters
+           WHERE run_id=? AND status IN ('merged','split','ignored')""",
+        (run_id,),
+    ):
+        clusters.add(r[0])
+    if clusters:
+        q = ",".join("?" * len(clusters))
+        for r in conn.execute(
+            f"SELECT face_id FROM faces WHERE cluster_id IN ({q})",
+            list(clusters),
+        ):
+            faces.add(r[0])
+    return faces, clusters
+
+
+def _clear_unprotected_clusters(conn, run_id: str, locked_faces: set[str], locked_clusters: set[str]) -> None:
     rows = conn.execute(
         "SELECT cluster_id FROM clusters WHERE run_id=?", (run_id,)
     ).fetchall()
-    ids = [r[0] for r in rows]
-    conn.execute("UPDATE faces SET cluster_id=NULL WHERE run_id=?", (run_id,))
-    if ids:
-        q = ",".join("?" * len(ids))
-        conn.execute(f"DELETE FROM cluster_person WHERE cluster_id IN ({q})", ids)
-        conn.execute("DELETE FROM clusters WHERE run_id=?", (run_id,))
+    drop = [r[0] for r in rows if r[0] not in locked_clusters]
+    if locked_faces:
+        qf = ",".join("?" * len(locked_faces))
+        conn.execute(
+            f"UPDATE faces SET cluster_id=NULL WHERE run_id=? AND face_id NOT IN ({qf})",
+            (run_id, *locked_faces),
+        )
+    else:
+        conn.execute("UPDATE faces SET cluster_id=NULL WHERE run_id=?", (run_id,))
+    if drop:
+        q = ",".join("?" * len(drop))
+        conn.execute(f"DELETE FROM cluster_person WHERE cluster_id IN ({q})", drop)
+        conn.execute(f"DELETE FROM clusters WHERE cluster_id IN ({q})", drop)
 
 
 def _load_ok_faces(conn, run_id: str, pack_id: str):
@@ -135,10 +192,13 @@ def cluster_run(
 
     pack_id = run["pack_id"]
     dim = int(run["embedding_dim"])
+    locked_faces, locked_clusters = _review_locks(conn, run_id)
     faces, skipped_pack = _load_ok_faces(conn, run_id, pack_id)
+    n_ok = len(faces)
+    faces = [f for f in faces if f["face_id"] not in locked_faces]
 
     t0 = time.perf_counter()
-    _clear_run_clusters(conn, run_id)
+    _clear_unprotected_clusters(conn, run_id, locked_faces, locked_clusters)
 
     n_clustered = 0
     n_noise = 0
@@ -210,8 +270,9 @@ def cluster_run(
         "run_id": run_id,
         "pack_id": pack_id,
         "strategy": _strategy(eps, min_samples),
-        "ok_faces": len(faces),
+        "ok_faces": n_ok,
         "skipped_pack_mismatch": skipped_pack,
+        "review_locked": len(locked_faces),
         "clusters": n_clusters,
         "clustered": n_clustered,
         "unassigned": n_noise if faces else 0,
