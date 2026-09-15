@@ -34,6 +34,7 @@ semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite" --reprocess
 
 semblon cluster --run RUN_ID --store "D:\semblon\store.sqlite"
 semblon export --run RUN_ID --store "D:\semblon\store.sqlite" --out "review.html"
+semblon export --run RUN_ID --store "D:\semblon\store.sqlite" --views "D:\semblon\views"
 
 semblon review --run RUN_ID --store "D:\semblon\store.sqlite" merge --clusters SURVIVOR DONOR
 semblon review --run RUN_ID --store "D:\semblon\store.sqlite" split --cluster CLUSTER_ID --faces FACE_ID

@@ -119,10 +119,11 @@ def main(argv: list[str] | None = None) -> int:
     clu.add_argument("--eps", type=float, default=None, help="DBSCAN eps on 1-cosine (default 0.40)")
     clu.add_argument("--min-samples", type=int, default=None)
 
-    exp = sub.add_parser("export", help="0.3 static review.html (read-only)")
+    exp = sub.add_parser("export", help="0.3 review.html and/or person view folders")
     exp.add_argument("--run", required=True)
     exp.add_argument("--store", required=True, type=Path)
-    exp.add_argument("--out", required=True, type=Path)
+    exp.add_argument("--out", default=None, type=Path, help="review.html")
+    exp.add_argument("--views", default=None, type=Path, help="person view folders; originals stay put")
     exp.add_argument(
         "--strong-min-intra",
         type=float,
@@ -315,15 +316,22 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "export":
-        from semblon.export import STRONG_MIN_INTRA, ExportError, export_review
+        from semblon.export import STRONG_MIN_INTRA, ExportError, export_review, export_views
 
+        if args.out is None and args.views is None:
+            print("export requires --out and/or --views", file=sys.stderr)
+            return 2
+        rec: dict = {"run_id": args.run}
         try:
-            rec = export_review(
-                args.store,
-                args.run,
-                args.out,
-                strong_min_intra=STRONG_MIN_INTRA if args.strong_min_intra is None else args.strong_min_intra,
-            )
+            if args.out is not None:
+                rec["html"] = export_review(
+                    args.store,
+                    args.run,
+                    args.out,
+                    strong_min_intra=STRONG_MIN_INTRA if args.strong_min_intra is None else args.strong_min_intra,
+                )
+            if args.views is not None:
+                rec["views"] = export_views(args.store, args.run, args.views)
         except ExportError as e:
             print(str(e), file=sys.stderr)
             return 2
