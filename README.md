@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: FACE-003 review evidence recorded (`docs/FACE-003-REVIEW.md`).** FACE-002 confirmatory is local-dump measurable. eps=0.40 frozen. Clusters are not people. Do not re-ingest the frozen dump.
+**Current: FACE-004 identify evidence recorded (`docs/FACE-004-IDENTIFY.md`).** FACE-003 review and FACE-002 confirmatory are recorded. Identify vs persons, not clusters. eps=0.40 frozen.
 
 `cluster → review → person → name`. Never `cluster = person`.
 

@@ -8,7 +8,7 @@ CONTRACTS.md is V1.1-corrected. Do not invent schema columns.
 Architecture may anticipate the future. Implementation must earn the future.
 Do not implement MediaPipe, CLIP, hands, pose, objects, semantic clustering, video, live, public lookup, ACC, or a vector database unless the current FACE id explicitly requires it.
 
-Authorized queue: FACE-003 (`docs/FACE-003-REVIEW.md`). eps=0.40 frozen. No clustering retune. No FACE-004 in this gate. Clusters are not people.
+Authorized queue: FACE-004 (`docs/FACE-004-IDENTIFY.md`). Identify vs persons, not clusters. eps=0.40 frozen. No FACE-005 inbox/identify-run in this gate. No workers/EP/GPU.
 
 FaceKit / InsightFace is the identity engine. No cross-pack compare. pack_id includes weight hashes.
 Do not add libraries from the plan §20 parked list.
