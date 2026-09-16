@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: S6 on `main`.** FACE-002 confirmatory on the owner dump is harness-measurable (`docs/FACE-002-CONFIRMATORY.md`); the store is local, not in git. Do not retune clustering. Do not re-ingest the frozen dump.
+**Current: FACE-003 review evidence recorded (`docs/FACE-003-REVIEW.md`).** FACE-002 confirmatory is local-dump measurable. eps=0.40 frozen. Clusters are not people. Do not re-ingest the frozen dump.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
