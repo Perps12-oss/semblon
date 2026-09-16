@@ -8,7 +8,7 @@ CONTRACTS.md is V1.1-corrected. Do not invent schema columns.
 Architecture may anticipate the future. Implementation must earn the future.
 Do not implement MediaPipe, CLIP, hands, pose, objects, semantic clustering, video, live, public lookup, ACC, or a vector database unless the current FACE id explicitly requires it.
 
-Authorized queue: FACE-002 confirmatory validation / local labels. S6 on main. FACE-005 closed. Time/place must not change identity. Do not retune identity thresholds to beautify clusters. Do not swap the ARM64 OpenCV pyd into the S1 environment unless explicitly decided. x64 native FACE-000 is unverified (no x64 PC).
+Authorized queue: FACE-002 confirmatory is recorded in `docs/FACE-002-CONFIRMATORY.md` (harness-measurable on the owner dump). Do not retune identity thresholds. Do not treat clusters or mined pairs as people. Do not swap the ARM64 OpenCV pyd into the S1 environment unless explicitly decided. x64 native FACE-000 is unverified (no x64 PC).
 
 FaceKit / InsightFace is the identity engine. No cross-pack compare. pack_id includes weight hashes.
 Do not add libraries from the plan §20 parked list.
