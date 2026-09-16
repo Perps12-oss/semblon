@@ -760,7 +760,7 @@ Hard rules:
 | S2 | FACE-002 confirmatory eval | `lab eval` | Harness on path. Local dump `s1-confirmatory` harness-measurable 2026-09-16 (`docs/FACE-002-CONFIRMATORY.md`). Store not in git. |
 | S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump merge+name evidence in `docs/FACE-003-REVIEW.md`. STRONG is not a person. |
 | S4 | FACE-004 persons + identify | **1.0** | Code on `main`. Dump `--face`/`--image` evidence in `docs/FACE-004-IDENTIFY.md`. |
-| S5 | FACE-005 hardening / incremental | **1.1** | Incremental ingest + inbox on `grok/FACE-005`. No watcher. |
+| S5 | FACE-005 regression / scale | **1.1** | Incremental/inbox already on `main`. Regression/scale: `docs/FACE-005-REGRESSION.md`. 10k not run. |
 | S6 | visual memory | **1.2** | `memory history/together/events` on `grok/S6`. No new columns. |
 | S7–S9 | future | v2 / later | Do not open tickets from this blueprint |
 

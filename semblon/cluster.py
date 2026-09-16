@@ -12,7 +12,7 @@ import numpy as np
 from semblon.compare import CompareError, compare
 from semblon.store import connect, init_db
 
-# Hypothesis — not frozen. Use review.html to decide whether this survives.
+# Frozen by S1 golden 20260913T153515Z-1e915abe. Do not retune to beautify clusters.
 DEFAULT_EPS = 0.40  # distance = 1 - cosine; keep together only if sim >= 0.60
 DEFAULT_MIN_SAMPLES = 2
 METRIC = "1-dot"
