@@ -44,13 +44,33 @@ Optional flags: `--store`, `--out`, `--no-open`, `--reprocess`.
 
 Python **3.11+**, Windows x64 or ARM64 **native** (not x64 Python on ARM64).
 
+Work from the **repository root** (`...\GITHUB\SEMBRON`), not from inside `semblon\`. Put `.venv` at the repo root — never inside the package folder.
+
 ```text
+cd C:\Users\S8633\Documents\GITHUB\SEMBRON
+
 py -3.12 -m venv .venv
-.venv\Scripts\activate
-pip install -U pip
-pip install -r requirements.txt
-pip install -e .
+.\.venv\Scripts\Activate.ps1
+
+python -c "import sys; print(sys.executable)"
+# expect: ...\SEMBRON\.venv\Scripts\python.exe
+
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
+
+semblon --help
 ```
+
+`pip install -r requirements.txt` then `pip install -e .` is required. That pulls `insightface`, `onnxruntime`, `opencv-python-headless`, and `numpy`, and registers the `semblon` console script. Do not install those packages one failure at a time.
+
+Equivalent module entry (same code path):
+
+```text
+python -m semblon --help
+```
+
+Do **not** run `python semblon\cli.py ...` from inside the package — that breaks imports (`No module named 'semblon'`).
 
 Then use `semblon` directly (after activate), or keep using `semblon.cmd`.
 
@@ -104,7 +124,7 @@ Quote Windows paths. Put a space between `--out` and the next argument — do no
 
 Double-click `review.html`. No server. Page order: counts → REVIEW REQUIRED → STRONG → UNASSIGNED → REJECTED → DECISIONS.
 
-DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Use `review.html` to decide whether it survives.
+DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Use `review.html` to decide whether it survives — including whether different people stay separated on a mixed dump.
 
 Corrections write `decisions` rows. Naming links `cluster_person` and stamps `faces.person_id`; the cluster id is never the person id.
 

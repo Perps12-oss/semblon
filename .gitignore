@@ -1,9 +1,11 @@
 .venv/
+semblon/.venv/
 __pycache__/
 *.pyc
 .insightface/
 *.onnx
 store.sqlite
+*.sqlite
 *-store
 *-store-shm
 *-store-wal

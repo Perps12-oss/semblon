@@ -1,5 +1,7 @@
 # Semblon runtime (CPU). Python >= 3.11. Match pyproject.toml.
 # Native arch only: ARM64 Windows → ARM64 Python + this file, not x64.
+# Install from repo root: pip install -r requirements.txt && pip install -e .
+# That is what provides cv2 + insightface — do not install them ad hoc after failures.
 insightface
 onnxruntime
 opencv-python-headless
