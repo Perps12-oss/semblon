@@ -758,7 +758,7 @@ Hard rules:
 | S0 | FACE-000 runtime | 0.1 | Code on `main`. Fill `runtime.md` on both Windows executions. |
 | S1 | FACE-001 ingest + first reviewable result | 0.2 ingest, **0.3 cluster/export** | On `main`. **S1 PASS — closed** (`20260913T153515Z-1e915abe`). |
 | S2 | FACE-002 confirmatory eval | `lab eval` | Harness on path. Local dump `s1-confirmatory` harness-measurable 2026-09-16 (`docs/FACE-002-CONFIRMATORY.md`). Store not in git. |
-| S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump-gate still precedes treating this closed. |
+| S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump merge+name evidence in `docs/FACE-003-REVIEW.md`. STRONG is not a person. |
 | S4 | FACE-004 persons + identify | **1.0** | After 0.4 · v1 ship test |
 | S5 | FACE-005 hardening / incremental | **1.1** | Incremental ingest + inbox on `grok/FACE-005`. No watcher. |
 | S6 | visual memory | **1.2** | `memory history/together/events` on `grok/S6`. No new columns. |

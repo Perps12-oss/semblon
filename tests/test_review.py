@@ -313,6 +313,25 @@ def test_merge_is_not_a_person_and_survives_recluster(tmp_path):
     conn.close()
 
 
+def test_cluster_run_does_not_create_persons(tmp_path):
+    """FACE-003 must-not: STRONG/auto clusters are not people until name."""
+    store = tmp_path / "s.sqlite"
+    _clustered(store)
+    conn = sqlite3.connect(str(store))
+    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM faces WHERE person_id IS NOT NULL"
+    ).fetchone()[0] == 0
+    conn.close()
+    cluster_run(store, "r1", eps=0.15, min_samples=2)
+    conn = sqlite3.connect(str(store))
+    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM faces WHERE person_id IS NOT NULL"
+    ).fetchone()[0] == 0
+    conn.close()
+
+
 def test_ignore_and_note_export_without_person(tmp_path):
     store = tmp_path / "s.sqlite"
     assigned = _clustered(store)
