@@ -77,6 +77,7 @@ def test_process_folder_orchestrates_and_owns_run_id(tmp_path):
     ing.assert_called_once()
     assert ing.call_args.args[0] == folder.resolve() or ing.call_args.args[0] == folder
     assert ing.call_args.args[1] == store
+    assert ing.call_args.kwargs.get("on_event") is None
     clu.assert_called_once()
     assert clu.call_args.args[0] == store
     assert clu.call_args.args[1] == "RUN-ABC"
@@ -126,6 +127,7 @@ def test_cli_process_wires_flags(tmp_path, monkeypatch):
     assert seen["kwargs"]["out"] == out
     assert seen["kwargs"]["reprocess"] is True
     assert seen["kwargs"]["open_review"] is False
+    assert "on_event" not in seen["kwargs"]
 
 
 def test_top_level_help_is_ascii():

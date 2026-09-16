@@ -1,0 +1,307 @@
+"""UI-agnostic process progress events. No InsightFace. No GUI."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
+import pytest
+
+from semblon.cluster import ClusterError
+from semblon.ingest import discover_stills, ingest
+from semblon.process import ProcessError, process_folder
+from semblon.progress import (
+    KIND_COMPLETED,
+    KIND_FAILED,
+    KIND_PROGRESS,
+    KIND_STARTED,
+    STAGE_CLUSTER,
+    STAGE_DISCOVER,
+    STAGE_EXPORT,
+    STAGE_INGEST,
+    STAGE_PROCESS,
+    ProgressEvent,
+    emit,
+    make_event,
+    ratio_percent,
+)
+
+
+def _pairs(events: list[ProgressEvent]) -> list[tuple[str, str]]:
+    return [e.as_tuple() for e in events]
+
+
+def test_ratio_percent_is_none_without_denominator():
+    assert ratio_percent(None, None) is None
+    assert ratio_percent(3, None) is None
+    assert ratio_percent(3, 0) is None
+    assert ratio_percent(1, 4) == 25.0
+
+
+def test_emit_none_and_broken_consumer_do_not_raise():
+    emit(None, make_event(STAGE_PROCESS, KIND_STARTED))
+
+    def boom(_event):
+        raise RuntimeError("ui died")
+
+    emit(boom, make_event(STAGE_PROCESS, KIND_STARTED))
+
+
+def test_process_without_on_event_matches_today(tmp_path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    store = tmp_path / "store.sqlite"
+    out = tmp_path / "review.html"
+    lines: list[str] = []
+
+    with (
+        patch(
+            "semblon.process.ingest",
+            return_value={
+                "run_id": "RUN-ABC",
+                "new_media": 2,
+                "faces": 3,
+                "ok": 3,
+                "skipped_seen": 0,
+                "files": 2,
+            },
+        ) as ing,
+        patch(
+            "semblon.process.cluster_run",
+            return_value={"clusters": 1, "clustered": 3, "unassigned": 0, "cluster_s": 0.01},
+        ),
+        patch(
+            "semblon.process.export_review",
+            return_value={"run_id": "RUN-ABC", "out": str(out), "clusters": 1, "faces": 3},
+        ),
+        patch("semblon.process._try_open", return_value=False),
+    ):
+        rec = process_folder(
+            folder,
+            store=store,
+            out=out,
+            open_review=False,
+            progress=lines.append,
+        )
+
+    assert rec["run_id"] == "RUN-ABC"
+    assert rec["out"] == str(out)
+    assert ing.call_args.kwargs.get("on_event") is None
+    assert any("Ingesting" in line for line in lines)
+    assert any("Review ready" in line for line in lines)
+
+
+def test_process_events_stage_order(tmp_path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    (folder / "a.jpg").write_bytes(b"aaaa")
+    (folder / "b.jpg").write_bytes(b"bbbb")
+    store = tmp_path / "store.sqlite"
+    out = tmp_path / "review.html"
+    events: list[ProgressEvent] = []
+
+    def fake_ingest(folder_arg, store_arg, **kwargs):
+        on_event = kwargs.get("on_event")
+        from semblon.progress import emit as _emit, make_event as _ev
+
+        files = discover_stills(folder_arg)
+        _emit(on_event, _ev(STAGE_DISCOVER, KIND_STARTED, path=str(folder_arg)))
+        _emit(
+            on_event,
+            _ev(STAGE_DISCOVER, KIND_COMPLETED, current=len(files), total=len(files), files_total=len(files)),
+        )
+        _emit(
+            on_event,
+            _ev(STAGE_INGEST, KIND_STARTED, current=0, total=len(files), files_total=len(files), faces_found=0),
+        )
+        faces = 0
+        for i, path in enumerate(files, start=1):
+            faces += 1 if path.name == "a.jpg" else 2
+            _emit(
+                on_event,
+                _ev(
+                    STAGE_INGEST,
+                    KIND_PROGRESS,
+                    current=i,
+                    total=len(files),
+                    files_processed=i,
+                    files_total=len(files),
+                    faces_found=faces,
+                    path=str(path),
+                    outcome="processed",
+                ),
+            )
+        _emit(
+            on_event,
+            _ev(
+                STAGE_INGEST,
+                KIND_COMPLETED,
+                current=len(files),
+                total=len(files),
+                files_processed=len(files),
+                files_total=len(files),
+                faces_found=faces,
+            ),
+        )
+        return {
+            "run_id": "RUN-SMOKE",
+            "new_media": 2,
+            "faces": faces,
+            "ok": faces,
+            "skipped_seen": 0,
+            "files": len(files),
+        }
+
+    with (
+        patch("semblon.process.ingest", side_effect=fake_ingest),
+        patch(
+            "semblon.process.cluster_run",
+            return_value={"clusters": 1, "clustered": 3, "unassigned": 0, "cluster_s": 0.02},
+        ),
+        patch(
+            "semblon.process.export_review",
+            return_value={"run_id": "RUN-SMOKE", "out": str(out), "clusters": 1, "faces": 3},
+        ),
+        patch("semblon.process._try_open", return_value=False),
+    ):
+        rec = process_folder(
+            folder,
+            store=store,
+            out=out,
+            open_review=False,
+            progress=lambda *_: None,
+            on_event=events.append,
+        )
+
+    assert rec["run_id"] == "RUN-SMOKE"
+    pairs = _pairs(events)
+    assert pairs[0] == (STAGE_PROCESS, KIND_STARTED)
+    assert (STAGE_DISCOVER, KIND_STARTED) in pairs
+    assert (STAGE_DISCOVER, KIND_COMPLETED) in pairs
+    assert (STAGE_INGEST, KIND_STARTED) in pairs
+    assert (STAGE_INGEST, KIND_PROGRESS) in pairs
+    assert (STAGE_INGEST, KIND_COMPLETED) in pairs
+    assert (STAGE_CLUSTER, KIND_STARTED) in pairs
+    assert (STAGE_CLUSTER, KIND_COMPLETED) in pairs
+    assert (STAGE_EXPORT, KIND_STARTED) in pairs
+    assert (STAGE_EXPORT, KIND_COMPLETED) in pairs
+    assert pairs[-1] == (STAGE_PROCESS, KIND_COMPLETED)
+    compact = []
+    for p in pairs:
+        if p == (STAGE_INGEST, KIND_PROGRESS) and compact and compact[-1] == p:
+            continue
+        compact.append(p)
+    assert compact == [
+        (STAGE_PROCESS, KIND_STARTED),
+        (STAGE_DISCOVER, KIND_STARTED),
+        (STAGE_DISCOVER, KIND_COMPLETED),
+        (STAGE_INGEST, KIND_STARTED),
+        (STAGE_INGEST, KIND_PROGRESS),
+        (STAGE_INGEST, KIND_COMPLETED),
+        (STAGE_CLUSTER, KIND_STARTED),
+        (STAGE_CLUSTER, KIND_COMPLETED),
+        (STAGE_EXPORT, KIND_STARTED),
+        (STAGE_EXPORT, KIND_COMPLETED),
+        (STAGE_PROCESS, KIND_COMPLETED),
+    ]
+
+
+def test_discover_and_ingest_counters_are_truthful(tmp_path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    (folder / "a.jpg").write_bytes(b"aaaa")
+    (folder / "b.jpg").write_bytes(b"bbbb")
+    (folder / "notes.txt").write_text("ignore")
+    found = discover_stills(folder)
+    assert [p.name for p in found] == ["a.jpg", "b.jpg"]
+
+    events: list[ProgressEvent] = []
+    vec = np.zeros(4, dtype=np.float32)
+
+    def faces_for(path):
+        n = 1 if path.name == "a.jpg" else 2
+        return [
+            {
+                "bbox": (0.0, 0.0, 100.0, 100.0),
+                "det_score": 0.9,
+                "face_w": 100,
+                "face_h": 100,
+                "dim": 4,
+                "embedding": vec,
+            }
+            for _ in range(n)
+        ]
+
+    fake_if = type("m", (), {"__version__": "0.test"})()
+    fake_ort = type("m", (), {"__version__": "0.test"})()
+
+    with (
+        patch("semblon.ingest.load_app", return_value=object()),
+        patch("semblon.ingest.discover_weight_hashes", return_value={}),
+        patch("semblon.ingest.embed_image", side_effect=lambda app, path: faces_for(path)),
+        patch("semblon.ingest.cv2.imread", return_value=np.zeros((20, 20, 3), dtype=np.uint8)),
+        patch.dict("sys.modules", {"insightface": fake_if, "onnxruntime": fake_ort}),
+    ):
+        rec = ingest(folder, tmp_path / "store.sqlite", on_event=events.append)
+
+    assert rec["files"] == 2
+    assert rec["faces"] == 3
+    assert rec["new_media"] == 2
+    discover_done = [e for e in events if e.stage == STAGE_DISCOVER and e.kind == KIND_COMPLETED]
+    assert len(discover_done) == 1
+    assert discover_done[0].files_total == 2
+    assert discover_done[0].total == 2
+    ingest_prog = [e for e in events if e.stage == STAGE_INGEST and e.kind == KIND_PROGRESS]
+    assert [e.current for e in ingest_prog] == [1, 2]
+    assert ingest_prog[-1].total == 2
+    assert ingest_prog[-1].percent == 100.0
+    assert ingest_prog[-1].faces_found == 3
+    assert ingest_prog[0].path.endswith("a.jpg")
+    ingest_done = [e for e in events if e.stage == STAGE_INGEST and e.kind == KIND_COMPLETED][0]
+    assert ingest_done.files_processed == 2
+    assert ingest_done.files_total == 2
+    assert ingest_done.faces_found == 3
+
+
+def test_process_failed_is_emitted(tmp_path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    events: list[ProgressEvent] = []
+
+    with (
+        patch(
+            "semblon.process.ingest",
+            return_value={"run_id": "RUN-FAIL", "faces": 0, "files": 0, "ok": 0, "skipped_seen": 0},
+        ),
+        patch("semblon.process.cluster_run", side_effect=ClusterError("no ok faces")),
+    ):
+        with pytest.raises(ProcessError, match="no ok faces"):
+            process_folder(
+                folder,
+                store=tmp_path / "s.sqlite",
+                out=tmp_path / "r.html",
+                open_review=False,
+                progress=lambda *_: None,
+                on_event=events.append,
+            )
+
+    pairs = _pairs(events)
+    assert pairs[0] == (STAGE_PROCESS, KIND_STARTED)
+    assert (STAGE_CLUSTER, KIND_STARTED) in pairs
+    assert pairs[-1] == (STAGE_PROCESS, KIND_FAILED)
+    assert events[-1].error == "no ok faces"
+    assert (STAGE_PROCESS, KIND_COMPLETED) not in pairs
+
+
+def test_missing_folder_emits_failed_without_started(tmp_path):
+    events: list[ProgressEvent] = []
+    with pytest.raises(ProcessError, match="folder not found"):
+        process_folder(
+            tmp_path / "nope",
+            open_review=False,
+            progress=lambda *_: None,
+            on_event=events.append,
+        )
+    assert _pairs(events) == [(STAGE_PROCESS, KIND_FAILED)]
+    assert events[0].error is not None
