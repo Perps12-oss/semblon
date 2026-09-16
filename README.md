@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: S6 visual memory (1.2) on `grok/S6`.** FACE-005 inbox is closed. FACE-004 identify ships. Time/place/together do not change identity. Do not retune clustering. Do not re-ingest the frozen dump.
+**Current: S6 on `main`.** FACE-002 confirmatory on the owner dump is harness-measurable (`docs/FACE-002-CONFIRMATORY.md`); the store is local, not in git. Do not retune clustering. Do not re-ingest the frozen dump.
 
 `cluster → review → person → name`. Never `cluster = person`.
 
