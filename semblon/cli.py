@@ -1,10 +1,11 @@
 """Semblon CLI. lab + ingest + cluster + export + review + name/merge/split + identify + inbox + stats + report + memory.
 
-Observatory is not a dump gate. cluster → review → person → name.
+Observatory is not a dump gate. cluster -> review -> person -> name.
 FACE-002: lab eval. Precision only on frozen confirmatory sets.
 FACE-004: identify vs persons, never clusters. Unknown is valid.
 FACE-005: incremental ingest + inbox. No watcher.
 S6: memory history / together / events. Time/place are not identity.
+process: happy-path ingest -> cluster -> export review.html.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     prof.add_argument("--image", required=True, type=Path)
     prof.add_argument("--out", type=Path, default=Path("docs/runtime.md"))
 
-    obs = lab_sub.add_parser("observatory", help="measurement spine — not a development gate")
+    obs = lab_sub.add_parser("observatory", help="measurement spine - not a development gate")
     obs_sub = obs.add_subparsers(dest="obscmd", required=True)
 
     def _obs_io(sp):
@@ -86,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     ev_f.add_argument("--store", required=True, type=Path)
     ev_f.add_argument("--eval-set", required=True)
 
-    ev_m = ev_sub.add_parser("mine", help="remine discovery tail — never confirmatory")
+    ev_m = ev_sub.add_parser("mine", help="remine discovery tail - never confirmatory")
     ev_m.add_argument("--store", required=True, type=Path)
     ev_m.add_argument("--run", required=True)
     ev_m.add_argument("--eval-set", required=True)
@@ -105,13 +106,41 @@ def main(argv: list[str] | None = None) -> int:
     )
     ev_s.add_argument("--threshold", type=float, default=None)
 
-    ing = sub.add_parser("ingest", help="0.2/FACE-005 folder stills → store (incremental by default)")
+    ing = sub.add_parser("ingest", help="0.2/FACE-005 folder stills -> store (incremental by default)")
     ing.add_argument("folder", type=Path)
     ing.add_argument("--store", required=True, type=Path)
     ing.add_argument(
         "--reprocess",
         action="store_true",
         help="re-embed hashes already in the store (default skips them)",
+    )
+
+    proc = sub.add_parser(
+        "process",
+        help="happy path: ingest -> cluster -> review.html (owns run_id for you)",
+    )
+    proc.add_argument("folder", type=Path)
+    proc.add_argument(
+        "--store",
+        default=None,
+        type=Path,
+        help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
+    )
+    proc.add_argument(
+        "--out",
+        default=None,
+        type=Path,
+        help="review.html path (default: beside the store)",
+    )
+    proc.add_argument(
+        "--reprocess",
+        action="store_true",
+        help="re-embed hashes already in the store (default skips them)",
+    )
+    proc.add_argument(
+        "--no-open",
+        action="store_true",
+        help="do not open review.html automatically",
     )
 
     clu = sub.add_parser("cluster", help="0.3 DBSCAN on ok faces for a run")
@@ -129,10 +158,10 @@ def main(argv: list[str] | None = None) -> int:
         "--strong-min-intra",
         type=float,
         default=None,
-        help="min_intra ≥ this → STRONG (default 0.50)",
+        help="min_intra >= this -> STRONG (default 0.50)",
     )
 
-    nam = sub.add_parser("name", help="0.4/FACE-005 name a cluster or unassigned face → person")
+    nam = sub.add_parser("name", help="0.4/FACE-005 name a cluster or unassigned face -> person")
     nam.add_argument("--cluster", default=None)
     nam.add_argument("--face", default=None, help="unassigned inbox face (not a clustered face)")
     nam.add_argument("--as", dest="display_name", required=True, help="display name")
@@ -178,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
 
     mem = sub.add_parser("memory", help="S6 visual memory (when/where/with whom); not identity")
     mem_sub = mem.add_subparsers(dest="memcmd", required=True)
-    mh = mem_sub.add_parser("history", help="person × time/place")
+    mh = mem_sub.add_parser("history", help="person x time/place")
     mh.add_argument("--person", required=True, help="person_id or display_name")
     mh.add_argument("--store", required=True, type=Path)
     mh.add_argument("--run", default=None)
@@ -247,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         print(json.dumps(rec, indent=2, default=str))
         if args.obscmd == "enter" and args.promote and rec.get("verdict") == "regression":
-            print("unexplained regression — not mature", file=sys.stderr)
+            print("unexplained regression - not mature", file=sys.stderr)
             return 3
         return 0
 
@@ -316,6 +345,25 @@ def main(argv: list[str] | None = None) -> int:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "process":
+        from semblon.process import ProcessError, process_folder
+
+        try:
+            process_folder(
+                args.folder,
+                store=args.store,
+                out=args.out,
+                reprocess=args.reprocess,
+                open_review=not args.no_open,
+            )
+        except ProcessError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        except FileNotFoundError as e:
+            print(str(e), file=sys.stderr)
+            return 2
         return 0
 
     if args.cmd == "cluster":
