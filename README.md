@@ -10,7 +10,35 @@ Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
 S1 golden (repo record): `docs/S1-GOLDEN.md` — run `20260913T153515Z-1e915abe`, Windows ARM64, 90/85/78, 10/63/15, false merge 0, params frozen.
 
-## Install
+## First use (simple)
+
+One-time setup in this folder (PowerShell or Command Prompt):
+
+```text
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -U pip
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m pip install -e .
+```
+
+Then process a photo folder (no need to activate the venv, no need to copy a run id):
+
+```text
+semblon.cmd process "D:\photos\dump"
+```
+
+That will:
+
+1. Ingest the folder into `%LOCALAPPDATA%\Semblon\store.sqlite` (or pass `--store`)
+2. Cluster with the frozen S1 settings
+3. Write `review.html` beside the store
+4. Open the review page in your browser
+
+Optional flags: `--store`, `--out`, `--no-open`, `--reprocess`.
+
+`buffalo_l` downloads on first run into `%USERPROFILE%\.insightface\models\buffalo_l` (internal evaluation only).
+
+## Install (power users)
 
 Python **3.11+**, Windows x64 or ARM64 **native** (not x64 Python on ARM64).
 
@@ -22,12 +50,17 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-`buffalo_l` downloads on first `lab profile` / `ingest` into `%USERPROFILE%\.insightface\models\buffalo_l` (internal evaluation only).
+Then use `semblon` directly (after activate), or keep using `semblon.cmd`.
 
 ## Commands
 
+Power-user surface (still supported). Happy path above is `process`.
+
 ```text
 semblon lab profile --image "D:\photos\face.jpg" --out "docs\runtime.md"
+
+semblon process "D:\photos\dump"
+semblon process "D:\photos\dump" --store "D:\semblon\store.sqlite" --out "D:\semblon\review.html"
 
 semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite"
 semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite" --reprocess
