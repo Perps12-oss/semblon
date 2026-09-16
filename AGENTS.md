@@ -16,7 +16,11 @@ Unknown is valid. False merge > false split. Wrong identity > unknown.
 
 S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do not retune clustering. Do not re-ingest that dump. Do not start architecture expansion.
 
-Authorized queue: S6 visual memory on `grok/S6`. FACE-005 closed. Time/place/together are not identity. FACE-004 `identify` vs persons. Do not print precision without `--eval-set confirmatory`.
+Authorized queue: FACE-002 confirmatory validation / local labels (next validation gap). S6 is on `main`. FACE-005 closed. Do not print precision without `--eval-set confirmatory`.
+
+ARM64 OpenCV **binary** is proven (`cv2.cp314-win_arm64.pyd`, PE `0xaa64`). Semblon still runs the existing x64 `cv2` (`0x8664`) under pythoncore-3.14-64. Do not swap OpenCV into the S1 environment unless explicitly decided. x64 native FACE-000 is unverified (no x64 PC). Do not use emulation/VM as native x64 evidence.
+
+Deferred after S1/FACE gates: bounded concurrent ingest workers, provider-aware CPU/GPU EP selection, recording actual provider/device/worker in run evidence.
 
 ## Forbidden unless the current FACE id explicitly requires it
 

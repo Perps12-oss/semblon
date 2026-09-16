@@ -3,8 +3,10 @@
 One section per OS / process-arch / execution. x64 Python on ARM64 Windows is emulated, never native.
 
 Required rows:
-1. Windows x64 native — needs an x64 host (not x64-on-ARM64). **Not this host.**
-2. Windows ARM64 native, or native failed + emulated row with the failure in notes. **Native failed; emulated row below.**
+1. Windows x64 native — needs a genuine x64 Windows PC (not x64-on-ARM64, not a VM used as native evidence). **Unverified. Environment-dependent gap. Not an ARM64 implementation failure.**
+2. Windows ARM64 native OpenCV **binary** — **closed 2026-09-16** (`cv2.cp314-win_arm64.pyd`, PE `0xaa64`). Semblon has **not** been switched onto that build. S1 correctness environment is unchanged.
+
+Do not treat “ARM64 capable host” as native OpenCV. The binding itself must be `ARM64` (`0xaa64`).
 
 ## windows x64 emulated
 
@@ -49,24 +51,39 @@ Required rows:
 }
 ```
 
-## windows arm64 native-failed
+## windows arm64 opencv binary (proven; not consumed by Semblon)
 
 ```json
 {
-  "recorded_at": "2026-09-15T16:40:00+00:00",
+  "recorded_at": "2026-09-16",
   "hostname": "SKY",
   "os": "windows",
   "os_version": "10.0.26200",
   "arch": "arm64",
-  "execution": "native-failed",
+  "execution": "native",
+  "claim": "OpenCV Python binding binary is ARM64. Semblon identity path was not re-run on this build.",
   "python": "3.14.7",
   "python_path": "C:\\Users\\S8633\\AppData\\Local\\Programs\\Python\\Python314-arm64\\python.exe",
   "python_arch": "ARM64",
-  "ort_package": "onnxruntime",
-  "ort_wheel": "onnxruntime-1.30.0-cp314-cp314-win_arm64.whl (available, not fully installed)",
-  "opencv": "no cp314 win_arm64 wheel; 5.0.0.93 and 4.14.0.94 are sdists; CMake/VS missing so the sdist cannot build",
-  "one_image": null,
-  "notes": "ARM64 CPython is installed. Identity path did not run native: OpenCV has no wheel and cannot be built here. Do not label this host native until opencv+insightface import on this interpreter."
+  "python_version_tag": "MSC v.1944 64 bit (ARM64)",
+  "opencv_source": "C:\\Users\\S8633\\.arm64-build\\opencv (OpenCV 5.0.0)",
+  "opencv_pyd": "C:\\Users\\S8633\\.arm64-build\\build\\lib\\python3\\Release\\cv2.cp314-win_arm64.pyd",
+  "opencv_pyd_pe_machine": "0xaa64",
+  "opencv_pyd_bytes": 5408768,
+  "opencv_dnn": "disabled (MLAS linker failures); acceptable because ONNX Runtime does inference",
+  "numpy": "2.5.3 native ARM64",
+  "vs": "Visual Studio 2026 Community, ARM64 MSVC",
+  "cmake_python": "explicit ARM64 python.exe / python314.lib / include (x64 Python caused LNK4272)",
+  "semblon_consumes_this_pyd": false,
+  "arm64_python_import_cv2": "ModuleNotFoundError: no cv2 in Python314-arm64 site-packages (checked 2026-09-16; pyd not installed)",
+  "current_semblon_cv2": {
+    "python": "C:\\Users\\S8633\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+    "process_arch": "x64",
+    "platform_machine": "ARM64",
+    "cv2_version": "5.0.0",
+    "cv2_pyd_pe_machine": "0x8664"
+  },
+  "notes": "Binary proof of native ARM64 OpenCV only. Do not treat Semblon as native-OpenCV until this pyd is explicitly adopted. Do not change the S1 correctness environment to consume it unless decided separately."
 }
 ```
 
@@ -76,7 +93,7 @@ Required rows:
 {
   "arch": "x64",
   "execution": "native",
-  "status": "not_this_host",
-  "notes": "This OS is ARM64 Windows. x64-on-ARM64 is emulated (see windows x64 emulated). Fill this row on a real x64 machine with x64 Python + x64 ONNX Runtime."
+  "status": "unverified",
+  "notes": "No genuine x64 Windows PC in this environment. Do not use x64-on-ARM64 or a VM as native x64 evidence. This is an environment-dependent UNVERIFIED gap, not a failure of the ARM64 OpenCV work."
 }
 ```
