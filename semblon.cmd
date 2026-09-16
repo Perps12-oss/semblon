@@ -2,17 +2,26 @@
 setlocal
 rem Repo-root launcher: double-click = folder picker + process; args = power-user CLI.
 set "ROOT=%~dp0"
-set "VENV_PY=%ROOT%.venv\Scripts\python.exe"
-set "VENV_SEMBLON=%ROOT%.venv\Scripts\semblon.exe"
-set "INTERACTIVE=%ROOT%tools\semblon-interactive.ps1"
+if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+set "VENV_PY=%ROOT%\.venv\Scripts\python.exe"
+set "VENV_SEMBLON=%ROOT%\.venv\Scripts\semblon.exe"
+set "INTERACTIVE=%ROOT%\tools\semblon-interactive.ps1"
 
 if "%~1"=="" (
   if not exist "%INTERACTIVE%" (
     echo Semblon: missing %INTERACTIVE%
+    echo.
+    pause
     exit /b 1
   )
   powershell -NoProfile -ExecutionPolicy Bypass -Sta -File "%INTERACTIVE%" -Root "%ROOT%"
-  exit /b %ERRORLEVEL%
+  if errorlevel 1 (
+    echo.
+    echo Semblon launcher failed. See messages above.
+    pause
+    exit /b 1
+  )
+  exit /b 0
 )
 
 if exist "%VENV_SEMBLON%" (
@@ -25,8 +34,8 @@ if exist "%VENV_PY%" (
   exit /b %ERRORLEVEL%
 )
 
-set "ALT_SEMBLON=%ROOT%semblon\.venv\Scripts\semblon.exe"
-set "ALT_PY=%ROOT%semblon\.venv\Scripts\python.exe"
+set "ALT_SEMBLON=%ROOT%\semblon\.venv\Scripts\semblon.exe"
+set "ALT_PY=%ROOT%\semblon\.venv\Scripts\python.exe"
 if exist "%ALT_SEMBLON%" (
   "%ALT_SEMBLON%" %*
   exit /b %ERRORLEVEL%

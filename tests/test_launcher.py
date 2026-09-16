@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from semblon.launcher import interactive_script_path, is_interactive_launch
+from semblon.launcher import interactive_script_path, is_interactive_launch, normalize_repo_root
 
 
 def test_is_interactive_launch_empty_argv():
@@ -15,6 +15,10 @@ def test_is_interactive_launch_empty_argv():
 def test_is_interactive_launch_forwards_cli():
     assert is_interactive_launch(["process", r"D:\photos"]) is False
     assert is_interactive_launch(["--help"]) is False
+
+
+def test_normalize_repo_root_strips_trailing_backslash():
+    assert normalize_repo_root("C:\\repo\\SEMBRON\\") == Path("C:/repo/SEMBRON")
 
 
 def test_interactive_script_path():
@@ -30,3 +34,4 @@ def test_interactive_script_exists_in_repo():
     text = script.read_text(encoding="utf-8")
     assert "FolderBrowserDialog" in text
     assert "process" in text
+    assert "UseDescriptionForTitle" not in text

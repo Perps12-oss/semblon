@@ -10,10 +10,16 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = $Root.TrimEnd('\', '/')
 
+trap {
+    Write-Host ""
+    Write-Host "Semblon launcher error: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
 function Invoke-SemblonProcess {
     param([string]$PhotoFolder)
-    $args = @("process", $PhotoFolder)
-    if ($NoOpen) { $args += "--no-open" }
+    $cliArgs = @("process", $PhotoFolder)
+    if ($NoOpen) { $cliArgs += "--no-open" }
 
     $candidates = @(
         @{ Exe = Join-Path $Root ".venv\Scripts\semblon.exe"; Py = Join-Path $Root ".venv\Scripts\python.exe" },
@@ -21,11 +27,11 @@ function Invoke-SemblonProcess {
     )
     foreach ($c in $candidates) {
         if (Test-Path -LiteralPath $c.Exe) {
-            & $c.Exe @args
+            & $c.Exe @cliArgs
             exit $LASTEXITCODE
         }
         if (Test-Path -LiteralPath $c.Py) {
-            & $c.Py -m semblon @args
+            & $c.Py -m semblon @cliArgs
             exit $LASTEXITCODE
         }
     }
@@ -47,7 +53,6 @@ Add-Type -AssemblyName System.Drawing
 $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
 $dialog.Description = "Choose a folder of photos for Semblon to process"
 $dialog.ShowNewFolderButton = $false
-$dialog.UseDescriptionForTitle = $true
 
 $result = $dialog.ShowDialog()
 if ($result -ne [System.Windows.Forms.DialogResult]::OK) {

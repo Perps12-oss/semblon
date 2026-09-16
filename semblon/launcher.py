@@ -12,3 +12,8 @@ def is_interactive_launch(argv: list[str] | None) -> bool:
 
 def interactive_script_path(repo_root: Path | str) -> Path:
     return Path(repo_root).resolve() / "tools" / "semblon-interactive.ps1"
+
+
+def normalize_repo_root(path: Path | str) -> Path:
+    """Strip trailing slashes (batch %~dp0 must not be passed as ...\\" to PowerShell)."""
+    return Path(str(path).rstrip("\\/"))
