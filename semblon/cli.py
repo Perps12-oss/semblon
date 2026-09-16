@@ -6,6 +6,7 @@ FACE-004: identify vs persons, never clusters. Unknown is valid.
 FACE-005: incremental ingest + inbox. No watcher.
 S6: memory history / together / events. Time/place are not identity.
 process: happy-path ingest -> cluster -> export review.html.
+review-ui: S8 Interactive Review slice (tkinter over review APIs).
 """
 
 from __future__ import annotations
@@ -235,6 +236,22 @@ def main(argv: list[str] | None = None) -> int:
     r_n.add_argument("--cluster", default=None)
     r_n.add_argument("--face", default=None)
     r_n.add_argument("--text", required=True)
+
+    rui = sub.add_parser(
+        "review-ui",
+        help="S8 Interactive Review slice (tkinter; Name/Merge/Split/Ignore over review APIs)",
+    )
+    rui.add_argument(
+        "--store",
+        default=None,
+        type=Path,
+        help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
+    )
+    rui.add_argument(
+        "--run",
+        default=None,
+        help="run id (default: latest run on the store)",
+    )
 
     args = p.parse_args(argv)
 
@@ -520,6 +537,16 @@ def main(argv: list[str] | None = None) -> int:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "review-ui":
+        from semblon.review_ui import ReviewUiError, run_review_ui
+
+        try:
+            run_review_ui(store=args.store, run_id=args.run)
+        except ReviewUiError as e:
+            print(str(e), file=sys.stderr)
+            return 2
         return 0
 
     if args.cmd == "stats":

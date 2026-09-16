@@ -8,7 +8,7 @@ CONTRACTS.md is V1.1-corrected. Do not invent schema columns.
 Architecture may anticipate the future. Implementation must earn the future.
 Do not implement MediaPipe, CLIP, hands, pose, objects, semantic clustering, video, live, public lookup, ACC, or a vector database unless the current FACE id explicitly requires it.
 
-FACE-002 → FACE-003 → FACE-004 → FACE-005 validation recorded (`docs/FACE-GATES.md`). eps=0.40 frozen. 10k not run. Incremental/inbox 1.1 on main. No workers/EP/GPU. Cluster is not a person. Identify vs named persons only.
+Authorized: S8 Interactive Review slice (`review-ui`). FACE gates recorded. eps=0.40 frozen. S7 video deferred. No search dashboard / inbox UI / identify UI in this slice. Cluster is not a person until Name. Identify vs named persons only.
 
 FaceKit / InsightFace is the identity engine. No cross-pack compare. pack_id includes weight hashes.
 Do not add libraries from the plan §20 parked list.

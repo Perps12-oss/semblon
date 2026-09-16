@@ -16,7 +16,7 @@ Unknown is valid. False merge > false split. Wrong identity > unknown.
 
 S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do not retune clustering. Do not re-ingest that dump. Do not start architecture expansion.
 
-FACE-002 → FACE-003 → FACE-004 → FACE-005 **validation recorded** (`docs/FACE-GATES.md`). Frozen params: eps=0.40. Do not retune. Do not re-run FACE-005 scale. 10k is not evidenced. Incremental ingest + inbox 1.1 already on `main`.
+Authorized queue: **S8 Interactive Review slice** (`semblon review-ui`) — Name/Merge/Split/Ignore via existing review APIs. S7 video deferred. Do not build search/inbox/identify UI, FastAPI, or CustomTkinter in this slice. STRONG ≠ person until Name.
 
 ARM64 OpenCV **binary** is proven (`cv2.cp314-win_arm64.pyd`, PE `0xaa64`). Semblon still runs the existing x64 `cv2` (`0x8664`) under pythoncore-3.14-64. Do not swap OpenCV into the S1 environment unless explicitly decided. x64 native FACE-000 is unverified (no x64 PC). Do not use emulation/VM as native x64 evidence.
 
