@@ -4,7 +4,7 @@ Local face intelligence. Working name `SEMBLON` (`SEM-blon`).
 
 Personal, local-first Windows CLI. One user. No cloud. Files stay put.
 
-**Current: FACE-005 regression/scale recorded (`docs/FACE-005-REGRESSION.md`).** Frozen params guarded in tests. 90-file dump is the live scale; 10k is not evidenced. eps=0.40 frozen.
+**Current:** FACE-002 → FACE-003 → FACE-004 → FACE-005 **validation recorded** (`docs/FACE-GATES.md`). Incremental ingest + inbox 1.1 on `main`. Live scale: 90 stills; confirmatory 22 pairs (FAR 0/11, FRR 1/11 at frozen 0.60). No 10k claim. eps=0.40 frozen. Cluster ≠ person. Identify vs named persons only.
 
 `cluster → review → person → name`. Never `cluster = person`.
 

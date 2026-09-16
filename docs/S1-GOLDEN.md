@@ -10,3 +10,5 @@ False merge 0. False splits observed (accepted).
 
 Params frozen: `eps=0.40`, `min_samples=2`, metric `1-dot`, `STRONG_MIN_INTRA=0.50`.  
 Clusters are not people. Do not retune. Do not re-ingest this dump to “improve” clustering.
+
+This dump is the live **90-still** scale evidence. FACE-002→005: `docs/FACE-GATES.md`. No 10k claim.

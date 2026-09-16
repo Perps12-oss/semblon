@@ -52,3 +52,7 @@ Not implemented: folder watcher. Ingest-family commands that address a stored ru
 ## Metrics
 
 FAR/FRR on confirmatory sets only. Mined tail is discovery. Remine does not refresh confirmatory.
+
+Local dump confirmatory (`docs/FACE-002-CONFIRMATORY.md`): 22 pairs; FAR 0/11, FRR 1/11 at frozen threshold 0.60. That is harness-measurable on this dump, not a 10k or public-FRTE claim. Identify is 1:N vs named persons, never clusters. Cluster ≠ person. STRONG ≠ person until `name`. Pair labels ≠ cluster/person ground truth.
+
+Gate index: `docs/FACE-GATES.md`. Incremental ingest + inbox are implemented (1.1). Deferred: bounded concurrent ingest workers; CPU/GPU EP selection; provider/device/worker in run evidence.

@@ -36,6 +36,12 @@ A folder of stills can be ingested reproducibly; faces detected/embedded/grouped
 | v2 | USB webcam: detect → track → selective embed → identify vs persons → known/unknown (log; optional prompt to name; never force ID) |
 | later | RTSP, video files, explicit click-to-lookup, ACC as **client** of standalone Semblon, licensed pack if anyone else gets a copy |
 
+## Recorded validation (2026-09-16)
+
+Status only. Does **not** amend v1 in/out.
+
+FACE-002 → FACE-003 → FACE-004 → FACE-005 is recorded in `docs/FACE-GATES.md`. Live evidence: 90-still S1 dump; 22 confirmatory pairs; FAR 0/11, FRR 1/11 at frozen 0.60. “~10k first target” above is a design target, not a completed run. ARM64 OpenCV binary is proven (`0xaa64`) and not consumed by Semblon. x64 native FACE-000 is unverified (no x64 PC). Incremental ingest + inbox already exist (1.1).
+
 ## Loop (do not invert)
 
 `cluster → review → person → name`  
