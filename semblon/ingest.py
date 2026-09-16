@@ -24,6 +24,16 @@ from semblon.engine import (
     process_execution,
     _sha256_file,
 )
+from semblon.progress import (
+    KIND_COMPLETED,
+    KIND_PROGRESS,
+    KIND_STARTED,
+    STAGE_DISCOVER,
+    STAGE_INGEST,
+    ProgressCallback,
+    emit,
+    make_event,
+)
 from semblon.store import connect, init_db
 
 STILL_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -51,6 +61,14 @@ def _arch() -> str:
 
 def _execution() -> str:
     return process_execution()
+
+
+def discover_stills(folder: Path) -> list[Path]:
+    """Sorted still paths under folder. Same filter ingest has always used."""
+    folder = Path(folder)
+    return sorted(
+        p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() in STILL_EXT
+    )
 
 
 def media_skip_reason(
@@ -81,7 +99,13 @@ def media_skip_reason(
     return None, media_id
 
 
-def ingest(folder: Path, store: Path, *, reprocess: bool = False) -> dict:
+def ingest(
+    folder: Path,
+    store: Path,
+    *,
+    reprocess: bool = False,
+    on_event: ProgressCallback = None,
+) -> dict:
     folder = folder.resolve()
     if not folder.is_dir():
         raise FileNotFoundError(folder)
@@ -150,30 +174,88 @@ def ingest(folder: Path, store: Path, *, reprocess: bool = False) -> dict:
     )
     conn.commit()
 
-    files = sorted(
-        p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() in STILL_EXT
+    emit(on_event, make_event(STAGE_DISCOVER, KIND_STARTED, path=str(folder), run_id=run_id))
+    files = discover_stills(folder)
+    n_files = len(files)
+    emit(
+        on_event,
+        make_event(
+            STAGE_DISCOVER,
+            KIND_PROGRESS,
+            current=n_files,
+            total=n_files,
+            files_total=n_files,
+            run_id=run_id,
+        ),
     )
+    emit(
+        on_event,
+        make_event(
+            STAGE_DISCOVER,
+            KIND_COMPLETED,
+            current=n_files,
+            total=n_files,
+            files_total=n_files,
+            run_id=run_id,
+        ),
+    )
+    emit(
+        on_event,
+        make_event(
+            STAGE_INGEST,
+            KIND_STARTED,
+            current=0,
+            total=n_files,
+            files_processed=0,
+            files_total=n_files,
+            faces_found=0,
+            run_id=run_id,
+        ),
+    )
+
     n_media = n_skip_seen = n_skip_same = n_faces = n_ok = n_lq = n_rej = n_fail = 0
     t0 = time.perf_counter()
 
-    for path in files:
+    def tick(index: int, path: Path, outcome: str) -> None:
+        emit(
+            on_event,
+            make_event(
+                STAGE_INGEST,
+                KIND_PROGRESS,
+                current=index,
+                total=n_files,
+                files_processed=index,
+                files_total=n_files,
+                faces_found=n_faces,
+                path=str(path),
+                run_id=run_id,
+                outcome=outcome,
+                elapsed_s=time.perf_counter() - t0,
+            ),
+        )
+
+    for index, path in enumerate(files, start=1):
         try:
             digest = _sha256_file(path)
         except OSError:
             n_fail += 1
+            tick(index, path, "failed")
             continue
 
         reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
         if reason == "seen":
             n_skip_seen += 1
+            tick(index, path, "skipped_seen")
             continue
         if reason == "same_run":
             n_skip_same += 1
+            tick(index, path, "skipped_same_run")
             continue
         if media_id is None:
             img0 = cv2.imread(str(path))
             if img0 is None:
                 n_fail += 1
+                tick(index, path, "failed")
                 continue
             h, w = img0.shape[:2]
             media_id = uuid.uuid4().hex
@@ -204,6 +286,7 @@ def ingest(folder: Path, store: Path, *, reprocess: bool = False) -> dict:
         except Exception:
             n_fail += 1
             conn.commit()
+            tick(index, path, "failed")
             continue
 
         for f in faces:
@@ -234,6 +317,7 @@ def ingest(folder: Path, store: Path, *, reprocess: bool = False) -> dict:
             )
             n_faces += 1
         conn.commit()
+        tick(index, path, "processed")
 
     timings = {
         "model_load_s": load_s,
@@ -256,4 +340,27 @@ def ingest(folder: Path, store: Path, *, reprocess: bool = False) -> dict:
     )
     conn.commit()
     conn.close()
+    emit(
+        on_event,
+        make_event(
+            STAGE_INGEST,
+            KIND_COMPLETED,
+            current=n_files,
+            total=n_files,
+            files_processed=n_files,
+            files_total=n_files,
+            faces_found=n_faces,
+            run_id=run_id,
+            elapsed_s=timings["ingest_s"],
+            counts={
+                "new_media": n_media,
+                "skipped_seen": n_skip_seen,
+                "skipped_same_run": n_skip_same,
+                "ok": n_ok,
+                "low_quality": n_lq,
+                "rejected": n_rej,
+                "failed": n_fail,
+            },
+        ),
+    )
     return {"run_id": run_id, "pack_id": pid, **timings}
