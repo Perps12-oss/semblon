@@ -1,53 +1,199 @@
-# SEMBLON MATURITY BLUEPRINT — V1
+# SEMBLON — Plan (maturity blueprint V1.5)
 
-**Status:** North Star (capability). Not the implementation plan. Not the schema.  
-**Date:** 2026-09-12  
-**Working name:** Semblon (`SEM-blon`)  
-**Scope:** S0 → S9. Still images, temporal vision, evidence, privacy, extensions.
+**Status:** The one long-term plan. System structure + S0–S9 + how to absorb + how to measure.  
+**Not:** a schema, a ticket list, or a v1 rewrite.  
+**Date:** 2026-09-16 (V1.5 FACE-002→005 validation recorded)  
+**Working name:** Semblon (`SEM-blon`)
 
-This document answers *what Semblon is growing into*.  
-`docs/PRODUCT.md` answers *what v1 ships*.  
-`docs/CONTRACTS.md` answers *schema / CLI / runtime*.  
-`docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` answers *how each stage scavenges and absorbs capability without feature creep*.  
-`docs/SEMBLON_ENGINEERING_OBSERVATORY.md` answers *did this build get better or worse?*  
-FACE tickets answer *what to code next*.
+**Core docs only**
 
-Do not implement S5–S9 because this document exists.
+| File | Job |
+|---|---|
+| `docs/PRODUCT.md` | frozen v1 (what the user can do now) |
+| `docs/CONTRACTS.md` | schema / CLI / runtime |
+| **This file** | scoped long-term phased plan |
+| `docs/runtime.md` | FACE-000 machine record |
+| `docs/licenses.md` | licence record |
+| `docs/FACE-GATES.md` | FACE-002→005 validation index |
+
+`docs/ARCHITECTURE.md`, `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md`, and `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` are **pointers** here. Do not maintain a second plan in those files.
+
+FACE-002 → FACE-003 → FACE-004 → FACE-005 **validation is recorded** (`docs/FACE-GATES.md`). **S1 PASS — closed.** Do not retune `eps`. Do not re-run FACE-005 scale work. Do not invent a 10k claim.
+
+S5 incremental/inbox (1.1) and S6 memory (1.2) are already on `main`. Do not implement S7–S9, MediaPipe, CLIP, video, live, public lookup, ACC, or a vector database because this file is extensive.
 
 ---
 
 ## 0. How to read this
 
-| Document | Authority | Frozen? |
-|---|---|---|
-| `docs/PRODUCT.md` | v1 product (in / out / ship test) | Frozen 2026-09-12 |
-| `docs/CONTRACTS.md` | Schema, CLI, pack_id, metrics | Authoritative until a contract revision |
-| **This file** | Capability North Star | V1 freeze. Revisable only via §16 |
-| `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` | Discovery / value / absorb process | Companion V1. Does not remap S0–S9 |
-| `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` | Measurement spine | Not a gate. Promotion evidence only |
-| FACE tickets / build versions 0.x | Staging / engineering | Current: **0.3 on `main`**. Next code: dump-gate, then 0.4 |
-
-Three different clocks:
+Three clocks only:
 
 ```
 PRODUCT v1 ........ ship a local stills CLI with reviewed persons
-BUILD 0.1–1.0 ..... tickets under S0–S4
+BUILD 0.1–1.0 ..... FACE tickets under S0–S4
 MATURITY S0–S9 .... capability generations (this file)
-DISCOVERY ......... scavenging loop inside each stage (companion file)
-OBSERVATORY ....... measure vs golden / promotion (not a build gate)
 ```
 
-They must not be collapsed. FACE-004 is not “Semblon is mature.” S9 is not a v1 backlog.
+They must not be collapsed. FACE-004 is not “Semblon is mature.” S9 is not a v1 backlog. This plan does not redefine PRODUCT v1.
+
+Operating model (frozen 2026-09-12; do not reopen):
+
+```
+BUILD → SCAVENGE → MEASURE → KEEP/ADAPT/DEFER/REJECT → GOLDEN (if justified) → PROMOTE → NEXT STAGE
+```
+
+`review.html` is evidence, not an automatic kill. Observatory answers “did this stage get better?”, not “may we experiment today?” Do not remap stage names. Do not start a GUI because S8 exists on paper. Do not invent OBS / SIM / VISION ticket numbers.
+
+**Architecture may anticipate the future. Implementation must earn it.**
 
 ---
 
 ## 1. North Star
 
-Semblon is a **local visual-intelligence system** that develops from observing faces, to organising them, to learning from human review, to conservatively recognising people, to maintaining visual memory across time and context — while keeping **evidence, uncertainty, privacy and human control** at the centre.
+Semblon is a **local visual-intelligence system**. Generations:
 
-**Developmental rule:** every generation must leave Semblon *more capable*, not more complicated and not more impressive-looking.
+```
+observe faces → organise → measure → review as evidence → recognise
+  → remember time/place → see sequences → interrogate → extend
+```
 
-**Maturity is accumulated capability, not accumulated features.**
+System structure (destination, not backlog):
+
+```text
+SEMBLON
+│
+├── Source adapters — folder (now) · video / live (later) · future
+├── One decode / normalization path
+├── Observation engine
+│     ├── FaceKit — identity                          ← current
+│     ├── geometry (landmarks, hands, pose)           ← future
+│     ├── appearance / quality (colour, sharpness, …) ← future
+│     ├── object / region                             ← future
+│     └── semantic image representation               ← future
+├── Separate spaces: identity · geometry · appearance · semantic
+├── Space-specific comparison — never one global distance
+├── Explicit relationship queries — never silent identity fusion
+├── Human review → human meaning (person / gallery)
+├── Identification
+├── Later: video / live
+├── Later: public-information enrichment
+└── Last: ACC as a client
+```
+
+Implementation still earns the next box:
+
+```text
+folder → FaceKit → conservative clustering → review → persons → identification
+       → hardening → only then broader observation
+```
+
+**Developmental rule:** every generation must leave Semblon *more capable*, not more complicated and not more impressive-looking. Maturity is accumulated capability, not accumulated features.
+
+### 1.1 Current product remains narrow
+
+v1 is this slice only (`docs/PRODUCT.md`):
+
+```text
+folder stills → decode → FaceKit detect → filter → FaceKit embed
+  → compare() (same pack_id) → conservative cluster → review.html
+  → human review → named persons → gallery → 1:N identify → unknown
+```
+
+v1 does **not** require hands, pose, objects, scene understanding, CLIP, public web search, video, live camera, ACC, a vector database, cloud, semantic clustering, or composite identity scoring.
+
+### 1.2 Capability map
+
+Status is architectural. **Current roadmap** = already on FACE / 0.x. Do not turn this table into tickets.
+
+| Capability | Space | Role | Status |
+|---|---|---|---|
+| Face detection | identity | locate candidate faces | **Current** |
+| Face embedding | identity | identity representation | **Current** |
+| Face comparison | identity | identity similarity | **Current** |
+| Face clustering | identity | conservative grouping | **Current** |
+| Human review | human meaning | resolve clusters | **Current roadmap** |
+| Person gallery | identity / human meaning | named identities | **Current roadmap** |
+| 1:N identification | identity | identify against gallery | **Current roadmap** |
+| Face landmarks | geometry | facial structure | Future |
+| Hands | geometry | hand / keypoint observations | Future |
+| Pose | geometry | body / keypoint observations | Future |
+| Colour | appearance | image / region attribute | Future |
+| Sharpness / brightness | appearance / quality | evidence quality | Future |
+| Objects | object / semantic | object observations | Future |
+| Regions / segmentation | semantic / geometry | region observations | Future |
+| Semantic image representation | semantic | visual semantic similarity | Future |
+| Per-space similarity | space-specific | similarity queries | Future |
+| Relationship queries | cross-space, explicit only | discover relationships | Future |
+| Video | source | temporal observations | Later (S7a–b) |
+| Live | source | real-time observations | Later (S7c–d) |
+| Public information | enrichment | external context | Much later (S9) |
+| ACC | integration | external client | Last (S9) |
+
+After face-maturity work is genuinely closed, broader work still maps into S0–S9 — never an OBS / SIM clock:
+
+```text
+observation experiments → geometry → appearance / quality → semantic
+  → per-space similarity → explicit relationships
+  → video / live → public information → ACC
+```
+
+### 1.3 Candidate technology — names are not authorization
+
+| Capability | Candidate | Role |
+|---|---|---|
+| Identity | InsightFace / FaceKit | identity only |
+| Face / hand / pose geometry | MediaPipe Tasks | future geometry observer |
+| Image measurements | OpenCV / conventional CV | appearance / quality |
+| Semantic representation | CLIP or successor | semantic space |
+| Objects / regions | specialist models | future observers |
+| Vector retrieval | FAISS / Qdrant / Milvus / … if justified | infrastructure only |
+
+A name here does not authorize install. Selection must still pass accuracy, Windows x64 / ARM64 native (emulated labelled), code **and** model licence, footprint, CPU / memory, offline use, maintainability, and CONTRACTS. Attractive and unlicensed is rejected.
+
+| Thing | Is | Is not |
+|---|---|---|
+| FaceKit / InsightFace `buffalo_l` | identity engine (internal eval) | replaceable by CLIP / MediaPipe / dlib |
+| MediaPipe Tasks | future geometry enrichment of an *accepted* FaceKit face | second identity detector |
+| CLIP or successor | future semantic representation | landmark detector; identity; person clusterer |
+| Vector DB | optional future retrieval | observation or intelligence |
+| dlib / `face_recognition` | donor comparison | selected identity architecture |
+| FastAPI / SearXNG / network fallbacks | later / isolated / off by default | current core |
+| Whole-image semantic vector | semantic space if ever authorized | identity embedding |
+
+If MediaPipe is eventually used: keep provenance to the FaceKit observation; do not replace the identity embedding; do not silently change clustering; a MediaPipe face that FaceKit rejected is not an identity observation.
+
+### 1.4 Separate spaces
+
+```text
+                 OBSERVATIONS
+                      │
+       ┌──────────────┼──────────────┐
+       ↓              ↓              ↓
+   identity        geometry       appearance  (+ semantic)
+       │              │              │
+       ↓              ↓              ↓
+ identity sim     geometry sim    appearance sim
+       └──────────────┴──────────────┘
+                      │
+                 explicit query → relationships
+```
+
+Each space has its own representation, provenance, comparison, thresholds, and failure modes. Today's `observations` row is a source/frame slot, not a typed `{kind, space, payload}` schema. Do not add those columns to satisfy this diagram.
+
+A future `related --spaces geometry,appearance` is **not** `identity = weighted(identity + geometry + appearance)`.
+
+### 1.5 Identity firewall
+
+Only FaceKit embeddings under a `pack_id` may affect identity clustering, thresholds, DBSCAN, person assignment, gallery assignment, or 1:N identification.
+
+Must **not** silently influence identity: landmarks, hands, pose, colour, sharpness, brightness, objects, scene similarity, CLIP / semantic vectors, composite feature vectors.
+
+1. No composite similarity as a new identity threshold.
+2. Do not glue identity false splits with other spaces.
+3. Other spaces may be shown in review or queried explicitly. They must not vote on identity or raise ACCEPT.
+4. False split > unjustified false merge. Wrong identity > unknown. Do not relax thresholds to beautify clusters.
+
+Withdrawn: “appearance agrees → identity confidence may rise.”
 
 ---
 
@@ -85,17 +231,18 @@ see → group → measure → review-as-evidence → recognise → run unattende
 These bind every generation. A later stage may *add* a capability. It may not repeal these.
 
 1. **`cluster → review → person → name`.** Never `cluster = person`.
-2. **Unknown is valid.** Refusal to identify is a feature.
+2. **Unknown is valid.** Refusal to identify is a feature. Wrong identity > unknown. False merge > false split.
 3. **Evidence before confidence.** Similarity is not identity. Top-1 / top-2 / margin / quality / gallery size / condition belong in the decision, not a single score.
 4. **Human corrections are evidence, not silent truth and not model training.** Record the decision. Do not pretend a merge retrained buffalo_l.
 5. **Local-first. No hidden network.** External lookup, if it ever exists, is explicit, auditable, off by default.
 6. **`pack_id` is the compare key.** Family name (`insightface/buffalo_l`) is a label. Weights + adapter + version are identity. Mismatched packs do not compare.
 7. **Files stay put.** SQLite + originals are authoritative. Export folders are views.
 8. **One user, personal, Windows CLI for v1.** Multi-user / sharing / mobile / ACC-in-process are out of v1 and are S9 *clients*, not a rewrite of the engine.
-9. **Still images are the birth environment. Temporal vision is a second modality**, not a plugin bolted onto a stills-only brain. Today's contracts must not make video impossible. (`observations.frame_id`, `media.source_type` in `{folder,video,live}` already exist — keep them.)
+9. **Still images are the birth environment. Temporal vision is a second modality**, not a plugin bolted onto a stills-only brain. Today's contracts must not make video impossible. (`observations.frame_id`, `media.source_type` in `{folder,video,live}` already exist — keep them.) Folder-first validation is not skipped because video exists on paper.
 10. **Tracking is not a recogniser.** Detection, tracking, embedding, comparison, clustering, identification are distinct.
-11. **`compare()` is a primitive**, not a product subsystem.
+11. **`compare()` is a primitive**, not a product subsystem. FaceKit / InsightFace remains the identity engine.
 12. **buffalo_l is internal evaluation only** until a licensed pack decision. Fallback path (YuNet + SFace) is recorded, not a current ticket.
+13. **Identity firewall.** See §1.5. Geometry, appearance, object, and semantic representations must not silently influence identity.
 
 ---
 
@@ -123,13 +270,16 @@ Design:
                     ↓
             OBSERVATION ENGINE
                     │
+     FaceKit identity (current)
+     geometry / appearance / semantic (future; separate spaces)
+                    │
           detect / quality / tracking*
                     ↓
-                 embed
+         represent (per space — not one global vector)
                     ↓
-                compare()
+         compare inside that space
               ↙         ↘
-         cluster       identify
+   identity cluster    identify (identity only)
               ↘         ↙
                 review
                    ↓
@@ -144,10 +294,12 @@ Design:
 
 \* Tracking is active only for temporal sources.
 
-A photograph is **one observation**.  
+Current implementation is the **identity slice** of this engine (FaceKit detect → filter → embed → `compare()` → conservative cluster). Future observers must not collapse into that identity `compare()`.
+
+A photograph is **one source frame**. Today's `observations` row is that frame slot, not a typed multi-kind record.  
 Video is **a stream of observations belonging to evolving entities**.
 
-That is why S7 is a generation, not a codec ticket.
+That is why S7 is a generation, not a codec ticket. Broader observers are not S7 either — they are architectural candidates mapped later, never an OBS-* clock.
 
 ---
 
@@ -241,14 +393,14 @@ folder → hash → detect → filter → embed → compare → conservative clu
 | Item | Verb |
 |---|---|
 | 0.2 ingest | KEEP (on `main`) |
-| 0.3 cluster + `review.html` | KEEP (on `main`; **not accepted until dump**) |
+| 0.3 cluster + `review.html` | KEEP (on `main`; **S1 PASS — closed** on `20260913T153515Z-1e915abe`) |
 | Interactive dashboard | REJECT for this stage (DEFER to S8) |
 | FAISS / HDBSCAN-as-architecture | REJECT until evidence |
 | cluster = person | REJECT |
 
 **Must not.** Name people. Identify. Watch folders. Serve HTTP.
 
-**Engineering.** FACE-001 / builds 0.2–0.3. **Current position.**
+**Engineering.** FACE-001 / builds 0.2–0.3. Code on `main`. **Acceptance = dump-gate. S1 PASS — closed.**
 
 ---
 
@@ -285,14 +437,14 @@ top1, top2, margin, gallery size, quality, condition, confirmatory operating poi
 
 | Item | Verb |
 |---|---|
-| FACE-002 eval harness | ADD (next scientific stage after S1 dump) |
+| FACE-002 eval harness | KEEP harness on path (`semblon lab eval`; precision only on frozen confirmatory). Dump set recorded: `docs/FACE-002-CONFIRMATORY.md`. |
 | Printing precision without `--eval-set confirmatory` | REJECT |
 | Remine refreshing confirmatory | REJECT (already in CONTRACTS) |
 | Public accuracy marketing | REJECT |
 
 **Must not.** Change identity rules because a number looked nice.
 
-**Engineering.** FACE-002. Schema already has `eval_sets` / `eval_pairs`.
+**Engineering.** FACE-002 harness on the `lab eval` path. Local dump `s1-confirmatory` is harness-measurable (11/11/1; FAR 0/11, FRR 1/11 at 0.60). That is a 22-pair family dump, not 10k, not FRTE. See `docs/FACE-002-CONFIRMATORY.md`.
 
 ---
 
@@ -326,7 +478,7 @@ cluster → human review → merge / split / reject / assign
 
 | Item | Verb |
 |---|---|
-| 0.4 name / merge / split | ADD after 0.3 dump survives |
+| 0.4 name / merge / split | KEEP (code on `main`); dump review evidence in `docs/FACE-003-REVIEW.md` |
 | `decisions` rows | KEEP (schema already) |
 | Merge *suggestions* | DEFER unless the dump shows they are needed to finish 0.4 |
 | Neural fine-tuning on the user's album | REJECT |
@@ -334,7 +486,7 @@ cluster → human review → merge / split / reject / assign
 
 **Must not.** Auto-promote a cluster to a person because it is STRONG.
 
-**Engineering.** FACE-003 + build 0.4. v1 product requires this.
+**Engineering.** FACE-003 + build 0.4 (code on `main`). v1 product requires this. Queue position after dump-gate is unchanged.
 
 ---
 
@@ -437,7 +589,7 @@ This is where `cluster ≠ person` becomes: **cluster → reviewed identity**.
 | Timeline / co-appearance | ADD at S6 |
 | LLM event titles | DEFER / EXPERIMENT; first pass is structured signals |
 | Maps product | DEFER |
-| Semantic CLIP search | DEFER (presentation, not identity) |
+| Semantic CLIP search | DEFER (candidate **semantic** representation — not identity, not landmarks) |
 
 **Must not.** Build a Google Photos clone before identification is trustworthy.
 
@@ -557,13 +709,13 @@ temporal source
 
 | Stage | Name | Major new capability | Product transformation | Build now? |
 |---|---|---|---|---|
-| S0 | Born | See faces | Engine exists | FACE-000 (finish runtime rows) |
-| S1 | Aware | Group observations | Organises dumps | **Current (0.3). Dump-gate.** |
-| S2 | Disciplined | Measure accuracy | Knows its limits | FACE-002 after dump |
-| S3 | Learning | Human evidence | Gets better through review | 0.4 / FACE-003 |
-| S4 | Recognising | Reviewed people | Identifies known people | 1.0 / FACE-004 · **v1 ship** |
-| S5 | Useful | Incremental operation | Effortless stills | FACE-005+ · post-v1 |
-| S6 | Remembering | Time / place / events | Visual memory | Future |
+| S0 | Born | See faces | Engine exists | FACE-000: ARM64 OpenCV binary proven; x64 native unverified |
+| S1 | Aware | Group observations | Organises dumps | **S1 PASS — closed.** 90 stills. |
+| S2 | Disciplined | Measure accuracy | Knows its limits | FACE-002 recorded (22 pairs; FAR 0/11 FRR 1/11). |
+| S3 | Learning | Human evidence | Gets better through review | FACE-003 recorded. STRONG ≠ person. |
+| S4 | Recognising | Reviewed people | Identifies known people | FACE-004 recorded. Identify vs persons. **v1 ship** |
+| S5 | Useful | Incremental + regression | Effortless stills + frozen-param guard | 1.1 inbox on `main`. FACE-005 regression recorded. 10k not run. |
+| S6 | Remembering | Time / place / events | Visual memory | 1.2 `memory` on `main` |
 | S7 | Temporal vision | Sequences | Video / track / live / RTSP | v2 = S7c; files/RTSP later |
 | S8 | Conversing | Search / evidence UI | Human interrogates memory | Future |
 | S9 | Mature | Platform / clients | Extensible local VI | Future |
@@ -605,12 +757,13 @@ Hard rules:
 | Maturity | Engineering | Build version | Status 2026-09-12 |
 |---|---|---|---|
 | S0 | FACE-000 runtime | 0.1 | Code on `main`. Fill `runtime.md` on both Windows executions. |
-| S1 | FACE-001 ingest + first reviewable result | 0.2 ingest, **0.3 cluster/export** | On `main`. **Acceptance = real dump.** |
-| S2 | FACE-002 confirmatory eval | — | Not started. Schema ready. |
-| S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | After 0.3 dump |
-| S4 | FACE-004 persons + identify | **1.0** | After 0.4 · v1 ship test |
-| S5 | FACE-005 hardening / incremental | post-1.0 | Reassess; do not pre-build |
-| S6–S9 | future | v2 / later | Do not open tickets from this blueprint |
+| S1 | FACE-001 ingest + first reviewable result | 0.2 ingest, **0.3 cluster/export** | On `main`. **S1 PASS — closed** (`20260913T153515Z-1e915abe`). |
+| S2 | FACE-002 confirmatory eval | `lab eval` | Harness on path. Local dump `s1-confirmatory` harness-measurable 2026-09-16 (`docs/FACE-002-CONFIRMATORY.md`). Store not in git. |
+| S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump merge+name evidence in `docs/FACE-003-REVIEW.md`. STRONG is not a person. |
+| S4 | FACE-004 persons + identify | **1.0** | Code on `main`. Dump `--face`/`--image` evidence in `docs/FACE-004-IDENTIFY.md`. |
+| S5 | FACE-005 regression / scale | **1.1** | Incremental/inbox already on `main`. Regression/scale: `docs/FACE-005-REGRESSION.md`. 10k not run. |
+| S6 | visual memory | **1.2** | `memory history/together/events` on `main`. No new columns. |
+| S7–S9 | future | v2 / later | Do not open tickets from this blueprint |
 
 PRODUCT.md later-row mapping:
 
@@ -669,6 +822,12 @@ Video · tracking · tracklets · temporal evidence · selective embedding · li
 | Desktop integration | DEFER | S8–S9 |
 | FastAPI / CustomTkinter as v1 app | REJECT | — |
 | Generic AI photo chatbot | REJECT | — |
+
+### Observation spaces beyond identity — DEFER; map into S6+ / S7 / S8 when earned
+
+Landmarks · hands · pose (geometry) · colour / sharpness / brightness (appearance) · objects / regions · semantic image representation (CLIP or successor) · per-space similarity · explicit relationship queries.
+
+Not S1–S4 work. Not a new ticket taxonomy. Identity firewall (§1.5) applies.
 
 ### Extensions — isolated
 
@@ -766,22 +925,28 @@ Do not:
 ## 14. Current position (honest)
 
 ```
-S0  FACE-000     code exists; Windows runtime rows still to be filled
-S1  0.2 + 0.3    on main; NOT dump-accepted
-S2–S9            not started
-v1 ship          = S4 stills slice, after 0.4 and 1.0
+S0  FACE-000     ARM64 OpenCV binary proven (PE 0xaa64), not consumed by Semblon.
+                 x64 native FACE-000 unverified (no x64 PC).
+S1  0.2 + 0.3    S1 PASS — closed (`20260913T153515Z-1e915abe`, 90 stills)
+S2  FACE-002     recorded: 22 pairs, FAR 0/11, FRR 1/11 at frozen 0.60
+S3  FACE-003     recorded: merge/name decisions; STRONG is not a person
+S4  FACE-004     recorded: identify vs named persons (`--face` / `--image`)
+S5  FACE-005     incremental/inbox 1.1 on main; regression/scale recorded;
+                 live scale 90 stills; 10k not evidenced
+S6               memory 1.2 on main (not part of FACE-002–005)
+S7–S9            not started
+v1 ship          stills slice: ingest → cluster → review → name → identify
 ```
 
-Immediate engineering path is unchanged:
+Completed validation sequence (evidence index: `docs/FACE-GATES.md`):
 
 ```
-prove dump on 0.3 review.html
-  → 0.4 name / merge / split
-  → 1.0 identify vs persons + unknown
-  → stop and look at the actual Semblon
+FACE-002 → FACE-003 → FACE-004 → FACE-005
 ```
 
-Do not start S5–S9 from this paper.
+Do not retune `eps`. Do not re-run FACE-005 scale. Do not start S7–S9, MediaPipe, CLIP, or vector-DB work from this paper.
+
+Deferred: bounded concurrent ingest workers; CPU/GPU execution-provider selection; recording actual provider/device/worker in run evidence.
 
 ---
 
@@ -802,11 +967,11 @@ Do not start S5–S9 from this paper.
 
 ---
 
-## 16. How this blueprint may change
+## 16. How this plan may change
 
 This file is **alive**. It is not a second frozen PRODUCT.md.
 
-At every maturity transition, look **outward** and **inward** using `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md` (scavenge → evidence card → three-level benchmark → accuracy/performance firewalls). Then apply exactly one verb per candidate:
+At every maturity transition, look outward and inward (§18), then apply exactly one verb per candidate:
 
 ```
 KEEP · MERGE · PROMOTE · DEFER · REPLACE · REMOVE · REJECT
@@ -821,8 +986,8 @@ Rules:
 4. Do not open S(n+2) tickets because S(n) is boring.  
 5. “A GitHub app has it” is not a promotion criterion. Dump evidence is.  
 6. Version this file (V1, V1.1, …) with a dated changelog at the bottom.  
-7. Discovery KEEP ≠ maturity ADD. A scavenged KEEP is eligibility for a named stage, not a ticket.  
-8. Do not remap S0–S9 because a discovery draft used different labels (video is S7, extra evidence channels are S6+, search is S8).
+7. A scavenged KEEP is eligibility for a named stage, not a ticket.  
+8. Do not remap S0–S9 (video is S7, extra channels are S6+, search is S8). Clothing / CLIP / MediaPipe are not S4.
 
 ---
 
@@ -840,11 +1005,90 @@ Rules:
 - InsightFace buffalo family / ORT: engine, not the product. Weights: `docs/licenses.md`.  
 - Google Photos “face groups” language: similar faces *likely* the same person — marketing softness Semblon should exceed by requiring review.
 
-Donors are not ground truth (`docs/REFERENCES.md`).
+Donors are not ground truth. Study behaviour; do not import schemas, “cluster is a person,” or donor thresholds.
 
 ---
 
-## 18. Changelog
+## 18. Absorb (process, not a clock)
+
+Semblon grows by scavenging inside the **current** stage, not by copying Facet / Immich / CompreFace.
+
+```
+observe → investigate → test → learn → integrate → measure → mature
+```
+
+Classify each find: engine · workflow donor · algorithm · UX · performance · capability candidate · comparator · research lead · noise. “Interesting” ≠ “build.”
+
+Value questions (at least one of 1–4 yes, and 5 yes): accuracy/trust · user time · cognitive effort · new capability · worth the complexity/resource/privacy cost. Speed that degrades identity is a regression.
+
+Evidence card before anything hits the FACE queue:
+
+```
+Capability / source / date
+What it does / problem / current Semblon equivalent
+Accuracy · speed · RAM · privacy · Windows x64/ARM64 native vs emulated
+Canonical stage (S0–S9 names) / class
+Decision: KEEP | ADAPT | EXPERIMENT | DEFER | REJECT
+```
+
+KEEP = eligible for the named stage, not “build today.” EXPERIMENT = prototype, not production architecture.
+
+Benchmark in three levels: (1) observe the donor, no conclusions; (2) reproduce the *behaviour* inside Semblon; (3) adversarial compare on Semblon’s values. Do not treat donor clusters as labels.
+
+Performance firewall: report accuracy impact (or “not an identity claim”), latency, peak RSS. Objective is useful capability per resource, not max FPS. x64-on-ARM64 is never native.
+
+Scavenge **inside** the current stage (S1: review/clustering behaviour; S2: eval; S3: review UX; S4: gallery/identify; S6+: extra spaces behind §1.5; S7: temporal; S8: search; S9: clients). S1 does not scavenge clothing transformers.
+
+---
+
+## 19. Measure (not a development gate)
+
+The observatory prevents unexplained regression from being mistaken for progress. It does not block dump-gate or 0.4. CLI lives in `semblon lab observatory` (`snapshot` / `freeze` / `compare` / `enter`). Code is the behaviour; this section is the rule.
+
+No composite “Semblon score.” Measure the identity path that exists. Do not invent CLIP / geometry / vector-DB scores.
+
+| Family | Examples |
+|---|---|
+| Accuracy | genuine / impostor, FAR / FRR, hard negatives (FACE-002) |
+| Recognition | top-1, top-2, margin, unknown |
+| Clustering | impurity, worst intra-cluster pair |
+| Detection | recall by size / quality |
+| Speed / resources | first result, stage times, peak RSS |
+| Effort | review decisions, corrections / 1k |
+
+Three references, not interchangeable: **A** our golden baseline (commit / pack_id / config / corpus / hardware / native|emulated) · **B** external comparable (context, not pass/fail) · **C** our stage exit (§15). Promotion uses C, not B.
+
+| Moment | Observatory |
+|---|---|
+| Everyday build | Optional |
+| Pack / clusterer / runtime change | Compare to golden |
+| Claim “stage is done” | Required (`--promote`) |
+| Current dump / 0.4 CLI | **Not a gate** |
+
+Verdicts: improvement · trade-off (accepted in writing) · regression (unexplained red → not mature) · not_measurable (do not fake it).
+
+```text
+semblon lab observatory freeze --store STORE --run R --stage S1 --notes "HUMAN REVIEW SENTENCE"
+semblon lab observatory enter --stage S3 --store STORE --run R
+```
+
+`freeze` writes `observatory/golden-S1.json` beside the store. `--notes` stores the human dump-gate sentence on that golden. `enter` checks the completed-stage golden (S3 checks S1; S2 is parallel). Missing golden or regression: warn, exit 0. `--promote` is the only stick (exit 3). `name` / `merge` / `split` call enter S3 once — warn only.
+
+**S1 PASS — closed.** Authoritative dump `20260913T153515Z-1e915abe` (Win ARM64 native, 90 `.jpg`): 85 faces, 78 ok, 10 clusters, 63 clustered, 15 eligible unassigned; no observed false merge; clusters are not people. Do not retune `eps=0.40`. Pin with `freeze --notes` on the Windows store when convenient.
+
+FACE-002: `semblon lab eval`. Print precision only on a frozen confirmatory set that meets the powered floor (10 same, 10 different, ≥1 hard-negative near the identity boundary). Otherwise underpowered — counts only, no FAR/FRR. Remine writes `mined_discovery` only. Local dump set is recorded in `docs/FACE-002-CONFIRMATORY.md` (22 pairs; FAR 0/11, FRR 1/11 at 0.60). That is not a 10k claim.
+
+---
+
+## 20. Parked (not current FACE work)
+
+faiss · hdbscan-as-default · milvus · qdrant · pyarrow · diskcache-as-truth · watchdog · fastapi · bytetrack · sqlalchemy · onnxruntime-gpu as only runtime · mediapipe · clip / open-clip · dlib / face_recognition.
+
+A vector store is retrieval infrastructure, not intelligence. Do not add a parked library because §1.3 names it.
+
+---
+
+## 21. Changelog
 
 | Ver | Date | Note |
 |---|---|---|
@@ -852,6 +1096,11 @@ Donors are not ground truth (`docs/REFERENCES.md`).
 | V1.0.1 | 2026-09-12 | Pointer to Capability Discovery companion. No stage remap. |
 | V1.0.2 | 2026-09-12 | Pointer to Engineering Observatory. Measurement only; not a gate. |
 | V1.0.3 | 2026-09-12 | Wording: review page is evidence, not an automatic kill. Operating model frozen. |
+| V1.1 | 2026-09-13 | Identity firewall. Spaces ≠ one embedding. 0.4 code exists; dump-gate queue unchanged. |
+| V1.2 | 2026-09-13 | Hygiene: structure + absorb + measure live here. Companion files are pointers. No features dropped. |
+| V1.3 | 2026-09-13 | S1 PASS — closed on `20260913T153515Z-1e915abe`. Next: FACE-002. |
+| V1.4 | 2026-09-15 | FACE-002 eval harness on the `lab eval` path. Precision only on powered frozen confirmatory. Stage remains open; FACE-003 is not the next closable gate solely because harness code exists. |
+| V1.5 | 2026-09-16 | FACE-002→005 validation recorded (`docs/FACE-GATES.md`). Incremental/inbox 1.1 and S6 memory 1.2 already on `main`. 10k not run. ARM64 OpenCV binary proven, not consumed. x64 native FACE-000 unverified. |
 
 ---
 

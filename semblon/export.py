@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import base64
 import html
+import json
+import os
+import re
+import shutil
 from pathlib import Path
 
 import sqlite3
 
 from semblon.compare import CompareError, compare
+
+EVIDENCE_SCHEMA = "1"
+EVIDENCE_SCRIPT_ID = "semblon-run-evidence"
 
 # Hypothesis — clusters with min_intra below this are REVIEW REQUIRED.
 STRONG_MIN_INTRA = 0.50
@@ -22,6 +29,71 @@ class ExportError(ValueError):
 
 def _esc(s) -> str:
     return html.escape("" if s is None else str(s))
+
+
+def _stored_json(raw):
+    """Parse a SQLite JSON column only when it is valid JSON. No other rewrite."""
+    if raw is None:
+        return None
+    if isinstance(raw, (dict, list, int, float, bool)):
+        return raw
+    if not isinstance(raw, str):
+        return raw
+    if raw == "":
+        return ""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def _decision_public(row) -> dict:
+    return {
+        "kind": row["kind"],
+        "cluster_id": row["cluster_id"],
+        "face_id": row["face_id"],
+        "created_at": row["created_at"],
+        "policy": _stored_json(row["policy_json"]),
+    }
+
+
+def _evidence_payload(run, clusters, counts: dict, strong_min_intra: float, decisions=()) -> dict:
+    return {
+        "schema_version": EVIDENCE_SCHEMA,
+        "run_id": run["run_id"],
+        "started_at": run["started_at"],
+        "finished_at": run["finished_at"],
+        "software_version": run["software_version"],
+        "pack_id": run["pack_id"],
+        "embedding_dim": run["embedding_dim"],
+        "embedding_norm": run["embedding_norm"],
+        "config_json": _stored_json(run["config_json"]),
+        "runtime_json": _stored_json(run["runtime_json"]),
+        "arch": run["arch"],
+        "execution": run["execution"],
+        "ort_version": run["ort_version"],
+        "peak_rss_mb": run["peak_rss_mb"],
+        "timings_json": _stored_json(run["timings_json"]),
+        "strong_min_intra": strong_min_intra,
+        "counts": counts,
+        "clusters": [
+            {
+                "cluster_id": c["cluster_id"],
+                "strategy": c["strategy"],
+                "face_count": c["face_count"],
+                "min_intra": c["min_intra"],
+                "status": c["status"],
+            }
+            for c in clusters
+        ],
+        "decisions": [_decision_public(d) for d in decisions],
+    }
+
+
+def _evidence_script(payload: dict) -> str:
+    # Neutralize </script so a stored path cannot close the tag. \/ is valid JSON.
+    body = json.dumps(payload, ensure_ascii=False, default=str).replace("</", "<\\/")
+    return f'<script type="application/json" id="{EVIDENCE_SCRIPT_ID}">{body}</script>'
 
 
 def _file_uri(path: str) -> str:
@@ -123,7 +195,11 @@ def _load(conn, run_id: str):
         """,
         (run_id,),
     ).fetchall()
-    return run, clusters, faces
+    decisions = conn.execute(
+        """SELECT * FROM decisions WHERE run_id=? ORDER BY created_at, decision_id""",
+        (run_id,),
+    ).fetchall()
+    return run, clusters, faces, decisions
 
 
 def _face_dict(row) -> dict:
@@ -187,7 +263,43 @@ def _render_faces(title: str, anchor: str, rows: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def render_review_html(run, clusters, faces, strong_min_intra: float = STRONG_MIN_INTRA) -> str:
+def _render_decisions(decisions) -> str:
+    parts = ['<section id="decisions">', f"<h2>DECISIONS ({len(decisions)})</h2>"]
+    parts.append(
+        '<p class="meta">Human review. Merge does not create a person. '
+        "rejected / low_quality stay held-out.</p>"
+    )
+    if not decisions:
+        parts.append("<p>none</p></section>")
+        return "\n".join(parts)
+    parts.append("<ol>")
+    for d in decisions:
+        pol = _stored_json(d["policy_json"])
+        if not isinstance(pol, dict):
+            pol = {"raw": pol}
+        action = pol.get("action") or d["kind"]
+        disp = pol.get("disposition") or pol.get("text") or ""
+        target = d["cluster_id"] or d["face_id"] or ""
+        parts.append(
+            "<li>"
+            f"<strong>{_esc(d['kind'])}</strong>"
+            f" {_esc(action)}"
+            f" {_esc(disp)}"
+            f" {_esc(target[:12] if target else '')}"
+            f" <span class=\"meta\">{_esc(d['created_at'])}</span>"
+            "</li>"
+        )
+    parts.append("</ol></section>")
+    return "\n".join(parts)
+
+
+def render_review_html(
+    run,
+    clusters,
+    faces,
+    strong_min_intra: float = STRONG_MIN_INTRA,
+    decisions=(),
+) -> str:
     pack_id = run["pack_id"]
     by_cluster: dict[str, list[dict]] = {}
     unassigned: list[dict] = []
@@ -198,7 +310,8 @@ def render_review_html(run, clusters, faces, strong_min_intra: float = STRONG_MI
             rejected.append(d)
         elif d["cluster_id"]:
             by_cluster.setdefault(d["cluster_id"], []).append(d)
-        else:
+        elif d["status"] == "ok":
+            # Same eligibility as cluster CLI: only OK faces can be unassigned.
             unassigned.append(d)
 
     review_cs = []
@@ -218,6 +331,20 @@ def render_review_html(run, clusters, faces, strong_min_intra: float = STRONG_MI
     n_lq = sum(1 for f in faces if f["status"] == "low_quality")
     n_rej = len(rejected)
     timings = run["timings_json"] or ""
+    counts = {
+        "faces": len(faces),
+        "ok": n_ok,
+        "low_quality": n_lq,
+        "rejected": n_rej,
+        "clusters": len(clusters),
+        "review_required": len(review_cs),
+        "strong": len(strong_cs),
+        "unassigned": len(unassigned),
+        "decisions": len(decisions),
+    }
+    evidence = _evidence_script(
+        _evidence_payload(run, clusters, counts, strong_min_intra, decisions)
+    )
 
     body_clusters_review = "\n".join(
         _render_cluster(c, m, pack_id, "review") for c, m in review_cs
@@ -226,7 +353,7 @@ def render_review_html(run, clusters, faces, strong_min_intra: float = STRONG_MI
         _render_cluster(c, m, pack_id, "strong") for c, m in strong_cs
     ) or "<p>none</p>"
 
-    return f"""<!DOCTYPE html>
+    page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -264,6 +391,7 @@ img.thumb, img.worstimg {{ display: block; background: #222; }}
   <span>REVIEW REQUIRED {len(review_cs)}</span>
   <span>STRONG {len(strong_cs)}</span>
   <span>UNASSIGNED {len(unassigned)}</span>
+  <span>DECISIONS {len(decisions)}</span>
 </p>
 <p class="meta">cluster → review → person → name. Clusters are not persons.
 STRONG means min_intra ≥ {strong_min_intra:.2f} (hypothesis). Open originals via the thumbnails.
@@ -273,6 +401,7 @@ timings { _esc(timings) }</p>
   <a href="#strong">STRONG</a>
   <a href="#unassigned">UNASSIGNED</a>
   <a href="#rejected">REJECTED</a>
+  <a href="#decisions">DECISIONS</a>
 </nav>
 
 <section id="review">
@@ -289,9 +418,11 @@ timings { _esc(timings) }</p>
 
 {_render_faces("UNASSIGNED", "unassigned", unassigned)}
 {_render_faces("REJECTED", "rejected", rejected)}
+{_render_decisions(decisions)}
 </body>
 </html>
 """
+    return page.replace("</body>", evidence + "\n</body>", 1)
 
 
 def _connect_ro(store: Path) -> sqlite3.Connection:
@@ -310,8 +441,10 @@ def export_review(
     strong_min_intra: float = STRONG_MIN_INTRA,
 ) -> dict:
     conn = _connect_ro(store)
-    run, clusters, faces = _load(conn, run_id)
-    html_text = render_review_html(run, clusters, faces, strong_min_intra=strong_min_intra)
+    run, clusters, faces, decisions = _load(conn, run_id)
+    html_text = render_review_html(
+        run, clusters, faces, strong_min_intra=strong_min_intra, decisions=decisions
+    )
     conn.close()
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -322,4 +455,86 @@ def export_review(
         "clusters": len(clusters),
         "faces": len(faces),
         "bytes": out.stat().st_size,
+    }
+
+
+_WIN_BAD = re.compile(r'[<>:"/\\|?*]')
+
+
+def _view_folder_name(display_name: str | None, person_id: str | None) -> str:
+    raw = (display_name or "").strip() or (person_id or "")[:8] or "_unnamed"
+    name = _WIN_BAD.sub("_", raw).strip(" .")
+    return name or "_unnamed"
+
+
+def _place_view(src: Path, dst: Path) -> str:
+    """Hardlink if possible; copy otherwise. Never move the original."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists():
+        return "exists"
+    try:
+        os.link(src, dst)
+        return "hardlink"
+    except OSError:
+        shutil.copy2(src, dst)
+        return "copy"
+
+
+def export_views(store: Path, run_id: str, dest: Path) -> dict:
+    """Person folders as views. Originals stay put. Rejected/low_quality held out."""
+    dest = Path(dest)
+    conn = _connect_ro(store)
+    run = conn.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
+    if run is None:
+        conn.close()
+        raise ExportError(f"unknown run: {run_id}")
+    rows = conn.execute(
+        """
+        SELECT f.face_id, f.status, f.person_id, p.display_name, m.path
+        FROM faces f
+        JOIN observations o ON o.observation_id = f.observation_id
+        JOIN media m ON m.media_id = o.media_id
+        LEFT JOIN persons p ON p.person_id = f.person_id
+        WHERE f.run_id=?
+        ORDER BY f.face_id
+        """,
+        (run_id,),
+    ).fetchall()
+    conn.close()
+
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "VIEW.txt").write_text(
+        "Semblon view folder. Originals were not moved.\n"
+        "Named persons get a folder. Unassigned ok faces go to _unassigned.\n"
+        "rejected and low_quality are held out.\n",
+        encoding="utf-8",
+    )
+    counts = {"persons": 0, "unassigned": 0, "held_out": 0, "missing": 0, "hardlink": 0, "copy": 0}
+    seen_person: set[str] = set()
+    for r in rows:
+        if r["status"] != "ok":
+            counts["held_out"] += 1
+            continue
+        src = Path(r["path"]) if r["path"] else None
+        if src is None or not src.is_file():
+            counts["missing"] += 1
+            continue
+        if r["person_id"]:
+            folder = _view_folder_name(r["display_name"], r["person_id"])
+            seen_person.add(r["person_id"])
+        else:
+            folder = "_unassigned"
+            counts["unassigned"] += 1
+        stem = src.stem
+        ext = src.suffix or ".jpg"
+        dst = dest / folder / f"{stem}__{r['face_id'][:8]}{ext}"
+        how = _place_view(src, dst)
+        if how in ("hardlink", "copy"):
+            counts[how] += 1
+    counts["persons"] = len(seen_person)
+    return {
+        "run_id": run_id,
+        "views": str(dest.resolve()),
+        "counts": counts,
+        "note": "views do not move originals; cluster is not a person",
     }

@@ -6,7 +6,13 @@ __pycache__/
 *.onnx
 store.sqlite
 *.sqlite
-review.html
+*-store
+*-store-shm
+*-store-wal
 .pytest_cache/
 dist/
 *.egg-info/
+_r4_locked_snapshot/
+s1-90-review*.html
+review.html
+semblon/observatory/

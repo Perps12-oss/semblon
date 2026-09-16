@@ -2,13 +2,77 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import struct
 from pathlib import Path
 
 from semblon.cluster import cluster_run
-from semblon.export import export_review
+from semblon.export import EVIDENCE_SCRIPT_ID, _stored_json, export_review
 from semblon.store import init_db
+
+_VECTOR_KEYS = frozenset({
+    "embedding",
+    "centroid",
+    "vector",
+    "normed_embedding",
+    "bbox",
+    "det_score",
+    "person_id",
+    "sha256",
+    "decision_id",
+})
+_EVIDENCE_KEYS = {
+    "schema_version",
+    "run_id",
+    "started_at",
+    "finished_at",
+    "software_version",
+    "pack_id",
+    "embedding_dim",
+    "embedding_norm",
+    "config_json",
+    "runtime_json",
+    "arch",
+    "execution",
+    "ort_version",
+    "peak_rss_mb",
+    "timings_json",
+    "strong_min_intra",
+    "counts",
+    "clusters",
+    "decisions",
+}
+_COUNT_KEYS = {
+    "faces",
+    "ok",
+    "low_quality",
+    "rejected",
+    "clusters",
+    "review_required",
+    "strong",
+    "unassigned",
+    "decisions",
+}
+
+
+def _parse_evidence(html: str) -> dict:
+    marker = f'id="{EVIDENCE_SCRIPT_ID}"'
+    start = html.index(marker)
+    open_gt = html.index(">", start) + 1
+    close = html.index("</script>", open_gt)
+    return json.loads(html[open_gt:close])
+
+
+def _assert_no_vector_fields(obj) -> None:
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            assert k not in _VECTOR_KEYS
+            assert not isinstance(v, (bytes, bytearray, memoryview))
+            _assert_no_vector_fields(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            _assert_no_vector_fields(item)
 
 
 def _vec(*xs: float) -> bytes:
@@ -102,10 +166,25 @@ def test_cluster_unknown_run(tmp_path):
         cluster_run(store, "nope")
 
 
+def test_stored_json_parses_only_valid_json():
+    assert _stored_json(None) is None
+    assert _stored_json("") == ""
+    assert _stored_json("{}") == {}
+    assert _stored_json('{"folder":"D:\\\\photos"}') == {"folder": r"D:\photos"}
+    assert _stored_json("not-json") == "not-json"
+    already = {"keep": 1}
+    assert _stored_json(already) is already
+
+
 def test_export_sections_and_readonly(tmp_path):
     store = tmp_path / "s.sqlite"
     _seed(store).close()
     cluster_run(store, "r1", eps=0.15, min_samples=2)
+    before = sqlite3.connect(str(store))
+    n_runs = before.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+    n_clusters = before.execute("SELECT COUNT(*) FROM clusters").fetchone()[0]
+    before.close()
+
     out = tmp_path / "review.html"
     rec = export_review(store, "r1", out, strong_min_intra=0.50)
     assert out.is_file()
@@ -114,11 +193,103 @@ def test_export_sections_and_readonly(tmp_path):
     assert "STRONG" in text
     assert "UNASSIGNED" in text
     assert "REJECTED" in text
+    assert "DECISIONS" in text
     assert "not a person" in text
     assert rec["clusters"] == 2
     conn = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
     n_dec = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
     assert n_dec == 0
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == n_runs
+    assert conn.execute("SELECT COUNT(*) FROM clusters").fetchone()[0] == n_clusters
+    conn.close()
+
+
+def test_export_evidence_block_has_run_and_clusters_not_embeddings(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    cluster_run(store, "r1", eps=0.15, min_samples=2)
+    out = tmp_path / "review.html"
+    export_review(store, "r1", out, strong_min_intra=0.50)
+    text = out.read_text(encoding="utf-8")
+    assert f'id="{EVIDENCE_SCRIPT_ID}"' in text
+    assert 'type="application/json"' in text
+    payload = _parse_evidence(text)
+
+    assert set(payload) == _EVIDENCE_KEYS
+    assert payload["schema_version"] == "1"
+    assert payload["run_id"] == "r1"
+    assert payload["pack_id"] == "pack-a"
+    assert payload["started_at"] == "t"
+    assert payload["finished_at"] is None
+    assert payload["software_version"] == "0.0.1"
+    assert payload["arch"] == "x64"
+    assert payload["execution"] == "native"
+    assert payload["embedding_dim"] == 2
+    assert payload["embedding_norm"] == "l2"
+    assert payload["ort_version"] is None
+    assert payload["peak_rss_mb"] is None
+    assert payload["strong_min_intra"] == 0.50
+    assert payload["config_json"] == {}
+    assert payload["runtime_json"] == {}
+    assert payload["timings_json"] is None
+    assert set(payload["counts"]) == _COUNT_KEYS
+    assert payload["counts"]["clusters"] == 2
+    assert payload["counts"]["ok"] == 5
+    assert payload["counts"]["faces"] == 7
+    assert payload["counts"]["low_quality"] == 1
+    assert payload["counts"]["rejected"] == 1
+    assert payload["counts"]["unassigned"] == 1
+    assert payload["counts"]["decisions"] == 0
+    assert payload["decisions"] == []
+    assert isinstance(payload["counts"]["faces"], int)
+    assert len(payload["clusters"]) == 2
+    for c in payload["clusters"]:
+        assert set(c) == {"cluster_id", "strategy", "face_count", "min_intra", "status"}
+        assert "eps=0.15" in c["strategy"]
+        assert c["face_count"] == 2
+    _assert_no_vector_fields(payload)
+    # Review chrome stays; do not scan the HTML source for the word "embedding".
+    assert 'id="review"' in text
+    assert "not a person" in text
+
+
+def test_export_unassigned_is_ok_faces_without_cluster(tmp_path):
+    """OK+clustered / OK+none / low_quality / rejected — only OK+none is unassigned."""
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    rec = cluster_run(store, "r1", eps=0.15, min_samples=2)
+    assert rec["clustered"] == 4
+    assert rec["unassigned"] == 1
+
+    conn = sqlite3.connect(str(store))
+    conn.row_factory = sqlite3.Row
+    rows = {
+        r["face_id"]: (r["status"], r["cluster_id"])
+        for r in conn.execute("SELECT face_id, status, cluster_id FROM faces")
+    }
+    conn.close()
+    assert rows["f1"][0] == "ok" and rows["f1"][1] is not None
+    assert rows["f2"][0] == "ok" and rows["f2"][1] is not None
+    assert rows["f5"] == ("ok", None)
+    assert rows["f7"] == ("low_quality", None)
+    assert rows["f6"] == ("rejected", None)
+
+    out = tmp_path / "review.html"
+    export_review(store, "r1", out, strong_min_intra=0.50)
+    text = out.read_text(encoding="utf-8")
+    counts = _parse_evidence(text)["counts"]
+    assert counts["unassigned"] == rec["unassigned"] == 1
+    assert "UNASSIGNED 1" in text
+    assert "UNASSIGNED (1)" in text
+
+
+def test_evidence_script_neutralizes_script_close():
+    from semblon.export import _evidence_script
+
+    html = _evidence_script({"path": "</script><script>alert(1)"})
+    assert "</script><script>" not in html
+    payload = _parse_evidence(html)
+    assert payload["path"] == "</script><script>alert(1)"
 
 
 def test_cli_cluster_export(tmp_path):

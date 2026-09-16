@@ -47,6 +47,51 @@ def test_freeze_then_enter_ok(tmp_path):
     assert Path(rec["golden_path"]).is_file()
 
 
+def test_freeze_stores_notes(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    cluster_run(store, "r1", eps=0.15, min_samples=2)
+    note = (
+        "Dump false-merge gate pass: no false merges; false splits from blur/occlusion; "
+        "do not retune eps. Clusters are not persons."
+    )
+    board = freeze(store, "r1", "S1", notes=note)
+    assert board["notes"] == note
+    assert board["frozen"] is True
+    path = Path(board["golden"])
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["notes"] == note
+    assert saved["stage"] == "S1"
+    assert saved["run_id"] == "r1"
+
+
+def test_cli_freeze_notes(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    cluster_run(store, "r1", eps=0.15, min_samples=2)
+    note = "S1 dump gate: false-merge none; false-split accepted"
+    assert (
+        main(
+            [
+                "lab",
+                "observatory",
+                "freeze",
+                "--store",
+                str(store),
+                "--run",
+                "r1",
+                "--stage",
+                "S1",
+                "--notes",
+                note,
+            ]
+        )
+        == 0
+    )
+    golden = json.loads((tmp_path / "observatory" / "golden-S1.json").read_text(encoding="utf-8"))
+    assert golden["notes"] == note
+
+
 def test_compare_review_regression():
     golden = {
         "pack_id": "pack-a",

@@ -286,6 +286,84 @@ def name_cluster(
     }
 
 
+def name_face(
+    store: Path,
+    run_id: str,
+    face_id: str,
+    display_name: str,
+) -> dict:
+    """Enrol an unassigned inbox face as a person. Does not create a cluster."""
+    display_name = (display_name or "").strip()
+    if not display_name:
+        raise ReviewError("display name must be non-empty")
+
+    _warn_enter_s3(store, run_id)
+    conn = connect(store)
+    init_db(conn)
+    run = _require_run(conn, run_id)
+    pack_id = run["pack_id"]
+    face = conn.execute(
+        "SELECT * FROM faces WHERE face_id=? AND run_id=?",
+        (face_id, run_id),
+    ).fetchone()
+    if face is None:
+        conn.close()
+        raise ReviewError(f"unknown face for run: {face_id}")
+    if face["status"] != "ok":
+        conn.close()
+        raise ReviewError(f"face is not nameable (status={face['status']})")
+    if face["cluster_id"]:
+        conn.close()
+        raise ReviewError("face is in a cluster; name the cluster, not the face")
+    if face["person_id"]:
+        conn.close()
+        raise ReviewError("face already has a person")
+
+    row = conn.execute(
+        """SELECT person_id FROM persons
+           WHERE status='active' AND display_name=?
+           ORDER BY person_id LIMIT 1""",
+        (display_name,),
+    ).fetchone()
+    created = False
+    if row:
+        person_id = row[0]
+    else:
+        person_id = uuid.uuid4().hex
+        conn.execute(
+            """INSERT INTO persons(person_id, display_name, status, created_run)
+               VALUES (?,?,?,?)""",
+            (person_id, display_name, "active", run_id),
+        )
+        created = True
+    conn.execute("UPDATE faces SET person_id=? WHERE face_id=?", (person_id, face_id))
+    decision_id = _record_decision(
+        conn,
+        kind="name",
+        run_id=run_id,
+        pack_id=pack_id,
+        face_id=face_id,
+        person_id=person_id,
+        policy={
+            "display_name": display_name,
+            "created_person": created,
+            "source": "inbox_face",
+        },
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "run_id": run_id,
+        "face_id": face_id,
+        "person_id": person_id,
+        "display_name": display_name,
+        "faces_named": 1,
+        "created_person": created,
+        "decision_id": decision_id,
+        "note": "cluster is not a person; unassigned face enrolled as person",
+    }
+
+
 def merge_clusters(
     store: Path,
     run_id: str,
@@ -462,4 +540,151 @@ def split_cluster(
         "new_face_count": right,
         "decision_id": decision_id,
         "note": "split-off cluster is not a person until named",
+    }
+
+
+FACE_DISPOSITIONS = ("singleton", "junk", "needs-review")
+CLUSTER_DISPOSITIONS = ("not_a_person",)
+
+
+def _require_face(conn, run_id: str, face_id: str):
+    row = conn.execute(
+        "SELECT * FROM faces WHERE face_id=? AND run_id=?",
+        (face_id, run_id),
+    ).fetchone()
+    if row is None:
+        raise ReviewError(f"unknown face for run: {face_id}")
+    return row
+
+
+def ignore_subject(
+    store: Path,
+    run_id: str,
+    *,
+    cluster_id: str | None = None,
+    face_id: str | None = None,
+    disposition: str | None = None,
+) -> dict:
+    """Leave a cluster as not-a-person, or mark an unassigned face. Held-out statuses stay held-out."""
+    if bool(cluster_id) == bool(face_id):
+        raise ReviewError("ignore requires exactly one of --cluster or --face")
+    _warn_enter_s3(store, run_id)
+    conn = connect(store)
+    init_db(conn)
+    run = _require_run(conn, run_id)
+    pack_id = run["pack_id"]
+    if cluster_id:
+        disp = disposition or "not_a_person"
+        if disp not in CLUSTER_DISPOSITIONS:
+            conn.close()
+            raise ReviewError("cluster ignore disposition must be not_a_person")
+        cluster = _require_cluster(conn, run_id, cluster_id)
+        if _person_links(conn, cluster_id):
+            conn.close()
+            raise ReviewError("cluster is already linked to a person")
+        conn.execute(
+            "UPDATE clusters SET status=? WHERE cluster_id=?",
+            ("ignored", cluster_id),
+        )
+        decision_id = _record_decision(
+            conn,
+            kind="reject",
+            run_id=run_id,
+            pack_id=pack_id,
+            cluster_id=cluster_id,
+            policy={
+                "action": "ignore",
+                "disposition": disp,
+                "face_count": cluster["face_count"],
+            },
+        )
+        conn.commit()
+        conn.close()
+        return {
+            "run_id": run_id,
+            "cluster_id": cluster_id,
+            "disposition": disp,
+            "decision_id": decision_id,
+            "person_id": None,
+            "note": "cluster is not a person",
+        }
+
+    disp = disposition or "needs-review"
+    if disp not in FACE_DISPOSITIONS:
+        conn.close()
+        raise ReviewError("face ignore disposition must be singleton, junk, or needs-review")
+    face = _require_face(conn, run_id, face_id)
+    if face["status"] in ("rejected", "low_quality"):
+        # Held-out observations stay held-out. Record the note only.
+        pass
+    decision_id = _record_decision(
+        conn,
+        kind="reject",
+        run_id=run_id,
+        pack_id=pack_id,
+        face_id=face_id,
+        cluster_id=face["cluster_id"],
+        policy={
+            "action": "ignore",
+            "disposition": disp,
+            "face_status": face["status"],
+            "held_out": face["status"] != "ok",
+        },
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "run_id": run_id,
+        "face_id": face_id,
+        "disposition": disp,
+        "face_status": face["status"],
+        "decision_id": decision_id,
+        "person_id": None,
+        "note": "unassigned mark; rejected/low_quality stay held-out",
+    }
+
+
+def note_subject(
+    store: Path,
+    run_id: str,
+    text: str,
+    *,
+    cluster_id: str | None = None,
+    face_id: str | None = None,
+) -> dict:
+    """Durable review note. Stored as decisions.kind=reject (schema has no note kind)."""
+    text = (text or "").strip()
+    if not text:
+        raise ReviewError("note text must be non-empty")
+    if bool(cluster_id) == bool(face_id):
+        raise ReviewError("note requires exactly one of --cluster or --face")
+    _warn_enter_s3(store, run_id)
+    conn = connect(store)
+    init_db(conn)
+    run = _require_run(conn, run_id)
+    if cluster_id:
+        _require_cluster(conn, run_id, cluster_id)
+        subject_face = None
+    else:
+        row = _require_face(conn, run_id, face_id)
+        subject_face = face_id
+        cluster_id = row["cluster_id"]
+    decision_id = _record_decision(
+        conn,
+        kind="reject",
+        run_id=run_id,
+        pack_id=run["pack_id"],
+        cluster_id=cluster_id,
+        face_id=subject_face,
+        policy={"action": "note", "text": text},
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "run_id": run_id,
+        "cluster_id": cluster_id,
+        "face_id": subject_face,
+        "text": text,
+        "decision_id": decision_id,
+        "person_id": None,
     }

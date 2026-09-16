@@ -1,7 +1,3 @@
-# SEMBLON — Reference implementations and borrowed behaviours
+# References
 
-Operational clarification. Not a checklist. Not a FACE-001 gate.
-
-InsightFace/ORT = engine. Facet = one workflow donor (FaceSorter fallback). One app, one folder, one page. Not a build gate.
-
-Do not fork donors. Their clusters are not ground truth.
+Donors are not ground truth. InsightFace/ORT is the FaceKit identity engine. See `docs/SEMBLON_MATURITY_BLUEPRINT.md` §2 and §17.

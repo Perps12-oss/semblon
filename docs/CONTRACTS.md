@@ -1,9 +1,11 @@
 # SEMBLON — Contracts V1.1-corrected
 **Status:** AUTHORITATIVE schema / CLI / runtime  
 **Date:** 2026-09-09  
+**Note:** 2026-09-13 — staging pointer and CLI surface clarified. No column changes.
 
 This file is the only schema authority.  
-The implementation plan is the only staging authority.  
+Staging authority is FACE / build 0.x as mapped in `docs/SEMBLON_MATURITY_BLUEPRINT.md` §9. There is no `SEMBLON_IMPLEMENTATION_PLAN.md` and no OBS / SIM clock.  
+The plan does not invent columns.  
 Do not invent columns. Do not implement the pre-correction V1.1 draft.
 
 ## Pack identity
@@ -37,10 +39,20 @@ Full SQL is in the planning pack; do not invent columns.
 
 ## CLI
 
-`semblon lab profile --image` is implemented (FACE-000).  
-ingest/cluster/export/stats/report require `--run` when added.  
-report is read-only. Exit 0/2/3 as specified.
+Implemented now: `lab profile` (FACE-000); `process` (happy-path ingest -> cluster -> export review.html; owns `run_id`; default store under `%LOCALAPPDATA%\\Semblon\\store.sqlite`); `ingest` (FACE-005: skip sha256 already in `media` unless `--reprocess`; same-run skip unchanged); `cluster --run`; `export --run --out` (read-only HTML; includes a JSON evidence block, no embeddings; `counts.unassigned` is `status=ok` faces with no `cluster_id`; export lists `decisions`); `export --run --views` (person folders as views; originals stay put; rejected/low_quality held out; hardlink or copy); `review --run --store {merge,split,ignore,note}` (0.4; writes `decisions`; merge/split keep existing kinds; ignore/note use kind `reject` + `policy_json`; re-cluster does not clobber them); `name` / `merge` / `split` remain as aliases; `name --face` enrols an unassigned inbox face (refuses clustered faces — name the cluster); `lab observatory` snapshot / freeze / compare / enter; `lab eval` (FACE-002: create / pair / freeze / mine / score). `lab eval score` prints FAR/FRR only for a frozen `confirmatory_hard` set (`--eval-set confirmatory` or that set's id). Underpowered sets report counts and refuse rates. Remine (`lab eval mine`) writes `mined_discovery` only. `identify --run --store [{--face|--image}]` (FACE-004 / FACE-005; 1:N vs active persons on **any** run, never vs clusters; omit `--face`/`--image` to identify unnamed ok faces on `--run`; ACCEPT only if exactly one person is at/above the identity threshold; writes `decisions.kind=identify` with top1/top2/margin; does not auto-assign `faces.person_id`; `--image` probes are not enrolled). `inbox --run --store` (FACE-005; KNOWN / UNKNOWN / REVIEW_REQUIRED / REJECTED; read-only of meaning).
+
+`stats --run --store` (read-only JSON counts; FAR/FRR only if confirmatory is measurable). `report --run --store --out` (read-only markdown; writes `--out` only, never the store).
+
+`memory history --person --store` / `memory together --store` / `memory events --store` (S6; read-only; optional `--run`; time from EXIF then filename then `mtime_ns`; place is folder plus GPS if EXIF has it; no geocoding; no new columns). Time/place/co-appearance must not change `compare()` or clustering.
+
+Not implemented: folder watcher. Ingest-family commands that address a stored run require `--run`. Exit 0/2/3 as specified. `identify` unknown is exit 0.
+
+`observations` is a source/frame slot (`media_id`, `frame_id`, `run_id`) for the current identity path. It is not a typed multi-kind observation schema. Do not add kind / space / payload columns to satisfy the architectural North Star.
 
 ## Metrics
 
 FAR/FRR on confirmatory sets only. Mined tail is discovery. Remine does not refresh confirmatory.
+
+Local dump confirmatory (`docs/FACE-002-CONFIRMATORY.md`): 22 pairs; FAR 0/11, FRR 1/11 at frozen threshold 0.60. That is harness-measurable on this dump, not a 10k or public-FRTE claim. Identify is 1:N vs named persons, never clusters. Cluster ≠ person. STRONG ≠ person until `name`. Pair labels ≠ cluster/person ground truth.
+
+Gate index: `docs/FACE-GATES.md`. Incremental ingest + inbox are implemented (1.1). Deferred: bounded concurrent ingest workers; CPU/GPU EP selection; provider/device/worker in run evidence.

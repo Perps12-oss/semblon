@@ -1,3 +1,3 @@
-# Parked libraries — not FACE-000/001
+# Parked libraries
 
-faiss, hdbscan-as-default, milvus, pyarrow, diskcache-as-truth, watchdog, fastapi, bytetrack, sqlalchemy, onnxruntime-gpu as only runtime.
+See `docs/SEMBLON_MATURITY_BLUEPRINT.md` §20.

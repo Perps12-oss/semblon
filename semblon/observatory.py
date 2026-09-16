@@ -1,7 +1,7 @@
 """Engineering Observatory — snapshot / compare / stage-enter.
 
 Not a development gate. --promote is the only failing path.
-Accuracy FAR/FRR stays not_measurable until FACE-002 confirmatory sets exist.
+Accuracy FAR/FRR is printed only for a frozen confirmatory set that is powered.
 """
 
 from __future__ import annotations
@@ -110,20 +110,14 @@ def snapshot(store: Path, run_id: str, strong_min_intra: float = STRONG_MIN_INTR
         "SELECT MIN(min_intra) FROM clusters WHERE run_id=? AND min_intra IS NOT NULL",
         (run_id,),
     ).fetchone()[0]
-    n_conf = n(
-        "SELECT COUNT(*) FROM eval_sets WHERE kind='confirmatory_hard' AND frozen=1"
-    )
-    n_pairs = n("SELECT COUNT(*) FROM eval_pairs")
+    from semblon.eval import accuracy_board
+
+    accuracy = accuracy_board(conn)
     conn.close()
 
     per_1k = None
     if ok:
         per_1k = round(1000.0 * review / ok, 2)
-
-    accuracy_status = "not_measurable"
-    accuracy_reason = "no frozen confirmatory eval_set (FACE-002)"
-    if n_conf and n_pairs:
-        accuracy_reason = "confirmatory rows exist but FAR/FRR harness is not built"
 
     return {
         "kind": "semblon-observatory-snapshot",
@@ -133,7 +127,7 @@ def snapshot(store: Path, run_id: str, strong_min_intra: float = STRONG_MIN_INTR
         "arch": run["arch"],
         "execution": run["execution"],
         "software_version": run["software_version"],
-        "accuracy": {"status": accuracy_status, "reason": accuracy_reason},
+        "accuracy": accuracy,
         "detection": {
             "faces": faces,
             "ok": ok,
@@ -160,13 +154,24 @@ def snapshot(store: Path, run_id: str, strong_min_intra: float = STRONG_MIN_INTR
     }
 
 
-def freeze(store: Path, run_id: str, stage: str, out: Path | None = None) -> dict:
+def freeze(
+    store: Path,
+    run_id: str,
+    stage: str,
+    out: Path | None = None,
+    notes: str | None = None,
+) -> dict:
+    """Write golden-{stage}.json beside the store. Optional human-review notes."""
     stage = stage.upper()
     if stage not in STAGES:
         raise ObservatoryError(f"unknown stage: {stage}")
     board = snapshot(store, run_id)
     board["stage"] = stage
     board["frozen"] = True
+    if notes is not None:
+        text = str(notes).strip()
+        if text:
+            board["notes"] = text
     path = Path(out) if out else golden_path(store, stage)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(board, indent=2), encoding="utf-8")
@@ -198,9 +203,12 @@ def compare_boards(golden: dict, current: dict) -> dict:
 
     g_acc = (golden.get("accuracy") or {}).get("status")
     c_acc = (current.get("accuracy") or {}).get("status")
-    if g_acc == "not_measurable" or c_acc == "not_measurable":
+    if g_acc in ("not_measurable", "underpowered") or c_acc in (
+        "not_measurable",
+        "underpowered",
+    ):
         marks["accuracy"] = "not_measurable"
-        notes.append("accuracy not measurable until FACE-002 confirmatory eval")
+        notes.append("accuracy not measurable (no powered confirmatory eval)")
     else:
         marks["accuracy"] = "ok"
 

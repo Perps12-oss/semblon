@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import platform
 import re
 import sys
@@ -12,7 +11,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from semblon import __version__
-from semblon.engine import PACK_FAMILY, discover_weight_hashes, embed_image, load_app, pack_id
+from semblon.engine import (
+    PACK_FAMILY,
+    discover_weight_hashes,
+    embed_image,
+    load_app,
+    pack_id,
+    process_arch,
+    process_execution,
+)
 
 # Windows paste hazard: --out docs/runtime.mdC:\Users\...\Scripts (missing space/newline)
 _GLUED_PATH = re.compile(r"\.(md|html|json|txt)([A-Za-z]:[\\/])", re.IGNORECASE)
@@ -53,28 +60,84 @@ def _rss_mb() -> float | None:
 
         return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
     except Exception:
+        pass
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        counters = PROCESS_MEMORY_COUNTERS()
+        counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        psapi.GetProcessMemoryInfo.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+            wintypes.DWORD,
+        ]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+        handle = k32.GetCurrentProcess()
+        if psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+            return round(counters.PeakWorkingSetSize / (1024.0 * 1024.0), 1)
+    except Exception:
         return None
+    return None
+
+
+def _runtime_heading(rec: dict) -> str:
+    return f"## {rec.get('os', 'windows')} {rec.get('arch')} {rec.get('execution')}"
+
+
+def write_runtime_md(out: Path, rec: dict) -> None:
+    """Upsert one arch/execution section. Do not wipe other machine rows."""
+    heading = _runtime_heading(rec)
+    section = (
+        f"{heading}\n\n```json\n"
+        + json.dumps(rec, indent=2)
+        + "\n```\n"
+    )
+    intro = (
+        "# Runtime record (FACE-000)\n\n"
+        "One section per OS / process-arch / execution. "
+        "x64 Python on ARM64 Windows is emulated, never native.\n\n"
+        "Required rows:\n"
+        "1. Windows x64 native — needs an x64 host (not x64-on-ARM64).\n"
+        "2. Windows ARM64 native, or native failed + emulated row with the failure in notes.\n\n"
+    )
+    existing = out.read_text(encoding="utf-8") if out.is_file() else ""
+    if not existing.strip():
+        out.write_text(intro + section, encoding="utf-8")
+        return
+    # Replace matching heading+json fence, else append.
+    pattern = re.compile(
+        rf"(?ms)^{re.escape(heading)}\n\n```json\n.*?```\n",
+    )
+    if pattern.search(existing):
+        out.write_text(pattern.sub(section, existing, count=1), encoding="utf-8")
+        return
+    out.write_text(existing.rstrip() + "\n\n" + section, encoding="utf-8")
 
 
 def _execution() -> str:
-    proc = platform.machine().lower()
-    if proc in {"amd64", "x86_64"}:
-        os_arch = os.environ.get("PROCESSOR_ARCHITECTURE", "")
-        if os_arch.upper() == "ARM64":
-            return "emulated"
-        return "native"
-    if proc in {"arm64", "aarch64"}:
-        return "native"
-    return "unknown"
+    return process_execution()
 
 
 def _arch() -> str:
-    m = platform.machine().lower()
-    if m in {"amd64", "x86_64"}:
-        return "x64"
-    if m in {"arm64", "aarch64"}:
-        return "arm64"
-    return m
+    return process_arch()
 
 
 def run_profile(image: Path, out: Path) -> dict:
@@ -132,6 +195,11 @@ def run_profile(image: Path, out: Path) -> dict:
         },
         "notes": "FACE-000 probe. detect_ms/embed_ms not split; see detect_embed_ms.",
     }
+    if rec["arch"] == "x64" and rec["execution"] == "emulated":
+        rec["notes"] += (
+            " This host OS is ARM64; x64 CPython is emulated. "
+            "Windows x64 native requires a different machine."
+        )
     try:
         if out.parent != Path(".") and str(out.parent) != "":
             out.parent.mkdir(parents=True, exist_ok=True)
@@ -140,8 +208,5 @@ def run_profile(image: Path, out: Path) -> dict:
             f"cannot create output directory for --out {out}: {e}\n"
             f'Example: semblon lab profile --image "D:\\photos\\face.jpg" --out "docs\\runtime.md"'
         ) from e
-    out.write_text(
-        "# Runtime record (FACE-000)\n\n```json\n" + json.dumps(rec, indent=2) + "\n```\n",
-        encoding="utf-8",
-    )
+    write_runtime_md(out, rec)
     return rec
