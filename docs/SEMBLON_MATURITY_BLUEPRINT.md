@@ -1,8 +1,8 @@
-# SEMBLON — Plan (maturity blueprint V1.4)
+# SEMBLON — Plan (maturity blueprint V1.5)
 
 **Status:** The one long-term plan. System structure + S0–S9 + how to absorb + how to measure.  
 **Not:** a schema, a ticket list, or a v1 rewrite.  
-**Date:** 2026-09-12 (V1.4 FACE-002 harness on path 2026-09-15)  
+**Date:** 2026-09-16 (V1.5 FACE-002→005 validation recorded)  
 **Working name:** Semblon (`SEM-blon`)
 
 **Core docs only**
@@ -14,12 +14,13 @@
 | **This file** | scoped long-term phased plan |
 | `docs/runtime.md` | FACE-000 machine record |
 | `docs/licenses.md` | licence record |
+| `docs/FACE-GATES.md` | FACE-002→005 validation index |
 
 `docs/ARCHITECTURE.md`, `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md`, and `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` are **pointers** here. Do not maintain a second plan in those files.
 
-FACE / 0.x is what to code next. Queue: FACE-002 → FACE-003 → FACE-004 → FACE-005. **S1 PASS — closed.** FACE-002 harness exists on the `lab eval` path; the stage is not closed until a powered frozen confirmatory set exists.
+FACE-002 → FACE-003 → FACE-004 → FACE-005 **validation is recorded** (`docs/FACE-GATES.md`). **S1 PASS — closed.** Do not retune `eps`. Do not re-run FACE-005 scale work. Do not invent a 10k claim.
 
-Do not implement S5–S9, MediaPipe, CLIP, video, live, public lookup, ACC, or a vector database because this file is extensive.
+S5 incremental/inbox (1.1) and S6 memory (1.2) are already on `main`. Do not implement S7–S9, MediaPipe, CLIP, video, live, public lookup, ACC, or a vector database because this file is extensive.
 
 ---
 
@@ -436,14 +437,14 @@ top1, top2, margin, gallery size, quality, condition, confirmatory operating poi
 
 | Item | Verb |
 |---|---|
-| FACE-002 eval harness | KEEP harness on path (`semblon lab eval`; precision only on frozen confirmatory). Stage open. |
+| FACE-002 eval harness | KEEP harness on path (`semblon lab eval`; precision only on frozen confirmatory). Dump set recorded: `docs/FACE-002-CONFIRMATORY.md`. |
 | Printing precision without `--eval-set confirmatory` | REJECT |
 | Remine refreshing confirmatory | REJECT (already in CONTRACTS) |
 | Public accuracy marketing | REJECT |
 
 **Must not.** Change identity rules because a number looked nice.
 
-**Engineering.** FACE-002 harness on the `lab eval` path; the stage stays open. Schema already has `eval_sets` / `eval_pairs`. A real dump stays underpowered until a frozen confirmatory set has enough same, different, and hard-negative pairs.
+**Engineering.** FACE-002 harness on the `lab eval` path. Local dump `s1-confirmatory` is harness-measurable (11/11/1; FAR 0/11, FRR 1/11 at 0.60). That is a 22-pair family dump, not 10k, not FRTE. See `docs/FACE-002-CONFIRMATORY.md`.
 
 ---
 
@@ -477,7 +478,7 @@ cluster → human review → merge / split / reject / assign
 
 | Item | Verb |
 |---|---|
-| 0.4 name / merge / split | KEEP (code on `main`); S1 closed; S3 still open (after FACE-002) |
+| 0.4 name / merge / split | KEEP (code on `main`); dump review evidence in `docs/FACE-003-REVIEW.md` |
 | `decisions` rows | KEEP (schema already) |
 | Merge *suggestions* | DEFER unless the dump shows they are needed to finish 0.4 |
 | Neural fine-tuning on the user's album | REJECT |
@@ -708,13 +709,13 @@ temporal source
 
 | Stage | Name | Major new capability | Product transformation | Build now? |
 |---|---|---|---|---|
-| S0 | Born | See faces | Engine exists | FACE-000 (finish runtime rows) |
-| S1 | Aware | Group observations | Organises dumps | **S1 PASS — closed.** Next: FACE-002 (open). |
-| S2 | Disciplined | Measure accuracy | Knows its limits | FACE-002 harness on path; stage open. Rates only if powered. |
-| S3 | Learning | Human evidence | Gets better through review | 0.4 / FACE-003 code on main |
-| S4 | Recognising | Reviewed people | Identifies known people | 1.0 / FACE-004 · **v1 ship** |
-| S5 | Useful | Incremental operation | Effortless stills | FACE-005+ · post-v1 |
-| S6 | Remembering | Time / place / events | Visual memory | Future |
+| S0 | Born | See faces | Engine exists | FACE-000: ARM64 OpenCV binary proven; x64 native unverified |
+| S1 | Aware | Group observations | Organises dumps | **S1 PASS — closed.** 90 stills. |
+| S2 | Disciplined | Measure accuracy | Knows its limits | FACE-002 recorded (22 pairs; FAR 0/11 FRR 1/11). |
+| S3 | Learning | Human evidence | Gets better through review | FACE-003 recorded. STRONG ≠ person. |
+| S4 | Recognising | Reviewed people | Identifies known people | FACE-004 recorded. Identify vs persons. **v1 ship** |
+| S5 | Useful | Incremental + regression | Effortless stills + frozen-param guard | 1.1 inbox on `main`. FACE-005 regression recorded. 10k not run. |
+| S6 | Remembering | Time / place / events | Visual memory | 1.2 `memory` on `main` |
 | S7 | Temporal vision | Sequences | Video / track / live / RTSP | v2 = S7c; files/RTSP later |
 | S8 | Conversing | Search / evidence UI | Human interrogates memory | Future |
 | S9 | Mature | Platform / clients | Extensible local VI | Future |
@@ -761,7 +762,7 @@ Hard rules:
 | S3 | FACE-003 decisions as evidence | **0.4** name/merge/split | Code on `main`. Dump merge+name evidence in `docs/FACE-003-REVIEW.md`. STRONG is not a person. |
 | S4 | FACE-004 persons + identify | **1.0** | Code on `main`. Dump `--face`/`--image` evidence in `docs/FACE-004-IDENTIFY.md`. |
 | S5 | FACE-005 regression / scale | **1.1** | Incremental/inbox already on `main`. Regression/scale: `docs/FACE-005-REGRESSION.md`. 10k not run. |
-| S6 | visual memory | **1.2** | `memory history/together/events` on `grok/S6`. No new columns. |
+| S6 | visual memory | **1.2** | `memory history/together/events` on `main`. No new columns. |
 | S7–S9 | future | v2 / later | Do not open tickets from this blueprint |
 
 PRODUCT.md later-row mapping:
@@ -924,25 +925,28 @@ Do not:
 ## 14. Current position (honest)
 
 ```
-S0  FACE-000     code exists; Windows runtime rows still to be filled
-S1  0.2 + 0.3    S1 PASS — closed (`20260913T153515Z-1e915abe`)
-S2  FACE-002     harness (`lab eval`); dump remains underpowered until labeled; stage open (current gate)
-S3  0.4          review + name/merge/split code on main; not closed
-S4–S9            not started (identify = FACE-004)
-v1 ship          = S4 stills slice, after powered confirmatory evidence, 0.4, and 1.0
+S0  FACE-000     ARM64 OpenCV binary proven (PE 0xaa64), not consumed by Semblon.
+                 x64 native FACE-000 unverified (no x64 PC).
+S1  0.2 + 0.3    S1 PASS — closed (`20260913T153515Z-1e915abe`, 90 stills)
+S2  FACE-002     recorded: 22 pairs, FAR 0/11, FRR 1/11 at frozen 0.60
+S3  FACE-003     recorded: merge/name decisions; STRONG is not a person
+S4  FACE-004     recorded: identify vs named persons (`--face` / `--image`)
+S5  FACE-005     incremental/inbox 1.1 on main; regression/scale recorded;
+                 live scale 90 stills; 10k not evidenced
+S6               memory 1.2 on main (not part of FACE-002–005)
+S7–S9            not started
+v1 ship          stills slice: ingest → cluster → review → name → identify
 ```
 
-Immediate engineering path:
+Completed validation sequence (evidence index: `docs/FACE-GATES.md`):
 
 ```
 FACE-002 → FACE-003 → FACE-004 → FACE-005
 ```
 
-FACE-002 remains the current gate. Harness-on-path is not a stage close.
+Do not retune `eps`. Do not re-run FACE-005 scale. Do not start S7–S9, MediaPipe, CLIP, or vector-DB work from this paper.
 
-Honest code state: ingest / cluster / export / review / name / merge / split / eval exist. S1 identity-quality is closed. FACE-002 harness exists and refuses fake FAR/FRR; the stage is not closed until a powered frozen confirmatory set exists. That does not close S3, and it does not authorize geometry / semantic / video work.
-
-Do not start S5–S9, MediaPipe, CLIP, or vector-DB work from this paper.
+Deferred: bounded concurrent ingest workers; CPU/GPU execution-provider selection; recording actual provider/device/worker in run evidence.
 
 ---
 
@@ -1072,7 +1076,7 @@ semblon lab observatory enter --stage S3 --store STORE --run R
 
 **S1 PASS — closed.** Authoritative dump `20260913T153515Z-1e915abe` (Win ARM64 native, 90 `.jpg`): 85 faces, 78 ok, 10 clusters, 63 clustered, 15 eligible unassigned; no observed false merge; clusters are not people. Do not retune `eps=0.40`. Pin with `freeze --notes` on the Windows store when convenient.
 
-FACE-002: `semblon lab eval`. Print precision only on a frozen confirmatory set that meets the powered floor (10 same, 10 different, ≥1 hard-negative near the identity boundary). Otherwise underpowered — counts only, no FAR/FRR. Remine writes `mined_discovery` only. FACE-002 remains open until a powered frozen confirmatory set exists.
+FACE-002: `semblon lab eval`. Print precision only on a frozen confirmatory set that meets the powered floor (10 same, 10 different, ≥1 hard-negative near the identity boundary). Otherwise underpowered — counts only, no FAR/FRR. Remine writes `mined_discovery` only. Local dump set is recorded in `docs/FACE-002-CONFIRMATORY.md` (22 pairs; FAR 0/11, FRR 1/11 at 0.60). That is not a 10k claim.
 
 ---
 
@@ -1096,6 +1100,7 @@ A vector store is retrieval infrastructure, not intelligence. Do not add a parke
 | V1.2 | 2026-09-13 | Hygiene: structure + absorb + measure live here. Companion files are pointers. No features dropped. |
 | V1.3 | 2026-09-13 | S1 PASS — closed on `20260913T153515Z-1e915abe`. Next: FACE-002. |
 | V1.4 | 2026-09-15 | FACE-002 eval harness on the `lab eval` path. Precision only on powered frozen confirmatory. Stage remains open; FACE-003 is not the next closable gate solely because harness code exists. |
+| V1.5 | 2026-09-16 | FACE-002→005 validation recorded (`docs/FACE-GATES.md`). Incremental/inbox 1.1 and S6 memory 1.2 already on `main`. 10k not run. ARM64 OpenCV binary proven, not consumed. x64 native FACE-000 unverified. |
 
 ---
 
