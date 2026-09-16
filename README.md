@@ -21,7 +21,9 @@ py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .
 ```
 
-Then process a photo folder (no need to activate the venv, no need to copy a run id):
+Then **double-click `semblon.cmd`**, choose your Pictures (or any photo) folder, and wait for `review.html` to open.
+
+Or pass a path explicitly (no need to activate the venv, no need to copy a run id):
 
 ```text
 semblon.cmd process "D:\photos\dump"
