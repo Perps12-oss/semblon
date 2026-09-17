@@ -26,7 +26,7 @@ GlassSurface {
             font.weight: Font.DemiBold
         }
         Text {
-            text: "Shell spike"
+            text: "Shell · review"
             color: "#B3B3B3"
             font.pixelSize: 11
             font.family: "Segoe UI"
