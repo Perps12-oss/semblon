@@ -1,6 +1,6 @@
 # Roadmap reconcile (2026-09-17; perf track + design)
 
-**Product:** Phase 1 validate `review-ui` in real use (parallel).  
+**Product:** Phase 1 human tests **approved** 2026-09-17. Phase 3 axis = **S7a** (`docs/S7A.md`).  
 **Performance:** P0 baseline frozen; P1 = native ARM64 measure (separate env/store). Do **not** change S1 correctness env or eps.
 
 ## Position
@@ -10,9 +10,9 @@ FACE-000 … FACE-005  COMPLETE (docs/FACE-GATES.md)
 S6 / 1.2             on main
 S8 Interactive Review  shipped vertical (review-ui)
      │
-     ├── Phase 1  real-world validation (review-ui)     ← product gate
-     ├── Phase 2  S8.1 friction fixes from use
-     └── Phase 3  ONE axis: S8 shell | engine prep | S7a | scale
+     ├── Phase 1  real-world validation (review-ui)     ← APPROVED 2026-09-17
+     ├── Phase 2  S8.1 friction fixes from use          ← as they appear
+     └── Phase 3  S7a video files (sampled observations) ← OPEN (docs/S7A.md)
 
 PERF track (parallel; separate env — never swap S1):
      ├── P0  folder baseline 20260917T021045Z-48095f25   ← frozen
@@ -68,7 +68,8 @@ Perf baseline: `docs/PERF-P0-BASELINE.md`.
 | Native ARM64 Semblon **consumption in S1 path** | Explicit decision after P1 evidence — not silent swap |
 | x64-native FACE-000 | Needs genuine x64 PC |
 | 10k scale | Scale path |
-| **S7a–d engine** | After stills loop real |
+| **S7a video files** | **OPEN** — `docs/S7A.md` (sampled observations; no JPEG storm) |
+| **S7b–d** (tracklets / webcam / RTSP) | After S7a dump evidence |
 | Identify / Inbox UI + POSSIBLE | After Phase 1–2 naming |
 | Full shell / search | After `docs/S8-TOOLKIT.md` dump-gate (PySide6/QML candidate; Tk review-ui stays) |
 | FastAPI / Electron / web / CustomTkinter | REJECT |
@@ -77,14 +78,18 @@ Perf baseline: `docs/PERF-P0-BASELINE.md`.
 
 ### Phase 1 — Validate review-ui
 
+**Approved 2026-09-17** (owner: all human tests).  
 Process → review-ui → Name/Merge/Split/Ignore/Note → reopen → `identify --face`.  
 On run `20260917T021045Z-48095f25`: treat `7225de9d` as REVIEW; do not retune eps.
 
 ### Phase 2 — S8.1 friction from use
 
-### Phase 3 — one implementation axis
+As it appears. Does not block S7a.
 
-A shell · B engine prep · C S7a · D scale — not all at once.
+### Phase 3 — S7a (selected)
+
+Video files → sampled frame observations (`frame_id`, `t_ms`) → FaceKit embed → identify vs **persons**.  
+Not S7b tracking. Not webcam/RTSP. Not full S8 shell. Not scale. Not workers/EP.
 
 ## Performance track
 

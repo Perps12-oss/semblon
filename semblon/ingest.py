@@ -1,4 +1,4 @@
-"""0.2 ingest: folder of stills → media / observations / faces. No cluster."""
+"""0.2 ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from semblon import __version__
 from semblon.engine import (
     PACK_FAMILY,
     discover_weight_hashes,
+    embed_bgr,
     embed_image,
     load_app,
     pack_id,
@@ -35,6 +36,12 @@ from semblon.progress import (
     make_event,
 )
 from semblon.store import connect, init_db
+from semblon.temporal import (
+    DEFAULT_SAMPLE_HZ,
+    VideoError,
+    discover_videos,
+    iter_sampled_frames,
+)
 
 STILL_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 DET_SCORE_MIN = 0.60
@@ -99,6 +106,38 @@ def media_skip_reason(
     return None, media_id
 
 
+def _persist_faces(conn, *, obs_id: str, run_id: str, pack_id: str, faces: list) -> tuple[int, int, int, int]:
+    n_faces = n_ok = n_lq = n_rej = 0
+    for f in faces:
+        fw, fh = f["face_w"], f["face_h"]
+        score = f["det_score"]
+        band = size_band(fw, fh)
+        if score < DET_SCORE_MIN:
+            status, blob, pack, dim = "rejected", None, None, None
+            n_rej += 1
+        else:
+            vec = np.asarray(f["embedding"], dtype=np.float32)
+            blob, pack, dim = vec.tobytes(), pack_id, int(vec.size)
+            if min(fw, fh) < CLUSTER_MIN_SIDE:
+                status = "low_quality"
+                n_lq += 1
+            else:
+                status = "ok"
+                n_ok += 1
+        x1, y1, x2, y2 = f["bbox"]
+        conn.execute(
+            """INSERT INTO faces(face_id, observation_id, run_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+               det_score, face_w, face_h, size_band, embedding, embedding_pack, embedding_dim, status)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                uuid.uuid4().hex, obs_id, run_id, x1, y1, x2, y2,
+                score, fw, fh, band, blob, pack, dim, status,
+            ),
+        )
+        n_faces += 1
+    return n_faces, n_ok, n_lq, n_rej
+
+
 def ingest(
     folder: Path,
     store: Path,
@@ -152,6 +191,7 @@ def ingest(
         "folder": str(folder),
         "reprocess": bool(reprocess),
         "incremental": not reprocess,
+        "sample_hz": DEFAULT_SAMPLE_HZ,
     }
     conn.execute(
         """INSERT INTO runs(run_id, started_at, software_version, pack_id,
@@ -176,7 +216,8 @@ def ingest(
 
     emit(on_event, make_event(STAGE_DISCOVER, KIND_STARTED, path=str(folder), run_id=run_id))
     files = discover_stills(folder)
-    n_files = len(files)
+    videos = discover_videos(folder)
+    n_files = len(files) + len(videos)
     emit(
         on_event,
         make_event(
@@ -289,40 +330,106 @@ def ingest(
             tick(index, path, "failed")
             continue
 
-        for f in faces:
-            fw, fh = f["face_w"], f["face_h"]
-            score = f["det_score"]
-            band = size_band(fw, fh)
-            if score < DET_SCORE_MIN:
-                status, blob, pack, dim = "rejected", None, None, None
-                n_rej += 1
-            else:
-                vec = np.asarray(f["embedding"], dtype=np.float32)
-                blob, pack, dim = vec.tobytes(), pid, int(vec.size)
-                if min(fw, fh) < CLUSTER_MIN_SIDE:
-                    status = "low_quality"
-                    n_lq += 1
-                else:
-                    status = "ok"
-                    n_ok += 1
-            x1, y1, x2, y2 = f["bbox"]
-            conn.execute(
-                """INSERT INTO faces(face_id, observation_id, run_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
-                   det_score, face_w, face_h, size_band, embedding, embedding_pack, embedding_dim, status)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    uuid.uuid4().hex, obs_id, run_id, x1, y1, x2, y2,
-                    score, fw, fh, band, blob, pack, dim, status,
-                ),
-            )
-            n_faces += 1
+        nf, nok, nlq, nrej = _persist_faces(
+            conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+        )
+        n_faces += nf
+        n_ok += nok
+        n_lq += nlq
+        n_rej += nrej
         conn.commit()
         tick(index, path, "processed")
+
+    n_video_frames = 0
+    for offset, path in enumerate(videos, start=1):
+        index = len(files) + offset
+        try:
+            digest = _sha256_file(path)
+        except OSError:
+            n_fail += 1
+            tick(index, path, "failed")
+            continue
+
+        reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
+        if reason == "seen":
+            n_skip_seen += 1
+            tick(index, path, "skipped_seen")
+            continue
+        if reason == "same_run":
+            n_skip_same += 1
+            tick(index, path, "skipped_same_run")
+            continue
+
+        st = path.stat()
+        width = height = None
+        sampled = []
+        try:
+            sampled = list(iter_sampled_frames(path, DEFAULT_SAMPLE_HZ))
+        except VideoError:
+            n_fail += 1
+            tick(index, path, "failed")
+            continue
+        if sampled:
+            height, width = sampled[0][2].shape[:2]
+
+        if media_id is None:
+            media_id = uuid.uuid4().hex
+            conn.execute(
+                """INSERT INTO media(media_id, source_type, path, sha256, width, height,
+                   mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    media_id,
+                    "video",
+                    str(path),
+                    digest,
+                    width,
+                    height,
+                    getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
+                    st.st_size,
+                ),
+            )
+            n_media += 1
+
+        if not sampled:
+            n_fail += 1
+            conn.commit()
+            tick(index, path, "failed")
+            continue
+
+        frames_ok = 0
+        for frame_id, t_ms, img in sampled:
+            obs_id = uuid.uuid4().hex
+            conn.execute(
+                "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                (obs_id, media_id, int(frame_id), int(t_ms), run_id),
+            )
+            try:
+                faces = embed_bgr(app, img)
+            except Exception:
+                continue
+            nf, nok, nlq, nrej = _persist_faces(
+                conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+            )
+            n_faces += nf
+            n_ok += nok
+            n_lq += nlq
+            n_rej += nrej
+            frames_ok += 1
+        n_video_frames += frames_ok
+        conn.commit()
+        if frames_ok == 0:
+            n_fail += 1
+            tick(index, path, "failed")
+        else:
+            tick(index, path, "processed")
 
     timings = {
         "model_load_s": load_s,
         "ingest_s": time.perf_counter() - t0,
-        "files": len(files),
+        "files": n_files,
+        "stills": len(files),
+        "videos": len(videos),
+        "video_frames": n_video_frames,
         "new_media": n_media,
         "skipped": n_skip_seen + n_skip_same,
         "skipped_seen": n_skip_seen,

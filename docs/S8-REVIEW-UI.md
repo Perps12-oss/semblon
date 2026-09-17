@@ -45,6 +45,6 @@ Process → review-ui → name/correct → close/reopen → decisions still ther
 
 ## Next (ordered)
 
-1. Phase 1 real use (`ROADMAP-RECONCILE.md`).  
-2. Phase 2 friction fixes.  
-3. Then **one** of: S8 shell (stills Canvas) · engine cancel/completion · S7a · 10k.
+1. Phase 1 real use — **approved 2026-09-17**.  
+2. Phase 2 friction fixes as they appear.  
+3. Phase 3 axis selected: **S7a** (`docs/S7A.md`). Full S8 shell / Canvas(Video) wait for S7a evidence.

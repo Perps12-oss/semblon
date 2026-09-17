@@ -130,10 +130,13 @@ def _clear_unprotected_clusters(conn, run_id: str, locked_faces: set[str], locke
 def _load_ok_faces(conn, run_id: str, pack_id: str):
     rows = conn.execute(
         """
-        SELECT face_id, embedding, embedding_pack, embedding_dim
-        FROM faces
-        WHERE run_id=? AND status='ok' AND embedding IS NOT NULL
-        ORDER BY face_id
+        SELECT f.face_id, f.embedding, f.embedding_pack, f.embedding_dim
+        FROM faces f
+        JOIN observations o ON o.observation_id = f.observation_id
+        JOIN media m ON m.media_id = o.media_id
+        WHERE f.run_id=? AND f.status='ok' AND f.embedding IS NOT NULL
+          AND m.source_type = 'folder'
+        ORDER BY f.face_id
         """,
         (run_id,),
     ).fetchall()
