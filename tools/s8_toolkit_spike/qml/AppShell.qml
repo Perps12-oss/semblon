@@ -29,7 +29,7 @@ Item {
                     font.weight: Font.DemiBold
                 }
                 Text {
-                    text: "  toolkit spike"
+                    text: "  shell · review"
                     color: "#B3B3B3"
                     font.family: "Segoe UI"
                     font.pixelSize: 12
@@ -93,15 +93,29 @@ Item {
                 Layout.fillHeight: true
                 section: bridge.section
                 images: bridge.images
+                items: bridge.items
+                selectedIndex: bridge.selectedIndex
+                donorIndex: bridge.donorIndex
+                onItemClicked: (index) => bridge.selectItem(index)
+                onItemDonorToggled: (index) => bridge.toggleMergeDonor(index)
             }
             Inspector {
                 Layout.fillHeight: true
                 runId: bridge.runId
                 packId: bridge.packId
+                selectedLabel: bridge.selectedLabel
+                message: bridge.message
                 clusters: bridge.clusters
                 unassigned: bridge.unassigned
+                reviewRequired: bridge.reviewRequired
                 okFaces: bridge.okFaces
                 persons: bridge.persons
+                onNameRequested: (n) => bridge.nameSelected(n)
+                onNoteRequested: (t) => bridge.noteSelected(t)
+                onIgnoreRequested: () => bridge.ignoreSelected()
+                onMergeRequested: () => bridge.mergeSelected()
+                onSplitRequested: () => bridge.splitFirstFace()
+                onReloadRequested: () => bridge.reload()
             }
         }
     }

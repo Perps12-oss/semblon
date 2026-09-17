@@ -47,4 +47,4 @@ Process → review-ui → name/correct → close/reopen → decisions still ther
 
 1. Phase 1 real use — **approved 2026-09-17**.  
 2. Phase 2 friction fixes as they appear.  
-3. Phase 3 axis selected: **S7a** (`docs/S7A.md`). Full S8 shell / Canvas(Video) wait for S7a evidence.
+3. Phase 3 axes in parallel: **S7a** (`docs/S7A.md`) and PySide6 dump-gate path (`docs/S8-TOOLKIT.md` — review actions wired in `tools/s8_toolkit_spike`; full Canvas still deferred).

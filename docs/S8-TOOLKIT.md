@@ -1,7 +1,7 @@
 # S8 toolkit investigation
 
-**Status:** spike only (`tools/s8_toolkit_spike/`). Not product GUI. Not S7.  
-**Branch intent:** `grok/S8-toolkit` — do not mix with S7a (PR #22) or review-ui/PERF (PR #23).
+**Status:** dump-gate vertical wired (`tools/s8_toolkit_spike/`). Presentation + Name/Merge/Split/Ignore/Note via `review_ui` → `review.py`. **Not** full AppShell / Intelligence Canvas / S7. Does **not** replace tkinter `review-ui`.  
+**Branch intent:** `grok/S8-shell-review`.
 
 ## Recon (what already exists)
 
@@ -16,15 +16,15 @@
 | CustomTkinter / Electron / FastAPI / web | — | already **REJECT** |
 | Full AppShell | design only | blueprint §S8 |
 
-`review-ui` stays the shipping vertical. This spike does **not** replace it.
+`review-ui` stays the shipping vertical. This spike proves the PySide6 path can call the same domain ops.
 
-Attachment point: a presentation process that reads SQLite RO and later will call `review.py`. No FaceKit in the GUI process required for this spike.
+Attachment point: presentation process reads SQLite RO via `load_board`, mutations only through `apply_*`. No FaceKit in the GUI process.
 
-## Spike
+## Spike (now: review vertical)
 
 ```text
 Python core (unchanged)
-        │  RO snapshot (run_id, counts, image URIs)
+        │  load_board / apply_* (review_ui → review.py)
         v
 tools/s8_toolkit_spike  (PySide6 + Qt Quick)
         │
@@ -33,9 +33,16 @@ tools/s8_toolkit_spike  (PySide6 + Qt Quick)
 HWND → DWM → Mica / Acrylic / solid
 ```
 
-Run: `py -3 tools/s8_toolkit_spike/main.py`
+Run:
+
+```text
+py -3 tools/s8_toolkit_spike/main.py
+py -3 tools/s8_toolkit_spike/main.py --store %LOCALAPPDATA%\Semblon\store.sqlite --run <run_id>
+```
 
 Optional extra: `pip install .[gui]` → PySide6. Core install remains headless.
+
+Review workspace: board list + thumbs. Inspector: Name / Note / Ignore / Merge (Ctrl+click donor) / Split first face / Reload. Other nav sections are stubs.
 
 ## KEEP / DEFER / REJECT
 
@@ -43,12 +50,12 @@ Optional extra: `pip install .[gui]` → PySide6. Core install remains headless.
 |---|---|---|
 | Tk **review-ui** vertical | **KEEP** | Shipped; proves GUI → `review.py` → store |
 | Tk as **full AppShell** / glass / Mica | **DEFER / likely REJECT** | No DWM composition, weak animation, fights the visual language |
-| **PySide6 + Qt Quick/QML** as S8 shell foundation | **KEEP (candidate)** | In-process Python, ARM64/x64 wheels exist on this SKY x64-emulated 3.14, HWND + DWM adapter isolated, GPU scene graph, image-heavy ListView, custom chrome |
+| **PySide6 + Qt Quick/QML** as S8 shell foundation | **KEEP (candidate → dump-gate path)** | Review actions wired; full Canvas / Library / Search still deferred |
 | WinUI 3 / .NET | **DEFER** | Max Windows 11 fidelity, but Python↔WinRT boundary; no blocker found that forces it |
 | Electron / Tauri / web | **REJECT** | Already rejected; still rejected |
 | CustomTkinter | **REJECT** | Already rejected |
 
-PySide6 is **not locked as product code** until a dump-gate: owner opens the spike on Windows 11, confirms Mica-or-fallback, and agrees the surfaces feel capable. Then a later ticket hosts review actions through `review.py`.
+Owner dump-gate: open the shell on Windows 11, confirm Mica-or-fallback, Name one cluster, reopen / Reload, decision still there. Full product shell (Canvas, search, identify inbox) waits for roadmap Phase 3.
 
 ## Machine notes (2026-09-17)
 
@@ -67,3 +74,4 @@ Qt / PySide6 is **LGPL**. Local-only Semblon can dynamically link. Recorded in `
 - Copy Name/Merge/Split into QML.
 - Grow this spike into Intelligence Canvas or S7 UI.
 - Retune `eps`.
+- Replace `semblon review-ui` until dump-gate + product decision say so.

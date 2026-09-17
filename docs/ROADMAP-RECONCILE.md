@@ -71,7 +71,7 @@ Perf baseline: `docs/PERF-P0-BASELINE.md`.
 | **S7a video files** | **OPEN** — `docs/S7A.md` (sampled observations; no JPEG storm) |
 | **S7b–d** (tracklets / webcam / RTSP) | After S7a dump evidence |
 | Identify / Inbox UI + POSSIBLE | After Phase 1–2 naming |
-| Full shell / search | After `docs/S8-TOOLKIT.md` dump-gate (PySide6/QML candidate; Tk review-ui stays) |
+| Full shell / search | After `docs/S8-TOOLKIT.md` dump-gate (PySide6 review vertical wired in spike; Canvas/search still later; Tk review-ui stays) |
 | FastAPI / Electron / web / CustomTkinter | REJECT |
 
 ## Phases (product)

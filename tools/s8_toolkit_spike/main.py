@@ -1,6 +1,7 @@
-"""S8 toolkit spike: PySide6 + Qt Quick. Not product GUI.
+"""S8 shell slice: PySide6 + Qt Quick over review_ui → review.py.
 
-Does not import ingest/cluster/identify. Does not mutate the store.
+Does not import ingest/cluster/identify. Mutations only via review_ui apply_*.
+tkinter review-ui remains the shipping vertical; this is the toolkit dump-gate path.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuick import QQuickWindow
 
-    from bridge import ShellBridge, load_spike_snapshot
+    from bridge import ShellBridge
     from theme import Theme
     from windows.backdrop import WindowsBackdropAdapter
 
@@ -41,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("Semblon")
 
     theme = Theme()
-    bridge = ShellBridge(load_spike_snapshot(args.store, args.run))
+    bridge = ShellBridge(args.store, args.run)
     engine = QQmlApplicationEngine()
     engine.addImportPath(str(SPIKE / "qml"))
     engine.rootContext().setContextProperty("theme", theme)
