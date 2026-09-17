@@ -46,5 +46,5 @@ Process → review-ui → name/correct → close/reopen → decisions still ther
 ## Next (ordered)
 
 1. Phase 1 real use — **approved 2026-09-17**.  
-2. Phase 2 friction fixes as they appear.  
+2. Phase 2 friction fixes as they appear (double-click **home** = Choose folder / Open Review).  
 3. Phase 3 axes in parallel: **S7a** (`docs/S7A.md`) and PySide6 dump-gate path (`docs/S8-TOOLKIT.md` — review actions wired in `tools/s8_toolkit_spike`; full Canvas still deferred).
