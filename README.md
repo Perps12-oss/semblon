@@ -21,12 +21,13 @@ py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .
 ```
 
-Then **double-click `semblon.cmd`**, choose your Pictures (or any photo) folder, and wait for `review.html` to open.
+Then **double-click `semblon.cmd`** to open **Home**: Choose folder to process, or Open Review to name people.
+(Transparent / Mica full shell stays on the PySide6 dump-gate path — not this window.)
 
-Review and name people (S8 Interactive Review slice — no PowerShell ID copying).
-S7 video and full search UI stay deferred; static `review.html` remains a read-only export.
+S7 video Canvas and full search UI stay deferred; static `review.html` remains a read-only export.
 
 ```text
+semblon.cmd home
 semblon.cmd review-ui
 semblon.cmd review-ui --store "%LOCALAPPDATA%\Semblon\store.sqlite"
 ```

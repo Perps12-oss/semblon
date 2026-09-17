@@ -1,6 +1,6 @@
 @echo off
 setlocal
-rem Repo-root launcher: double-click = folder picker + process; args = power-user CLI.
+rem Repo-root launcher: double-click = home (Choose folder / Open Review); args = power-user CLI.
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "VENV_PY=%ROOT%\.venv\Scripts\python.exe"

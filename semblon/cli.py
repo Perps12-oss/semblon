@@ -6,6 +6,7 @@ FACE-004: identify vs persons, never clusters. Unknown is valid.
 FACE-005: incremental ingest + inbox. No watcher.
 S6: memory history / together / events. Time/place are not identity.
 process: happy-path ingest -> cluster -> export review.html.
+home: double-click Choose folder / Open Review (not full shell).
 review-ui: S8 Interactive Review slice (tkinter over review APIs).
 S7a: video files in the ingest folder are sampled (not every frame).
 """
@@ -261,6 +262,17 @@ def main(argv: list[str] | None = None) -> int:
         "--run",
         default=None,
         help="run id (default: latest run on the store)",
+    )
+
+    home = sub.add_parser(
+        "home",
+        help="Double-click home: Choose folder / Open Review (not full S8 shell)",
+    )
+    home.add_argument(
+        "--store",
+        default=None,
+        type=Path,
+        help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
     )
 
     args = p.parse_args(argv)
@@ -566,6 +578,11 @@ def main(argv: list[str] | None = None) -> int:
             print(str(e), file=sys.stderr)
             return 2
         return 0
+
+    if args.cmd == "home":
+        from semblon.home_ui import run_home_ui
+
+        return run_home_ui(store=args.store)
 
     if args.cmd == "stats":
         from semblon.stats import StatsError, stats as run_stats
