@@ -32,15 +32,15 @@ S6 `memory` 1.2 is on `main` (not part of FACE-002–005).
 
 ## Deferred (explicit)
 
-- Bounded concurrent ingest workers
-- Provider-aware CPU/GPU execution-provider selection
+- Bounded concurrent ingest workers / EP / GPU / batch / duplicate imread / SQLite commit policy — **after PERF P1 only**
 - Recording actual provider / device / worker in run evidence
 - Folder watcher / daemon
 - 10k ingest
-- Consuming the ARM64 OpenCV pyd in the S1 path
+- Consuming the ARM64 OpenCV pyd in the **S1** path (P1 may use it in an isolated env)
 
-## After FACE gates (2026-09-16)
+## After FACE gates
 
 S8 Interactive Review slice: `docs/S8-REVIEW-UI.md` (`review-ui`).  
-Full deferred catalog + Phase 1 validation pause: `docs/ROADMAP-RECONCILE.md`.  
+Roadmap + perf track: `docs/ROADMAP-RECONCILE.md`, `docs/PERF-P0-BASELINE.md` (P0: run `20260917T021045Z-48095f25`, 221 files, ingest 1299.3 s, x64 emulated).  
+PERF P1 native ARM64: **blocked** — `docs/PERF-P1-ARM64.md` (`opencv_geometry500.dll` hang; ORT win_arm64 OK). Emulation speedup unmeasured.  
 S7 temporal model + S8 shell/Canvas design reconciled in `docs/SEMBLON_MATURITY_BLUEPRINT.md` §§S7–S8 — engine/full shell still deferred. Do not invent a parallel plan.
