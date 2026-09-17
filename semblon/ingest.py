@@ -1,12 +1,19 @@
-"""0.2 ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster."""
+"""0.2 ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster.
+
+Optional experimental --workers > 1: thread-local FaceAnalysis for stills only,
+single SQLite writer. Video sampling stays sequential on the main thread.
+Does not change detection/quality thresholds or pack/provider.
+"""
 
 from __future__ import annotations
 
 import json
 import platform
 import sys
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,6 +54,8 @@ STILL_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 DET_SCORE_MIN = 0.60
 CLUSTER_MIN_SIDE = 80
 DET_SIZE = (640, 640)
+
+_thread_local = threading.local()
 
 
 def size_band(w: int, h: int) -> str:
@@ -106,7 +115,61 @@ def media_skip_reason(
     return None, media_id
 
 
+def _worker_app():
+    app = getattr(_thread_local, "app", None)
+    if app is None:
+        app = load_app(DET_SIZE)
+        _thread_local.app = app
+    return app
+
+
+def _compute_file(path: Path, index: int) -> dict:
+    """Hash + decode dims + embed. No SQLite. Used by workers>1 stills path."""
+    try:
+        digest = _sha256_file(path)
+    except OSError:
+        return {"index": index, "path": path, "outcome": "failed", "error": "hash"}
+
+    img0 = cv2.imread(str(path))
+    if img0 is None:
+        return {
+            "index": index,
+            "path": path,
+            "digest": digest,
+            "outcome": "failed",
+            "error": "decode",
+        }
+    h, w = img0.shape[:2]
+    st = path.stat()
+    try:
+        faces = embed_image(_worker_app(), path)
+    except Exception:
+        return {
+            "index": index,
+            "path": path,
+            "digest": digest,
+            "width": w,
+            "height": h,
+            "mtime_ns": getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
+            "byte_size": st.st_size,
+            "outcome": "failed",
+            "error": "embed",
+        }
+    return {
+        "index": index,
+        "path": path,
+        "digest": digest,
+        "width": w,
+        "height": h,
+        "mtime_ns": getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
+        "byte_size": st.st_size,
+        "faces": faces,
+        "outcome": "ok",
+    }
+
+
 def _persist_faces(conn, *, obs_id: str, run_id: str, pack_id: str, faces: list) -> tuple[int, int, int, int]:
+    """Insert face rows. Returns (n_faces, n_ok, n_lq, n_rej)."""
     n_faces = n_ok = n_lq = n_rej = 0
     for f in faces:
         fw, fh = f["face_w"], f["face_h"]
@@ -143,11 +206,14 @@ def ingest(
     store: Path,
     *,
     reprocess: bool = False,
+    workers: int = 1,
     on_event: ProgressCallback = None,
 ) -> dict:
-    folder = folder.resolve()
+    folder = Path(folder).resolve()
     if not folder.is_dir():
         raise FileNotFoundError(folder)
+    if workers < 1:
+        raise ValueError("workers must be >= 1")
 
     conn = connect(store)
     init_db(conn)
@@ -155,12 +221,16 @@ def ingest(
     import insightface
     import onnxruntime as ort
 
-    t_load = time.perf_counter()
-    app = load_app(DET_SIZE)
-    load_s = time.perf_counter() - t_load
     hashes = discover_weight_hashes()
     ifver = getattr(insightface, "__version__", "unknown")
     pid = pack_id(ifver, hashes)
+
+    load_s = 0.0
+    app = None
+    if workers == 1:
+        t_load = time.perf_counter()
+        app = load_app(DET_SIZE)
+        load_s = time.perf_counter() - t_load
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     runtime = {
@@ -179,7 +249,8 @@ def ingest(
         "pack_id": pid,
         "det_size": list(DET_SIZE),
         "device": "cpu",
-        "workers": 1,
+        "execution_provider": "CPUExecutionProvider",
+        "workers": int(workers),
         "embed_batch": 1,
         "model_load_s": round(load_s, 3),
         "software_version": __version__,
@@ -192,6 +263,7 @@ def ingest(
         "reprocess": bool(reprocess),
         "incremental": not reprocess,
         "sample_hz": DEFAULT_SAMPLE_HZ,
+        "workers": int(workers),
     }
     conn.execute(
         """INSERT INTO runs(run_id, started_at, software_version, pack_id,
@@ -275,32 +347,60 @@ def ingest(
             ),
         )
 
-    for index, path in enumerate(files, start=1):
-        try:
-            digest = _sha256_file(path)
-        except OSError:
+    def write_computed(rec: dict) -> None:
+        nonlocal n_media, n_skip_seen, n_skip_same, n_faces, n_ok, n_lq, n_rej, n_fail
+        index = rec["index"]
+        path = Path(rec["path"])
+        if rec.get("outcome") == "failed" and rec.get("error") == "hash":
             n_fail += 1
             tick(index, path, "failed")
-            continue
+            return
 
+        digest = rec["digest"]
         reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
         if reason == "seen":
             n_skip_seen += 1
             tick(index, path, "skipped_seen")
-            continue
+            return
         if reason == "same_run":
             n_skip_same += 1
             tick(index, path, "skipped_same_run")
-            continue
-        if media_id is None:
-            img0 = cv2.imread(str(path))
-            if img0 is None:
+            return
+
+        if rec.get("outcome") == "failed":
+            if rec.get("error") == "decode":
                 n_fail += 1
                 tick(index, path, "failed")
-                continue
-            h, w = img0.shape[:2]
+                return
+            if media_id is None:
+                media_id = uuid.uuid4().hex
+                conn.execute(
+                    """INSERT INTO media(media_id, source_type, path, sha256, width, height,
+                       mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
+                    (
+                        media_id,
+                        "folder",
+                        str(path),
+                        digest,
+                        rec["width"],
+                        rec["height"],
+                        rec["mtime_ns"],
+                        rec["byte_size"],
+                    ),
+                )
+                n_media += 1
+            obs_id = uuid.uuid4().hex
+            conn.execute(
+                "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                (obs_id, media_id, None, None, run_id),
+            )
+            n_fail += 1
+            conn.commit()
+            tick(index, path, "failed")
+            return
+
+        if media_id is None:
             media_id = uuid.uuid4().hex
-            st = path.stat()
             conn.execute(
                 """INSERT INTO media(media_id, source_type, path, sha256, width, height,
                    mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
@@ -309,10 +409,10 @@ def ingest(
                     "folder",
                     str(path),
                     digest,
-                    w,
-                    h,
-                    getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
-                    st.st_size,
+                    rec["width"],
+                    rec["height"],
+                    rec["mtime_ns"],
+                    rec["byte_size"],
                 ),
             )
             n_media += 1
@@ -322,16 +422,8 @@ def ingest(
             "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
             (obs_id, media_id, None, None, run_id),
         )
-        try:
-            faces = embed_image(app, path)
-        except Exception:
-            n_fail += 1
-            conn.commit()
-            tick(index, path, "failed")
-            continue
-
         nf, nok, nlq, nrej = _persist_faces(
-            conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+            conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=rec["faces"]
         )
         n_faces += nf
         n_ok += nok
@@ -340,7 +432,112 @@ def ingest(
         conn.commit()
         tick(index, path, "processed")
 
+    if workers == 1:
+        assert app is not None
+        for index, path in enumerate(files, start=1):
+            try:
+                digest = _sha256_file(path)
+            except OSError:
+                n_fail += 1
+                tick(index, path, "failed")
+                continue
+
+            reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
+            if reason == "seen":
+                n_skip_seen += 1
+                tick(index, path, "skipped_seen")
+                continue
+            if reason == "same_run":
+                n_skip_same += 1
+                tick(index, path, "skipped_same_run")
+                continue
+            if media_id is None:
+                img0 = cv2.imread(str(path))
+                if img0 is None:
+                    n_fail += 1
+                    tick(index, path, "failed")
+                    continue
+                h, w = img0.shape[:2]
+                media_id = uuid.uuid4().hex
+                st = path.stat()
+                conn.execute(
+                    """INSERT INTO media(media_id, source_type, path, sha256, width, height,
+                       mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
+                    (
+                        media_id,
+                        "folder",
+                        str(path),
+                        digest,
+                        w,
+                        h,
+                        getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
+                        st.st_size,
+                    ),
+                )
+                n_media += 1
+
+            obs_id = uuid.uuid4().hex
+            conn.execute(
+                "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                (obs_id, media_id, None, None, run_id),
+            )
+            try:
+                faces = embed_image(app, path)
+            except Exception:
+                n_fail += 1
+                conn.commit()
+                tick(index, path, "failed")
+                continue
+
+            nf, nok, nlq, nrej = _persist_faces(
+                conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+            )
+            n_faces += nf
+            n_ok += nok
+            n_lq += nlq
+            n_rej += nrej
+            conn.commit()
+            tick(index, path, "processed")
+    else:
+        # Warm one FaceAnalysis per worker thread; wall clock ≈ max load.
+        t_load = time.perf_counter()
+
+        def _warm(_i: int) -> float:
+            t1 = time.perf_counter()
+            _worker_app()
+            return time.perf_counter() - t1
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            load_each = list(pool.map(_warm, range(workers)))
+            load_s = time.perf_counter() - t_load
+            runtime["model_load_s"] = round(load_s, 3)
+            runtime["model_load_each_s"] = [round(x, 3) for x in load_each]
+            conn.execute(
+                "UPDATE runs SET runtime_json=? WHERE run_id=?",
+                (json.dumps(runtime), run_id),
+            )
+            conn.commit()
+
+            futures = {
+                pool.submit(_compute_file, path, index): index
+                for index, path in enumerate(files, start=1)
+            }
+            for fut in as_completed(futures):
+                write_computed(fut.result())
+
+        # Video path needs a main-thread app after worker stills.
+        t_load_v = time.perf_counter()
+        app = load_app(DET_SIZE)
+        load_s = load_s + (time.perf_counter() - t_load_v)
+        runtime["model_load_s"] = round(load_s, 3)
+        conn.execute(
+            "UPDATE runs SET runtime_json=? WHERE run_id=?",
+            (json.dumps(runtime), run_id),
+        )
+        conn.commit()
+
     n_video_frames = 0
+    assert app is not None
     for offset, path in enumerate(videos, start=1):
         index = len(files) + offset
         try:
@@ -440,7 +637,11 @@ def ingest(
         "rejected": n_rej,
         "failed": n_fail,
         "incremental": not reprocess,
+        "workers": int(workers),
     }
+    if n_files and timings["ingest_s"] > 0:
+        timings["images_per_second"] = round(n_files / timings["ingest_s"], 4)
+        timings["faces_per_second"] = round(n_faces / timings["ingest_s"], 4)
     conn.execute(
         "UPDATE runs SET finished_at=?, timings_json=? WHERE run_id=?",
         (datetime.now(timezone.utc).isoformat(), json.dumps(timings), run_id),
