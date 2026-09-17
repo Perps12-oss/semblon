@@ -16,6 +16,7 @@ from semblon.temporal import (
     VideoError,
     discover_videos,
     frame_t_ms,
+    read_bgr,
     sample_frame_indices,
 )
 
@@ -36,6 +37,43 @@ def test_frame_t_ms_matches_index_over_fps():
     assert frame_t_ms(0, 25.0) == 0
     assert frame_t_ms(25, 25.0) == 1000
     assert frame_t_ms(0, 0.0) == 0
+
+
+def test_read_bgr_still_uses_imread(tmp_path):
+    img_path = tmp_path / "a.jpg"
+    img_path.write_bytes(b"not-a-real-jpeg")
+    with patch("semblon.temporal.cv2.imread", return_value=np.zeros((10, 10, 3), dtype=np.uint8)) as im:
+        out = read_bgr(img_path, None)
+    assert out is not None
+    assert out.shape == (10, 10, 3)
+    im.assert_called_once_with(str(img_path))
+
+
+def test_read_bgr_video_seeks_frame():
+    fake = np.ones((20, 20, 3), dtype=np.uint8) * 7
+
+    class Cap:
+        def __init__(self, *_a, **_k):
+            self.pos = None
+
+        def isOpened(self):
+            return True
+
+        def set(self, _prop, value):
+            self.pos = value
+            return True
+
+        def read(self):
+            assert self.pos == 42.0
+            return True, fake
+
+        def release(self):
+            pass
+
+    with patch("semblon.temporal.cv2.VideoCapture", return_value=Cap()):
+        out = read_bgr("clip.mp4", 42)
+    assert out is not None
+    assert int(out[0, 0, 0]) == 7
 
 
 def test_discover_videos_ignores_stills(tmp_path):

@@ -20,7 +20,7 @@
 
 FACE-002 → FACE-003 → FACE-004 → FACE-005 **validation is recorded** (`docs/FACE-GATES.md`). **S1 PASS — closed.** Do not retune `eps`. Do not re-run FACE-005 scale work. Do not invent a 10k claim.
 
-S5 incremental/inbox (1.1) and S6 memory (1.2) are already on `main`. S7a (sampled video files) is the open engine slice (`docs/S7A.md`). Do not implement S7b–d, S8 full shell, S9, MediaPipe, CLIP, live, public lookup, ACC, or a vector database because this file is extensive.
+S5 incremental/inbox (1.1) and S6 memory (1.2) are already on `main`. S7a (sampled video files) has dump evidence (`docs/S7A.md`). **S8 Reviewability** (video face inspectability) is the open Phase 2 friction fix before S7b. Do not implement S7b–d, S8 full shell, S9, MediaPipe, CLIP, live, public lookup, ACC, or a vector database because this file is extensive.
 
 ---
 
@@ -1254,6 +1254,7 @@ A vector store is retrieval infrastructure, not intelligence. Do not add a parke
 | V1.5 | 2026-09-16 | FACE-002→005 validation recorded (`docs/FACE-GATES.md`). Incremental/inbox 1.1 and S6 memory 1.2 already on `main`. 10k not run. ARM64 OpenCV binary proven, not consumed. x64 native FACE-000 unverified. |
 | V1.6 | 2026-09-16 | S7 temporal observation model + S8 shell/Intelligence Canvas IA reconciled (no engine code). Appearance (temporal) ≠ appearance space. POSSIBLE = planned UI state. Phase 1 remains review-ui validation (`docs/ROADMAP-RECONCILE.md`). |
 | V1.7 | 2026-09-17 | Phase 1 human tests approved. S7a gate open (`docs/S7A.md`): sampled video-file observations on existing `frame_id`/`t_ms`. S7b–d and full S8 shell still deferred. eps frozen. |
+| V1.8 | 2026-09-17 | S7a dump evidence `20260917T161452Z-a012c0fe`. S8 Reviewability: inspect video face observations via render-time seek/crop (`docs/S8-REVIEW-UI.md`). `observation ≠ tracklet ≠ person`; do not enable video DBSCAN to shrink unassigned. S7b after inspectability. |
 
 ---
 

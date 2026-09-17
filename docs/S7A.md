@@ -1,6 +1,6 @@
 # S7a — Video files (sampled observations)
 
-**Status:** gate open 2026-09-17. Owner approved Phase 1 human tests (`review-ui`). Phase 3 axis = S7a.  
+**Status:** gate open 2026-09-17. Dump evidence on owner machine (run `20260917T161452Z-a012c0fe`).  
 **This is** the first S7 engine slice: video *files* as temporal sources.  
 **Design:** `docs/SEMBLON_MATURITY_BLUEPRINT.md` §S7.  
 **Not yet:** S7b tracklets / Appearances, S7c webcam, S7d RTSP, Canvas(Video), JPEG-per-frame dumps.
@@ -35,6 +35,8 @@ sampled face observation
 
 Cluster is still a hypothesis. Video sampled `status=ok` faces are **held out of DBSCAN** in this slice so a talking-head clip cannot become a stills-style JPEG cluster. `identify` vs **named persons** is the identity path. Human review still names people.
 
+**Semantics:** `observation ≠ tracklet ≠ person`. A large `unassigned` count after video ingest is an **observation** count (temporal repetition across sampled frames), not an identity count. Do not “fix” that number by enabling product DBSCAN on video.
+
 ## Defaults (do not retune stills eps)
 
 | Knob | Value | Notes |
@@ -52,9 +54,13 @@ Cluster is still a hypothesis. Video sampled `status=ok` faces are **held out of
 5. `identify --face` on a named person still works for stills; video faces may be identified against persons, never clusters.
 6. No change to `eps=0.40` / confirmatory 0.60.
 
+## Dump evidence (2026-09-17)
+
+Run `20260917T161452Z-a012c0fe`: 2 videos → 231 samples @1 Hz → 434 ok faces → 0 product clusters (holdout). Offline frozen DBSCAN compresses those faces into a few groups (two dominant cross-video); that supports temporal repetition, **not** person labels. S8 must make each observation inspectable (`docs/S8-REVIEW-UI.md` Reviewability) before S7b design locks.
+
 ## Next (ordered, not this ticket)
 
-1. Dump-gate: one real video file on the owner machine (not S1 stills re-ingest).
-2. S7b: temporal Appearances / tracklets over sampled observations.
-3. S7c webcam / S7d RTSP remain deferred.
-4. S8 Canvas(Video) only after S7a evidence exists.
+1. **S8 Reviewability** — video path + `frame_id` + bbox → render-time thumb (`docs/S8-REVIEW-UI.md`).  
+2. S7b design decision: tracklets / Appearances as the video review unit (observation → tracklet → representative frames → optional person).  
+3. S7c webcam / S7d RTSP remain deferred.  
+4. S8 Canvas(Video) only after S7a + inspectability evidence exists.

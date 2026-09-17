@@ -16,6 +16,7 @@ from semblon.review_ui import (
     apply_merge,
     apply_name,
     apply_split,
+    crop_png_b64,
     load_board,
     resolve_run_id,
 )
@@ -176,3 +177,82 @@ def test_cli_review_ui_help_lists_command():
             main(["--help"])
     assert ei.value.code == 0
     assert "review-ui" in buf.getvalue()
+
+
+def test_board_carries_video_observation_provenance(tmp_path):
+    store = tmp_path / "s.sqlite"
+    conn = sqlite3.connect(str(store))
+    conn.execute("PRAGMA foreign_keys=ON")
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("rv", "t0", "t1", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute(
+        "INSERT INTO media VALUES ('mv','video','C:/clips/a.mp4','vvv',1920,1080,0,1)"
+    )
+    conn.execute("INSERT INTO observations VALUES ('ov','mv',1300,64973,'rv')")
+    conn.execute(
+        """INSERT INTO faces(face_id,observation_id,run_id,bbox_x1,bbox_y1,bbox_x2,bbox_y2,
+           det_score,face_w,face_h,size_band,status,embedding,embedding_pack,embedding_dim)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "fv",
+            "ov",
+            "rv",
+            10,
+            20,
+            110,
+            120,
+            0.9,
+            100,
+            100,
+            "80-119",
+            "ok",
+            _vec(1.0, 0.0),
+            "pack-a",
+            2,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    board = load_board(store, "rv")
+    assert board["counts"]["unassigned"] == 1
+    item = board["items"][0]
+    assert item["kind"] == "unassigned"
+    m = item["members"][0]
+    assert m["face_id"] == "fv"
+    assert m["observation_id"] == "ov"
+    assert m["source_type"] == "video"
+    assert m["path"] == "C:/clips/a.mp4"
+    assert m["frame_id"] == 1300
+    assert m["t_ms"] == 64973
+    assert m["bbox"] == (10, 20, 110, 120)
+    assert m["cluster_id"] is None
+
+
+def test_crop_png_b64_video_seeks_instead_of_imread():
+    from unittest.mock import patch
+
+    import numpy as np
+
+    frame = np.zeros((200, 200, 3), dtype=np.uint8)
+    frame[20:120, 10:110] = 200
+    with patch("semblon.temporal.read_bgr", return_value=frame) as rb:
+        b64 = crop_png_b64(
+            "C:/clips/a.mp4",
+            (10, 20, 110, 120),
+            frame_id=1300,
+            source_type="video",
+        )
+    assert b64 is not None
+    rb.assert_called_once_with("C:/clips/a.mp4", 1300)
+
+
+def test_crop_png_b64_video_without_frame_id_returns_none():
+    assert (
+        crop_png_b64("C:/clips/a.mp4", (0, 0, 10, 10), source_type="video") is None
+    )
