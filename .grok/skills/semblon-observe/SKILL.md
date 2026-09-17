@@ -17,7 +17,7 @@ Folder-first, face-first, local-first. Still photographs in, conservative groups
 
 ## Queue
 
-FACE-002 → FACE-003 → FACE-004 → FACE-005 recorded (`docs/FACE-GATES.md`). Identify vs named persons, never clusters. STRONG is not a person until `name`. Local pair labels are not cluster/person ground truth. Incremental ingest + inbox 1.1 on `main`. S6 memory is on `main`. Time/place must not change identity scores.
+FACE-002 → FACE-003 → FACE-004 → FACE-005 recorded (`docs/FACE-GATES.md`). Identify vs named persons, never clusters. STRONG is not a person until `name`. Local pair labels are not cluster/person ground truth. Incremental ingest + inbox 1.1 on `main`. S6 memory is on `main`. Time/place must not change identity scores. S8 toolkit spike is presentation-only (`docs/S8-TOOLKIT.md`); do not import it from ingest/cluster/identify/review.
 
 Do not print precision without `--eval-set confirmatory`.
 

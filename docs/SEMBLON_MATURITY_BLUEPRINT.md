@@ -788,7 +788,7 @@ Face boxes are the visual language for **observations** (never bake into source 
 
 **Must not.** Build the full shell “because Immich has one.” Must not open S7 engine work merely because Canvas designs mention video.
 
-**Wireframes (information architecture — implement in slices; tkinter/native shell, not web)**
+**Wireframes (information architecture — implement in slices; native shell, not web. Toolkit undecided pending `docs/S8-TOOLKIT.md`; tkinter `review-ui` remains the shipping vertical)**
 
 ```text
 ┌─ SEMBLON ──────────────────────────────── Search ─ ⚙ ─┐

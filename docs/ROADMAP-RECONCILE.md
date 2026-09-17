@@ -70,7 +70,7 @@ Perf baseline: `docs/PERF-P0-BASELINE.md`.
 | 10k scale | Scale path |
 | **S7a–d engine** | After stills loop real |
 | Identify / Inbox UI + POSSIBLE | After Phase 1–2 naming |
-| Full shell / search | S8 slices after Phase 1–2 |
+| Full shell / search | After `docs/S8-TOOLKIT.md` dump-gate (PySide6/QML candidate; Tk review-ui stays) |
 | FastAPI / Electron / web / CustomTkinter | REJECT |
 
 ## Phases (product)

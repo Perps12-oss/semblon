@@ -8,7 +8,7 @@ CONTRACTS.md is V1.1-corrected. Do not invent schema columns.
 Architecture may anticipate the future. Implementation must earn the future.
 Do not implement MediaPipe, CLIP, hands, pose, objects, semantic clustering, video, live, public lookup, ACC, or a vector database unless the current FACE id explicitly requires it.
 
-Authorized now (parallel): Phase 1 validate `review-ui`; PERF P0 frozen (docs/PERF-P0-BASELINE.md); PERF P1 native ARM64 BLOCKED (docs/PERF-P1-ARM64.md — opencv_geometry hang; ORT arm64 OK) — do not swap S1, do not retune eps, do not open workers/EP until P1 unblocks. S7/S8 design in docs/SEMBLON_MATURITY_BLUEPRINT.md §§S7–S8 — no S7 engine / full shell until Phase 1–2 + reconcile Phase 3. Progress `on_event` retained. eps=0.40 frozen. Cluster is not a person until Name. Identify vs named persons only. Appearance (temporal track) ≠ appearance space (quality). Do not put everything into the GUI.
+Authorized now (parallel): S8 toolkit spike (docs/S8-TOOLKIT.md, tools/s8_toolkit_spike) — PySide6/QML proof, does not replace review-ui; S7a is a separate PR; PERF P0 frozen; P1 ARM64 BLOCKED — do not swap S1, do not retune eps, do not open workers/EP until P1 unblocks. No S7b–d / full shell / search. Progress `on_event` retained. eps=0.40 frozen. Cluster is not a person until Name. Identify vs named persons only. Do not put FaceKit in the GUI.
 
 FaceKit / InsightFace is the identity engine. No cross-pack compare. pack_id includes weight hashes.
 Do not add libraries from the plan §20 parked list.

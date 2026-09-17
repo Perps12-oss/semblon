@@ -6,3 +6,5 @@ Shipping weights needs a separate licence/pack decision. Fallback: YuNet + SFace
 Do not block FACE-000 on that decision.
 
 Future candidates (MediaPipe, CLIP/successors, other packs) need a separate code **and** model licence check before they enter the plan as more than a name. A licence veto beats a technically attractive model. See `docs/SEMBLON_MATURITY_BLUEPRINT.md` §1.3.
+
+PySide6 / Qt 6 (S8 toolkit spike only): **LGPL**. Dynamic link from optional extra `.[gui]`. Not a core dependency. Do not statically link Qt without a separate licence pass. See `docs/S8-TOOLKIT.md`.

@@ -18,11 +18,11 @@ S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do
 
 FACE-002 → FACE-005 recorded (`docs/FACE-GATES.md`). S6 on main. **S8 Interactive Review slice** (`semblon review-ui`) is the current product surface for human decisions.
 
-**Authorized next (parallel):** (1) Phase 1 real-world validation of `review-ui`. (2) **PERF** — P0 frozen (`docs/PERF-P0-BASELINE.md`); P1 native ARM64 **blocked** (`docs/PERF-P1-ARM64.md`) — do not open workers/EP/batch until P1 unblocks. Do **not** implement S7 engine, full shell, identify/inbox UI, search, or cancellation as a substitute. Do **not** retune eps from the P0 dump.
+**Authorized next (parallel):** (1) **S7a** video files — `docs/S7A.md` (separate PR). (2) **S8 toolkit spike** — `docs/S8-TOOLKIT.md` (PySide6/QML proof; does not replace `review-ui`). (3) **PERF** — P0 frozen; P1 native ARM64 **blocked**. Do **not** implement S7b–d, full shell, identify/inbox UI, search, or cancellation as a substitute. Do **not** retune eps.
 
 ARM64 OpenCV **binary** is proven (`cv2.cp314-win_arm64.pyd`, PE `0xaa64`) but **not loadable** in the P1 venv today (`opencv_geometry500.dll` hang). Semblon S1 still uses x64 `cv2` (`0x8664`). Never silent S1 swap. ARM64 ORT `1.30.0` works in `.venv-arm64-perf`. x64 native FACE-000 unverified. Emulation “3–8×” remains hypothesis.
 
-Deferred (catalog): cooperative cancel; structured process.completed; per-file UI outcomes; cluster elapsed (not fake %); workers/EP/GPU/batch/duplicate-imread/SQLite-commit after P1; 10k scale; S7 video; identify/inbox UI; full S8 search. Progress `on_event` spine is **retained**.
+Deferred (catalog): cooperative cancel; structured process.completed; per-file UI outcomes; cluster elapsed (not fake %); workers/EP/GPU/batch/duplicate-imread/SQLite-commit after P1; 10k scale; S7b–d; identify/inbox UI; full S8 search. Progress `on_event` spine is **retained**.
 
 ## Forbidden unless the current FACE id explicitly requires it
 
