@@ -20,7 +20,7 @@
 
 FACE-002 → FACE-003 → FACE-004 → FACE-005 **validation is recorded** (`docs/FACE-GATES.md`). **S1 PASS — closed.** Do not retune `eps`. Do not re-run FACE-005 scale work. Do not invent a 10k claim.
 
-S5 incremental/inbox (1.1) and S6 memory (1.2) are already on `main`. Do not implement S7–S9, MediaPipe, CLIP, video, live, public lookup, ACC, or a vector database because this file is extensive.
+S5 incremental/inbox (1.1) and S6 memory (1.2) are already on `main`. S7a (sampled video files) is the open engine slice (`docs/S7A.md`). Do not implement S7b–d, S8 full shell, S9, MediaPipe, CLIP, live, public lookup, ACC, or a vector database because this file is extensive.
 
 ---
 
@@ -689,7 +689,7 @@ Tracklets / Appearances may later be derived evidence or a thin table — only w
 
 **Relationship to S8 GUI**
 
-S7 extends the **domain**. S8 renders observations/people/Appearances on an Intelligence Canvas (photo and video). Opening a GUI shell does **not** open S7 engine work. S7a implementation still waits until the stills review→name→identify loop is real (`docs/ROADMAP-RECONCILE.md`).
+S7 extends the **domain**. S8 renders observations/people/Appearances on an Intelligence Canvas (photo and video). Opening a GUI shell does **not** open S7 engine work. **S7a is open** (Phase 1 human tests approved 2026-09-17; `docs/S7A.md`). S7b–d still wait.
 
 **Exit.** People understood across time, not as independent JPEGs. A video session produces tracks and presence intervals, not a JPEG storm.
 
@@ -698,7 +698,7 @@ S7 extends the **domain**. S8 renders observations/people/Appearances on an Inte
 | Item | Verb |
 |---|---|
 | `observations.frame_id`, `source_type=video\|live` | KEEP (already in DDL) |
-| Video files in PRODUCT v1 stills ship | REJECT as v1 *requirement*; S7a is the later ticket |
+| Video files in PRODUCT v1 stills ship | REJECT as v1 *requirement*; **S7a is the post-v1 ticket** (`docs/S7A.md`) |
 | USB webcam | DEFER to v2 = S7c |
 | RTSP | DEFER to S7d |
 | Separate tracking-recogniser module | REMOVE (absorb into temporal observation) |
@@ -867,7 +867,7 @@ Face boxes are the visual language for **observations** (never bake into source 
 | S4 | Recognising | Reviewed people | Identifies known people | FACE-004 recorded. Identify vs persons. **v1 ship** |
 | S5 | Useful | Incremental + regression | Effortless stills + frozen-param guard | 1.1 inbox on `main`. FACE-005 regression recorded. 10k not run. |
 | S6 | Remembering | Time / place / events | Visual memory | 1.2 `memory` on `main` |
-| S7 | Temporal vision | Sequences | Video / track / live / RTSP | Design reconciled; engine deferred until stills loop real |
+| S7 | Temporal vision | Sequences | Video / track / live / RTSP | **S7a OPEN** 2026-09-17 (`docs/S7A.md`). S7b–d deferred. |
 | S8 | Conversing | Review + Canvas | Human sees/corrects what Semblon knows | **review-ui shipped**; full shell later |
 | S9 | Mature | Platform / clients | Extensible local VI | Future |
 
@@ -1253,6 +1253,7 @@ A vector store is retrieval infrastructure, not intelligence. Do not add a parke
 | V1.4 | 2026-09-15 | FACE-002 eval harness on the `lab eval` path. Precision only on powered frozen confirmatory. Stage remains open; FACE-003 is not the next closable gate solely because harness code exists. |
 | V1.5 | 2026-09-16 | FACE-002→005 validation recorded (`docs/FACE-GATES.md`). Incremental/inbox 1.1 and S6 memory 1.2 already on `main`. 10k not run. ARM64 OpenCV binary proven, not consumed. x64 native FACE-000 unverified. |
 | V1.6 | 2026-09-16 | S7 temporal observation model + S8 shell/Intelligence Canvas IA reconciled (no engine code). Appearance (temporal) ≠ appearance space. POSSIBLE = planned UI state. Phase 1 remains review-ui validation (`docs/ROADMAP-RECONCILE.md`). |
+| V1.7 | 2026-09-17 | Phase 1 human tests approved. S7a gate open (`docs/S7A.md`): sampled video-file observations on existing `frame_id`/`t_ms`. S7b–d and full S8 shell still deferred. eps frozen. |
 
 ---
 

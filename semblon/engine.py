@@ -89,10 +89,10 @@ def load_app(det_size: tuple[int, int] = (640, 640)):
     return app
 
 
-def embed_image(app, path: Path) -> list[dict]:
-    img = cv2.imread(str(path))
-    if img is None:
-        raise FileNotFoundError(f"cannot decode {path}")
+def embed_bgr(app, img) -> list[dict]:
+    """FaceKit detect+embed on a BGR array. Same pack path as stills. No disk write."""
+    if img is None or getattr(img, "size", 0) == 0:
+        raise FileNotFoundError("cannot decode empty image")
     faces = app.get(img)
     rows = []
     for f in faces:
@@ -110,3 +110,10 @@ def embed_image(app, path: Path) -> list[dict]:
             }
         )
     return rows
+
+
+def embed_image(app, path: Path) -> list[dict]:
+    img = cv2.imread(str(path))
+    if img is None:
+        raise FileNotFoundError(f"cannot decode {path}")
+    return embed_bgr(app, img)

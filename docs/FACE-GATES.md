@@ -42,5 +42,7 @@ S6 `memory` 1.2 is on `main` (not part of FACE-002–005).
 
 S8 Interactive Review slice: `docs/S8-REVIEW-UI.md` (`review-ui`).  
 Roadmap + perf track: `docs/ROADMAP-RECONCILE.md`, `docs/PERF-P0-BASELINE.md` (P0: run `20260917T021045Z-48095f25`, 221 files, ingest 1299.3 s, x64 emulated).  
-PERF P1 native ARM64: **blocked** — `docs/PERF-P1-ARM64.md` (`opencv_geometry500.dll` hang; ORT win_arm64 OK). Emulation speedup unmeasured.  
-S7 temporal model + S8 shell/Canvas design reconciled in `docs/SEMBLON_MATURITY_BLUEPRINT.md` §§S7–S8 — engine/full shell still deferred. Do not invent a parallel plan.
+PERF P1 native ARM64: **blocked** — `docs/PERF-P1-ARM64.md` (`opencv_geometry500.dll` hang; ORT win_arm64 OK). Emulation speedup unmeasured.
+
+**2026-09-17 — Phase 1 human tests approved. S7a gate open.**  
+Owner approved Phase 1 real-world `review-ui` tests. Phase 3 axis = **S7a** (video files, sampled observations). Slice: `docs/S7A.md`. Clustering params remain frozen. S7b tracklets, S7c webcam, S7d RTSP, and full S8 shell stay deferred. Do not invent a parallel plan.
