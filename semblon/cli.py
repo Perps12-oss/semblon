@@ -7,6 +7,7 @@ FACE-005: incremental ingest + inbox. No watcher.
 S6: memory history / together / events. Time/place are not identity.
 process: happy-path ingest -> cluster -> export review.html.
 review-ui: S8 Interactive Review slice (tkinter over review APIs).
+S7a: video files in the ingest folder are sampled (not every frame).
 """
 
 from __future__ import annotations
@@ -107,7 +108,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     ev_s.add_argument("--threshold", type=float, default=None)
 
-    ing = sub.add_parser("ingest", help="0.2/FACE-005 folder stills -> store (incremental by default)")
+    ing = sub.add_parser(
+        "ingest",
+        help="0.2/FACE-005 folder stills + S7a sampled video -> store (incremental by default)",
+    )
     ing.add_argument("folder", type=Path)
     ing.add_argument("--store", required=True, type=Path)
     ing.add_argument(

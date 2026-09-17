@@ -1,80 +1,105 @@
-# Roadmap reconcile (2026-09-16)
+# Roadmap reconcile (2026-09-17; perf track + design)
 
-**Pause coding expansion.** Validate S8 Interactive Review in real use first.
+**Product:** Phase 1 human tests **approved** 2026-09-17. Phase 3 axis = **S7a** (`docs/S7A.md`).  
+**Performance:** P0 baseline frozen; P1 = native ARM64 measure (separate env/store). Do **not** change S1 correctness env or eps.
 
 ## Position
 
 ```text
 FACE-000 … FACE-005  COMPLETE (docs/FACE-GATES.md)
 S6 / 1.2             on main
-S8 Interactive Review  NOW (review-ui; smallest S8 vertical)
+S8 Interactive Review  shipped vertical (review-ui)
      │
-     ▼
-Phase 1  real-world product validation (you using it)
-Phase 2  S8.1 friction fixes discovered in use
-Phase 3  pick ONE deferred axis (below) — not a giant release
+     ├── Phase 1  real-world validation (review-ui)     ← APPROVED 2026-09-17
+     ├── Phase 2  S8.1 friction fixes from use          ← as they appear
+     └── Phase 3  S7a video files (sampled observations) ← OPEN (docs/S7A.md)
+
+PERF track (parallel; separate env — never swap S1):
+     ├── P0  folder baseline 20260917T021045Z-48095f25   ← frozen
+     ├── P1  native ARM64 timed measure                 ← BLOCKED (docs/PERF-P1-ARM64.md)
+     └── P2+ EP / workers / batch / imread / SQLite     ← after P1 only
 ```
 
-Core loop now connected:
+Core stills loop:
 
 ```text
 PHOTO LIBRARY → OBSERVATIONS → CLUSTERS → HUMAN REVIEW → NAMED PEOPLE → GALLERY → IDENTIFY
 ```
 
-S8 slice connects **Clusters → Human Review → Named People**. That is the milestone. Do not turn Semblon into a dashboard before this loop is exercised.
+S7 extends the **same** model through time. S8 renders it. GUI does not become the intelligence.  
+Authoritative design: `docs/SEMBLON_MATURITY_BLUEPRINT.md` §§ S7–S8.  
+Perf baseline: `docs/PERF-P0-BASELINE.md`.
+
+## Concept map (UI ↔ existing code)
+
+| Design concept | Existing Semblon contract today |
+|---|---|
+| Face observation | `faces` + `observations` (`frame_id` NULL for stills) |
+| Frame | `observations.frame_id`, `t_ms` (DDL ready; unused by stills path) |
+| Appearance (temporal) | Not a table yet — S7b tracklet / presence; ≠ §1.5 appearance space |
+| Person + references | `persons`, `cluster_person`, named `faces.person_id` after **Name** |
+| Cluster | Hypothesis — **never** a person until Name |
+| Identity hypothesis | `identify` → ACCEPT \| UNKNOWN; POSSIBLE = planned UI |
+| Review actions | `review.py` — **review-ui already calls these** |
+| Progress | `progress.py` / `on_event` |
+| Evidence export | `review.html` read-only |
 
 ## Retained (do not drop)
 
-| Item | State | Notes |
-|---|---|---|
-| Progress event spine `process_folder(..., on_event=...)` | **Kept** | GUI infrastructure; truthful discover/ingest %. Not a finished process window. |
-| ARM64 OpenCV binary `0xaa64` | **Kept, qualified** | Binary proven; Semblon S1 still uses x64 OpenCV under x64 Python (emulated on ARM64 host). Not “S1 runs native ARM64.” |
-| eps=0.40 / FACE gates / confirmatory 22 pairs | **Frozen** | Do not retune. Do not invent 10k. |
-| Static `review.html` | **Kept** | Read-only evidence/export. Interactive surface is `review-ui`. |
-| CLI power-user path | **Kept** | `review` / `name` / `merge` / `split` / `identify` unchanged. |
+| Item | State |
+|---|---|
+| Progress `on_event` spine | Kept |
+| ARM64 OpenCV binary `0xaa64` proven; S1 still x64 `cv2` | Kept — P1 installs pyd into **isolated** ARM64 env only |
+| eps=0.40 / FACE gates / 22 confirmatory pairs | Frozen |
+| Static `review.html` | Kept as export artifact |
+| CLI power-user path | Kept |
+| Perf P0 (221 files / 1299.3 s / x64 emulated) | Frozen — not an S1 retune |
 
-## Deferred (explicit — not forgotten)
+## Deferred catalog
 
-| Item | Why deferred | When to reopen |
-|---|---|---|
-| Cooperative **cancellation** (Stop between files) | Needed before long-run GUI process UX | Before serious process window |
-| **Structured process completion** (run_id, store, out, summaries via events — not stdout scrape) | GUI Open Review after `process.completed` | With process window / S8.1 |
-| Richer **per-file outcome** lines in UI | Spine can grow; avoid telemetry sprawl now | After validation if useful |
-| Cluster **heartbeat** (elapsed, not fake %) | DBSCAN has no honest denominator | Process window |
-| Workers / EP / CPU·GPU / provider evidence | Performance phase, not S8 | After product loop proven |
-| Native ARM64 Semblon swap / x64-native FACE-000 | Evidence gaps, not GUI work | Separate machine/env tickets |
-| **10k** scale run | Design target only; 90 stills evidenced | Scale path when ready |
-| **S7 video** | Unchanged; UI did not replace it | After photo loop is real |
-| Identify / Inbox **UI** | Gallery must be exercised by real naming first | After Phase 1–2 |
-| Full S8 search / memory dashboard | Refused until named gallery + repeated decide loop | Later S8 |
+| Item | When |
+|---|---|
+| Cooperative cancellation | Before long-run process GUI |
+| Structured `process.completed` | With process window |
+| Per-file outcome UI lines | After validation if useful |
+| Cluster elapsed heartbeat (not fake %) | Process window |
+| **EP / GPU / workers / embed_batch / duplicate imread / SQLite commit policy** | **After PERF P1 only** (each alone) |
+| Concurrent-process store-lock UX | Separate friction fix |
+| Native ARM64 Semblon **consumption in S1 path** | Explicit decision after P1 evidence — not silent swap |
+| x64-native FACE-000 | Needs genuine x64 PC |
+| 10k scale | Scale path |
+| **S7a video files** | **OPEN** — `docs/S7A.md` (sampled observations; no JPEG storm) |
+| **S7b–d** (tracklets / webcam / RTSP) | After S7a dump evidence |
+| Identify / Inbox UI + POSSIBLE | After Phase 1–2 naming |
+| Full shell / search | After `docs/S8-TOOLKIT.md` dump-gate (PySide6/QML candidate; Tk review-ui stays) |
+| FastAPI / Electron / web / CustomTkinter | REJECT |
 
-## Three phases (no new ticket until Phase 1)
+## Phases (product)
 
-### Phase 1 — S8 real-world validation
+### Phase 1 — Validate review-ui
 
-Double-click → pick Pictures → Process → Review UI → Name / Merge / Split / Ignore / Note → Close → Reopen → persistence → `identify --face`.
-
-Unit tests do not replace this.
+**Approved 2026-09-17** (owner: all human tests).  
+Process → review-ui → Name/Merge/Split/Ignore/Note → reopen → `identify --face`.  
+On run `20260917T021045Z-48095f25`: treat `7225de9d` as REVIEW; do not retune eps.
 
 ### Phase 2 — S8.1 friction from use
 
-Fix only what you hit (nav, thumbs, merge/split UX, “already reviewed”, process progress). Product-driven, not imaginary dashboard.
+As it appears. Does not block S7a.
 
-### Phase 3 — one deferred axis
+### Phase 3 — S7a (selected)
 
-Choose deliberately among:
+Video files → sampled frame observations (`frame_id`, `t_ms`) → FaceKit embed → identify vs **persons**.  
+Not S7b tracking. Not webcam/RTSP. Not full S8 shell. Not scale. Not workers/EP.
 
-- Product/UX: gallery → identify/inbox UI  
-- Engine: cancel + structured completion + (later) workers/EP  
-- Platform: S7 video  
-- Scale: 10k  
+## Performance track
 
-Do **not** merge these into one release.
+See `docs/PERF-P0-BASELINE.md` and `docs/PERF-P1-ARM64.md`.  
+P1 **blocked** on `opencv_geometry500.dll` load hang (ORT ARM64 OK). Emulation “3–8×” remains hypothesis. Do not parallelize the emulated stack until P1 unblocks or an explicit decision opens a different axis.
 
 ## Must not
 
-- Put “everything” into the GUI because a window exists.  
-- Open S7 because review-ui shipped.  
-- Build identify/inbox screens to fill the roadmap.  
-- Fake cluster percent.  
-- Quietly delete 10k or ARM64/x64 honesty from docs.
+- Swap OpenCV/ORT into the S1 correctness environment without an explicit decision.  
+- Retune eps from a performance or one-folder review dump.  
+- Open workers/EP before P1 native numbers (or a documented native-stack blocker).  
+- Replace backend architecture to make the GUI easier.  
+- Invent `SEMBLON_IMPLEMENTATION_PLAN.md` or parallel OBS tickets.

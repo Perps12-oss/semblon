@@ -6,6 +6,7 @@ from semblon.cluster import DEFAULT_EPS, DEFAULT_MIN_SAMPLES, METRIC
 from semblon.eval import DEFAULT_THRESHOLD, HARD_NEAR
 from semblon.export import STRONG_MIN_INTRA
 from semblon.engine import PACK_FAMILY
+from semblon.temporal import DEFAULT_SAMPLE_HZ
 
 
 def test_s1_golden_params_are_frozen():
@@ -18,3 +19,4 @@ def test_s1_golden_params_are_frozen():
     assert DEFAULT_THRESHOLD == 0.60
     assert round(1.0 - DEFAULT_EPS, 2) == DEFAULT_THRESHOLD
     assert PACK_FAMILY == "insightface/buffalo_l"
+    assert DEFAULT_SAMPLE_HZ == 1.0

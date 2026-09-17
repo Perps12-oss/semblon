@@ -1,6 +1,7 @@
-"""0.2 ingest: folder of stills → media / observations / faces. No cluster.
+"""0.2 ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster.
 
-Optional experimental --workers > 1: thread-local FaceAnalysis, single SQLite writer.
+Optional experimental --workers > 1: thread-local FaceAnalysis for stills only,
+single SQLite writer. Video sampling stays sequential on the main thread.
 Does not change detection/quality thresholds or pack/provider.
 """
 
@@ -23,6 +24,7 @@ from semblon import __version__
 from semblon.engine import (
     PACK_FAMILY,
     discover_weight_hashes,
+    embed_bgr,
     embed_image,
     load_app,
     pack_id,
@@ -41,6 +43,12 @@ from semblon.progress import (
     make_event,
 )
 from semblon.store import connect, init_db
+from semblon.temporal import (
+    DEFAULT_SAMPLE_HZ,
+    VideoError,
+    discover_videos,
+    iter_sampled_frames,
+)
 
 STILL_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 DET_SCORE_MIN = 0.60
@@ -116,7 +124,7 @@ def _worker_app():
 
 
 def _compute_file(path: Path, index: int) -> dict:
-    """Hash + decode dims + embed. No SQLite. Used by workers>1 path."""
+    """Hash + decode dims + embed. No SQLite. Used by workers>1 stills path."""
     try:
         digest = _sha256_file(path)
     except OSError:
@@ -254,6 +262,7 @@ def ingest(
         "folder": str(folder),
         "reprocess": bool(reprocess),
         "incremental": not reprocess,
+        "sample_hz": DEFAULT_SAMPLE_HZ,
         "workers": int(workers),
     }
     conn.execute(
@@ -279,7 +288,8 @@ def ingest(
 
     emit(on_event, make_event(STAGE_DISCOVER, KIND_STARTED, path=str(folder), run_id=run_id))
     files = discover_stills(folder)
-    n_files = len(files)
+    videos = discover_videos(folder)
+    n_files = len(files) + len(videos)
     emit(
         on_event,
         make_event(
@@ -358,13 +368,10 @@ def ingest(
             return
 
         if rec.get("outcome") == "failed":
-            # decode/embed failed after hash — match sequential: fail without media if decode,
-            # or with obs commit on embed fail after media would have been inserted.
             if rec.get("error") == "decode":
                 n_fail += 1
                 tick(index, path, "failed")
                 return
-            # embed failed: insert media if new, insert obs, commit, fail (same as sequential)
             if media_id is None:
                 media_id = uuid.uuid4().hex
                 conn.execute(
@@ -515,17 +522,111 @@ def ingest(
                 pool.submit(_compute_file, path, index): index
                 for index, path in enumerate(files, start=1)
             }
-            # Write in completion order; logical counts must still match.
-            done = 0
             for fut in as_completed(futures):
-                rec = fut.result()
-                write_computed(rec)
-                done += 1
+                write_computed(fut.result())
+
+        # Video path needs a main-thread app after worker stills.
+        t_load_v = time.perf_counter()
+        app = load_app(DET_SIZE)
+        load_s = load_s + (time.perf_counter() - t_load_v)
+        runtime["model_load_s"] = round(load_s, 3)
+        conn.execute(
+            "UPDATE runs SET runtime_json=? WHERE run_id=?",
+            (json.dumps(runtime), run_id),
+        )
+        conn.commit()
+
+    n_video_frames = 0
+    assert app is not None
+    for offset, path in enumerate(videos, start=1):
+        index = len(files) + offset
+        try:
+            digest = _sha256_file(path)
+        except OSError:
+            n_fail += 1
+            tick(index, path, "failed")
+            continue
+
+        reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
+        if reason == "seen":
+            n_skip_seen += 1
+            tick(index, path, "skipped_seen")
+            continue
+        if reason == "same_run":
+            n_skip_same += 1
+            tick(index, path, "skipped_same_run")
+            continue
+
+        st = path.stat()
+        width = height = None
+        sampled = []
+        try:
+            sampled = list(iter_sampled_frames(path, DEFAULT_SAMPLE_HZ))
+        except VideoError:
+            n_fail += 1
+            tick(index, path, "failed")
+            continue
+        if sampled:
+            height, width = sampled[0][2].shape[:2]
+
+        if media_id is None:
+            media_id = uuid.uuid4().hex
+            conn.execute(
+                """INSERT INTO media(media_id, source_type, path, sha256, width, height,
+                   mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    media_id,
+                    "video",
+                    str(path),
+                    digest,
+                    width,
+                    height,
+                    getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
+                    st.st_size,
+                ),
+            )
+            n_media += 1
+
+        if not sampled:
+            n_fail += 1
+            conn.commit()
+            tick(index, path, "failed")
+            continue
+
+        frames_ok = 0
+        for frame_id, t_ms, img in sampled:
+            obs_id = uuid.uuid4().hex
+            conn.execute(
+                "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                (obs_id, media_id, int(frame_id), int(t_ms), run_id),
+            )
+            try:
+                faces = embed_bgr(app, img)
+            except Exception:
+                continue
+            nf, nok, nlq, nrej = _persist_faces(
+                conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+            )
+            n_faces += nf
+            n_ok += nok
+            n_lq += nlq
+            n_rej += nrej
+            frames_ok += 1
+        n_video_frames += frames_ok
+        conn.commit()
+        if frames_ok == 0:
+            n_fail += 1
+            tick(index, path, "failed")
+        else:
+            tick(index, path, "processed")
 
     timings = {
         "model_load_s": load_s,
         "ingest_s": time.perf_counter() - t0,
-        "files": len(files),
+        "files": n_files,
+        "stills": len(files),
+        "videos": len(videos),
+        "video_frames": n_video_frames,
         "new_media": n_media,
         "skipped": n_skip_seen + n_skip_same,
         "skipped_seen": n_skip_seen,

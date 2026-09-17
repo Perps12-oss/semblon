@@ -1,4 +1,5 @@
 .venv/
+.venv-arm64-perf/
 semblon/.venv/
 __pycache__/
 *.pyc

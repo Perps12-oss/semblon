@@ -97,3 +97,58 @@ Do not treat “ARM64 capable host” as native OpenCV. The binding itself must 
   "notes": "No genuine x64 Windows PC in this environment. Do not use x64-on-ARM64 or a VM as native x64 evidence. This is an environment-dependent UNVERIFIED gap, not a failure of the ARM64 OpenCV work."
 }
 ```
+
+## folder timing P0 (x64 emulated — performance baseline)
+
+Not FACE-000. Not an S1 correctness gate. Full table: `docs/PERF-P0-BASELINE.md`.
+
+```json
+{
+  "recorded_at": "2026-09-17",
+  "hostname": "SKY",
+  "os": "windows",
+  "os_version": "10.0.26200",
+  "arch": "x64",
+  "execution": "emulated",
+  "run_id": "20260917T021045Z-48095f25",
+  "folder": "E:\\\\LIBRARY\\\\Yandex.Disk\\\\DCIMaw\\\\me",
+  "files": 221,
+  "faces": 961,
+  "ok": 393,
+  "low_quality": 530,
+  "rejected": 38,
+  "pack_id": "insightface/buffalo_l@2.0/adapter-1/sha256:20a9264f823c3c3c",
+  "device": "cpu",
+  "workers": 1,
+  "embed_batch": 1,
+  "det_size": [640, 640],
+  "model_load_s": 4.8,
+  "ingest_s": 1299.3,
+  "notes": "PERF P0 baseline. Model load is not the bottleneck. Do not retune eps from this run. Native ARM64 speedup is unmeasured until PERF P1. P1 status 2026-09-17: BLOCKED — see docs/PERF-P1-ARM64.md (opencv_geometry500.dll hang; ORT ARM64 otherwise OK)."
+}
+```
+
+## windows arm64 native (PERF P1 — blocked)
+
+Semblon identity path **not** timed natively. Isolated env proved ARM64 Python + ORT; OpenCV load hangs. Full write-up: `docs/PERF-P1-ARM64.md`.
+
+```json
+{
+  "recorded_at": "2026-09-17",
+  "hostname": "SKY",
+  "os": "windows",
+  "os_version": "10.0.26200",
+  "arch": "arm64",
+  "execution": "native",
+  "status": "blocked",
+  "venv": ".venv-arm64-perf",
+  "python": "3.14.7",
+  "onnxruntime": "1.30.0-cp314-win_arm64",
+  "providers": ["AzureExecutionProvider", "CPUExecutionProvider"],
+  "numpy": "2.5.3-win_arm64",
+  "opencv_pyd_pe": "0xaa64",
+  "blocker": "LoadLibrary opencv_geometry500.dll hangs after opencv_core500.dll loads; import cv2 unusable. No win_arm64 opencv-python-headless wheel (pip fell back to sdist build; aborted).",
+  "folder_timing": null,
+  "notes": "Do not claim native Semblon ingest. Do not swap S1. Emulation cost vs P0 remains unknown."
+}
+```
