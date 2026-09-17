@@ -23,6 +23,13 @@ py -3.12 -m venv .venv
 
 Then **double-click `semblon.cmd`**, choose your Pictures (or any photo) folder, and wait for `review.html` to open.
 
+Review and name people (S8 Interactive Review slice — no PowerShell ID copying):
+
+```text
+semblon.cmd review-ui
+semblon.cmd review-ui --store "%LOCALAPPDATA%\Semblon\store.sqlite"
+```
+
 Or pass a path explicitly (no need to activate the venv, no need to copy a run id):
 
 ```text
@@ -83,6 +90,8 @@ semblon lab profile --image "D:\photos\face.jpg" --out "docs\runtime.md"
 
 semblon process "D:\photos\dump"
 semblon process "D:\photos\dump" --store "D:\semblon\store.sqlite" --out "D:\semblon\review.html"
+semblon review-ui --store "D:\semblon\store.sqlite"
+semblon review-ui --store "D:\semblon\store.sqlite" --run RUN_ID
 
 semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite"
 semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite" --reprocess

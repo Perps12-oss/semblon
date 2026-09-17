@@ -38,3 +38,9 @@ S6 `memory` 1.2 is on `main` (not part of FACE-002–005).
 - Folder watcher / daemon
 - 10k ingest
 - Consuming the ARM64 OpenCV pyd in the S1 path
+
+## After FACE gates (2026-09-16)
+
+S8 Interactive Review slice: `docs/S8-REVIEW-UI.md` (`review-ui`).  
+Full deferred catalog + Phase 1 validation pause: `docs/ROADMAP-RECONCILE.md`.  
+S7 video remains deferred. Do not invent a parallel plan.
