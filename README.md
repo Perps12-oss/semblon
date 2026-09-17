@@ -23,7 +23,8 @@ py -3.12 -m venv .venv
 
 Then **double-click `semblon.cmd`**, choose your Pictures (or any photo) folder, and wait for `review.html` to open.
 
-Review and name people (S8 Interactive Review slice — no PowerShell ID copying):
+Review and name people (S8 Interactive Review slice — no PowerShell ID copying).
+S7 video and full search UI stay deferred; static `review.html` remains a read-only export.
 
 ```text
 semblon.cmd review-ui

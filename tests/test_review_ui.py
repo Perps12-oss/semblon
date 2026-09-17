@@ -12,6 +12,7 @@ from semblon.cluster import cluster_run
 from semblon.identify import identify_face
 from semblon.review_ui import (
     ReviewUiError,
+    apply_ignore,
     apply_merge,
     apply_name,
     apply_split,
@@ -147,6 +148,21 @@ def test_split_persists_after_reload(tmp_path):
     conn.close()
     assert f2[0] == split["new_cluster"]
     assert f2[1] is None
+
+
+def test_ignore_persists_after_reload(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    cid = assigned["f3"]
+    board = load_board(store, "r1")
+    item = next(it for it in board["items"] if it.get("cluster_id") == cid)
+    rec = apply_ignore(store, "r1", item)
+    assert rec["cluster_id"] == cid
+    board2 = load_board(store, "r1")
+    kinds = {d["kind"] for d in board2["decisions"]}
+    assert "reject" in kinds
+    # Cluster remains listable; ignore is a decision, not auto-enrol.
+    assert any(it.get("cluster_id") == cid for it in board2["items"] if it["kind"] == "cluster")
 
 
 def test_cli_review_ui_help_lists_command():
