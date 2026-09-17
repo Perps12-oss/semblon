@@ -62,6 +62,6 @@ No mass on-disk PNG dump. No clustering / threshold / sampling changes. List may
 ## Next (ordered)
 
 1. Phase 1 real use — **approved 2026-09-17**.  
-2. Phase 2 friction: double-click **home**; **S8 Reviewability** video thumbs (this doc).  
-3. Phase 3 axes in parallel: **S7a** evidence continues (`docs/S7A.md`); PySide6 dump-gate (`docs/S8-TOOLKIT.md`).  
+2. Phase 2 friction: double-click **home** (Choose folder / Open Review); **S8 Reviewability** video thumbs (this doc).  
+3. Phase 3 axes in parallel: **S7a** evidence continues (`docs/S7A.md`); PySide6 dump-gate (`docs/S8-TOOLKIT.md` — review actions wired in `tools/s8_toolkit_spike`; full Canvas still deferred).  
 4. **S7b** tracklets / review groups — only after video observations are visually inspectable. Do not pretend stills clusters are the video review unit.
