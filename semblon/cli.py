@@ -115,6 +115,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="re-embed hashes already in the store (default skips them)",
     )
+    ing.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="experimental bounded ingest workers (default 1; thread-local FaceAnalysis, single SQLite writer)",
+    )
 
     proc = sub.add_parser(
         "process",
@@ -357,8 +363,16 @@ def main(argv: list[str] | None = None) -> int:
         from semblon.ingest import ingest
 
         try:
-            rec = ingest(args.folder, args.store, reprocess=args.reprocess)
+            rec = ingest(
+                args.folder,
+                args.store,
+                reprocess=args.reprocess,
+                workers=args.workers,
+            )
         except FileNotFoundError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        except ValueError as e:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2))
