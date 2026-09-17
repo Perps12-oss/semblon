@@ -18,7 +18,7 @@ S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do
 
 FACE-002 → FACE-005 recorded (`docs/FACE-GATES.md`). S6 on main. **S8 Interactive Review slice** (`semblon review-ui`) is the current product surface for human decisions.
 
-**Authorized next:** Phase 1 real-world validation of review-ui (process → name/merge/split → reopen → identify). See `docs/ROADMAP-RECONCILE.md`. Do **not** open S7, identify/inbox UI, search dashboard, cancellation, or workers/EP until that reconcile doc says so.
+**Authorized next:** Phase 1 real-world validation of `review-ui`. S7 temporal model + S8 shell/Canvas are **design-reconciled** in `docs/SEMBLON_MATURITY_BLUEPRINT.md` / `docs/ROADMAP-RECONCILE.md` — do **not** implement S7 engine, full application shell, identify/inbox UI, search, cancellation, or workers/EP until that reconcile doc’s Phase 3 picks that axis.
 
 ARM64 OpenCV **binary** is proven (`cv2.cp314-win_arm64.pyd`, PE `0xaa64`). Semblon still runs the existing x64 `cv2` (`0x8664`) under pythoncore-3.14-64. Do not swap OpenCV into the S1 environment unless explicitly decided. x64 native FACE-000 is unverified (no x64 PC). Do not use emulation/VM as native x64 evidence.
 

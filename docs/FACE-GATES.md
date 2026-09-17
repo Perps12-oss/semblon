@@ -43,4 +43,4 @@ S6 `memory` 1.2 is on `main` (not part of FACE-002–005).
 
 S8 Interactive Review slice: `docs/S8-REVIEW-UI.md` (`review-ui`).  
 Full deferred catalog + Phase 1 validation pause: `docs/ROADMAP-RECONCILE.md`.  
-S7 video remains deferred. Do not invent a parallel plan.
+S7 temporal model + S8 shell/Canvas design reconciled in `docs/SEMBLON_MATURITY_BLUEPRINT.md` §§S7–S8 — engine/full shell still deferred. Do not invent a parallel plan.

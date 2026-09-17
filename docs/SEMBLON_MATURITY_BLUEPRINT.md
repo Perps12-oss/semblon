@@ -2,7 +2,7 @@
 
 **Status:** The one long-term plan. System structure + S0–S9 + how to absorb + how to measure.  
 **Not:** a schema, a ticket list, or a v1 rewrite.  
-**Date:** 2026-09-16 (V1.5 FACE-002→005 validation recorded)  
+**Date:** 2026-09-16 (V1.6 S7 temporal + S8 shell/Canvas design reconciled; FACE gates V1.5)  
 **Working name:** Semblon (`SEM-blon`)
 
 **Core docs only**
@@ -601,12 +601,59 @@ This is where `cluster ≠ person` becomes: **cluster → reviewed identity**.
 
 Rename from the earlier label “Experiencing”: the capability is **temporal vision**.
 
+**Architectural purpose (do not reduce to “add video UI”).**
+
+> Prove that Semblon’s observation and identity model extends through time.
+
+Photo and video share one intelligence model. Video adds **time**. The GUI (S8) may *render* temporal evidence; it does not invent a second identity engine.
+
+**Conceptual model (reuse existing contracts; no new columns until earned)**
+
+```text
+IMAGE
+  └── Face observation          (faces row; observations.frame_id IS NULL)
+
+VIDEO
+  ├── Frame                     (observations.frame_id, t_ms)
+  │    └── Face observation
+  └── Appearance (temporal)     (track / presence interval over observations)
+       └── face observations across time
+
+Face observation
+       ↓
+compare() vs confirmed person references (same pack_id)
+       ↓
+Identity hypothesis
+       ↓
+strong evidence  → Known / CONFIRMED (after human or ACCEPT policy)
+ambiguous/weak   → UNKNOWN (preferred over wrong ID)
+near-threshold / multi-candidate → POSSIBLE (UI/intelligence state; map carefully — today identify is ACCEPT|UNKNOWN only)
+```
+
+**Naming collision — do not collapse:**
+
+| Term | Meaning in Semblon |
+|---|---|
+| **Appearance (temporal)** | S7 track / presence interval (“seen 14:32–14:37”) |
+| **appearance space** (§1.5) | colour / sharpness / quality — must **not** vote on identity |
+
+**Person / references (already true for stills; S7 must keep it)**
+
+```text
+Person
+ ├── confirmed reference A   (human-named face / exemplars)
+ ├── confirmed reference B
+ └── future observations
+```
+
+A known person available as a reference does **not** force assignment of every ambiguous video face. Wrong identity > unknown. No automatic enrolment from STRONG or from “vaguely close” similarity.
+
 **Sub-stages (do not flatten)**
 
 | Sub | Source | Constraint |
 |---|---|---|
 | **S7a** | Video files | Can seek, go slow, revisit, build a complete timeline |
-| **S7b** | Tracking / tracklets | Identity persistence, occlusion, representative frames |
+| **S7b** | Tracking / tracklets (= temporal Appearances) | Identity persistence, occlusion, representative frames |
 | **S7c** | USB webcam (product v2) | Latency, budget, dropped frames, never force ID |
 | **S7d** | RTSP / continuous | Same as live, plus always-on policy and retention |
 
@@ -616,37 +663,49 @@ Rename from the earlier label “Experiencing”: the capability is **temporal v
 temporal source
   → frame sampling
   → detection
-  → tracking
+  → tracking (Appearances)
   → quality selection
   → selective embedding
-  → identification vs persons
+  → identification vs persons (not vs clusters)
   → temporal evidence
   → presence intervals / events
 ```
 
+**Schema already kept for S7 (do not invent parallel tables yet)**
+
+- `media.source_type` ∈ `folder` | `video` | `live`
+- `observations.frame_id`, `t_ms` nullable; stills unique where `frame_id IS NULL`
+
+Tracklets / Appearances may later be derived evidence or a thin table — only when S7a/b implementation requires it. Do not add columns for a paper model.
+
 **Semblon gains**
 
-- Tracklets
+- Tracklets / temporal Appearances
 - Selective embed (not 30 recognisers per second)
 - Confidence accumulation across frames
-- Appearance / disappearance
-- “Seen 14:32–14:37”
+- Appearance / disappearance (“Seen 14:32–14:37”)
 - Unknown remains valid on live (log; optional prompt to name)
+- Same Intelligence Canvas overlays as stills (face boxes + Inspector)
 
-**Exit.** People understood across time, not as independent JPEGs.
+**Relationship to S8 GUI**
+
+S7 extends the **domain**. S8 renders observations/people/Appearances on an Intelligence Canvas (photo and video). Opening a GUI shell does **not** open S7 engine work. S7a implementation still waits until the stills review→name→identify loop is real (`docs/ROADMAP-RECONCILE.md`).
+
+**Exit.** People understood across time, not as independent JPEGs. A video session produces tracks and presence intervals, not a JPEG storm.
 
 **Disposition**
 
 | Item | Verb |
 |---|---|
 | `observations.frame_id`, `source_type=video\|live` | KEEP (already in DDL) |
-| Video files in v1 | REJECT (PRODUCT v1 out) |
+| Video files in PRODUCT v1 stills ship | REJECT as v1 *requirement*; S7a is the later ticket |
 | USB webcam | DEFER to v2 = S7c |
 | RTSP | DEFER to S7d |
 | Separate tracking-recogniser module | REMOVE (absorb into temporal observation) |
 | Force-ID on camera | REJECT |
+| Auto-assign known person on vague similarity | REJECT |
 
-**Must not.** Run still-image ingest on every frame.
+**Must not.** Run still-image ingest on every frame. Must not let GUI dictate a new backend identity architecture.
 
 ---
 
@@ -656,25 +715,117 @@ temporal source
 
 **User gain.** Search and evidence, finally worth a richer UI.
 
-**Semblon gains**
+**Shipped vertical (smallest S8):** Interactive Review (`semblon review-ui`) — Name / Merge / Split / Ignore / Note over existing `review.py`. See `docs/S8-REVIEW-UI.md`.
 
-- Interactive review: merge / split / assign / unassign / undo / neighbouring observations
+**Target product surface (design; implement in slices):** one persistent **application shell** + contextual workspaces + shared **Intelligence Canvas** — not a pile of disconnected pages, not a ChatGPT UI, not a cluster/embedding admin tool.
+
+```text
+                    SEMBLON
+                       │
+            ┌──────────┴──────────┐
+            │  APPLICATION SHELL  │
+            └──────────┬──────────┘
+                       │
+     ┌─────────────────┼─────────────────┐
+     │                 │                 │
+  SIDEBAR          WORKSPACE          GLOBAL
+     │                 │            Search / Settings
+     │                 ▼
+ LIBRARY / PEOPLE   INTELLIGENCE CANVAS
+ Home Photos Videos    ├── Photo (+ face boxes)
+ People Unknown        ├── Video (+ boxes, timeline, Appearances)
+ Activity              └── Person (references, media)
+                       │
+                       ▼
+                   INSPECTOR
+```
+
+**Primary navigation (user mental model — not internal nouns)**
+
+```text
+LIBRARY: Home | Photos | Videos
+PEOPLE:  People | Unknown
+WORK:    Activity
+──────── Settings
+```
+
+Do **not** put embeddings, observations, clusters, runs, models, providers, exports, reports in the primary nav unless a real user need appears.
+
+**Intelligence Canvas**
+
+| Mode | Shows |
+|---|---|
+| Photo | Source still + face-region overlays + selection |
+| Video | Playback + face overlays + timeline + Appearances / people present |
+| Person | Confirmed references + photos + videos + Appearances + evidence |
+
+Face boxes are the visual language for **observations** (never bake into source media). Conceptual overlay states: UNKNOWN / POSSIBLE / CONFIRMED — map to existing identify/review outcomes; do not invent a second identity engine. Today `identify` returns ACCEPT|UNKNOWN only; POSSIBLE is a **planned UI state** (e.g. near-threshold / multi-candidate) requiring an explicit contract before implementation.
+
+**Inspector** (contextual, not a separate app): select face/person/Appearance → inspect scores / confirm / name / keep unknown — calling `review.py` / `identify.py`, not GUI-local logic.
+
+**Processing:** consume `process_folder(..., on_event=...)` for truthful progress; structured `process.completed` (run_id, store, out) before “Open Review” without scraping stdout. Cancellation and workers/EP remain separate deferred tickets.
+
+**Semblon gains (full S8)**
+
+- Interactive review: merge / split / assign / unassign / undo / neighbouring observations *(partially shipped in review-ui)*
 - Search the memory it owns: `Alex`, `Alex + Sarah`, `Alex in 2023`, `unknown in July`
 - Evidence surface (accept / unknown with reasons)
-- CLI remains. Static HTML remains as an artifact. UI is a *view*.
+- CLI remains. Static HTML remains as an artifact. UI is a *view* on the same store.
 
-**Exit.** A user can interrogate a conclusion without trusting a vibes-based thumbnail grid.
+**Exit.** A user can interrogate a conclusion without trusting a vibes-based thumbnail grid. Feel: “I’m looking at my media, and Semblon is showing me what it knows” — not “I’m operating AI utilities.”
 
 **Disposition**
 
 | Item | Verb |
 |---|---|
-| Cluster Review dashboard from earlier mockups | PROMOTE only at S8 |
-| CustomTkinter / FastAPI as v1 | REJECT |
-| Natural-language chatbot over photos | REJECT as core; EXPERIMENT as query sugar on owned structured memory |
+| Interactive Review slice (`review-ui`) | KEEP / shipped vertical |
+| Application shell + Intelligence Canvas | ADD in slices after Phase 1 validation |
+| Cluster Review dashboard from earlier mockups | PROMOTE only as Canvas/Inspector — not a second product |
+| CustomTkinter / FastAPI / Electron / web stack as v1 | REJECT |
+| Natural-language chatbot over photos | REJECT as core |
 | Google-Photos-class semantic stack | DEFER |
+| Search as foundation of first GUI | REJECT — plan later |
 
-**Must not.** Build the dashboard in S1 “because Immich has one.”
+**Must not.** Build the full shell “because Immich has one.” Must not open S7 engine work merely because Canvas designs mention video.
+
+**Wireframes (information architecture — implement in slices; tkinter/native shell, not web)**
+
+```text
+┌─ SEMBLON ──────────────────────────────── Search ─ ⚙ ─┐
+│ LIBRARY          │  WORKSPACE / CANVAS                 │
+│  Home            │                                     │
+│  Photos     ●    │   [ media / person surface ]        │
+│  Videos          │                                     │
+│ PEOPLE           │   ───────────────────────────────── │
+│  People          │   INSPECTOR (contextual)            │
+│  Unknown         │   identity · actions · evidence     │
+│ WORK             │                                     │
+│  Activity        │                                     │
+└──────────────────┴─────────────────────────────────────┘
+```
+
+| Workspace | Canvas / body | Inspector (on selection) |
+|---|---|---|
+| **Home** | Recent media + open Activity if process running; entry to choose folder | — |
+| **Photos** | Grid of stills from store; open → Canvas(Photo) | Face / person actions via `review`/`identify` |
+| **Videos** | Grid of `source_type=video` (empty until S7a); open → Canvas(Video) | Appearance / face / person |
+| **People** | Named persons + reference thumbs | Person dossier |
+| **Unknown** | Unassigned / UNKNOWN faces (stills first) | Possible matches + Confirm / Name / Keep unknown |
+| **Activity** | Live `on_event` progress → completion → Open Review / Photos | — |
+| **Settings** | General / Processing / Recognition / Library / Appearance / Diagnostics / Advanced | policies, not ONNX internals |
+
+**Canvas(Photo)** — source image + face boxes (UNKNOWN / POSSIBLE / CONFIRMED styling) + selection → Inspector.  
+**Canvas(Video)** — same overlays + playback + timeline + Appearance lanes (“who / when”); seek on Appearance click. Requires S7a+ evidence.  
+**Canvas(Person)** — confirmed references + linked photos/videos/Appearances.  
+**Transitions:** Sidebar changes workspace in-place; selecting media/person opens Canvas without leaving the shell; Settings and Search are overlays/workspaces, not separate apps.
+
+**Slice order (after Phase 1–2)**
+
+1. Shell chrome + Photos + People + Canvas(Photo) + Inspector (wrap `review_ui` / domain APIs)  
+2. Activity consuming `on_event` (+ structured completion when shipped)  
+3. Unknown + identify UI (needs POSSIBLE contract)  
+4. Videos / Canvas(Video) only after S7a evidence exists  
+5. Global search last among these
 
 ---
 
@@ -716,8 +867,8 @@ temporal source
 | S4 | Recognising | Reviewed people | Identifies known people | FACE-004 recorded. Identify vs persons. **v1 ship** |
 | S5 | Useful | Incremental + regression | Effortless stills + frozen-param guard | 1.1 inbox on `main`. FACE-005 regression recorded. 10k not run. |
 | S6 | Remembering | Time / place / events | Visual memory | 1.2 `memory` on `main` |
-| S7 | Temporal vision | Sequences | Video / track / live / RTSP | v2 = S7c; files/RTSP later |
-| S8 | Conversing | Search / evidence UI | Human interrogates memory | Future |
+| S7 | Temporal vision | Sequences | Video / track / live / RTSP | Design reconciled; engine deferred until stills loop real |
+| S8 | Conversing | Review + Canvas | Human sees/corrects what Semblon knows | **review-ui shipped**; full shell later |
 | S9 | Mature | Platform / clients | Extensible local VI | Future |
 
 ---
@@ -1101,6 +1252,7 @@ A vector store is retrieval infrastructure, not intelligence. Do not add a parke
 | V1.3 | 2026-09-13 | S1 PASS — closed on `20260913T153515Z-1e915abe`. Next: FACE-002. |
 | V1.4 | 2026-09-15 | FACE-002 eval harness on the `lab eval` path. Precision only on powered frozen confirmatory. Stage remains open; FACE-003 is not the next closable gate solely because harness code exists. |
 | V1.5 | 2026-09-16 | FACE-002→005 validation recorded (`docs/FACE-GATES.md`). Incremental/inbox 1.1 and S6 memory 1.2 already on `main`. 10k not run. ARM64 OpenCV binary proven, not consumed. x64 native FACE-000 unverified. |
+| V1.6 | 2026-09-16 | S7 temporal observation model + S8 shell/Intelligence Canvas IA reconciled (no engine code). Appearance (temporal) ≠ appearance space. POSSIBLE = planned UI state. Phase 1 remains review-ui validation (`docs/ROADMAP-RECONCILE.md`). |
 
 ---
 
