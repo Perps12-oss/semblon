@@ -47,6 +47,29 @@ def frame_t_ms(frame_idx: int, fps: float) -> int:
     return int(round(frame_idx / fps * 1000.0))
 
 
+def read_bgr(path: Path | str, frame_id: int | None = None):
+    """Load one BGR frame for review/export thumbs.
+
+    Stills: ``frame_id`` is None → ``cv2.imread``.
+    Video: seek to ``frame_id`` via VideoCapture. Does not write crops to disk.
+    """
+    path = Path(path)
+    if frame_id is None:
+        img = cv2.imread(str(path))
+        return img
+    cap = cv2.VideoCapture(str(path))
+    if not cap.isOpened():
+        return None
+    try:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, float(int(frame_id)))
+        ok, img = cap.read()
+        if not ok or img is None:
+            return None
+        return img
+    finally:
+        cap.release()
+
+
 def iter_sampled_frames(path: Path, sample_hz: float = DEFAULT_SAMPLE_HZ):
     """Yield (frame_idx, t_ms, bgr) for sampled frames. Does not write JPEGs."""
     cap = cv2.VideoCapture(str(path))

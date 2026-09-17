@@ -79,7 +79,8 @@ def load_board(
     ).fetchall()
     faces = conn.execute(
         """
-        SELECT f.*, m.path,
+        SELECT f.*, m.path, m.source_type,
+               o.observation_id AS obs_id, o.frame_id, o.t_ms,
                p.display_name AS person_name
         FROM faces f
         JOIN observations o ON o.observation_id = f.observation_id
@@ -105,11 +106,15 @@ def load_board(
     for f in faces:
         rec = {
             "face_id": f["face_id"],
+            "observation_id": f["obs_id"],
             "cluster_id": f["cluster_id"],
             "person_id": f["person_id"],
             "person_name": f["person_name"],
             "status": f["status"],
+            "source_type": f["source_type"],
             "path": f["path"],
+            "frame_id": f["frame_id"],
+            "t_ms": f["t_ms"],
             "bbox": (f["bbox_x1"], f["bbox_y1"], f["bbox_x2"], f["bbox_y2"]),
             "face_w": f["face_w"],
             "face_h": f["face_h"],
@@ -201,15 +206,33 @@ def load_board(
     return board
 
 
-def crop_png_b64(path: str, bbox, max_side: int = THUMB_MAX) -> str | None:
-    """Face crop as base64 PNG for tk.PhotoImage (no PIL required)."""
+def crop_png_b64(
+    path: str,
+    bbox,
+    max_side: int = THUMB_MAX,
+    *,
+    frame_id: int | None = None,
+    source_type: str | None = None,
+) -> str | None:
+    """Face crop as base64 PNG for tk.PhotoImage (no PIL required).
+
+    Stills: imread path. Video: seek ``frame_id`` then crop. No on-disk crops.
+    """
     try:
         import base64
 
         import cv2
     except ImportError:
         return None
-    img = cv2.imread(path)
+    from semblon.temporal import read_bgr
+
+    # Video media must seek; stills use imread (frame_id ignored).
+    if source_type == "video":
+        if frame_id is None:
+            return None
+        img = read_bgr(path, int(frame_id))
+    else:
+        img = read_bgr(path, None)
     if img is None:
         return None
     x1, y1, x2, y2 = [int(round(v)) for v in bbox]
@@ -236,9 +259,18 @@ def crop_png_b64(path: str, bbox, max_side: int = THUMB_MAX) -> str | None:
     return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-def crop_jpeg_bytes(path: str, bbox, max_side: int = THUMB_MAX) -> bytes | None:
+def crop_jpeg_bytes(
+    path: str,
+    bbox,
+    max_side: int = THUMB_MAX,
+    *,
+    frame_id: int | None = None,
+    source_type: str | None = None,
+) -> bytes | None:
     """JPEG bytes for tests / non-tk consumers."""
-    b64 = crop_png_b64(path, bbox, max_side=max_side)
+    b64 = crop_png_b64(
+        path, bbox, max_side=max_side, frame_id=frame_id, source_type=source_type
+    )
     if b64 is None:
         return None
     import base64
@@ -385,7 +417,12 @@ class ReviewApp:
         x, y = 8, 8
         row_h = THUMB_MAX + 28
         for m in members:
-            jpeg = crop_png_b64(m["path"], m["bbox"])
+            jpeg = crop_png_b64(
+                m["path"],
+                m["bbox"],
+                frame_id=m.get("frame_id"),
+                source_type=m.get("source_type"),
+            )
             photo = None
             if jpeg:
                 try:
