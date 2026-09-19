@@ -103,12 +103,27 @@ def _file_uri(path: str) -> str:
         return Path(path).as_uri() if path else ""
 
 
-def _crop_jpeg(path: str, bbox, max_side: int) -> str | None:
+def _crop_jpeg(
+    path: str,
+    bbox,
+    max_side: int,
+    *,
+    frame_id: int | None = None,
+    source_type: str | None = None,
+) -> str | None:
+    """Still: imread path. Video: seek ``frame_id`` then crop. No on-disk crops."""
     try:
         import cv2
     except ImportError:
         return None
-    img = cv2.imread(path)
+    from semblon.temporal import read_bgr
+
+    if source_type == "video":
+        if frame_id is None:
+            return None
+        img = read_bgr(path, int(frame_id))
+    else:
+        img = read_bgr(path, None)
     if img is None:
         return None
     h, w = img.shape[:2]
@@ -134,6 +149,16 @@ def _crop_jpeg(path: str, bbox, max_side: int) -> str | None:
         return None
     b64 = base64.b64encode(buf.tobytes()).decode("ascii")
     return f"data:image/jpeg;base64,{b64}"
+
+
+def _member_crop(member: dict, max_side: int) -> str | None:
+    return _crop_jpeg(
+        member["path"],
+        member["bbox"],
+        max_side,
+        frame_id=member.get("frame_id"),
+        source_type=member.get("source_type"),
+    )
 
 
 def _img_tag(data_uri: str | None, path: str, face_id: str, cls: str) -> str:
@@ -186,7 +211,7 @@ def _load(conn, run_id: str):
     ).fetchall()
     faces = conn.execute(
         """
-        SELECT f.*, m.path
+        SELECT f.*, m.path, m.source_type, o.frame_id, o.t_ms
         FROM faces f
         JOIN observations o ON o.observation_id = f.observation_id
         JOIN media m ON m.media_id = o.media_id
@@ -205,7 +230,11 @@ def _load(conn, run_id: str):
 def _face_dict(row) -> dict:
     return {
         "face_id": row["face_id"],
+        "observation_id": row["observation_id"],
         "path": row["path"],
+        "source_type": row["source_type"],
+        "frame_id": row["frame_id"],
+        "t_ms": row["t_ms"],
         "status": row["status"],
         "det_score": row["det_score"],
         "face_w": row["face_w"],
@@ -231,14 +260,14 @@ def _render_cluster(c, members, pack_id: str, kind: str) -> str:
         a, b = pair
         parts.append(
             f'<div class="worst"><p>worst pair similarity {sim:.3f}</p>'
-            f'{_img_tag(_crop_jpeg(a["path"], a["bbox"], WORST_MAX), a["path"], a["face_id"], "worstimg")}'
-            f'{_img_tag(_crop_jpeg(b["path"], b["bbox"], WORST_MAX), b["path"], b["face_id"], "worstimg")}'
+            f'{_img_tag(_member_crop(a, WORST_MAX), a["path"], a["face_id"], "worstimg")}'
+            f'{_img_tag(_member_crop(b, WORST_MAX), b["path"], b["face_id"], "worstimg")}'
             f"</div>"
         )
     parts.append('<div class="thumbs">')
     for m in members:
         parts.append(
-            _img_tag(_crop_jpeg(m["path"], m["bbox"], THUMB_MAX), m["path"], m["face_id"], "thumb")
+            _img_tag(_member_crop(m, THUMB_MAX), m["path"], m["face_id"], "thumb")
         )
     parts.append("</div></article>")
     return "\n".join(parts)
@@ -251,10 +280,13 @@ def _render_faces(title: str, anchor: str, rows: list[dict]) -> str:
         '<div class="thumbs">',
     ]
     for m in rows:
-        label = f'{m["face_id"][:8]} {m["status"]} {m["face_w"]}x{m["face_h"]}'
+        extra = ""
+        if m.get("source_type") == "video":
+            extra = f' video frame={m.get("frame_id")} t_ms={m.get("t_ms")}'
+        label = f'{m["face_id"][:8]} {m["status"]} {m["face_w"]}x{m["face_h"]}{extra}'
         parts.append(
             "<figure>"
-            + _img_tag(_crop_jpeg(m["path"], m["bbox"], THUMB_MAX), m["path"], m["face_id"], "thumb")
+            + _img_tag(_member_crop(m, THUMB_MAX), m["path"], m["face_id"], "thumb")
             + f"<figcaption>{_esc(label)}</figcaption></figure>"
         )
     if not rows:
@@ -395,6 +427,7 @@ img.thumb, img.worstimg {{ display: block; background: #222; }}
 </p>
 <p class="meta">cluster → review → person → name. Clusters are not persons.
 STRONG means min_intra ≥ {strong_min_intra:.2f} (hypothesis). Open originals via the thumbnails.
+Video faces are observations (held out of clustering), not persons; thumbs seek path+frame_id+bbox.
 timings { _esc(timings) }</p>
 <nav>
   <a href="#review">REVIEW REQUIRED</a>
