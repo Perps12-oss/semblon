@@ -81,10 +81,44 @@ def pack_id(insightface_version: str, weight_hashes: dict[str, str]) -> str:
     return f"{PACK_FAMILY}@{insightface_version}/adapter-{ADAPTER_VERSION}/sha256:{digest}"
 
 
-def load_app(det_size: tuple[int, int] = (640, 640)):
+def onnx_providers() -> list[str]:
+    try:
+        import onnxruntime as ort
+
+        return list(ort.get_available_providers())
+    except Exception:
+        return ["CPUExecutionProvider"]
+
+
+def select_execution_provider(*, prefer_gpu: bool = True) -> dict:
+    """Detect and record. Never claims GPU if the EP is absent on this machine."""
+    available = onnx_providers()
+    gpu_eps = [p for p in ("CUDAExecutionProvider", "DmlExecutionProvider", "TensorrtExecutionProvider") if p in available]
+    chosen = "CPUExecutionProvider"
+    gpu = False
+    if prefer_gpu and gpu_eps:
+        chosen = gpu_eps[0]
+        gpu = True
+    if chosen not in available:
+        chosen = available[0] if available else "CPUExecutionProvider"
+        gpu = False
+    return {
+        "available": available,
+        "chosen": chosen,
+        "gpu": gpu,
+        "device": "gpu" if gpu else "cpu",
+        "note": "GPU is recorded only when an EP is actually available",
+    }
+
+
+def load_app(det_size: tuple[int, int] = (640, 640), *, prefer_gpu: bool = False):
     from insightface.app import FaceAnalysis
 
-    app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+    sel = select_execution_provider(prefer_gpu=prefer_gpu)
+    providers = [sel["chosen"]]
+    if sel["chosen"] != "CPUExecutionProvider":
+        providers.append("CPUExecutionProvider")
+    app = FaceAnalysis(name="buffalo_l", providers=providers)
     app.prepare(ctx_id=-1, det_size=det_size)
     return app
 

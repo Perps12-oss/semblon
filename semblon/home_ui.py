@@ -88,6 +88,8 @@ class HomeApp:
         self.btn_activity.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_settings = ttk.Button(row2, text="Settings", command=self._show_settings)
         self.btn_settings.pack(side=tk.LEFT, padx=(8, 0))
+        self.btn_canvas = ttk.Button(row2, text="Canvas", command=self._open_canvas)
+        self.btn_canvas.pack(side=tk.LEFT, padx=(8, 0))
 
         self.status = tk.StringVar(value=f"Store: {self.store}")
         ttk.Label(frm, textvariable=self.status, wraplength=480, justify=tk.LEFT).pack(
@@ -107,6 +109,7 @@ class HomeApp:
         self.btn_unknown.configure(state=state)
         self.btn_activity.configure(state=state)
         self.btn_settings.configure(state=state)
+        self.btn_canvas.configure(state=state)
         self.btn_cancel.configure(state=tk.NORMAL if busy else tk.DISABLED)
 
     def _request_cancel(self) -> None:
@@ -271,6 +274,14 @@ class HomeApp:
         except OSError:
             extra = ""
         messagebox.showinfo("Activity", f"{line}{extra}")
+
+    def _open_canvas(self) -> None:
+        from semblon.canvas import CanvasError, run_canvas
+
+        try:
+            run_canvas(self.store, self._last_run_id)
+        except CanvasError as e:
+            messagebox.showerror("Semblon", str(e))
 
     def _show_settings(self) -> None:
         from semblon.providers import weights_status

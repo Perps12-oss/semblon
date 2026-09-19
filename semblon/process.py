@@ -129,6 +129,10 @@ def process_folder(
     progress=print,
     on_event: ProgressCallback = None,
     cancel=None,
+    workers: int = 1,
+    observers: str = "face",
+    prefer_gpu: bool = False,
+    batch: int = 1,
 ) -> dict:
     """Run ingest -> cluster -> export. Uses frozen cluster defaults."""
     folder = Path(folder)
@@ -164,6 +168,10 @@ def process_folder(
                 reprocess=reprocess,
                 on_event=on_event,
                 cancel=cancel,
+                workers=workers,
+                observers=observers,
+                prefer_gpu=prefer_gpu,
+                batch=batch,
             )
         except CancelledError as e:
             progress("Cancelled.")

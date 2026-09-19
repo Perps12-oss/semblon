@@ -55,6 +55,10 @@ This amendment does **not** erase frozen v1. It records what the shipping applic
 
 **Level 2 — production capabilities (shipping):** `process` / `home` / `review-ui`; incremental ingest; backup/restore; integrity report; cooperative cancel (GUI + SIGINT at file boundaries); stall watchdog (does not kill); FaceKit CPU provider record; evidence-based `search` of named persons / identify; S7a sampled video + S7b derived tracks; S6 memory; portable CI without weight download.
 
-**Level 3 — experimental / unavailable:** `ingest --workers`; ARM64 native OpenCV; GPU; buffalo_l redistribution; MSI/frozen exe; 10k library run; Intelligence Canvas; second observers.
+**Level 3 — experimental / unavailable:** GPU when no EP is present; buffalo_l redistribution; MSI with bundled weights; 10k live library (harness exists); optional OCR/CLIP/MediaPipe extras when not installed.
+
+## Full-stack acceleration (2026-09-19)
+
+The freeze boundary is kept as the identity contract. The architecture is expanded **in parallel**: schema v2 (items, embeddings, tracks, groups, relationships, events), folder `watch`, `live` sources, Canvas, modality-scoped search, GPU detection, configurable workers/batch, migration engine. Extra observers (color/object always; OCR/CLIP/pose if installed) **must not** vote on identity.
 
 Video files remain **out of frozen v1** and **in KEEP** as sampled holdout evidence. That is not a second identity engine.

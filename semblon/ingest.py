@@ -31,8 +31,10 @@ from semblon.engine import (
     pack_id,
     process_arch,
     process_execution,
+    select_execution_provider,
     _sha256_file,
 )
+from semblon.observers import observe_bgr, persist_derived_tracks
 from semblon.progress import (
     KIND_CANCELLED,
     KIND_COMPLETED,
@@ -233,12 +235,18 @@ def ingest(
     workers: int = 1,
     on_event: ProgressCallback = None,
     cancel: CancelCallback = None,
+    observers: str = "face",
+    prefer_gpu: bool = False,
+    batch: int = 1,
 ) -> dict:
     folder = Path(folder).resolve()
     if not folder.is_dir():
         raise FileNotFoundError(folder)
     if workers < 1:
         raise ValueError("workers must be >= 1")
+    if batch < 1:
+        raise ValueError("batch must be >= 1")
+    observer_list = tuple(x.strip() for x in str(observers).split(",") if x.strip()) or ("face",)
 
     conn = connect(store)
     init_db(conn)
@@ -252,9 +260,10 @@ def ingest(
 
     load_s = 0.0
     app = None
+    ep = select_execution_provider(prefer_gpu=prefer_gpu)
     if workers == 1:
         t_load = time.perf_counter()
-        app = load_app(DET_SIZE)
+        app = load_app(DET_SIZE, prefer_gpu=prefer_gpu)
         load_s = time.perf_counter() - t_load
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
@@ -273,12 +282,15 @@ def ingest(
         "pack_family": PACK_FAMILY,
         "pack_id": pid,
         "det_size": list(DET_SIZE),
-        "device": "cpu",
-        "execution_provider": "CPUExecutionProvider",
+        "device": ep["device"],
+        "execution_provider": ep["chosen"],
+        "gpu": ep["gpu"],
+        "onnx_providers": ep["available"],
         "provider": FaceKitProvider.info.name,
         "modality": FaceKitProvider.info.modality,
         "workers": int(workers),
-        "embed_batch": 1,
+        "embed_batch": int(batch),
+        "observers": list(observer_list),
         "model_load_s": round(load_s, 3),
         "software_version": __version__,
     }
@@ -291,6 +303,9 @@ def ingest(
         "incremental": not reprocess,
         "sample_hz": DEFAULT_SAMPLE_HZ,
         "workers": int(workers),
+        "observers": list(observer_list),
+        "prefer_gpu": bool(prefer_gpu),
+        "batch": int(batch),
     }
     conn.execute(
         """INSERT INTO runs(run_id, started_at, software_version, pack_id,
@@ -479,6 +494,11 @@ def ingest(
         n_ok += nok
         n_lq += nlq
         n_rej += nrej
+        extra = tuple(x for x in observer_list if x != "face")
+        if extra:
+            img_obs = cv2.imread(str(path))
+            if img_obs is not None:
+                observe_bgr(conn, observation_id=obs_id, run_id=run_id, img=img_obs, observers=extra)
         conn.commit()
         tick(index, path, "processed")
 
@@ -549,6 +569,9 @@ def ingest(
             n_ok += nok
             n_lq += nlq
             n_rej += nrej
+            extra = tuple(x for x in observer_list if x != "face")
+            if extra:
+                observe_bgr(conn, observation_id=obs_id, run_id=run_id, img=img0, observers=extra)
             conn.commit()
             tick(index, path, "processed")
     else:
@@ -688,6 +711,9 @@ def ingest(
         else:
             tick(index, path, "processed")
 
+    if videos and not cancelled:
+        persist_derived_tracks(store, run_id, conn=conn)
+
     timings = {
         "model_load_s": load_s,
         "ingest_s": time.perf_counter() - t0,
@@ -706,6 +732,9 @@ def ingest(
         "failed": n_fail,
         "incremental": not reprocess,
         "workers": int(workers),
+        "batch": int(batch),
+        "observers": list(observer_list),
+        "gpu": ep["gpu"],
         "cancelled": bool(cancelled),
     }
     if n_files and timings["ingest_s"] > 0:

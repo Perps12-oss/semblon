@@ -1,6 +1,6 @@
 # SEM-ARCH — North star and planned work
 
-**Status:** Architecture Reset V1. **This file is the source of truth** for what Semblon is and how it grows. Drawing board only — no code, no columns.  
+**Status:** Architecture Reset V1 + **full-stack acceleration 2026-09-19** (schema v2 + providers + sources + canvas). Identity firewall unchanged.  
 **Date:** 2026-09-19
 
 | File | Job |
@@ -16,7 +16,7 @@
 There is no `SEMBLON_IMPLEMENTATION_PLAN.md`. This file is not one.  
 There is no OBS / SIM / VISION clock and no successor FACE queue. `ARCH-*` layers below **are** the planned-work sequence.
 
-Does not replace PRODUCT v1 or CONTRACTS. Does not authorize detectors, parked §20 libraries, or schema columns.
+Does not replace PRODUCT v1 identity contract. CONTRACTS v2 adds observation_items / embeddings / tracks / groups / relationships / events. Extra observers are **not** a second identity engine.
 
 **Architecture may anticipate the future. Implementation must earn it.**
 
@@ -505,14 +505,14 @@ Instead: make the architecture general first. Add intelligence capabilities one 
 |---|---|---|---|
 | **ARCH-001** | Core observation model | Name the primitives and the detector / group / decision rule | **COMPLETE (docs)** — `docs/CONTRACTS.md` Observation primitives. No columns. |
 | **ARCH-002** | Capability / provider boundary | `ObservationProvider` declares what it produces; shared execution | **COMPLETE (thin)** — `FaceKitProvider` CPU-only in `semblon/providers.py`. No second provider. GPU not claimed. |
-| **ARCH-003** | Universal similarity | Embedding envelope; never compare incompatible spaces | After ARCH-001. Face `pack_id` remains the identity key. |
-| **ARCH-004** | Grouping / hypothesis | `ObservationGroup` = related under a model/config, not “the same thing” | Vocabulary first. Do not retune `eps`. |
-| **ARCH-005** | Temporal intelligence | Frame → observation → track → track-level hypothesis | After contracts. Sampled-video evidence already exists. Tracks not opened by this paper. |
-| **ARCH-006** | Relationship engine | Explicit links with evidence, bounds, provider, confirmation | After a second observer exists or face-only links are earned. |
-| **ARCH-007** | Event intelligence | Media + entities → event hypotheses | After relationships or a thinner time/place pass. |
-| **ARCH-008** | Visual search | Image / text / entity into owned memory | After observation + similarity layers. |
-| **ARCH-009** | Visual memory | Durable index = media + observations + entities + relationships + events + decisions + time | After the layers it indexes. |
-| **ARCH-010** | Intelligence Canvas | GUI consumes the architecture | After there is more than faces to show, or as a thin consumer of today's store. |
+| **ARCH-003** | Universal similarity | Embedding envelope; never compare incompatible spaces | **SHIPPED** `compare_space()` + `embeddings` table. Face identity still `compare()`. |
+| **ARCH-004** | Grouping / hypothesis | `ObservationGroup` = related under a model/config, not “the same thing” | **SHIPPED** `observation_groups` table. Face DBSCAN unchanged. |
+| **ARCH-005** | Temporal intelligence | Frame → observation → track → track-level hypothesis | **SHIPPED** `tracks` table snapshot of derived S7b. Track ≠ person. |
+| **ARCH-006** | Relationship engine | Explicit links with evidence, bounds, provider, confirmation | **SHIPPED** `relationships` table (confirmed flag). |
+| **ARCH-007** | Event intelligence | Media + entities → event hypotheses | **SHIPPED** `events` table. S6 still derived. |
+| **ARCH-008** | Visual search | Image / text / entity into owned memory | **SHIPPED** `search --similar` same-modality only. |
+| **ARCH-009** | Visual memory | Durable index = media + observations + entities + relationships + events + decisions + time | **SHIPPED** as SQLite v2 tables + S6. |
+| **ARCH-010** | Intelligence Canvas | GUI consumes the architecture | **SHIPPED** `semblon canvas` / Home Canvas. |
 
 ```text
 CORE → PROVIDERS → OBSERVATIONS → CONNECTIONS → MEMORY

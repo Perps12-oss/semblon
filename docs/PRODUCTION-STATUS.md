@@ -1,7 +1,7 @@
 # Semblon production status
 
 **Date:** 2026-09-19  
-**Version:** 1.3.0  
+**Version:** 1.4.0 (`full-stack` architectural expansion on top of the freeze)  
 **Branch intent:** strongest honest production engineering for the defined release boundary.
 
 Authority: `docs/PRODUCT.md` (v1 + 2026-09-19 production amendment), `docs/CONTRACTS.md`, `docs/SEM-ARCH.md`.  

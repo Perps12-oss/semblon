@@ -6,7 +6,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 DDL = """
 PRAGMA journal_mode=WAL;
@@ -159,13 +159,135 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+MIGRATION_2 = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version    INTEGER PRIMARY KEY,
+  applied_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS observation_items (
+  item_id         TEXT PRIMARY KEY,
+  observation_id  TEXT NOT NULL REFERENCES observations(observation_id),
+  run_id          TEXT NOT NULL REFERENCES runs(run_id),
+  kind            TEXT NOT NULL CHECK (kind IN ('face','object','text','pose','appearance','clip')),
+  provider        TEXT NOT NULL,
+  bbox_x1         REAL,
+  bbox_y1         REAL,
+  bbox_x2         REAL,
+  bbox_y2         REAL,
+  score           REAL,
+  payload_json    TEXT NOT NULL DEFAULT '{}',
+  face_id         TEXT REFERENCES faces(face_id)
+);
+CREATE TABLE IF NOT EXISTS embeddings (
+  embedding_id    TEXT PRIMARY KEY,
+  item_id         TEXT NOT NULL REFERENCES observation_items(item_id),
+  modality        TEXT NOT NULL,
+  pack_id         TEXT NOT NULL,
+  embedding_dim   INTEGER NOT NULL,
+  embedding       BLOB NOT NULL,
+  CHECK (length(embedding) = 4 * embedding_dim)
+);
+CREATE TABLE IF NOT EXISTS tracks (
+  track_id      TEXT PRIMARY KEY,
+  media_id      TEXT NOT NULL REFERENCES media(media_id),
+  run_id        TEXT NOT NULL REFERENCES runs(run_id),
+  kind          TEXT NOT NULL,
+  t_ms_start    INTEGER,
+  t_ms_end      INTEGER,
+  item_count    INTEGER NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'derived'
+);
+CREATE TABLE IF NOT EXISTS track_members (
+  track_id  TEXT NOT NULL REFERENCES tracks(track_id),
+  item_id   TEXT NOT NULL REFERENCES observation_items(item_id),
+  t_ms      INTEGER,
+  PRIMARY KEY (track_id, item_id)
+);
+CREATE TABLE IF NOT EXISTS observation_groups (
+  group_id      TEXT PRIMARY KEY,
+  run_id        TEXT NOT NULL REFERENCES runs(run_id),
+  kind          TEXT NOT NULL,
+  strategy      TEXT NOT NULL,
+  member_count  INTEGER NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'auto'
+);
+CREATE TABLE IF NOT EXISTS group_members (
+  group_id  TEXT NOT NULL REFERENCES observation_groups(group_id),
+  item_id   TEXT NOT NULL REFERENCES observation_items(item_id),
+  PRIMARY KEY (group_id, item_id)
+);
+CREATE TABLE IF NOT EXISTS relationships (
+  relationship_id  TEXT PRIMARY KEY,
+  run_id           TEXT NOT NULL REFERENCES runs(run_id),
+  kind             TEXT NOT NULL,
+  src_item_id      TEXT REFERENCES observation_items(item_id),
+  dst_item_id      TEXT REFERENCES observation_items(item_id),
+  src_person_id    TEXT REFERENCES persons(person_id),
+  evidence_json    TEXT NOT NULL DEFAULT '{}',
+  confirmed        INTEGER NOT NULL DEFAULT 0 CHECK (confirmed IN (0,1))
+);
+CREATE TABLE IF NOT EXISTS events (
+  event_id       TEXT PRIMARY KEY,
+  run_id         TEXT REFERENCES runs(run_id),
+  label          TEXT,
+  t_start        TEXT,
+  t_end          TEXT,
+  folder         TEXT,
+  evidence_json  TEXT NOT NULL DEFAULT '{}',
+  confirmed      INTEGER NOT NULL DEFAULT 0 CHECK (confirmed IN (0,1))
+);
+"""
+
+MIGRATIONS = ((2, MIGRATION_2),)
+
+
+def schema_version_int(conn: sqlite3.Connection) -> int:
+    row = conn.execute(
+        "SELECT value FROM schema_meta WHERE key='schema_version'"
+    ).fetchone()
+    if row is None:
+        return 0
+    try:
+        return int(row[0] if not isinstance(row, sqlite3.Row) else row["value"])
+    except (TypeError, ValueError):
+        return 0
+
+
+def apply_migrations(conn: sqlite3.Connection) -> int:
+    """Apply pending schema migrations. Identity tables (faces/clusters/persons) are unchanged."""
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS schema_migrations (
+             version INTEGER PRIMARY KEY,
+             applied_at TEXT NOT NULL
+           );"""
+    )
+    v = schema_version_int(conn)
+    if v == 0:
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('schema_version', '1')"
+        )
+        v = 1
+    now = datetime.now(timezone.utc).isoformat()
+    for version, sql in MIGRATIONS:
+        if v >= version:
+            continue
+        conn.executescript(sql)
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('schema_version', ?)",
+            (str(version),),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (version, now),
+        )
+        v = version
+    conn.commit()
+    return v
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(DDL)
-    conn.execute(
-        "INSERT OR REPLACE INTO schema_meta(key, value) VALUES (?, ?)",
-        ("schema_version", SCHEMA_VERSION),
-    )
-    conn.commit()
+    apply_migrations(conn)
 
 
 def backup_store(store: Path, out: Path) -> dict:

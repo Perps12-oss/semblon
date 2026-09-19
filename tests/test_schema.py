@@ -7,8 +7,8 @@ import struct
 
 import pytest
 
-from semblon.compare import CompareError, compare
-from semblon.store import init_db
+from semblon.compare import CompareError, compare, compare_space
+from semblon.store import SCHEMA_VERSION, init_db
 
 
 def _conn(tmp_path):
@@ -30,7 +30,13 @@ def _run(conn, run_id="r1"):
 def test_init(tmp_path):
     conn = _conn(tmp_path)
     ver = conn.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()
-    assert ver[0] == "1"
+    assert ver[0] == SCHEMA_VERSION
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "observation_items" in tables
+    assert "embeddings" in tables
+    assert "tracks" in tables
+    assert "relationships" in tables
+    assert "events" in tables
 
 
 def test_duplicate_sha256(tmp_path):
@@ -103,3 +109,8 @@ def test_compare_rejects():
     with pytest.raises(CompareError):
         compare("a", 2, None, "a", 2, blob)
     assert compare("a", 2, blob, "a", 2, blob) == pytest.approx(1.0)
+    with pytest.raises(CompareError, match="modality"):
+        compare_space("appearance", "a", 2, blob, "face", "a", 2, blob)
+    with pytest.raises(CompareError, match="face identity"):
+        compare_space("face", "a", 2, blob, "face", "a", 2, blob)
+    assert compare_space("appearance", "p", 2, blob, "appearance", "p", 2, blob) == pytest.approx(1.0)

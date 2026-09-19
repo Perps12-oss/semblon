@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from semblon.compare import CompareError, compare_space
 from semblon.identify import IdentifyError, identify_face
 from semblon.memory import MemoryError, history
 from semblon.store import connect, init_db
@@ -103,3 +104,61 @@ def search_people(store: Path) -> dict:
         for r in rows
     ]
     return {"kind": "people", "count": len(items), "items": items}
+
+
+def search_similar(store: Path, item_id: str, *, limit: int = 10) -> dict:
+    """Modality-scoped nearest items. Face identity is forbidden here."""
+    conn = _open(store)
+    row = conn.execute(
+        """SELECT e.embedding, e.embedding_dim, e.pack_id, e.modality, i.kind, i.provider
+           FROM embeddings e JOIN observation_items i ON i.item_id=e.item_id
+           WHERE e.item_id=?""",
+        (item_id,),
+    ).fetchone()
+    if row is None:
+        conn.close()
+        raise SearchError(f"no non-identity embedding for item {item_id}")
+    if row["modality"] == "face":
+        conn.close()
+        raise SearchError("face identity must use search --face / identify, not --similar")
+    others = conn.execute(
+        """SELECT e.item_id, e.embedding, e.embedding_dim, e.pack_id, e.modality, i.kind, i.provider
+           FROM embeddings e JOIN observation_items i ON i.item_id=e.item_id
+           WHERE e.item_id != ?""",
+        (item_id,),
+    ).fetchall()
+    scored = []
+    for o in others:
+        try:
+            s = compare_space(
+                row["modality"],
+                row["pack_id"],
+                int(row["embedding_dim"]),
+                row["embedding"],
+                o["modality"],
+                o["pack_id"],
+                int(o["embedding_dim"]),
+                o["embedding"],
+            )
+        except CompareError:
+            continue
+        scored.append(
+            {
+                "item_id": o["item_id"],
+                "kind": o["kind"],
+                "provider": o["provider"],
+                "score": s,
+                "why": "same modality+pack only; not a person",
+            }
+        )
+    conn.close()
+    scored.sort(key=lambda x: -x["score"])
+    return {
+        "kind": "similar",
+        "query": item_id,
+        "modality": row["modality"],
+        "pack_id": row["pack_id"],
+        "count": min(limit, len(scored)),
+        "items": scored[:limit],
+        "note": "Lens-like lookup in owned memory. Similarity is not identity.",
+    }

@@ -20,6 +20,15 @@ Check weights without downloading:
 semblon.cmd lab models
 ```
 
+## Upgrade / uninstall
+
+`tools/install-windows.ps1` reuses `.venv` and does **not** touch `%LOCALAPPDATA%\Semblon`.
+`tools/uninstall-windows.ps1` removes `.venv` and keeps the store unless `-DeleteStore`.
+
+## MSI
+
+A WiX/MSIX project can wrap `semblon.cmd` + venv. **Do not** bundle buffalo_l until a pack licence exists. Engineering packaging is ready; redistribution of weights is UNAVAILABLE.
+
 ## Not in this release
 
 - MSI / frozen exe / PyInstaller bundle of buffalo_l

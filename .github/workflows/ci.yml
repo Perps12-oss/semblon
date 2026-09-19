@@ -24,3 +24,8 @@ jobs:
           python -m pip install -e . --no-deps
       - name: Pytest (no live InsightFace)
         run: python -m pytest -q
+      - name: pip-audit declared runtime
+        continue-on-error: true
+        run: |
+          python -m pip install pip-audit
+          python -m pip-audit -r requirements.txt

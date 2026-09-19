@@ -47,7 +47,9 @@ Implemented now: `lab profile` (FACE-000); `process` (happy-path ingest -> clust
 
 Not implemented: folder watcher. Ingest-family commands that address a stored run require `--run`. Exit 0/2/3 as specified. `identify` unknown is exit 0.
 
-`observations` is a source/frame slot (`media_id`, `frame_id`, `run_id`) for the current identity path. It is not a typed multi-kind observation schema. Do not add kind / space / payload columns to satisfy the architectural North Star.
+`observations` remains a source/frame slot (`media_id`, `frame_id`, `run_id`) for the identity path.
+
+Schema **v2** (migration engine) adds `observation_items`, `embeddings`, `tracks`, `observation_groups`, `relationships`, `events`. Face identity embeddings stay on `faces`. `embeddings.modality='face'` is forbidden. `compare_space()` refuses face identity. Extra observers never write `faces.person_id`.
 
 Progress `on_event` kinds: `queued` / `started` / `progress` / `partial` / `completed` / `failed` / `cancelled` / `stalled`. Skip is an `outcome` on `progress` (`skipped_seen`, `skipped_same_run`), not a silent success. Cancel stamps `runs.finished_at` and `runs.notes=cancelled`. SIGINT is cooperative at file boundaries. Partial per-file commits remain. Cancelled work must not emit `completed`. A stall watchdog may emit `stalled`; it does not kill the job.
 

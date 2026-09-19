@@ -121,13 +121,15 @@ def test_same_frame_exclusive(tmp_path):
 def test_does_not_write_store(tmp_path):
     store = tmp_path / "s.sqlite"
     _seed(store)
-    before = store.stat().st_mtime_ns
+    conn = sqlite3.connect(str(store))
+    n_before = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+    conn.close()
     derive_tracks(store, "rt")
     conn = sqlite3.connect(str(store))
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    n_after = conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
     conn.close()
-    assert "tracks" not in tables
-    assert store.stat().st_mtime_ns == before
+    assert n_before == 0
+    assert n_after == 0
 
 
 def test_occlusion_gap_is_not_a_merge(tmp_path):

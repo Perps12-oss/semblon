@@ -76,6 +76,9 @@ def main(argv: list[str] | None = None) -> int:
     integ = lab_sub.add_parser("integrity", help="read-only store integrity report")
     integ.add_argument("--store", required=True, type=Path)
     mods = lab_sub.add_parser("models", help="report local buffalo_l weights (does not download)")
+    lab_sub.add_parser("providers", help="list observation providers and availability")
+    oc = lab_sub.add_parser("opencv", help="timed OpenCV import probe (does not hang the suite)")
+    oc.add_argument("--timeout", type=float, default=8.0)
 
     ev = lab_sub.add_parser("eval", help="FACE-002 confirmatory eval harness")
     ev_sub = ev.add_subparsers(dest="evalcmd", required=True)
@@ -138,6 +141,9 @@ def main(argv: list[str] | None = None) -> int:
         default=1,
         help="experimental bounded ingest workers (default 1; thread-local FaceAnalysis, single SQLite writer)",
     )
+    ing.add_argument("--observers", default="face", help="comma list: face,color,object (face is identity)")
+    ing.add_argument("--prefer-gpu", action="store_true", help="use GPU EP if available; recorded honestly")
+    ing.add_argument("--batch", type=int, default=1, help="recorded batch size; FaceKit still per-image")
 
     proc = sub.add_parser(
         "process",
@@ -166,6 +172,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="do not open review.html automatically",
     )
+    proc.add_argument("--workers", type=int, default=1)
+    proc.add_argument("--observers", default="face")
+    proc.add_argument("--prefer-gpu", action="store_true")
+    proc.add_argument("--batch", type=int, default=1)
 
     clu = sub.add_parser("cluster", help="0.3 DBSCAN on ok faces for a run")
     clu.add_argument("--run", required=True)
@@ -307,6 +317,25 @@ def main(argv: list[str] | None = None) -> int:
     srch.add_argument("--face", default=None, help="face_id to identify vs persons")
     srch.add_argument("--run", default=None, help="required with --face")
     srch.add_argument("--people", action="store_true", help="list active named persons")
+    srch.add_argument("--similar", default=None, help="observation_item_id in a non-identity space")
+
+    wat = sub.add_parser("watch", help="poll a folder and ingest incrementally (cancellable)")
+    wat.add_argument("folder", type=Path)
+    wat.add_argument("--store", required=True, type=Path)
+    wat.add_argument("--interval", type=float, default=5.0)
+    wat.add_argument("--once", action="store_true")
+    wat.add_argument("--observers", default="face")
+
+    liv = sub.add_parser("live", help="sample webcam index or RTSP URL into the store")
+    liv.add_argument("--store", required=True, type=Path)
+    liv.add_argument("--source", default="0", help="camera index or RTSP URL")
+    liv.add_argument("--seconds", type=float, default=5.0)
+    liv.add_argument("--hz", type=float, default=1.0)
+    liv.add_argument("--prefer-gpu", action="store_true")
+
+    canv = sub.add_parser("canvas", help="Intelligence Canvas over observations (not identity)")
+    canv.add_argument("--store", default=None, type=Path)
+    canv.add_argument("--run", default=None)
 
     args = p.parse_args(argv)
 
@@ -394,6 +423,21 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(weights_status(), indent=2))
         return 0
 
+    if args.cmd == "lab" and args.labcmd == "providers":
+        from semblon.engine import select_execution_provider
+        from semblon.observers import optional_status
+
+        rec = {"observers": optional_status(), "execution": select_execution_provider(prefer_gpu=True)}
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "opencv":
+        from semblon.opencv_probe import probe_opencv
+
+        rec = probe_opencv(timeout_s=args.timeout)
+        print(json.dumps(rec, indent=2))
+        return 0 if rec.get("ok") else 2
+
     if args.cmd == "lab" and args.labcmd == "eval":
         from semblon.eval import (
             DEFAULT_MINE_MAX,
@@ -459,6 +503,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.store,
                 reprocess=args.reprocess,
                 workers=args.workers,
+                observers=args.observers,
+                prefer_gpu=args.prefer_gpu,
+                batch=args.batch,
             )
         except CancelledError as e:
             print(json.dumps({"cancelled": True, "run_id": e.run_id, **e.timings}, indent=2, default=str))
@@ -482,6 +529,10 @@ def main(argv: list[str] | None = None) -> int:
                 out=args.out,
                 reprocess=args.reprocess,
                 open_review=not args.no_open,
+                workers=args.workers,
+                observers=args.observers,
+                prefer_gpu=args.prefer_gpu,
+                batch=args.batch,
             )
         except ProcessCancelled as e:
             print(str(e), file=sys.stderr)
@@ -699,7 +750,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "search":
-        from semblon.search import SearchError, search_face, search_people, search_person
+        from semblon.search import SearchError, search_face, search_people, search_person, search_similar
 
         try:
             if args.people:
@@ -711,8 +762,10 @@ def main(argv: list[str] | None = None) -> int:
                     print("--run is required with --face", file=sys.stderr)
                     return 2
                 rec = search_face(args.store, args.run, args.face)
+            elif args.similar:
+                rec = search_similar(args.store, args.similar)
             else:
-                print("search requires --people, --person, or --face", file=sys.stderr)
+                print("search requires --people, --person, --face, or --similar", file=sys.stderr)
                 return 2
         except SearchError as e:
             print(str(e), file=sys.stderr)
@@ -751,6 +804,57 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         print(json.dumps(rec, indent=2, default=str))
         return 0
+
+    if args.cmd == "watch":
+        from semblon.ingest import CancelledError
+        from semblon.watch import WatchError, watch_folder
+
+        try:
+            rec = watch_folder(
+                args.folder,
+                args.store,
+                interval_s=args.interval,
+                once=args.once,
+                observers=args.observers,
+            )
+        except (WatchError, FileNotFoundError) as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        except CancelledError as e:
+            print(json.dumps({"cancelled": True, "run_id": getattr(e, "run_id", None)}, indent=2))
+            return 2
+        print(json.dumps(rec, indent=2, default=str))
+        return 0
+
+    if args.cmd == "live":
+        from semblon.ingest import CancelledError
+        from semblon.live import LiveError, live_capture
+
+        try:
+            rec = live_capture(
+                args.store,
+                source=args.source,
+                seconds=args.seconds,
+                sample_hz=args.hz,
+                prefer_gpu=args.prefer_gpu,
+            )
+        except (LiveError, FileNotFoundError) as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        except CancelledError as e:
+            print(json.dumps({"cancelled": True, "run_id": e.run_id}, indent=2))
+            return 2
+        print(json.dumps(rec, indent=2, default=str))
+        return 0
+
+    if args.cmd == "canvas":
+        from semblon.canvas import CanvasError, run_canvas
+
+        try:
+            return run_canvas(args.store, args.run)
+        except CanvasError as e:
+            print(str(e), file=sys.stderr)
+            return 2
 
     return 2
 

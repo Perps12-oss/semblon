@@ -21,6 +21,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--store", type=Path, default=None)
     p.add_argument("--out", type=Path, default=Path("bench.json"))
     p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--synthetic", type=int, default=0, help="write N tiny jpeg stubs (not a 10k claim)")
+    p.add_argument("--execute", action="store_true", help="actually run ingest (needs FaceKit)")
     args = p.parse_args(argv)
     rec = {
         "harness": "bench_ingest",
@@ -28,6 +30,19 @@ def main(argv: list[str] | None = None) -> int:
         "verified": False,
         "note": "10k is a design target; this file is only evidence if verified=true",
     }
+    if args.synthetic:
+        folder = args.folder or (args.out.parent / "synth")
+        folder.mkdir(parents=True, exist_ok=True)
+        for i in range(int(args.synthetic)):
+            (folder / f"{i:05d}.jpg").write_bytes(b"\xff\xd8\xff" + bytes([i % 256]) * 64)
+        rec["synthetic"] = int(args.synthetic)
+        rec["folder"] = str(folder)
+        args.folder = folder
+        if not args.execute:
+            rec["status"] = "synthetic files written; ingest NOT EXECUTED"
+            args.out.write_text(json.dumps(rec, indent=2), encoding="utf-8")
+            print(json.dumps(rec, indent=2))
+            return 0
     if args.folder is None:
         rec["status"] = "not executed — human/environment verification required"
         args.out.write_text(json.dumps(rec, indent=2), encoding="utf-8")
