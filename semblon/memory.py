@@ -7,6 +7,7 @@ Time and place must not change compare() or cluster membership.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import struct
@@ -342,7 +343,7 @@ def together(store: Path, *, run_id: str | None = None) -> dict:
             rec["people"][r["person_id"]] = r["display_name"]
             if r["t_ms"] is not None:
                 rec["t_vals"].append(int(r["t_ms"]))
-        pairs = []
+        derived_by_media: dict[str, dict] = {}
         for rec in by_media.values():
             people = rec["people"]
             if len(people) < 2:
@@ -365,12 +366,73 @@ def together(store: Path, *, run_id: str | None = None) -> dict:
             if rec["source_type"] == "video" and rec["t_vals"]:
                 item["t_ms_start"] = min(rec["t_vals"])
                 item["t_ms_end"] = max(rec["t_vals"])
+            derived_by_media[rec["media_id"]] = item
+
+        snap_rows = conn.execute(
+            """
+            SELECT evidence_json, confirmed
+            FROM relationships
+            WHERE kind='together'
+            """
+            + (" AND run_id=?" if run_id else ""),
+            ([run_id] if run_id else []),
+        ).fetchall()
+        pairs: list[dict] = []
+        seen: set[str] = set()
+        for row in snap_rows:
+            evidence = {}
+            try:
+                evidence = json.loads(row["evidence_json"] or "{}")
+            except json.JSONDecodeError:
+                evidence = {}
+            ids = sorted([str(x) for x in (evidence.get("person_ids") or []) if x])
+            if len(ids) < 2:
+                continue
+            media_id = evidence.get("media_id")
+            key = str(media_id) if media_id else "|".join(ids)
+            if key in seen:
+                continue
+            base = derived_by_media.get(media_id or "")
+            if base is None:
+                mrow = None
+                if media_id:
+                    mrow = conn.execute(
+                        "SELECT media_id, path, mtime_ns, source_type FROM media WHERE media_id=?",
+                        (media_id,),
+                    ).fetchone()
+                if mrow:
+                    ww = when_where(mrow["path"], mrow["mtime_ns"], source_type=mrow["source_type"])
+                    base = {"media_id": mrow["media_id"], "source_type": mrow["source_type"], **ww}
+                else:
+                    base = {"media_id": media_id, "source_type": evidence.get("source_type")}
+            names = evidence.get("names") or base.get("names") or ids
+            item = {
+                "media_id": base.get("media_id"),
+                "person_ids": ids,
+                "names": names,
+                "source_type": base.get("source_type"),
+                "when_ns": base.get("when_ns"),
+                "when": base.get("when"),
+                "when_source": base.get("when_source"),
+                "folder": base.get("folder"),
+                "path": base.get("path"),
+                "snapshot_confirmed": int(row["confirmed"] or 0),
+            }
+            if base.get("t_ms_start") is not None:
+                item["t_ms_start"] = base.get("t_ms_start")
+                item["t_ms_end"] = base.get("t_ms_end")
             pairs.append(item)
-        pairs.sort(key=lambda x: (x["when_ns"] is None, x["when_ns"] or 0, x["media_id"]))
+            seen.add(key)
+
+        for media_id, item in derived_by_media.items():
+            if media_id in seen:
+                continue
+            pairs.append(item)
+        pairs.sort(key=lambda x: (x["when_ns"] is None, x["when_ns"] or 0, x.get("media_id") or ""))
         return {
             "pairs": len(pairs),
             "items": pairs,
-            "note": "co-appearance on one media; not a cluster merge",
+            "note": "co-appearance on one media (snapshot + derived union); not a cluster merge",
         }
     finally:
         conn.close()
@@ -432,11 +494,52 @@ def events(store: Path, *, run_id: str | None = None) -> dict:
             out["media"] = len(rec["media"])
             return out
 
+        snap_rows = conn.execute(
+            """
+            SELECT label, t_start, t_end, folder, evidence_json, confirmed
+            FROM events
+            """
+            + (" WHERE run_id=?" if run_id else ""),
+            ([run_id] if run_id else []),
+        ).fetchall()
+        snapshot_events: list[dict] = []
+        snap_burst_keys: set[tuple] = set()
+        merged_bursts: list[dict] = []
+        for row in snap_rows:
+            evidence = {}
+            try:
+                evidence = json.loads(row["evidence_json"] or "{}")
+            except json.JSONDecodeError:
+                evidence = {}
+            ev = {
+                "kind": row["label"] or evidence.get("kind"),
+                "folder": row["folder"] or evidence.get("folder"),
+                "when": row["t_start"] or evidence.get("when"),
+                "until": row["t_end"] or evidence.get("until"),
+                "confirmed": int(row["confirmed"] or 0),
+            }
+            if "person_ids" in evidence:
+                ev["person_ids"] = evidence.get("person_ids") or []
+            if "media" in evidence:
+                ev["media"] = evidence.get("media")
+            snapshot_events.append(ev)
+            if ev["kind"] == "burst":
+                key = (ev.get("kind"), ev.get("folder"), ev.get("when"), ev.get("until"))
+                snap_burst_keys.add(key)
+                merged_bursts.append(ev)
+
+        for b in bursts:
+            key = (b.get("kind"), b.get("folder"), b.get("when"), b.get("until"))
+            if key in snap_burst_keys:
+                continue
+            merged_bursts.append(b)
+
         return {
-            "bursts": bursts,
+            "bursts": merged_bursts,
             "days": [_pub(days[k]) for k in sorted(days)],
             "folders": [_pub(folders[k]) for k in sorted(folders)],
-            "note": "structured signals only; no LLM event titles; not identity",
+            "snapshots": snapshot_events,
+            "note": "structured signals only (snapshot + derived union); no LLM event titles; not identity",
         }
     finally:
         conn.close()

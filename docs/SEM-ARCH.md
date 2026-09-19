@@ -508,11 +508,11 @@ Instead: make the architecture general first. Add intelligence capabilities one 
 | **ARCH-003** | Universal similarity | Embedding envelope; never compare incompatible spaces | **SHIPPED** `compare_space()` + `embeddings` table. Face identity still `compare()`. |
 | **ARCH-004** | Grouping / hypothesis | `ObservationGroup` = related under a model/config, not “the same thing” | **SHIPPED** `observation_groups` table. Face DBSCAN unchanged. |
 | **ARCH-005** | Temporal intelligence | Frame → observation → track → track-level hypothesis | **SHIPPED** `tracks` table snapshot of derived S7b. Track ≠ person. |
-| **ARCH-006** | Relationship engine | Explicit links with evidence, bounds, provider, confirmation | **SHIPPED** `relationships` table (confirmed flag). |
-| **ARCH-007** | Event intelligence | Media + entities → event hypotheses | **SHIPPED** `events` table. S6 still derived. |
-| **ARCH-008** | Visual search | Image / text / entity into owned memory | **SHIPPED** `search --similar` same-modality only. |
+| **ARCH-006** | Relationship engine | Explicit links with evidence, bounds, provider, confirmation | **SHIPPED** `relationships` table + Home Activity / memory readers (confirmed flag). |
+| **ARCH-007** | Event intelligence | Media + entities → event hypotheses | **SHIPPED** `events` table + Home Activity / memory readers. |
+| **ARCH-008** | Visual search | Image / text / entity into owned memory | **SHIPPED (bounded)** person lookup + same-modality similar only (`search --person/--people/--face/--similar`); not CLIP text search. |
 | **ARCH-009** | Visual memory | Durable index = media + observations + entities + relationships + events + decisions + time | **SHIPPED** as SQLite v2 tables + S6. |
-| **ARCH-010** | Intelligence Canvas | GUI consumes the architecture | **SHIPPED** `semblon canvas` / Home Canvas. |
+| **ARCH-010** | Intelligence Canvas | GUI consumes the architecture | **SHIPPED (overlay scope)** observation overlay (`semblon canvas` / Home Canvas). S8 shell is not default. |
 
 ```text
 CORE → PROVIDERS → OBSERVATIONS → CONNECTIONS → MEMORY

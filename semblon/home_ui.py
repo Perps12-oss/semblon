@@ -6,12 +6,19 @@ Progress text comes from process on_event only — no invented percent.
 
 from __future__ import annotations
 
+import json
 import queue
+import sqlite3
 import threading
-import tkinter as tk
 import webbrowser
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+except ModuleNotFoundError:  # pragma: no cover - depends on host Python build
+    tk = None
+    filedialog = messagebox = ttk = None
 
 from semblon.process import ProcessCancelled, ProcessError, default_store_path, process_folder
 from semblon.progress import KIND_QUEUED, KIND_STALLED, STAGE_PROCESS, ProgressEvent, make_event
@@ -76,9 +83,124 @@ def format_search_lines(rec: dict) -> list[str]:
     return [json_fallback(rec)]
 
 
-def json_fallback(rec: dict) -> str:
-    import json
+def format_activity_lines(
+    *,
+    run_line: str,
+    integrity_line: str,
+    groups: list[dict],
+    relationships: list[dict],
+    events: list[dict],
+    track_count: int,
+) -> list[str]:
+    lines = [run_line, integrity_line]
+    if groups:
+        lines.append("observation_groups:")
+        for g in groups:
+            lines.append(
+                f"  kind={g.get('kind')} members={g.get('member_count')} status={g.get('status')} (not a person)"
+            )
+    else:
+        lines.append("observation_groups: none")
 
+    if relationships:
+        lines.append("relationships:")
+        for r in relationships:
+            names = [n for n in (r.get("name_a"), r.get("name_b")) if n]
+            ids = [i for i in [r.get("src_person_id"), *(r.get("other_person_ids") or [])] if i]
+            who = ", ".join(names) if names else (", ".join(ids) if ids else "unknown")
+            lines.append(
+                f"  kind={r.get('kind')} people={who} confirmed={r.get('confirmed', 0)}"
+            )
+    else:
+        lines.append("relationships: none")
+
+    if events:
+        lines.append("events:")
+        for ev in events:
+            lines.append(
+                f"  {ev.get('label')}  {ev.get('t_start')} -> {ev.get('t_end')}  folder={ev.get('folder')}"
+            )
+    else:
+        lines.append("events: none")
+
+    lines.append(f"tracks={track_count}  (track ≠ person)")
+    return lines
+
+
+def read_activity_snapshot(store: Path, run_id: str) -> dict:
+    from semblon.store import connect, init_db
+
+    conn = connect(store)
+    init_db(conn)
+    try:
+        groups_rows = conn.execute(
+            """
+            SELECT kind, member_count, status
+            FROM observation_groups
+            WHERE run_id=?
+            ORDER BY rowid DESC
+            LIMIT 12
+            """,
+            (run_id,),
+        ).fetchall()
+        rel_rows = conn.execute(
+            """
+            SELECT kind, src_person_id, evidence_json, confirmed
+            FROM relationships
+            WHERE run_id=?
+            ORDER BY rowid DESC
+            LIMIT 12
+            """,
+            (run_id,),
+        ).fetchall()
+        event_rows = conn.execute(
+            """
+            SELECT label, t_start, t_end, folder
+            FROM events
+            WHERE run_id=?
+            ORDER BY rowid DESC
+            LIMIT 12
+            """,
+            (run_id,),
+        ).fetchall()
+        track_count = int(
+            conn.execute("SELECT COUNT(*) FROM tracks WHERE run_id=?", (run_id,)).fetchone()[0]
+        )
+    finally:
+        conn.close()
+
+    groups = [dict(r) for r in groups_rows]
+    relationships: list[dict] = []
+    for row in rel_rows:
+        rel = dict(row)
+        evidence = {}
+        raw = rel.get("evidence_json")
+        if raw:
+            try:
+                evidence = json.loads(raw)
+            except json.JSONDecodeError:
+                evidence = {}
+        rel["name_a"] = evidence.get("name_a") or evidence.get("src_name")
+        rel["name_b"] = evidence.get("name_b") or evidence.get("dst_name")
+        ids = evidence.get("person_ids")
+        if isinstance(ids, list):
+            if not rel.get("src_person_id") and len(ids) > 0:
+                rel["src_person_id"] = ids[0]
+            rel["other_person_ids"] = [str(i) for i in ids[1:] if i]
+        else:
+            rel["other_person_ids"] = []
+        relationships.append(rel)
+
+    events = [dict(r) for r in event_rows]
+    return {
+        "groups": groups,
+        "relationships": relationships,
+        "events": events,
+        "track_count": track_count,
+    }
+
+
+def json_fallback(rec: dict) -> str:
     return json.dumps(rec, indent=2)[:4000]
 
 
@@ -86,6 +208,8 @@ class HomeApp:
     """Small entry window. Mutations stay in review-ui / review.py."""
 
     def __init__(self, store: Path | None = None):
+        if tk is None or ttk is None or filedialog is None or messagebox is None:
+            raise RuntimeError("tkinter is required for home-ui")
         self.store = Path(store) if store is not None else default_store_path()
         self._busy = False
         self._cancel = threading.Event()
@@ -322,36 +446,48 @@ class HomeApp:
 
     def _show_activity(self) -> None:
         from semblon.process import empty_state_line, latest_run_id
-        from semblon.store import connect, init_db, integrity_report
+        from semblon.store import integrity_report
 
         if not self.store.is_file():
             messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
             return
-        rid = latest_run_id(self.store) or "?"
-        line = empty_state_line(self.store, rid) if rid != "?" else "no runs"
+        rid = latest_run_id(self.store)
+        line = empty_state_line(self.store, rid) if rid else "no runs"
         try:
             integ = integrity_report(self.store)
             extra = f"integrity ok={integ['ok']} unfinished={len(integ['unfinished_runs'])}"
-        except OSError:
-            extra = "integrity unavailable"
-        n_groups = n_items = n_rel = 0
+        except OSError as e:
+            extra = f"integrity unavailable: {e}"
+
+        if not rid:
+            self._list_window(
+                "Activity",
+                format_activity_lines(
+                    run_line=line,
+                    integrity_line=extra,
+                    groups=[],
+                    relationships=[],
+                    events=[],
+                    track_count=0,
+                ),
+            )
+            return
+
         try:
-            conn = connect(self.store)
-            init_db(conn)
-            n_groups = conn.execute("SELECT COUNT(*) FROM observation_groups").fetchone()[0]
-            n_items = conn.execute("SELECT COUNT(*) FROM observation_items").fetchone()[0]
-            n_rel = conn.execute("SELECT COUNT(*) FROM relationships").fetchone()[0]
-            conn.close()
-        except Exception:
-            pass
+            rec = read_activity_snapshot(self.store, rid)
+        except (sqlite3.DatabaseError, OSError) as e:
+            self._list_window("Activity", [line, extra, f"activity unavailable: {e}"])
+            return
         self._list_window(
             "Activity",
-            [
-                line,
-                extra,
-                f"observation_groups={n_groups}  items={n_items}  relationships={n_rel}",
-                "groups are not people",
-            ],
+            format_activity_lines(
+                run_line=line,
+                integrity_line=extra,
+                groups=rec.get("groups") or [],
+                relationships=rec.get("relationships") or [],
+                events=rec.get("events") or [],
+                track_count=int(rec.get("track_count") or 0),
+            ),
         )
 
     def _open_canvas(self) -> None:

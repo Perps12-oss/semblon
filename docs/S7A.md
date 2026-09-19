@@ -45,6 +45,8 @@ Cluster is still a hypothesis. Video sampled `status=ok` faces are **held out of
 | detect / embed | same FaceKit pack as stills | `embed_bgr` |
 | `eps` / `min_samples` | frozen S1 | stills-only clustering |
 
+S7c live capture now uses the same temporal association knobs as S7b (`iou_min=0.30`, `max_t_ms_gap=2500`) for track hypotheses only. Identity remains FaceKit `compare()` vs named persons.
+
 ## Acceptance
 
 1. A folder with an `.mp4` (and stills) ingests: stills unchanged (`source_type=folder`, `frame_id` NULL); video media is `source_type=video` with multiple observations (`frame_id`, `t_ms` set).

@@ -511,7 +511,7 @@ def persist_derived_tracks(store: Path, run_id: str, conn=None) -> dict:
         conn = connect(p)
         init_db(conn)
     try:
-        rec = derive_tracks(p, run_id)
+        rec = derive_tracks(p, run_id, prefer_persisted=False)
     except TracksError:
         if own:
             conn.close()
@@ -538,6 +538,49 @@ def persist_derived_tracks(store: Path, run_id: str, conn=None) -> dict:
                 "derived",
             ),
         )
+        members = list(t.get("members") or [])
+        if not members:
+            # Fallback for payloads without member objects.
+            for fid in t.get("face_ids") or []:
+                row = conn.execute(
+                    """
+                    SELECT f.face_id, f.observation_id, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
+                           f.det_score, o.t_ms
+                    FROM faces f
+                    JOIN observations o ON o.observation_id = f.observation_id
+                    WHERE f.face_id=? AND f.run_id=?
+                    """,
+                    (fid, run_id),
+                ).fetchone()
+                if row is None:
+                    continue
+                members.append(
+                    {
+                        "face_id": row["face_id"],
+                        "observation_id": row["observation_id"],
+                        "bbox": (row["bbox_x1"], row["bbox_y1"], row["bbox_x2"], row["bbox_y2"]),
+                        "score": row["det_score"],
+                        "t_ms": row["t_ms"],
+                    }
+                )
+        for m in members:
+            fid = m.get("face_id")
+            oid = m.get("observation_id")
+            if not fid or not oid:
+                continue
+            iid = ensure_face_item(
+                conn,
+                face_id=fid,
+                observation_id=oid,
+                run_id=run_id,
+                bbox=m.get("bbox"),
+                score=m.get("score"),
+                status="ok",
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO track_members(track_id, item_id, t_ms) VALUES (?,?,?)",
+                (tid, iid, m.get("t_ms")),
+            )
         n += 1
     conn.commit()
     if own:

@@ -511,7 +511,7 @@ def name_track(
     track_id: str,
     display_name: str,
 ) -> dict:
-    """Name current members of a derived track. Re-derives; does not persist a track row."""
+    """Name current members of a derived/persisted track. Track ≠ person."""
     track_id = (track_id or "").strip()
     if not track_id:
         raise ReviewError("track id must be non-empty")

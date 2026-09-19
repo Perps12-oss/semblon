@@ -10,7 +10,7 @@ import os
 import sqlite3
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from semblon.cluster import DEFAULT_EPS, DEFAULT_MIN_SAMPLES, ClusterError, cluster_run
 from semblon.export import ExportError, export_review
@@ -19,6 +19,7 @@ from semblon.progress import (
     KIND_CANCELLED,
     KIND_COMPLETED,
     KIND_FAILED,
+    KIND_QUEUED,
     KIND_STARTED,
     STAGE_CLUSTER,
     STAGE_EXPORT,
@@ -41,16 +42,24 @@ class ProcessCancelled(ProcessError):
         self.run_id = run_id
 
 
+def _looks_windows_path(path: Path | str) -> bool:
+    s = str(path)
+    return ("\\" in s) or (len(s) >= 2 and s[1] == ":")
+
+
 def default_store_path() -> Path:
     """User-local SQLite store. Windows: %LOCALAPPDATA%\\Semblon\\store.sqlite."""
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA")
         if base:
-            return Path(base) / "Semblon" / "store.sqlite"
+            return Path(str(PureWindowsPath(base) / "Semblon" / "store.sqlite"))
     return Path.home() / ".local" / "share" / "semblon" / "store.sqlite"
 
 
 def default_review_out(store: Path) -> Path:
+    if _looks_windows_path(store):
+        p = PureWindowsPath(str(store))
+        return Path(str(p.with_name("review.html")))
     return Path(store).resolve().parent / "review.html"
 
 
@@ -149,6 +158,15 @@ def process_folder(
     out_path = Path(out) if out is not None else default_review_out(store_path)
     store_path.parent.mkdir(parents=True, exist_ok=True)
 
+    emit(
+        on_event,
+        make_event(
+            STAGE_PROCESS,
+            KIND_QUEUED,
+            path=str(folder.resolve()),
+            message=f"Queued: {folder.resolve()}",
+        ),
+    )
     emit(
         on_event,
         make_event(
