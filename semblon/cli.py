@@ -174,9 +174,11 @@ def main(argv: list[str] | None = None) -> int:
         help="min_intra >= this -> STRONG (default 0.50)",
     )
 
-    nam = sub.add_parser("name", help="0.4/FACE-005 name a cluster or unassigned face -> person")
+    nam = sub.add_parser("name", help="0.4/FACE-005 name a cluster, face, or derived track -> person")
     nam.add_argument("--cluster", default=None)
     nam.add_argument("--face", default=None, help="unassigned inbox face (not a clustered face)")
+    nam.add_argument("--track", default=None, help="derived S7 track id (not a person id)")
+    nam.add_argument("--faces", nargs="+", default=None, help="unassigned face ids (one person)")
     nam.add_argument("--as", dest="display_name", required=True, help="display name")
     nam.add_argument("--run", required=True)
     nam.add_argument("--store", required=True, type=Path)
@@ -467,16 +469,24 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "name":
-        from semblon.review import ReviewError, name_cluster, name_face
+        from semblon.review import ReviewError, name_cluster, name_face, name_faces, name_track
 
-        if bool(args.cluster) == bool(args.face):
-            print("name requires exactly one of --cluster or --face", file=sys.stderr)
+        chosen = [x for x in (args.cluster, args.face, args.track, args.faces) if x]
+        if len(chosen) != 1:
+            print(
+                "name requires exactly one of --cluster, --face, --track, or --faces",
+                file=sys.stderr,
+            )
             return 2
         try:
             if args.cluster:
                 rec = name_cluster(args.store, args.run, args.cluster, args.display_name)
-            else:
+            elif args.face:
                 rec = name_face(args.store, args.run, args.face, args.display_name)
+            elif args.track:
+                rec = name_track(args.store, args.run, args.track, args.display_name)
+            else:
+                rec = name_faces(args.store, args.run, args.faces, args.display_name)
         except ReviewError as e:
             print(str(e), file=sys.stderr)
             return 2

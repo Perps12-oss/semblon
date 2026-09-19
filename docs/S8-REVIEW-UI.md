@@ -9,7 +9,7 @@
 
 A stdlib **tkinter** window that calls existing [`semblon/review.py`](../semblon/review.py) APIs:
 
-- Name (cluster or unassigned face → person)
+- Name (cluster, unassigned face, or derived track members → person)
 - Merge / Split / Ignore / Note
 - Reload from SQLite after each mutation
 
@@ -36,7 +36,7 @@ Do not grow a second identity path inside the UI.
 
 ## Acceptance (state, not just buttons)
 
-1. Name → person + gallery faces → `identify --face` ACCEPT same person.  
+1. Name → person + gallery faces → `identify --face` ACCEPT same person (including Name on a derived track; track id ≠ person id).  
 2. Merge → reload → decision persists; donor cluster gone.  
 3. Split → reload → new cluster + decision; split faces unnamed until named.
 
@@ -59,7 +59,7 @@ video:  path + frame_id → VideoCapture seek → bbox crop → thumbnail
 
 Applies to `review-ui` and static `review.html`. No mass on-disk PNG dump. No clustering / threshold / sampling changes.
 
-**List:** video unassigned faces are grouped by derived S7 Track (IoU+time). A track is not a person — Name/Ignore/Note require a clicked face. Untracked video faces and stills stay one row each.
+**List:** video unassigned faces are grouped by derived S7 Track (IoU+time). Name on a track enrols member observations as one person (human decision). Track id is never person id. Ignore/Note on a track still require a clicked face. Untracked video faces and stills stay one row each.
 
 ## Next
 

@@ -51,4 +51,4 @@ Observation  →  Track (temporal)  →  Hypothesis (optional, not this slice)
 
 ## Next
 
-S8 `review-ui` / `review.html` render these Tracks as the video review unit. This file does not open a full shell, identify UI, or live sources.
+S8 `review-ui` / `review.html` render these Tracks. `name --track` enrols current members as one person (human decision). Track id is never person id. This file does not open a full shell, identify UI, or live sources.

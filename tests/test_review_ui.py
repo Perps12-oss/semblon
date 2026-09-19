@@ -299,10 +299,16 @@ def test_board_renders_derived_tracks_not_media_bags(tmp_path):
     from semblon.review_ui import apply_name, item_label
 
     assert item_label(track).startswith("TRACK")
-    with pytest.raises(ReviewUiError, match="not a person"):
-        apply_name(store, "rg", track, "Nope")
-    named = apply_name(store, "rg", {**track, "face_id": "fv1"}, "Ada")
+    named = apply_name(store, "rg", track, "Ada")
     assert named["display_name"] == "Ada"
+    assert named["faces_named"] == 2
+    assert named["track_id"] == track["track_id"]
+    assert named["person_id"] != track["track_id"]
+    from semblon.identify import identify_face
+
+    hit = identify_face(store, "rg", "fv2")
+    assert hit["decision"] == "ACCEPT"
+    assert hit["person_id"] == named["person_id"]
 
 
 def test_crop_png_b64_video_without_frame_id_returns_none():

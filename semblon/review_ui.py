@@ -18,6 +18,7 @@ from semblon.review import (
     merge_clusters,
     name_cluster,
     name_face,
+    name_faces,
     note_subject,
     split_cluster,
 )
@@ -365,9 +366,22 @@ def crop_jpeg_bytes(
 def apply_name(store: Path, run_id: str, item: dict, display_name: str) -> dict:
     if item["kind"] == "cluster":
         return name_cluster(store, run_id, item["cluster_id"], display_name)
+    if item["kind"] == "track":
+        members = [m["face_id"] for m in item.get("members") or []]
+        rec = name_faces(
+            store,
+            run_id,
+            members,
+            display_name,
+            source="track",
+            track_id=item.get("track_id"),
+        )
+        if rec.get("track_id") and rec.get("person_id") and rec["track_id"] == rec["person_id"]:
+            raise ReviewUiError("track id must not equal person id")
+        return rec
     fid = item.get("face_id")
-    if item["kind"] in ("track", "unassigned_media") and not fid:
-        raise ReviewUiError("click a face in the video to Name (a track is not a person)")
+    if item["kind"] == "unassigned_media" and not fid:
+        raise ReviewUiError("click a face in the video to Name (a file is not a person)")
     if not fid:
         raise ReviewUiError("select an unassigned face to Name")
     return name_face(store, run_id, fid, display_name)
@@ -581,12 +595,14 @@ class ReviewApp:
         item = self._current_item()
         if item is None:
             return None
-        if item["kind"] in ("track", "unassigned_media"):
+        if item["kind"] == "track":
+            return item
+        if item["kind"] == "unassigned_media":
             if len(self._selected_faces) == 1:
                 return {**item, "face_id": next(iter(self._selected_faces))}
             if len(item["members"]) == 1:
                 return {**item, "face_id": item["members"][0]["face_id"]}
-            raise ReviewUiError("click one face in the video (a track is not a person)")
+            raise ReviewUiError("click one face in the video (a file is not a person)")
         return item
 
     def _do_name(self) -> None:
