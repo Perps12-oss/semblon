@@ -15,6 +15,8 @@ from semblon.review import (
     ignore_subject,
     merge_clusters,
     name_cluster,
+    name_faces,
+    name_track,
     note_subject,
     split_cluster,
 )
@@ -417,3 +419,99 @@ def test_cli_review_merge_ignore(tmp_path):
         == 0
     )
     assert main(["review", "--run", "r1", "--store", str(store), "ignore"]) == 2
+
+
+def _seed_video_track(store: Path) -> str:
+    """Two overlapping video faces → one derived track. Returns track_id."""
+    conn = sqlite3.connect(str(store))
+    conn.execute("PRAGMA foreign_keys=ON")
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("rt", "t0", "t1", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute("INSERT INTO media VALUES ('mv','video','C:/clips/a.mp4','v1',320,240,0,1)")
+    conn.execute("INSERT INTO observations VALUES ('o1','mv',0,0,'rt')")
+    conn.execute("INSERT INTO observations VALUES ('o2','mv',25,1000,'rt')")
+    for fid, oid, blob in (
+        ("fa", "o1", _vec(1.0, 0.0)),
+        ("fb", "o2", _vec(0.0, 1.0)),
+    ):
+        conn.execute(
+            """INSERT INTO faces(face_id,observation_id,run_id,bbox_x1,bbox_y1,bbox_x2,bbox_y2,
+               det_score,face_w,face_h,size_band,status,embedding,embedding_pack,embedding_dim)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (fid, oid, "rt", 10, 10, 110, 110, 0.9, 100, 100, "80-119", "ok", blob, "pack-a", 2),
+        )
+    conn.commit()
+    conn.close()
+    from semblon.tracks import derive_tracks
+
+    rec = derive_tracks(store, "rt")
+    assert rec["counts"]["tracks"] == 1
+    return rec["tracks"][0]["track_id"]
+
+
+def test_name_track_enrols_members_not_as_cluster(tmp_path):
+    store = tmp_path / "s.sqlite"
+    tid = _seed_video_track(store)
+    rec = name_track(store, "rt", tid, "Ada")
+    assert rec["faces_named"] == 2
+    assert rec["created_person"] is True
+    assert rec["person_id"] != tid
+    assert rec["track_id"] == tid
+    conn = sqlite3.connect(str(store))
+    persons = conn.execute("SELECT person_id, display_name FROM persons").fetchall()
+    assert len(persons) == 1
+    assert persons[0][1] == "Ada"
+    named = {
+        r[0]
+        for r in conn.execute("SELECT face_id FROM faces WHERE person_id=?", (rec["person_id"],))
+    }
+    assert named == {"fa", "fb"}
+    clustered = conn.execute("SELECT cluster_id FROM faces WHERE face_id='fa'").fetchone()[0]
+    assert clustered is None
+    links = conn.execute("SELECT 1 FROM cluster_person").fetchone()
+    assert links is None
+    pol = conn.execute("SELECT policy_json FROM decisions WHERE decision_id=?", (rec["decision_id"],)).fetchone()[0]
+    conn.close()
+    assert "track" in pol
+    assert tid in pol
+
+
+def test_name_faces_refuses_clustered(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    cid = assigned["f1"]
+    with pytest.raises(ReviewError, match="cluster"):
+        name_faces(store, "r1", ["f1", "f2"], "Nope")
+    assert cid
+
+
+def test_cli_name_track(tmp_path):
+    from semblon.cli import main
+
+    store = tmp_path / "s.sqlite"
+    tid = _seed_video_track(store)
+    assert (
+        main(
+            [
+                "name",
+                "--run",
+                "rt",
+                "--store",
+                str(store),
+                "--track",
+                tid,
+                "--as",
+                "Ada",
+            ]
+        )
+        == 0
+    )
+    conn = sqlite3.connect(str(store))
+    n = conn.execute("SELECT COUNT(*) FROM faces WHERE person_id IS NOT NULL").fetchone()[0]
+    conn.close()
+    assert n == 2

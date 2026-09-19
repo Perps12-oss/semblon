@@ -364,6 +364,161 @@ def name_face(
     }
 
 
+def name_faces(
+    store: Path,
+    run_id: str,
+    face_ids: list[str],
+    display_name: str,
+    *,
+    source: str = "faces",
+    track_id: str | None = None,
+) -> dict:
+    """Enrol unassigned ok faces as one person. Does not create a cluster.
+
+    Used to Name a derived Track. Track id is never the person id.
+    """
+    display_name = (display_name or "").strip()
+    if not display_name:
+        raise ReviewError("display name must be non-empty")
+    ids: list[str] = []
+    for fid in face_ids:
+        fid = (fid or "").strip()
+        if fid and fid not in ids:
+            ids.append(fid)
+    if not ids:
+        raise ReviewError("name faces requires at least one face id")
+    if len(ids) == 1 and source != "track":
+        return name_face(store, run_id, ids[0], display_name)
+
+    _warn_enter_s3(store, run_id)
+    conn = connect(store)
+    init_db(conn)
+    run = _require_run(conn, run_id)
+    pack_id = run["pack_id"]
+    rows = []
+    for fid in ids:
+        face = conn.execute(
+            "SELECT * FROM faces WHERE face_id=? AND run_id=?",
+            (fid, run_id),
+        ).fetchone()
+        if face is None:
+            conn.close()
+            raise ReviewError(f"unknown face for run: {fid}")
+        if face["status"] != "ok":
+            conn.close()
+            raise ReviewError(f"face is not nameable (status={face['status']}): {fid}")
+        if face["cluster_id"]:
+            conn.close()
+            raise ReviewError("face is in a cluster; name the cluster, not the track")
+        rows.append(face)
+
+    existing_persons = {r["person_id"] for r in rows if r["person_id"]}
+    if len(existing_persons) > 1:
+        conn.close()
+        raise ReviewError("faces already linked to different persons")
+
+    created = False
+    if existing_persons:
+        person_id = next(iter(existing_persons))
+        named = conn.execute(
+            "SELECT display_name FROM persons WHERE person_id=?",
+            (person_id,),
+        ).fetchone()
+        if named and named["display_name"] and named["display_name"] != display_name:
+            conn.close()
+            raise ReviewError(
+                f"faces already named {named['display_name']!r}; will not attach {display_name!r}"
+            )
+        conn.execute(
+            "UPDATE persons SET display_name=? WHERE person_id=?",
+            (display_name, person_id),
+        )
+    else:
+        row = conn.execute(
+            """SELECT person_id FROM persons
+               WHERE status='active' AND display_name=?
+               ORDER BY person_id LIMIT 1""",
+            (display_name,),
+        ).fetchone()
+        if row:
+            person_id = row[0]
+        else:
+            person_id = uuid.uuid4().hex
+            conn.execute(
+                """INSERT INTO persons(person_id, display_name, status, created_run)
+                   VALUES (?,?,?,?)""",
+                (person_id, display_name, "active", run_id),
+            )
+            created = True
+
+    if track_id and track_id == person_id:
+        conn.close()
+        raise ReviewError("track id must not equal person id")
+
+    conn.execute(
+        f"UPDATE faces SET person_id=? WHERE face_id IN ({','.join('?' * len(ids))})",
+        (person_id, *ids),
+    )
+    decision_id = _record_decision(
+        conn,
+        kind="name",
+        run_id=run_id,
+        pack_id=pack_id,
+        face_id=ids[0],
+        person_id=person_id,
+        policy={
+            "display_name": display_name,
+            "created_person": created,
+            "source": source,
+            "track_id": track_id,
+            "face_ids": ids,
+            "face_count": len(ids),
+        },
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "run_id": run_id,
+        "track_id": track_id,
+        "face_ids": ids,
+        "person_id": person_id,
+        "display_name": display_name,
+        "faces_named": len(ids),
+        "created_person": created,
+        "decision_id": decision_id,
+        "note": "track is not a person; human named member observations",
+    }
+
+
+def name_track(
+    store: Path,
+    run_id: str,
+    track_id: str,
+    display_name: str,
+) -> dict:
+    """Name current members of a derived track. Re-derives; does not persist a track row."""
+    track_id = (track_id or "").strip()
+    if not track_id:
+        raise ReviewError("track id must be non-empty")
+    from semblon.tracks import TracksError, derive_tracks
+
+    try:
+        rec = derive_tracks(store, run_id)
+    except TracksError as e:
+        raise ReviewError(str(e)) from e
+    tr = next((t for t in rec["tracks"] if t["track_id"] == track_id), None)
+    if tr is None:
+        raise ReviewError(f"unknown track for run: {track_id}")
+    return name_faces(
+        store,
+        run_id,
+        tr["face_ids"],
+        display_name,
+        source="track",
+        track_id=track_id,
+    )
+
+
 def merge_clusters(
     store: Path,
     run_id: str,
