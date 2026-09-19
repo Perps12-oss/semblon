@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA_VERSION = "1"
@@ -187,6 +188,85 @@ def backup_store(store: Path, out: Path) -> dict:
         "store": str(src.resolve()),
         "out": str(dest.resolve()),
         "bytes": dest.stat().st_size,
+    }
+
+
+def stamp_unfinished_runs(conn: sqlite3.Connection, *, except_run_id: str | None = None) -> list[str]:
+    """Mark leftover runs (finished_at NULL) as interrupted. Never touches except_run_id.
+
+    A killed process must not look completed. The live run is excluded.
+    Existing notes (e.g. cancelled) are preserved.
+    """
+    if except_run_id:
+        rows = conn.execute(
+            "SELECT run_id, notes FROM runs WHERE finished_at IS NULL AND run_id != ?",
+            (except_run_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT run_id, notes FROM runs WHERE finished_at IS NULL"
+        ).fetchall()
+    now = datetime.now(timezone.utc).isoformat()
+    stamped: list[str] = []
+    for row in rows:
+        rid = str(row["run_id"] if isinstance(row, sqlite3.Row) else row[0])
+        notes = row["notes"] if isinstance(row, sqlite3.Row) else row[1]
+        if not notes:
+            notes = "interrupted"
+        conn.execute(
+            "UPDATE runs SET finished_at=?, notes=? WHERE run_id=? AND finished_at IS NULL",
+            (now, notes, rid),
+        )
+        stamped.append(rid)
+    if stamped:
+        conn.commit()
+    return stamped
+
+
+def integrity_report(store: Path) -> dict:
+    """Read-only integrity snapshot. Does not repair. Does not write."""
+    p = Path(store)
+    if not p.is_file():
+        raise FileNotFoundError(p)
+    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    schema = conn.execute(
+        "SELECT value FROM schema_meta WHERE key='schema_version'"
+    ).fetchone()
+    unfinished = [
+        r["run_id"]
+        for r in conn.execute("SELECT run_id FROM runs WHERE finished_at IS NULL")
+    ]
+    orphan_faces = conn.execute(
+        """SELECT COUNT(*) AS n FROM faces f
+           WHERE NOT EXISTS (SELECT 1 FROM observations o WHERE o.observation_id=f.observation_id)"""
+    ).fetchone()["n"]
+    orphan_obs = conn.execute(
+        """SELECT COUNT(*) AS n FROM observations o
+           WHERE NOT EXISTS (SELECT 1 FROM media m WHERE m.media_id=o.media_id)"""
+    ).fetchone()["n"]
+    faces_missing_run = conn.execute(
+        """SELECT COUNT(*) AS n FROM faces f
+           WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.run_id=f.run_id)"""
+    ).fetchone()["n"]
+    n_media = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+    n_faces = conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
+    n_persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    conn.close()
+    ok = orphan_faces == 0 and orphan_obs == 0 and faces_missing_run == 0
+    return {
+        "store": str(p.resolve()),
+        "schema_version": None if schema is None else schema[0],
+        "ok": bool(ok),
+        "unfinished_runs": unfinished,
+        "orphan_faces": int(orphan_faces),
+        "orphan_observations": int(orphan_obs),
+        "faces_missing_run": int(faces_missing_run),
+        "media": int(n_media),
+        "faces": int(n_faces),
+        "persons": int(n_persons),
+        "note": "read-only; unfinished_runs are not completed",
     }
 
 

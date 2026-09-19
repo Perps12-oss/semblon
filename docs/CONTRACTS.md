@@ -49,7 +49,9 @@ Not implemented: folder watcher. Ingest-family commands that address a stored ru
 
 `observations` is a source/frame slot (`media_id`, `frame_id`, `run_id`) for the current identity path. It is not a typed multi-kind observation schema. Do not add kind / space / payload columns to satisfy the architectural North Star.
 
-Progress `on_event` kinds: `started` / `progress` / `completed` / `failed` / `cancelled`. Skip is an `outcome` on `progress` (`skipped_seen`, `skipped_same_run`), not a silent success. Cancel stamps `runs.finished_at` and `runs.notes=cancelled`. Partial per-file commits remain. Cancelled work must not emit `completed`.
+Progress `on_event` kinds: `queued` / `started` / `progress` / `partial` / `completed` / `failed` / `cancelled` / `stalled`. Skip is an `outcome` on `progress` (`skipped_seen`, `skipped_same_run`), not a silent success. Cancel stamps `runs.finished_at` and `runs.notes=cancelled`. SIGINT is cooperative at file boundaries. Partial per-file commits remain. Cancelled work must not emit `completed`. A stall watchdog may emit `stalled`; it does not kill the job.
+
+`search --person` / `--people` / `--face --run` (lookup of named persons or identify vs persons; not a vector DB; similarity is not identity). `lab integrity --store` (read-only; exit 3 if unfinished/orphans). `lab models` (weight presence; does not download).
 
 ## Observation primitives (ARCH-001)
 

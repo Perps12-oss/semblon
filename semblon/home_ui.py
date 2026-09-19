@@ -49,8 +49,8 @@ class HomeApp:
 
         self.root = tk.Tk()
         self.root.title("Semblon")
-        self.root.minsize(420, 220)
-        self.root.geometry("520x260")
+        self.root.minsize(480, 280)
+        self.root.geometry("560x340")
 
         frm = ttk.Frame(self.root, padding=16)
         frm.pack(fill=tk.BOTH, expand=True)
@@ -78,6 +78,17 @@ class HomeApp:
         self.btn_cancel = ttk.Button(row, text="Cancel", command=self._request_cancel, state=tk.DISABLED)
         self.btn_cancel.pack(side=tk.LEFT, padx=(8, 0))
 
+        row2 = ttk.Frame(frm)
+        row2.pack(fill=tk.X, pady=(0, 8))
+        self.btn_people = ttk.Button(row2, text="People", command=self._show_people)
+        self.btn_people.pack(side=tk.LEFT)
+        self.btn_unknown = ttk.Button(row2, text="Unknown", command=self._show_unknown)
+        self.btn_unknown.pack(side=tk.LEFT, padx=(8, 0))
+        self.btn_activity = ttk.Button(row2, text="Activity", command=self._show_activity)
+        self.btn_activity.pack(side=tk.LEFT, padx=(8, 0))
+        self.btn_settings = ttk.Button(row2, text="Settings", command=self._show_settings)
+        self.btn_settings.pack(side=tk.LEFT, padx=(8, 0))
+
         self.status = tk.StringVar(value=f"Store: {self.store}")
         ttk.Label(frm, textvariable=self.status, wraplength=480, justify=tk.LEFT).pack(
             anchor=tk.W, fill=tk.X, pady=(8, 0)
@@ -92,6 +103,10 @@ class HomeApp:
         self.btn_folder.configure(state=state)
         self.btn_review.configure(state=state)
         self.btn_html.configure(state=state)
+        self.btn_people.configure(state=state)
+        self.btn_unknown.configure(state=state)
+        self.btn_activity.configure(state=state)
+        self.btn_settings.configure(state=state)
         self.btn_cancel.configure(state=tk.NORMAL if busy else tk.DISABLED)
 
     def _request_cancel(self) -> None:
@@ -196,6 +211,82 @@ class HomeApp:
             messagebox.showinfo("Semblon", f"No review.html yet:\n{path}")
             return
         webbrowser.open(path.resolve().as_uri())
+
+    def _show_people(self) -> None:
+        from semblon.search import SearchError, search_people
+
+        if not self.store.is_file():
+            messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
+            return
+        try:
+            rec = search_people(self.store)
+        except SearchError as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        if not rec["items"]:
+            messagebox.showinfo("Semblon", "No named people yet. Open Review and Name a cluster or face.")
+            return
+        lines = [f"{i['display_name'] or i['person_id']}  ({i['faces']} faces)" for i in rec["items"]]
+        messagebox.showinfo("People", "\n".join(lines))
+
+    def _show_unknown(self) -> None:
+        from semblon.inbox import InboxError, inbox
+        from semblon.process import latest_run_id
+
+        if not self.store.is_file():
+            messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
+            return
+        rid = latest_run_id(self.store, with_faces=True)
+        if rid is None:
+            messagebox.showinfo("Semblon", "Store has no runs with faces.")
+            return
+        try:
+            rec = inbox(self.store, rid)
+        except InboxError as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        c = rec.get("counts") or {}
+        messagebox.showinfo(
+            "Unknown / inbox",
+            (
+                f"run={rid}\n"
+                f"KNOWN={c.get('KNOWN', 0)}  UNKNOWN={c.get('UNKNOWN', 0)}\n"
+                f"REVIEW_REQUIRED={c.get('REVIEW_REQUIRED', 0)}  REJECTED={c.get('REJECTED', 0)}\n"
+                "UNKNOWN is valid. Identify never auto-assigns a person."
+            ),
+        )
+
+    def _show_activity(self) -> None:
+        from semblon.process import empty_state_line, latest_run_id
+        from semblon.store import integrity_report
+
+        if not self.store.is_file():
+            messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
+            return
+        rid = latest_run_id(self.store) or "?"
+        line = empty_state_line(self.store, rid) if rid != "?" else "no runs"
+        try:
+            integ = integrity_report(self.store)
+            extra = f"\nintegrity ok={integ['ok']} unfinished={len(integ['unfinished_runs'])}"
+        except OSError:
+            extra = ""
+        messagebox.showinfo("Activity", f"{line}{extra}")
+
+    def _show_settings(self) -> None:
+        from semblon.providers import weights_status
+
+        w = weights_status()
+        messagebox.showinfo(
+            "Settings",
+            (
+                f"Store: {self.store}\n"
+                f"Cancel: between files (not mid-file)\n"
+                f"Provider: FaceKit CPU (not claimed GPU)\n"
+                f"Weights dir: {w['dir']}\n"
+                f"onnx files: {w['onnx_count']}  bundled={w['bundled']}\n"
+                f"{w['note']}"
+            ),
+        )
 
     def _on_close(self) -> None:
         if self._busy:

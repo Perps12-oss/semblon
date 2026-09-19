@@ -27,7 +27,7 @@ def _embed_patches(faces_for, imread=None):
     stack.enter_context(patch("semblon.ingest.load_app", return_value=object()))
     stack.enter_context(patch("semblon.ingest.discover_weight_hashes", return_value={}))
     stack.enter_context(
-        patch("semblon.ingest.embed_image", side_effect=lambda app, path: faces_for(path))
+        patch("semblon.ingest.embed_bgr", side_effect=lambda app, img: faces_for(Path("ok.jpg")))
     )
     stack.enter_context(
         patch(

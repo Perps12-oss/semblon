@@ -241,7 +241,10 @@ def test_discover_and_ingest_counters_are_truthful(tmp_path):
     with (
         patch("semblon.ingest.load_app", return_value=object()),
         patch("semblon.ingest.discover_weight_hashes", return_value={}),
-        patch("semblon.ingest.embed_image", side_effect=lambda app, path: faces_for(path)),
+        patch(
+            "semblon.ingest.embed_bgr",
+            side_effect=lambda app, img, _n=iter((Path("a.jpg"), Path("b.jpg"))): faces_for(next(_n)),
+        ),
         patch("semblon.ingest.cv2.imread", return_value=np.zeros((20, 20, 3), dtype=np.uint8)),
         patch.dict("sys.modules", {"insightface": fake_if, "onnxruntime": fake_ort}),
     ):
@@ -316,7 +319,7 @@ def _fake_embed_env(faces_for):
     stack.enter_context(patch("semblon.ingest.load_app", return_value=object()))
     stack.enter_context(patch("semblon.ingest.discover_weight_hashes", return_value={}))
     stack.enter_context(
-        patch("semblon.ingest.embed_image", side_effect=lambda app, path: faces_for(path))
+        patch("semblon.ingest.embed_bgr", side_effect=lambda app, img: faces_for(Path("a.jpg")))
     )
     stack.enter_context(
         patch("semblon.ingest.cv2.imread", return_value=np.zeros((20, 20, 3), dtype=np.uint8))

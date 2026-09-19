@@ -15,11 +15,14 @@ STAGE_INGEST = "ingest"
 STAGE_CLUSTER = "cluster"
 STAGE_EXPORT = "export"
 
+KIND_QUEUED = "queued"
 KIND_STARTED = "started"
 KIND_PROGRESS = "progress"
+KIND_PARTIAL = "partial"
 KIND_COMPLETED = "completed"
 KIND_FAILED = "failed"
 KIND_CANCELLED = "cancelled"
+KIND_STALLED = "stalled"
 
 STAGES = (
     STAGE_PROCESS,
@@ -29,11 +32,14 @@ STAGES = (
     STAGE_EXPORT,
 )
 KINDS = (
+    KIND_QUEUED,
     KIND_STARTED,
     KIND_PROGRESS,
+    KIND_PARTIAL,
     KIND_COMPLETED,
     KIND_FAILED,
     KIND_CANCELLED,
+    KIND_STALLED,
 )
 
 

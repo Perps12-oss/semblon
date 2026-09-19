@@ -42,7 +42,7 @@ def _run(folder: Path, store: Path, workers: int) -> dict:
     with (
         patch("semblon.ingest.load_app", return_value=object()),
         patch("semblon.ingest.discover_weight_hashes", return_value={}),
-        patch("semblon.ingest.embed_image", side_effect=lambda app, path: faces_for(path)),
+        patch("semblon.ingest.embed_bgr", side_effect=lambda app, img: faces_for("b.jpg")),
         patch("semblon.ingest.cv2.imread", return_value=np.zeros((20, 20, 3), dtype=np.uint8)),
         patch.dict("sys.modules", {"insightface": fake_if, "onnxruntime": fake_ort}),
     ):
@@ -64,7 +64,7 @@ def test_workers_two_matches_one_counts(tmp_path):
     for key in ("files", "faces", "ok", "low_quality", "rejected", "failed", "new_media"):
         assert r1[key] == r2[key], key
     assert r1["files"] == 3
-    assert r1["faces"] == 5  # 1 + 2 + 2
+    assert r1["faces"] == 6  # 2 per still under embed_bgr mock
     assert r1["workers"] == 1
     assert r2["workers"] == 2
 
@@ -73,7 +73,7 @@ def test_workers_two_matches_one_counts(tmp_path):
     n_faces = conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
     conn.close()
     assert n_obs == 3
-    assert n_faces == 5
+    assert n_faces == 6
 
 
 def test_cli_ingest_workers_flag():

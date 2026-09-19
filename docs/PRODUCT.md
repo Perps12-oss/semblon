@@ -46,3 +46,15 @@ FACE-002 → FACE-003 → FACE-004 → FACE-005 is recorded in `docs/FACE-GATES.
 
 `cluster → review → person → name`  
 Never `cluster = person`.
+
+## Production application (amended 2026-09-19)
+
+This amendment does **not** erase frozen v1. It records what the shipping application actually is after production engineering.
+
+**Level 1 — identity contract (immutable):** unknown is valid; cluster ≠ person; STRONG ≠ person; no silent auto-identity; native vs emulated is labelled honestly.
+
+**Level 2 — production capabilities (shipping):** `process` / `home` / `review-ui`; incremental ingest; backup/restore; integrity report; cooperative cancel (GUI + SIGINT at file boundaries); stall watchdog (does not kill); FaceKit CPU provider record; evidence-based `search` of named persons / identify; S7a sampled video + S7b derived tracks; S6 memory; portable CI without weight download.
+
+**Level 3 — experimental / unavailable:** `ingest --workers`; ARM64 native OpenCV; GPU; buffalo_l redistribution; MSI/frozen exe; 10k library run; Intelligence Canvas; second observers.
+
+Video files remain **out of frozen v1** and **in KEEP** as sampled holdout evidence. That is not a second identity engine.

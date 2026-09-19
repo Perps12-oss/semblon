@@ -130,6 +130,29 @@ def test_does_not_write_store(tmp_path):
     assert store.stat().st_mtime_ns == before
 
 
+def test_occlusion_gap_is_not_a_merge(tmp_path):
+    """A 4s hole is a new fragment, not one person. Track ≠ person."""
+    store = tmp_path / "s.sqlite"
+    _seed(store)
+    rec = derive_tracks(store, "rt", max_t_ms_gap=2500)
+    left = next(t for t in rec["tracks"] if t["face_ids"] == ["fx", "fc"])
+    assert "fd" not in left["face_ids"]
+    assert any(u["face_id"] == "fd" for u in rec["untracked"]) or any(
+        "fd" in t["face_ids"] and t is not left for t in rec["tracks"]
+    )
+
+
+def test_crossing_same_frame_never_shares_a_track(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store)
+    rec = derive_tracks(store, "rt")
+    for t in rec["tracks"]:
+        frames = [m["t_ms"] for m in t["members"]]
+        assert len(frames) == len(set(frames))
+    left = next(t for t in rec["tracks"] if "fa" in t["face_ids"])
+    assert "fx" not in left["face_ids"]
+
+
 def test_unknown_run(tmp_path):
     store = tmp_path / "s.sqlite"
     _seed(store)

@@ -115,7 +115,6 @@ def test_ingest_video_uses_sampled_observations(tmp_path):
     with (
         patch("semblon.ingest.load_app", return_value=object()),
         patch("semblon.ingest.discover_weight_hashes", return_value={}),
-        patch("semblon.ingest.embed_image", return_value=[_fake_face(vec)]),
         patch("semblon.ingest.embed_bgr", return_value=[_fake_face(vec)]),
         patch("semblon.ingest.cv2.imread", return_value=np.zeros((20, 20, 3), dtype=np.uint8)),
         patch("semblon.ingest.iter_sampled_frames", return_value=sampled),

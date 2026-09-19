@@ -73,6 +73,9 @@ def main(argv: list[str] | None = None) -> int:
     rst.add_argument("--from", dest="backup_from", required=True, type=Path)
     rst.add_argument("--store", required=True, type=Path)
     rst.add_argument("--force", action="store_true")
+    integ = lab_sub.add_parser("integrity", help="read-only store integrity report")
+    integ.add_argument("--store", required=True, type=Path)
+    mods = lab_sub.add_parser("models", help="report local buffalo_l weights (does not download)")
 
     ev = lab_sub.add_parser("eval", help="FACE-002 confirmatory eval harness")
     ev_sub = ev.add_subparsers(dest="evalcmd", required=True)
@@ -295,6 +298,16 @@ def main(argv: list[str] | None = None) -> int:
         help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
     )
 
+    srch = sub.add_parser(
+        "search",
+        help="evidence-based lookup of named persons or identify a face (not a vector DB)",
+    )
+    srch.add_argument("--store", required=True, type=Path)
+    srch.add_argument("--person", default=None, help="person_id or display_name")
+    srch.add_argument("--face", default=None, help="face_id to identify vs persons")
+    srch.add_argument("--run", default=None, help="required with --face")
+    srch.add_argument("--people", action="store_true", help="list active named persons")
+
     args = p.parse_args(argv)
 
     if args.cmd == "lab" and args.labcmd == "profile":
@@ -364,6 +377,23 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(rec, indent=2))
         return 0
 
+    if args.cmd == "lab" and args.labcmd == "integrity":
+        from semblon.store import integrity_report
+
+        try:
+            rec = integrity_report(args.store)
+        except FileNotFoundError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0 if rec.get("ok") else 3
+
+    if args.cmd == "lab" and args.labcmd == "models":
+        from semblon.providers import weights_status
+
+        print(json.dumps(weights_status(), indent=2))
+        return 0
+
     if args.cmd == "lab" and args.labcmd == "eval":
         from semblon.eval import (
             DEFAULT_MINE_MAX,
@@ -421,7 +451,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "ingest":
-        from semblon.ingest import ingest
+        from semblon.ingest import CancelledError, ingest
 
         try:
             rec = ingest(
@@ -430,6 +460,9 @@ def main(argv: list[str] | None = None) -> int:
                 reprocess=args.reprocess,
                 workers=args.workers,
             )
+        except CancelledError as e:
+            print(json.dumps({"cancelled": True, "run_id": e.run_id, **e.timings}, indent=2, default=str))
+            return 2
         except FileNotFoundError as e:
             print(str(e), file=sys.stderr)
             return 2
@@ -458,6 +491,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         except FileNotFoundError as e:
             print(str(e), file=sys.stderr)
+            return 2
+        except KeyboardInterrupt:
+            print("cancelled", file=sys.stderr)
             return 2
         return 0
 
@@ -660,6 +696,28 @@ def main(argv: list[str] | None = None) -> int:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "search":
+        from semblon.search import SearchError, search_face, search_people, search_person
+
+        try:
+            if args.people:
+                rec = search_people(args.store)
+            elif args.person:
+                rec = search_person(args.store, args.person)
+            elif args.face:
+                if not args.run:
+                    print("--run is required with --face", file=sys.stderr)
+                    return 2
+                rec = search_face(args.store, args.run, args.face)
+            else:
+                print("search requires --people, --person, or --face", file=sys.stderr)
+                return 2
+        except SearchError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2, default=str))
         return 0
 
     if args.cmd == "memory":

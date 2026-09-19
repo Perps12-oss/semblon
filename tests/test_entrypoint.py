@@ -42,8 +42,23 @@ def test_python_m_semblon_help():
         "inbox",
         "stats",
         "report",
+        "search",
     ):
         assert cmd in out, cmd
+    from semblon.cli import main as _main
+    import io
+    from unittest.mock import patch
+
+    buf = io.StringIO()
+    with patch("sys.stdout", buf):
+        try:
+            _main(["lab", "--help"])
+        except SystemExit as e:
+            assert e.code == 0
+    lab = buf.getvalue()
+    assert "integrity" in lab
+    assert "models" in lab
+    assert "backup" in lab
 
 
 def test_main_py_present():

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import platform
+import signal
 import sys
 import threading
 import time
@@ -26,7 +27,6 @@ from semblon.engine import (
     PACK_FAMILY,
     discover_weight_hashes,
     embed_bgr,
-    embed_image,
     load_app,
     pack_id,
     process_arch,
@@ -36,6 +36,7 @@ from semblon.engine import (
 from semblon.progress import (
     KIND_CANCELLED,
     KIND_COMPLETED,
+    KIND_PARTIAL,
     KIND_PROGRESS,
     KIND_STARTED,
     STAGE_DISCOVER,
@@ -44,7 +45,8 @@ from semblon.progress import (
     emit,
     make_event,
 )
-from semblon.store import connect, init_db
+from semblon.providers import FaceKitProvider
+from semblon.store import connect, init_db, stamp_unfinished_runs
 from semblon.temporal import (
     DEFAULT_SAMPLE_HZ,
     VideoError,
@@ -164,7 +166,7 @@ def _compute_file(path: Path, index: int) -> dict:
     h, w = img0.shape[:2]
     st = path.stat()
     try:
-        faces = embed_image(_worker_app(), path)
+        faces = embed_bgr(_worker_app(), img0)
     except Exception:
         return {
             "index": index,
@@ -273,6 +275,8 @@ def ingest(
         "det_size": list(DET_SIZE),
         "device": "cpu",
         "execution_provider": "CPUExecutionProvider",
+        "provider": FaceKitProvider.info.name,
+        "modality": FaceKitProvider.info.modality,
         "workers": int(workers),
         "embed_batch": 1,
         "model_load_s": round(load_s, 3),
@@ -308,6 +312,7 @@ def ingest(
         ),
     )
     conn.commit()
+    stamp_unfinished_runs(conn, except_run_id=run_id)
 
     emit(on_event, make_event(STAGE_DISCOVER, KIND_STARTED, path=str(folder), run_id=run_id))
     files = discover_stills(folder)
@@ -353,6 +358,26 @@ def ingest(
     n_video_frames = 0
     cancelled = False
     t0 = time.perf_counter()
+    sigint = {"hit": False}
+    prev_sigint = None
+
+    def _on_sigint(_signum, _frame):
+        sigint["hit"] = True
+
+    def want_cancel() -> bool:
+        return sigint["hit"] or _cancel_requested(cancel)
+
+    try:
+        prev_sigint = signal.signal(signal.SIGINT, _on_sigint)
+    except (ValueError, OSError):
+        prev_sigint = None
+
+    def _restore_sig() -> None:
+        if prev_sigint is not None:
+            try:
+                signal.signal(signal.SIGINT, prev_sigint)
+            except (ValueError, OSError):
+                pass
 
     def tick(index: int, path: Path, outcome: str) -> None:
         emit(
@@ -460,7 +485,7 @@ def ingest(
     if workers == 1:
         assert app is not None
         for index, path in enumerate(files, start=1):
-            if _cancel_requested(cancel):
+            if want_cancel():
                 cancelled = True
                 break
             try:
@@ -479,12 +504,12 @@ def ingest(
                 n_skip_same += 1
                 tick(index, path, "skipped_same_run")
                 continue
+            img0 = cv2.imread(str(path))
+            if img0 is None:
+                n_fail += 1
+                tick(index, path, "failed")
+                continue
             if media_id is None:
-                img0 = cv2.imread(str(path))
-                if img0 is None:
-                    n_fail += 1
-                    tick(index, path, "failed")
-                    continue
                 h, w = img0.shape[:2]
                 media_id = uuid.uuid4().hex
                 st = path.stat()
@@ -510,7 +535,7 @@ def ingest(
                 (obs_id, media_id, None, None, run_id),
             )
             try:
-                faces = embed_image(app, path)
+                faces = embed_bgr(app, img0)
             except Exception:
                 n_fail += 1
                 conn.commit()
@@ -552,7 +577,7 @@ def ingest(
             }
             for fut in as_completed(futures):
                 rec = fut.result()
-                if cancelled or _cancel_requested(cancel):
+                if cancelled or want_cancel():
                     cancelled = True
                     continue
                 write_computed(rec)
@@ -574,7 +599,7 @@ def ingest(
     for offset, path in enumerate(videos, start=1):
         if cancelled:
             break
-        if _cancel_requested(cancel):
+        if want_cancel():
             cancelled = True
             break
         index = len(files) + offset
@@ -633,7 +658,7 @@ def ingest(
 
         frames_ok = 0
         for frame_id, t_ms, img in sampled:
-            if _cancel_requested(cancel):
+            if want_cancel():
                 cancelled = True
                 break
             obs_id = uuid.uuid4().hex
@@ -703,6 +728,25 @@ def ingest(
         "failed": n_fail,
     }
     if cancelled:
+        done = n_media + n_skip_seen + n_skip_same + n_fail
+        if done > 0 or n_faces > 0:
+            emit(
+                on_event,
+                make_event(
+                    STAGE_INGEST,
+                    KIND_PARTIAL,
+                    current=done,
+                    total=n_files,
+                    files_processed=done,
+                    files_total=n_files,
+                    faces_found=n_faces,
+                    run_id=run_id,
+                    elapsed_s=timings["ingest_s"],
+                    message="partial",
+                    outcome="partial",
+                    counts=counts,
+                ),
+            )
         emit(
             on_event,
             make_event(
@@ -720,7 +764,9 @@ def ingest(
                 counts=counts,
             ),
         )
+        _restore_sig()
         raise CancelledError("ingest cancelled", run_id=run_id, timings=timings)
+    _restore_sig()
     emit(
         on_event,
         make_event(

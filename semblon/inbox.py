@@ -10,7 +10,6 @@ import json
 from pathlib import Path
 
 from semblon.eval import DEFAULT_THRESHOLD
-from semblon.store import connect, init_db
 
 BUCKETS = ("KNOWN", "UNKNOWN", "REVIEW_REQUIRED", "REJECTED")
 
@@ -23,8 +22,11 @@ def _open(store: Path):
     p = Path(store)
     if not p.is_file():
         raise InboxError(f"store not found: {p}")
-    conn = connect(p)
-    init_db(conn)
+    import sqlite3
+
+    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -63,7 +65,7 @@ def inbox(
     *,
     threshold: float = DEFAULT_THRESHOLD,
 ) -> dict:
-    """List faces on a run by inbox bucket. Read-only of meaning; may init schema."""
+    """List faces on a run by inbox bucket. Opens the store read-only."""
     conn = _open(store)
     try:
         run = conn.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
