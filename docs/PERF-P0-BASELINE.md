@@ -32,5 +32,5 @@ P2+ EP → workers → batching → drop duplicate imread → SQLite commits
     (each alone; workers only after P1 unblocks)
 ```
 
-Standing pointers: `docs/ROADMAP-RECONCILE.md`, `docs/runtime.md`, `docs/PERF-P1-ARM64.md`.  
+Standing pointers: `docs/SEM-ARCH.md` (planned work), `docs/runtime.md`, `docs/PERF-P1-ARM64.md`.  
 Product parallel: review `7225de9d` (130 faces, min_intra 0.129) via `review-ui` — not a clustering retune.

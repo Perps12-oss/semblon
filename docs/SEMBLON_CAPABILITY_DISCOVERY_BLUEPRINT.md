@@ -1,5 +1,6 @@
 # Capability discovery
 
-Merged into `docs/SEMBLON_MATURITY_BLUEPRINT.md` §16–§18.
+**Planned work:** `docs/SEM-ARCH.md`.  
+**Absorb process:** `docs/SEMBLON_MATURITY_BLUEPRINT.md` §16–§18.
 
-Scavenge inside the current S0–S9 stage. Do not remap stages. Do not create OBS / SIM tickets.
+This file is a pointer. Do not create OBS / SIM tickets. Do not scavenge a second detector from the north star paper.

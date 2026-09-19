@@ -1,7 +1,7 @@
 # S8 toolkit investigation
 
-**Status:** dump-gate vertical wired (`tools/s8_toolkit_spike/`). Presentation + Name/Merge/Split/Ignore/Note via `review_ui` → `review.py`. **Not** full AppShell / Intelligence Canvas / S7. Does **not** replace tkinter `review-ui`.  
-**Branch intent:** `grok/S8-shell-review`.
+**Status:** dump-gate vertical wired (`tools/s8_toolkit_spike/`). Presentation + Name/Merge/Split/Ignore/Note via `review_ui` → `review.py`. **Not** full AppShell / Intelligence Canvas. Does **not** replace tkinter `review-ui`.  
+**Planned work:** `docs/SEM-ARCH.md`. This spike is not the plan.
 
 ## Recon (what already exists)
 
