@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +34,7 @@ from semblon.engine import (
     _sha256_file,
 )
 from semblon.progress import (
+    KIND_CANCELLED,
     KIND_COMPLETED,
     KIND_PROGRESS,
     KIND_STARTED,
@@ -49,6 +51,26 @@ from semblon.temporal import (
     discover_videos,
     iter_sampled_frames,
 )
+
+CancelCallback = Callable[[], bool] | None
+
+
+class CancelledError(Exception):
+    """Cooperative cancel. Per-file commits already made remain; the run is stamped cancelled."""
+
+    def __init__(self, message: str = "ingest cancelled", *, run_id: str | None = None, timings: dict | None = None):
+        super().__init__(message)
+        self.run_id = run_id
+        self.timings = timings or {}
+
+
+def _cancel_requested(cancel: CancelCallback) -> bool:
+    if cancel is None:
+        return False
+    try:
+        return bool(cancel())
+    except Exception:
+        return False
 
 STILL_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 DET_SCORE_MIN = 0.60
@@ -208,6 +230,7 @@ def ingest(
     reprocess: bool = False,
     workers: int = 1,
     on_event: ProgressCallback = None,
+    cancel: CancelCallback = None,
 ) -> dict:
     folder = Path(folder).resolve()
     if not folder.is_dir():
@@ -327,6 +350,8 @@ def ingest(
     )
 
     n_media = n_skip_seen = n_skip_same = n_faces = n_ok = n_lq = n_rej = n_fail = 0
+    n_video_frames = 0
+    cancelled = False
     t0 = time.perf_counter()
 
     def tick(index: int, path: Path, outcome: str) -> None:
@@ -435,6 +460,9 @@ def ingest(
     if workers == 1:
         assert app is not None
         for index, path in enumerate(files, start=1):
+            if _cancel_requested(cancel):
+                cancelled = True
+                break
             try:
                 digest = _sha256_file(path)
             except OSError:
@@ -523,22 +551,32 @@ def ingest(
                 for index, path in enumerate(files, start=1)
             }
             for fut in as_completed(futures):
-                write_computed(fut.result())
+                rec = fut.result()
+                if cancelled or _cancel_requested(cancel):
+                    cancelled = True
+                    continue
+                write_computed(rec)
 
-        # Video path needs a main-thread app after worker stills.
-        t_load_v = time.perf_counter()
-        app = load_app(DET_SIZE)
-        load_s = load_s + (time.perf_counter() - t_load_v)
-        runtime["model_load_s"] = round(load_s, 3)
-        conn.execute(
-            "UPDATE runs SET runtime_json=? WHERE run_id=?",
-            (json.dumps(runtime), run_id),
-        )
-        conn.commit()
+        if not cancelled:
+            # Video path needs a main-thread app after worker stills.
+            t_load_v = time.perf_counter()
+            app = load_app(DET_SIZE)
+            load_s = load_s + (time.perf_counter() - t_load_v)
+            runtime["model_load_s"] = round(load_s, 3)
+            conn.execute(
+                "UPDATE runs SET runtime_json=? WHERE run_id=?",
+                (json.dumps(runtime), run_id),
+            )
+            conn.commit()
 
-    n_video_frames = 0
-    assert app is not None
+    if not cancelled:
+        assert app is not None
     for offset, path in enumerate(videos, start=1):
+        if cancelled:
+            break
+        if _cancel_requested(cancel):
+            cancelled = True
+            break
         index = len(files) + offset
         try:
             digest = _sha256_file(path)
@@ -595,6 +633,9 @@ def ingest(
 
         frames_ok = 0
         for frame_id, t_ms, img in sampled:
+            if _cancel_requested(cancel):
+                cancelled = True
+                break
             obs_id = uuid.uuid4().hex
             conn.execute(
                 "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
@@ -614,7 +655,9 @@ def ingest(
             frames_ok += 1
         n_video_frames += frames_ok
         conn.commit()
-        if frames_ok == 0:
+        if cancelled:
+            tick(index, path, "cancelled")
+        elif frames_ok == 0:
             n_fail += 1
             tick(index, path, "failed")
         else:
@@ -638,16 +681,46 @@ def ingest(
         "failed": n_fail,
         "incremental": not reprocess,
         "workers": int(workers),
+        "cancelled": bool(cancelled),
     }
     if n_files and timings["ingest_s"] > 0:
         timings["images_per_second"] = round(n_files / timings["ingest_s"], 4)
         timings["faces_per_second"] = round(n_faces / timings["ingest_s"], 4)
+    notes = "cancelled" if cancelled else None
     conn.execute(
-        "UPDATE runs SET finished_at=?, timings_json=? WHERE run_id=?",
-        (datetime.now(timezone.utc).isoformat(), json.dumps(timings), run_id),
+        "UPDATE runs SET finished_at=?, timings_json=?, notes=? WHERE run_id=?",
+        (datetime.now(timezone.utc).isoformat(), json.dumps(timings), notes, run_id),
     )
     conn.commit()
     conn.close()
+    counts = {
+        "new_media": n_media,
+        "skipped_seen": n_skip_seen,
+        "skipped_same_run": n_skip_same,
+        "ok": n_ok,
+        "low_quality": n_lq,
+        "rejected": n_rej,
+        "failed": n_fail,
+    }
+    if cancelled:
+        emit(
+            on_event,
+            make_event(
+                STAGE_INGEST,
+                KIND_CANCELLED,
+                current=n_media + n_skip_seen + n_skip_same + n_fail,
+                total=n_files,
+                files_processed=n_media + n_skip_seen + n_skip_same + n_fail,
+                files_total=n_files,
+                faces_found=n_faces,
+                run_id=run_id,
+                elapsed_s=timings["ingest_s"],
+                message="cancelled",
+                outcome="cancelled",
+                counts=counts,
+            ),
+        )
+        raise CancelledError("ingest cancelled", run_id=run_id, timings=timings)
     emit(
         on_event,
         make_event(
@@ -660,15 +733,7 @@ def ingest(
             faces_found=n_faces,
             run_id=run_id,
             elapsed_s=timings["ingest_s"],
-            counts={
-                "new_media": n_media,
-                "skipped_seen": n_skip_seen,
-                "skipped_same_run": n_skip_same,
-                "ok": n_ok,
-                "low_quality": n_lq,
-                "rejected": n_rej,
-                "failed": n_fail,
-            },
+            counts=counts,
         ),
     )
     return {"run_id": run_id, "pack_id": pid, **timings}

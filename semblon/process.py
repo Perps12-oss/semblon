@@ -14,8 +14,9 @@ from pathlib import Path
 
 from semblon.cluster import DEFAULT_EPS, DEFAULT_MIN_SAMPLES, ClusterError, cluster_run
 from semblon.export import ExportError, export_review
-from semblon.ingest import ingest
+from semblon.ingest import CancelledError, ingest
 from semblon.progress import (
+    KIND_CANCELLED,
     KIND_COMPLETED,
     KIND_FAILED,
     KIND_STARTED,
@@ -30,6 +31,14 @@ from semblon.progress import (
 
 class ProcessError(ValueError):
     pass
+
+
+class ProcessCancelled(ProcessError):
+    """Cooperative cancel. Partial ingest remains on the store; this is not success."""
+
+    def __init__(self, message: str = "process cancelled", *, run_id: str | None = None):
+        super().__init__(message)
+        self.run_id = run_id
 
 
 def default_store_path() -> Path:
@@ -52,6 +61,7 @@ def latest_run_id(store: Path, *, with_faces: bool = False) -> str | None:
         return None
     conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     if with_faces:
         row = conn.execute(
             """SELECT r.run_id FROM runs r
@@ -80,6 +90,7 @@ def empty_state_line(store: Path, run_id: str) -> str:
         return f"this run: 0 faces; store has 0 on run {run_id}"
     conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     this = conn.execute(
         """SELECT COUNT(*) AS n,
                   COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END), 0) AS ok
@@ -117,6 +128,7 @@ def process_folder(
     open_review: bool = True,
     progress=print,
     on_event: ProgressCallback = None,
+    cancel=None,
 ) -> dict:
     """Run ingest -> cluster -> export. Uses frozen cluster defaults."""
     folder = Path(folder)
@@ -146,7 +158,27 @@ def process_folder(
     progress(f"Store: {store_path.resolve()}")
     try:
         try:
-            ing = ingest(folder, store_path, reprocess=reprocess, on_event=on_event)
+            ing = ingest(
+                folder,
+                store_path,
+                reprocess=reprocess,
+                on_event=on_event,
+                cancel=cancel,
+            )
+        except CancelledError as e:
+            progress("Cancelled.")
+            emit(
+                on_event,
+                make_event(
+                    STAGE_PROCESS,
+                    KIND_CANCELLED,
+                    run_id=e.run_id,
+                    message="cancelled",
+                    outcome="cancelled",
+                    elapsed_s=round(time.perf_counter() - t0, 3),
+                ),
+            )
+            raise ProcessCancelled("process cancelled", run_id=e.run_id) from e
         except FileNotFoundError as e:
             raise ProcessError(str(e)) from e
 
@@ -269,6 +301,8 @@ def process_folder(
             ),
         )
         return rec
+    except ProcessCancelled:
+        raise
     except Exception as e:
         emit(
             on_event,
