@@ -79,6 +79,28 @@ def test_resolve_run_defaults_to_latest(tmp_path):
         resolve_run_id(store, "nope")
 
 
+def test_resolve_run_skips_empty_later_run(tmp_path):
+    """FACE-005 skip-all leaves a newer run with zero faces. Review must not go blank."""
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    assert assigned
+    conn = sqlite3.connect(str(store))
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("r-empty", "t9", "t9b", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.commit()
+    conn.close()
+    assert resolve_run_id(store, None) == "r1"
+    assert resolve_run_id(store, "r-empty") == "r-empty"
+    empty = load_board(store, "r-empty")
+    assert empty["items"] == []
+    board = load_board(store, resolve_run_id(store, None))
+    assert board["items"]
+
+
 def test_strong_cluster_is_unnamed_until_name(tmp_path):
     store = tmp_path / "s.sqlite"
     assigned = _clustered(store)
