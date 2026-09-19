@@ -14,7 +14,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from semblon.process import ProcessCancelled, ProcessError, default_store_path, process_folder
-from semblon.progress import ProgressEvent
+from semblon.progress import KIND_QUEUED, KIND_STALLED, STAGE_PROCESS, ProgressEvent, make_event
+from semblon.watchdog import Watchdog
 
 
 def format_progress_line(ev: ProgressEvent) -> str:
@@ -43,6 +44,7 @@ class HomeApp:
         self._busy = False
         self._cancel = threading.Event()
         self._exit_after_cancel = False
+        self._wd = Watchdog(stall_s=120.0)
         self._last_run_id: str | None = None
         self._last_review_html: Path | None = None
         self._q: queue.Queue = queue.Queue()
@@ -127,12 +129,14 @@ class HomeApp:
         path = Path(folder)
         self._cancel.clear()
         self._exit_after_cancel = False
+        self._wd = Watchdog(stall_s=120.0)
         self._set_busy(True)
-        self.status.set(f"Processing: {path}")
+        self.status.set(format_progress_line(make_event(STAGE_PROCESS, KIND_QUEUED, path=str(path))))
         threading.Thread(target=self._run_process, args=(path,), daemon=True).start()
 
     def _run_process(self, folder: Path) -> None:
         def on_event(ev: ProgressEvent) -> None:
+            self._wd.note(ev)
             self._q.put(("status", format_progress_line(ev)))
 
         try:
@@ -184,6 +188,10 @@ class HomeApp:
                         return
         except queue.Empty:
             pass
+        if self._busy:
+            stalled = self._wd.check()
+            if stalled is not None and stalled.kind == KIND_STALLED:
+                self.status.set(format_progress_line(stalled) + "  (slow vs stalled — job not killed)")
         if self.root.winfo_exists():
             self.root.after(100, self._drain_queue)
 

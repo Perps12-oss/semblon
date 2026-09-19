@@ -52,7 +52,9 @@ def live_capture(
 
     pid = pack_id(getattr(insightface, "__version__", "unknown"), discover_weight_hashes())
     ep = select_execution_provider(prefer_gpu=prefer_gpu)
-    app = load_app((640, 640), prefer_gpu=prefer_gpu)
+    from semblon.providers import FaceKitProvider
+
+    app = FaceKitProvider().load((640, 640), prefer_gpu=prefer_gpu).app
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     conn.execute(
         """INSERT INTO runs(run_id, started_at, software_version, pack_id,

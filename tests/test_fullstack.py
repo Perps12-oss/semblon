@@ -145,7 +145,7 @@ def test_live_with_fake_capture(tmp_path):
     fake_ort = type("m", (), {"__version__": "0.test"})()
     vec = np.zeros(4, dtype=np.float32)
     with (
-        patch("semblon.live.load_app", return_value=object()),
+        patch("semblon.providers.FaceKitProvider.load", return_value=type("P", (), {"app": object()})()),
         patch("semblon.live.embed_bgr", return_value=[
             {"bbox": (0, 0, 8, 8), "det_score": 0.9, "face_w": 8, "face_h": 8, "dim": 4, "embedding": vec}
         ]),
@@ -214,6 +214,45 @@ def test_optional_providers_are_honest():
     assert "ocr" in st
     assert "clip" in st
     assert "pose" in st
+
+
+def test_cluster_writes_groups_not_persons(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    rec = cluster_run(store, "r1", eps=0.15, min_samples=2)
+    assert rec["clusters"] >= 1
+    conn = sqlite3.connect(str(store))
+    n_groups = conn.execute("SELECT COUNT(*) FROM observation_groups WHERE run_id='r1'").fetchone()[0]
+    n_items = conn.execute("SELECT COUNT(*) FROM observation_items WHERE kind='face'").fetchone()[0]
+    n_emb_face = conn.execute("SELECT COUNT(*) FROM embeddings WHERE modality='face'").fetchone()[0]
+    n_persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    conn.close()
+    assert n_groups == rec["clusters"]
+    assert n_items >= rec["clustered"]
+    assert n_emb_face == 0
+    assert n_persons == 0
+
+
+def test_naming_snapshots_together_relationships(tmp_path):
+    from semblon.review import name_cluster, name_face
+
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    name_cluster(store, "r1", assigned["f1"], "Alice")
+    name_face(store, "r1", "f5", "Bob")
+    conn = sqlite3.connect(str(store))
+    n_rel = conn.execute("SELECT COUNT(*) FROM relationships WHERE kind='together' AND confirmed=0").fetchone()[0]
+    conn.close()
+    assert n_rel >= 1
+
+
+def test_facekit_provider_load_is_ingest_boundary():
+    import inspect
+
+    from semblon import ingest as ing
+
+    src = inspect.getsource(ing.load_app)
+    assert "FaceKitProvider" in src
 
 
 def test_path_traversal_store_is_a_path(tmp_path):

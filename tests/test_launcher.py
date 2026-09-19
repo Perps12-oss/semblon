@@ -6,7 +6,7 @@ from pathlib import Path
 
 from semblon.home_ui import format_progress_line
 from semblon.launcher import interactive_script_path, is_interactive_launch, normalize_repo_root
-from semblon.progress import KIND_CANCELLED, KIND_PROGRESS, KIND_STARTED, STAGE_INGEST, make_event
+from semblon.progress import KIND_CANCELLED, KIND_QUEUED, KIND_PROGRESS, KIND_STARTED, STAGE_INGEST, STAGE_PROCESS, make_event
 
 
 def test_is_interactive_launch_empty_argv():
@@ -72,3 +72,6 @@ def test_format_progress_line_does_not_invent_percent():
     line3 = format_progress_line(ev3)
     assert "ingest:cancelled" in line3
     assert "%" not in line3
+
+    q = make_event(STAGE_PROCESS, KIND_QUEUED, path="D:/photos")
+    assert "process:queued" in format_progress_line(q)

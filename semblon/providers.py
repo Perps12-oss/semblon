@@ -33,8 +33,8 @@ class FaceKitProvider:
     def __init__(self):
         self._app = None
 
-    def load(self, det_size: tuple[int, int] = (640, 640)):
-        self._app = load_app(det_size)
+    def load(self, det_size: tuple[int, int] = (640, 640), *, prefer_gpu: bool = False):
+        self._app = load_app(det_size, prefer_gpu=prefer_gpu)
         return self
 
     @property

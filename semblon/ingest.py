@@ -27,14 +27,13 @@ from semblon.engine import (
     PACK_FAMILY,
     discover_weight_hashes,
     embed_bgr,
-    load_app,
     pack_id,
     process_arch,
     process_execution,
     select_execution_provider,
     _sha256_file,
 )
-from semblon.observers import observe_bgr, persist_derived_tracks
+from semblon.observers import ensure_face_item, observe_bgr, persist_derived_tracks
 from semblon.progress import (
     KIND_CANCELLED,
     KIND_COMPLETED,
@@ -82,6 +81,11 @@ CLUSTER_MIN_SIDE = 80
 DET_SIZE = (640, 640)
 
 _thread_local = threading.local()
+
+
+def load_app(det_size=DET_SIZE, *, prefer_gpu: bool = False):
+    """FaceKit provider boundary. Tests may monkeypatch this name."""
+    return FaceKitProvider().load(det_size, prefer_gpu=prefer_gpu).app
 
 
 def size_band(w: int, h: int) -> str:
@@ -214,14 +218,24 @@ def _persist_faces(conn, *, obs_id: str, run_id: str, pack_id: str, faces: list)
                 status = "ok"
                 n_ok += 1
         x1, y1, x2, y2 = f["bbox"]
+        fid = uuid.uuid4().hex
         conn.execute(
             """INSERT INTO faces(face_id, observation_id, run_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
                det_score, face_w, face_h, size_band, embedding, embedding_pack, embedding_dim, status)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                uuid.uuid4().hex, obs_id, run_id, x1, y1, x2, y2,
+                fid, obs_id, run_id, x1, y1, x2, y2,
                 score, fw, fh, band, blob, pack, dim, status,
             ),
+        )
+        ensure_face_item(
+            conn,
+            face_id=fid,
+            observation_id=obs_id,
+            run_id=run_id,
+            bbox=(x1, y1, x2, y2),
+            score=score,
+            status=status,
         )
         n_faces += 1
     return n_faces, n_ok, n_lq, n_rej
@@ -608,7 +622,7 @@ def ingest(
         if not cancelled:
             # Video path needs a main-thread app after worker stills.
             t_load_v = time.perf_counter()
-            app = load_app(DET_SIZE)
+            app = load_app(DET_SIZE, prefer_gpu=prefer_gpu)
             load_s = load_s + (time.perf_counter() - t_load_v)
             runtime["model_load_s"] = round(load_s, 3)
             conn.execute(

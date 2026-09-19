@@ -267,6 +267,9 @@ def cluster_run(
                 n_clusters += 1
 
     elapsed = time.perf_counter() - t0
+    from semblon.observers import snapshot_groups_from_clusters
+
+    groups = snapshot_groups_from_clusters(conn, run_id)
     conn.commit()
     conn.close()
     return {
@@ -282,4 +285,6 @@ def cluster_run(
         "eps": eps,
         "min_samples": min_samples,
         "cluster_s": round(elapsed, 3),
+        "groups": groups.get("groups"),
+        "note": "clusters are groups, not persons",
     }

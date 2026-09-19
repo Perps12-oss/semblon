@@ -24,6 +24,15 @@ class ReviewError(ValueError):
     pass
 
 
+def _memory_snapshot(store: Path, run_id: str) -> dict:
+    try:
+        from semblon.observers import snapshot_memory_graph
+
+        return snapshot_memory_graph(store, run_id)
+    except Exception:
+        return {}
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -274,6 +283,7 @@ def name_cluster(
     )
     conn.commit()
     conn.close()
+    snap = _memory_snapshot(store, run_id)
     return {
         "run_id": run_id,
         "cluster_id": cluster_id,
@@ -282,6 +292,7 @@ def name_cluster(
         "faces_named": len(faces),
         "created_person": created,
         "decision_id": decision_id,
+        "memory_snapshot": snap,
         "note": "cluster is not a person; person linked via cluster_person",
     }
 
@@ -352,6 +363,7 @@ def name_face(
     )
     conn.commit()
     conn.close()
+    snap = _memory_snapshot(store, run_id)
     return {
         "run_id": run_id,
         "face_id": face_id,
@@ -360,6 +372,7 @@ def name_face(
         "faces_named": 1,
         "created_person": created,
         "decision_id": decision_id,
+        "memory_snapshot": snap,
         "note": "cluster is not a person; unassigned face enrolled as person",
     }
 
@@ -477,6 +490,7 @@ def name_faces(
     )
     conn.commit()
     conn.close()
+    snap = _memory_snapshot(store, run_id)
     return {
         "run_id": run_id,
         "track_id": track_id,
@@ -486,6 +500,7 @@ def name_faces(
         "faces_named": len(ids),
         "created_person": created,
         "decision_id": decision_id,
+        "memory_snapshot": snap,
         "note": "track is not a person; human named member observations",
     }
 
