@@ -52,8 +52,19 @@ def _dt_to_ns(dt: datetime) -> int:
     return int(dt.timestamp() * 1_000_000_000)
 
 
+def _folder_name(path: str) -> str | None:
+    """Parent folder. Splits on / and \\ so Windows paths work off Windows."""
+    if not path:
+        return None
+    parts = [p for p in str(path).replace("\\", "/").rstrip("/").split("/") if p]
+    if len(parts) < 2:
+        return None
+    return parts[-2]
+
+
 def _filename_when_ns(path: str) -> int | None:
-    m = _FN_TIME.search(Path(path).name)
+    name = str(path).replace("\\", "/").rsplit("/", 1)[-1]
+    m = _FN_TIME.search(name)
     if not m:
         return None
     try:
@@ -178,7 +189,13 @@ def read_still_exif(path: Path) -> dict:
     return out
 
 
-def when_where(path: str, mtime_ns: int | None) -> dict:
+def when_where(
+    path: str,
+    mtime_ns: int | None,
+    *,
+    t_ms: int | None = None,
+    source_type: str | None = None,
+) -> dict:
     exif = read_still_exif(Path(path)) if path else {}
     ns = exif.get("datetime_original_ns") or exif.get("datetime_ns")
     source = "exif"
@@ -188,12 +205,13 @@ def when_where(path: str, mtime_ns: int | None) -> dict:
     if ns is None:
         ns = int(mtime_ns) if mtime_ns else None
         source = "mtime"
-    folder = Path(path).parent.name if path else ""
+    if source_type == "video" and t_ms is not None and ns is not None:
+        ns = int(ns) + int(t_ms) * 1_000_000
     rec = {
         "when_ns": ns,
         "when": datetime.fromtimestamp(ns / 1e9, tz=timezone.utc).isoformat() if ns else None,
         "when_source": source if ns else None,
-        "folder": folder or None,
+        "folder": _folder_name(path) if path else None,
         "path": path,
     }
     if "lat" in exif:
@@ -208,7 +226,8 @@ def when_where(path: str, mtime_ns: int | None) -> dict:
 def _named_rows(conn, run_id: str | None, person_id: str | None):
     sql = """
         SELECT f.face_id, f.person_id, f.status, f.size_band, f.face_w, f.face_h,
-               p.display_name, m.media_id, m.path, m.mtime_ns
+               p.display_name, m.media_id, m.path, m.mtime_ns, m.source_type,
+               o.frame_id, o.t_ms
         FROM faces f
         JOIN persons p ON p.person_id = f.person_id
         JOIN observations o ON o.observation_id = f.observation_id
@@ -226,27 +245,75 @@ def _named_rows(conn, run_id: str | None, person_id: str | None):
     return conn.execute(sql, args).fetchall()
 
 
+def _sighting(r, *, with_person: bool = False) -> dict:
+    ww = when_where(
+        r["path"],
+        r["mtime_ns"],
+        t_ms=r["t_ms"],
+        source_type=r["source_type"],
+    )
+    rec = {
+        "face_id": r["face_id"],
+        "media_id": r["media_id"],
+        "size_band": r["size_band"],
+        "source_type": r["source_type"],
+        "frame_id": r["frame_id"],
+        "t_ms": r["t_ms"],
+        **ww,
+    }
+    if with_person:
+        rec["person_id"] = r["person_id"]
+        rec["display_name"] = r["display_name"]
+    return rec
+
+
+def _presence(items: list[dict]) -> list[dict]:
+    """Per-media video interval for one named person. Stills stay on items."""
+    by_media: dict[str, list[dict]] = {}
+    for it in items:
+        if it.get("source_type") != "video":
+            continue
+        by_media.setdefault(it["media_id"], []).append(it)
+    out = []
+    for media_id, rows in by_media.items():
+        with_t = sorted(
+            (r for r in rows if r.get("t_ms") is not None),
+            key=lambda r: (int(r["t_ms"]), r["face_id"]),
+        )
+        frames = [r["frame_id"] for r in with_t if r.get("frame_id") is not None]
+        first = min(rows, key=lambda r: (r["when_ns"] is None, r["when_ns"] or 0, r["face_id"]))
+        out.append({
+            "media_id": media_id,
+            "path": first["path"],
+            "source_type": "video",
+            "folder": first["folder"],
+            "t_ms_start": with_t[0]["t_ms"] if with_t else None,
+            "t_ms_end": with_t[-1]["t_ms"] if with_t else None,
+            "frame_id_start": frames[0] if frames else None,
+            "frame_id_end": frames[-1] if frames else None,
+            "sightings": len(rows),
+            "when_ns": first["when_ns"],
+            "when": first["when"],
+            "when_source": first["when_source"],
+        })
+    out.sort(key=lambda x: (x["when_ns"] is None, x["when_ns"] or 0, x["media_id"]))
+    return out
+
+
 def history(store: Path, *, person: str, run_id: str | None = None) -> dict:
-    """Person × time/place. Does not identify. Does not write."""
+    """Person × time/place, including named video presence. Does not identify. Does not write."""
     conn = _connect_ro(store)
     try:
         prow = _require_person(conn, person)
         rows = _named_rows(conn, run_id, prow["person_id"])
-        items = []
-        for r in rows:
-            ww = when_where(r["path"], r["mtime_ns"])
-            items.append({
-                "face_id": r["face_id"],
-                "media_id": r["media_id"],
-                "size_band": r["size_band"],
-                **ww,
-            })
+        items = [_sighting(r) for r in rows]
         items.sort(key=lambda x: (x["when_ns"] is None, x["when_ns"] or 0, x["face_id"]))
         return {
             "person_id": prow["person_id"],
             "display_name": prow["display_name"],
             "sightings": len(items),
             "items": items,
+            "presence": _presence(items),
             "note": "S6 memory; not identity. Time/place do not change pack_id compare.",
         }
     finally:
@@ -254,7 +321,7 @@ def history(store: Path, *, person: str, run_id: str | None = None) -> dict:
 
 
 def together(store: Path, *, run_id: str | None = None) -> dict:
-    """Named people on the same still. Cluster is not a person."""
+    """Named people on the same still or video clip. Cluster is not a person."""
     conn = _connect_ro(store)
     try:
         rows = _named_rows(conn, run_id, None)
@@ -262,27 +329,47 @@ def together(store: Path, *, run_id: str | None = None) -> dict:
         for r in rows:
             rec = by_media.setdefault(
                 r["media_id"],
-                {"media_id": r["media_id"], "path": r["path"], "mtime_ns": r["mtime_ns"], "people": {}},
+                {
+                    "media_id": r["media_id"],
+                    "path": r["path"],
+                    "mtime_ns": r["mtime_ns"],
+                    "source_type": r["source_type"],
+                    "t_vals": [],
+                    "people": {},
+                },
             )
             rec["people"][r["person_id"]] = r["display_name"]
+            if r["t_ms"] is not None:
+                rec["t_vals"].append(int(r["t_ms"]))
         pairs = []
         for rec in by_media.values():
             people = rec["people"]
             if len(people) < 2:
                 continue
-            ww = when_where(rec["path"], rec["mtime_ns"])
+            t_ms = min(rec["t_vals"]) if rec["t_vals"] else None
+            ww = when_where(
+                rec["path"],
+                rec["mtime_ns"],
+                t_ms=t_ms,
+                source_type=rec["source_type"],
+            )
             ids = sorted(people)
-            pairs.append({
+            item = {
                 "media_id": rec["media_id"],
                 "person_ids": ids,
                 "names": [people[i] for i in ids],
+                "source_type": rec["source_type"],
                 **ww,
-            })
+            }
+            if rec["source_type"] == "video" and rec["t_vals"]:
+                item["t_ms_start"] = min(rec["t_vals"])
+                item["t_ms_end"] = max(rec["t_vals"])
+            pairs.append(item)
         pairs.sort(key=lambda x: (x["when_ns"] is None, x["when_ns"] or 0, x["media_id"]))
         return {
             "pairs": len(pairs),
             "items": pairs,
-            "note": "co-appearance on one still; not a cluster merge",
+            "note": "co-appearance on one media; not a cluster merge",
         }
     finally:
         conn.close()
@@ -293,16 +380,7 @@ def events(store: Path, *, run_id: str | None = None) -> dict:
     conn = _connect_ro(store)
     try:
         rows = _named_rows(conn, run_id, None)
-        sightings = []
-        for r in rows:
-            ww = when_where(r["path"], r["mtime_ns"])
-            sightings.append({
-                "face_id": r["face_id"],
-                "person_id": r["person_id"],
-                "display_name": r["display_name"],
-                "media_id": r["media_id"],
-                **ww,
-            })
+        sightings = [_sighting(r, with_person=True) for r in rows]
         # Bursts: same folder, adjacent times within BURST_NS, 2+ media.
         dated = [s for s in sightings if s["when_ns"] is not None]
         dated.sort(key=lambda s: (s["folder"] or "", s["when_ns"], s["media_id"]))
