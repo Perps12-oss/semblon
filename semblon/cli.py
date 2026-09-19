@@ -141,7 +141,11 @@ def main(argv: list[str] | None = None) -> int:
         default=1,
         help="experimental bounded ingest workers (default 1; thread-local FaceAnalysis, single SQLite writer)",
     )
-    ing.add_argument("--observers", default="face", help="comma list: face,color,object (face is identity)")
+    ing.add_argument(
+        "--observers",
+        default="face",
+        help="comma list: face,color,object,text,clip,pose (face is identity; extras never vote)",
+    )
     ing.add_argument("--prefer-gpu", action="store_true", help="use GPU EP if available; recorded honestly")
     ing.add_argument("--batch", type=int, default=1, help="recorded batch size; FaceKit still per-image")
 

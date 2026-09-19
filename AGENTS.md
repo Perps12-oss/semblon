@@ -18,7 +18,7 @@ Unknown is valid. False merge > false split. Wrong identity > unknown.
 
 S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do not retune clustering. Do not re-ingest that dump. FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue.
 
-**Authorized now:** full-stack acceleration on `full-stack` — ARCH-003…010 tables + watch/live/canvas + extra observers that **must not** vote on identity. FaceKit remains the only identity engine. Production status: `docs/PRODUCTION-STATUS.md`. Freeze audit: `docs/PRODUCTION-AUDIT.md`.
+**Authorized now:** full-stack on `main` — schema v2 write-through, watch/live/canvas, optional extra observers that **must not** vote on identity. FaceKit remains the only identity engine. Production status: `docs/PRODUCTION-STATUS.md`. Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical); addendum there tracks later main.
 
 **KEEP (not the plan):** `semblon review-ui`; S7a sampled-video holdout (`docs/S7A.md`); S8 toolkit spike (`docs/S8-TOOLKIT.md`); PERF P0 frozen; P1 native ARM64 **blocked** (`docs/PERF-P1-ARM64.md`) — do not open workers/EP/batch until P1 unblocks. Do **not** retune eps or enable video DBSCAN to shrink `unassigned`.
 
@@ -28,7 +28,9 @@ Progress `on_event` spine is **retained**.
 
 ## Forbidden unless the current SEM-ARCH slice explicitly requires it
 
-MediaPipe, CLIP, hands, pose, objects, semantic clustering, live, public lookup, ACC, vector DB, CustomTkinter, FastAPI, watchdog, parked §20 libraries, new schema columns, cross-pack compare.
+Hands, semantic clustering, public lookup, ACC, vector DB, CustomTkinter, FastAPI, parked §20 libraries, new schema columns, cross-pack compare.
+
+Optional extra observers (color/object/OCR/CLIP/pose) and stall `watchdog.py` / folder `watch` / `live` are authorized as **non-identity** surfaces. They must not write `faces.person_id` or `embeddings.modality='face'`.
 
 FaceKit / InsightFace is the identity engine. `pack_id` includes weight hashes. `buffalo_l` is a family name, not the compare key. Geometry / appearance / objects / semantics must not silently influence identity.
 

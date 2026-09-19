@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from semblon.home_ui import format_progress_line
+from semblon.home_ui import HOME_OBSERVERS, format_people_lines, format_progress_line
 from semblon.launcher import interactive_script_path, is_interactive_launch, normalize_repo_root
 from semblon.progress import KIND_CANCELLED, KIND_QUEUED, KIND_PROGRESS, KIND_STARTED, STAGE_INGEST, STAGE_PROCESS, make_event
 
@@ -75,3 +75,16 @@ def test_format_progress_line_does_not_invent_percent():
 
     q = make_event(STAGE_PROCESS, KIND_QUEUED, path="D:/photos")
     assert "process:queued" in format_progress_line(q)
+
+
+def test_home_wires_watchdog_and_optional_observers():
+    import inspect
+
+    from semblon import home_ui
+
+    src = inspect.getsource(home_ui)
+    assert "Watchdog" in src
+    assert "KIND_STALLED" in src
+    assert HOME_OBSERVERS == "face,color,object"
+    assert "observers=HOME_OBSERVERS" in src
+    assert format_people_lines({"items": []})[0].startswith("No named people")

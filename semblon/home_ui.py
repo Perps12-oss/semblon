@@ -17,6 +17,9 @@ from semblon.process import ProcessCancelled, ProcessError, default_store_path, 
 from semblon.progress import KIND_QUEUED, KIND_STALLED, STAGE_PROCESS, ProgressEvent, make_event
 from semblon.watchdog import Watchdog
 
+# Home ingest fills cheap non-identity items for Canvas. Face remains identity.
+HOME_OBSERVERS = "face,color,object"
+
 
 def format_progress_line(ev: ProgressEvent) -> str:
     """Human status line. Never invents a percent when the event has none."""
@@ -36,6 +39,49 @@ def format_progress_line(ev: ProgressEvent) -> str:
     return "  ".join(parts)
 
 
+def format_people_lines(rec: dict) -> list[str]:
+    items = rec.get("items") or []
+    if not items:
+        return ["No named people yet. Open Review and Name a cluster or face."]
+    return [f"{i.get('display_name') or i.get('person_id')}  ({i.get('faces', 0)} faces)" for i in items]
+
+
+def format_unknown_lines(rec: dict, run_id: str) -> list[str]:
+    c = rec.get("counts") or {}
+    return [
+        f"run={run_id}",
+        f"KNOWN={c.get('KNOWN', 0)}  UNKNOWN={c.get('UNKNOWN', 0)}",
+        f"REVIEW_REQUIRED={c.get('REVIEW_REQUIRED', 0)}  REJECTED={c.get('REJECTED', 0)}",
+        "UNKNOWN is valid. Identify never auto-assigns a person.",
+    ]
+
+
+def format_search_lines(rec: dict) -> list[str]:
+    kind = rec.get("kind")
+    if kind == "person":
+        items = rec.get("items") or []
+        if not items:
+            return [f"No named person matching {rec.get('query')!r}."]
+        return [f"{i.get('display_name') or i.get('person_id')}  ({i.get('faces', 0)} faces)  {i.get('why','')}" for i in items]
+    if kind == "similar":
+        lines = [
+            f"similar {rec.get('query')}  modality={rec.get('modality')}  pack={rec.get('pack_id')}",
+            rec.get("note") or "Similarity is not identity.",
+        ]
+        for i in rec.get("items") or []:
+            lines.append(f"{i.get('score'):.4f}  {i.get('kind')}  {i.get('item_id')}  {i.get('why','')}")
+        if rec.get("count") == 0:
+            lines.append("No same-space neighbours.")
+        return lines
+    return [json_fallback(rec)]
+
+
+def json_fallback(rec: dict) -> str:
+    import json
+
+    return json.dumps(rec, indent=2)[:4000]
+
+
 class HomeApp:
     """Small entry window. Mutations stay in review-ui / review.py."""
 
@@ -51,8 +97,8 @@ class HomeApp:
 
         self.root = tk.Tk()
         self.root.title("Semblon")
-        self.root.minsize(480, 280)
-        self.root.geometry("560x340")
+        self.root.minsize(480, 320)
+        self.root.geometry("560x400")
 
         frm = ttk.Frame(self.root, padding=16)
         frm.pack(fill=tk.BOTH, expand=True)
@@ -93,6 +139,14 @@ class HomeApp:
         self.btn_canvas = ttk.Button(row2, text="Canvas", command=self._open_canvas)
         self.btn_canvas.pack(side=tk.LEFT, padx=(8, 0))
 
+        search_row = ttk.Frame(frm)
+        search_row.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(search_row, text="Find person").pack(side=tk.LEFT)
+        self.search_var = tk.StringVar()
+        ttk.Entry(search_row, textvariable=self.search_var, width=24).pack(side=tk.LEFT, padx=(8, 0))
+        self.btn_search = ttk.Button(search_row, text="Search", command=self._search_person)
+        self.btn_search.pack(side=tk.LEFT, padx=(8, 0))
+
         self.status = tk.StringVar(value=f"Store: {self.store}")
         ttk.Label(frm, textvariable=self.status, wraplength=480, justify=tk.LEFT).pack(
             anchor=tk.W, fill=tk.X, pady=(8, 0)
@@ -112,6 +166,7 @@ class HomeApp:
         self.btn_activity.configure(state=state)
         self.btn_settings.configure(state=state)
         self.btn_canvas.configure(state=state)
+        self.btn_search.configure(state=state)
         self.btn_cancel.configure(state=tk.NORMAL if busy else tk.DISABLED)
 
     def _request_cancel(self) -> None:
@@ -147,6 +202,7 @@ class HomeApp:
                 progress=lambda *_: None,
                 on_event=on_event,
                 cancel=self._cancel.is_set,
+                observers=HOME_OBSERVERS,
             )
             self._q.put(("done", rec))
         except ProcessCancelled as e:
@@ -223,6 +279,16 @@ class HomeApp:
             return
         webbrowser.open(path.resolve().as_uri())
 
+    def _list_window(self, title: str, lines: list[str]) -> None:
+        win = tk.Toplevel(self.root)
+        win.title(title)
+        win.geometry("520x360")
+        lb = tk.Listbox(win)
+        lb.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        for line in lines:
+            lb.insert(tk.END, line)
+        ttk.Button(win, text="Close", command=win.destroy).pack(pady=(0, 8))
+
     def _show_people(self) -> None:
         from semblon.search import SearchError, search_people
 
@@ -234,11 +300,7 @@ class HomeApp:
         except SearchError as e:
             messagebox.showerror("Semblon", str(e))
             return
-        if not rec["items"]:
-            messagebox.showinfo("Semblon", "No named people yet. Open Review and Name a cluster or face.")
-            return
-        lines = [f"{i['display_name'] or i['person_id']}  ({i['faces']} faces)" for i in rec["items"]]
-        messagebox.showinfo("People", "\n".join(lines))
+        self._list_window("People", format_people_lines(rec))
 
     def _show_unknown(self) -> None:
         from semblon.inbox import InboxError, inbox
@@ -256,20 +318,11 @@ class HomeApp:
         except InboxError as e:
             messagebox.showerror("Semblon", str(e))
             return
-        c = rec.get("counts") or {}
-        messagebox.showinfo(
-            "Unknown / inbox",
-            (
-                f"run={rid}\n"
-                f"KNOWN={c.get('KNOWN', 0)}  UNKNOWN={c.get('UNKNOWN', 0)}\n"
-                f"REVIEW_REQUIRED={c.get('REVIEW_REQUIRED', 0)}  REJECTED={c.get('REJECTED', 0)}\n"
-                "UNKNOWN is valid. Identify never auto-assigns a person."
-            ),
-        )
+        self._list_window("Unknown / inbox", format_unknown_lines(rec, rid))
 
     def _show_activity(self) -> None:
         from semblon.process import empty_state_line, latest_run_id
-        from semblon.store import integrity_report
+        from semblon.store import connect, init_db, integrity_report
 
         if not self.store.is_file():
             messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
@@ -278,33 +331,73 @@ class HomeApp:
         line = empty_state_line(self.store, rid) if rid != "?" else "no runs"
         try:
             integ = integrity_report(self.store)
-            extra = f"\nintegrity ok={integ['ok']} unfinished={len(integ['unfinished_runs'])}"
+            extra = f"integrity ok={integ['ok']} unfinished={len(integ['unfinished_runs'])}"
         except OSError:
-            extra = ""
-        messagebox.showinfo("Activity", f"{line}{extra}")
+            extra = "integrity unavailable"
+        n_groups = n_items = n_rel = 0
+        try:
+            conn = connect(self.store)
+            init_db(conn)
+            n_groups = conn.execute("SELECT COUNT(*) FROM observation_groups").fetchone()[0]
+            n_items = conn.execute("SELECT COUNT(*) FROM observation_items").fetchone()[0]
+            n_rel = conn.execute("SELECT COUNT(*) FROM relationships").fetchone()[0]
+            conn.close()
+        except Exception:
+            pass
+        self._list_window(
+            "Activity",
+            [
+                line,
+                extra,
+                f"observation_groups={n_groups}  items={n_items}  relationships={n_rel}",
+                "groups are not people",
+            ],
+        )
 
     def _open_canvas(self) -> None:
         from semblon.canvas import CanvasError, run_canvas
 
         try:
-            run_canvas(self.store, self._last_run_id)
+            run_canvas(self.store, self._last_run_id, parent=self.root)
         except CanvasError as e:
             messagebox.showerror("Semblon", str(e))
 
+    def _search_person(self) -> None:
+        from semblon.search import SearchError, search_person
+
+        q = (self.search_var.get() or "").strip()
+        if not q:
+            messagebox.showinfo("Semblon", "Type a person name first.")
+            return
+        if not self.store.is_file():
+            messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
+            return
+        try:
+            rec = search_person(self.store, q)
+        except SearchError as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        self._list_window("Search", format_search_lines(rec))
+
     def _show_settings(self) -> None:
+        from semblon.observers import optional_status
         from semblon.providers import weights_status
 
         w = weights_status()
-        messagebox.showinfo(
+        st = optional_status()
+        self._list_window(
             "Settings",
-            (
-                f"Store: {self.store}\n"
-                f"Cancel: between files (not mid-file)\n"
-                f"Provider: FaceKit CPU (not claimed GPU)\n"
-                f"Weights dir: {w['dir']}\n"
-                f"onnx files: {w['onnx_count']}  bundled={w['bundled']}\n"
-                f"{w['note']}"
-            ),
+            [
+                f"Store: {self.store}",
+                "Cancel: between files (not mid-file)",
+                "Provider: FaceKit CPU (not claimed GPU)",
+                f"Home observers: {HOME_OBSERVERS}",
+                f"Weights dir: {w['dir']}",
+                f"onnx files: {w['onnx_count']}  bundled={w['bundled']}",
+                w["note"],
+                f"optional ocr={st['ocr']} clip={st['clip']} pose={st['pose']}",
+                st["identity"],
+            ],
         )
 
     def _on_close(self) -> None:

@@ -45,7 +45,9 @@ Implemented now: `lab profile` (FACE-000); `process` (happy-path ingest -> clust
 
 `memory history --person --store` / `memory together --store` / `memory events --store` (S6; read-only; optional `--run`; time from EXIF then filename then `mtime_ns`; video observations add in-file `t_ms` to that time; place is folder plus GPS if EXIF has it; named video faces appear as history items plus per-media `presence` intervals; together is same still or same clip; no geocoding; no new columns). Time/place/co-appearance must not change `compare()` or clustering.
 
-Not implemented: folder watcher. Ingest-family commands that address a stored run require `--run`. Exit 0/2/3 as specified. `identify` unknown is exit 0.
+`watch FOLDER` (poll + incremental ingest; cancellable). `live --source` (webcam index or RTSP; `source_type=live`). `canvas` (observation overlay; cluster ≠ person). Ingest-family commands that address a stored run require `--run`. Exit 0/2/3 as specified. `identify` unknown is exit 0.
+
+`--observers` comma list: `face,color,object,text,clip,pose`. Face is identity. Extras never vote on `compare()` / DBSCAN / identify. Missing OCR/CLIP/pose libraries persist an unavailable/error item, not a crash.
 
 `observations` remains a source/frame slot (`media_id`, `frame_id`, `run_id`) for the identity path.
 
@@ -53,7 +55,7 @@ Schema **v2** (migration engine) adds `observation_items`, `embeddings`, `tracks
 
 Progress `on_event` kinds: `queued` / `started` / `progress` / `partial` / `completed` / `failed` / `cancelled` / `stalled`. Skip is an `outcome` on `progress` (`skipped_seen`, `skipped_same_run`), not a silent success. Cancel stamps `runs.finished_at` and `runs.notes=cancelled`. SIGINT is cooperative at file boundaries. Partial per-file commits remain. Cancelled work must not emit `completed`. A stall watchdog may emit `stalled`; it does not kill the job.
 
-`search --person` / `--people` / `--face --run` (lookup of named persons or identify vs persons; not a vector DB; similarity is not identity). `lab integrity --store` (read-only; exit 3 if unfinished/orphans). `lab models` (weight presence; does not download).
+`search --person` / `--people` / `--face --run` / `--similar ITEM` (lookup of named persons or identify vs persons; `--similar` is same-modality+pack only and refuses face identity; not a vector DB; similarity is not identity). `lab integrity --store` (read-only; exit 3 if unfinished/orphans). `lab models` (weight presence; does not download). `lab providers` (optional extra availability).
 
 ## Observation primitives (ARCH-001)
 
@@ -66,10 +68,10 @@ Docs/conceptual only. No new columns. Map of SEM-ARCH nouns onto today's store:
 | Embedding | `faces.embedding` + run `pack_id` (family + versions + weight hashes) | yes (face only) |
 | Evidence | `decisions` rows, cluster `min_intra`, export JSON evidence block | partial |
 | Hypothesis / group | `clusters` (stills DBSCAN only; video held out) | yes (faces) |
-| Track | derived IoU+time per video Media (`semblon tracks`); not a table | not in store |
+| Track | derived IoU+time per video Media (`semblon tracks`); also snapshotted to `tracks` | yes (v2 snapshot; track ≠ person) |
 | Entity | `persons` after `name` only | yes |
-| Relationship | S6 together/history derived from owned metadata | not a table |
-| Event | S6 crude time/folder bursts | not a table |
+| Relationship | S6 together/history; also `relationships` with `confirmed=0` | yes (v2 snapshot) |
+| Event | S6 crude time/folder bursts; also `events` with `confirmed=0` | yes (v2 snapshot) |
 | Decision | `decisions` (identify/merge/split/name/reject) | yes |
 
 Frozen rule: detector → observation; grouping → hypothesis; human → decision. `cluster ≠ person`. `group ≠ entity`. Unknown is valid.

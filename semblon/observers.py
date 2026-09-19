@@ -17,6 +17,9 @@ from semblon.store import connect, init_db
 APPEARANCE_PACK = "appearance/rgb8@1"
 APPEARANCE_DIM = 24
 OBJECT_PROVIDER = "opencv-contour"
+CLIP_PACK = "clip/openclip-vitb32@1"
+OCR_PROVIDER = "tesseract"
+POSE_PROVIDER = "mediapipe-pose"
 
 
 class ProviderUnavailable(RuntimeError):
@@ -100,7 +103,76 @@ def optional_status() -> dict:
         "pose": pose,
         "notes": notes,
         "identity": "facekit only",
+        "note": "optional extras never write faces.person_id or embeddings.modality=face",
     }
+
+
+def ocr_image(img) -> dict | None:
+    """OCR text. None = library missing. Never identity."""
+    try:
+        import cv2
+        import pytesseract
+    except Exception:
+        return None
+    try:
+        arr = np.asarray(img)
+        gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY) if arr.ndim == 3 else arr
+        text = (pytesseract.image_to_string(gray) or "").strip()
+        return {"text": text[:4000], "score": 1.0 if text else 0.0}
+    except Exception as e:  # noqa: BLE001 — optional extra must not crash ingest
+        return {"error": type(e).__name__, "note": str(e)[:240]}
+
+
+def clip_embed(img) -> dict | None:
+    """Optional CLIP visual embedding. None = unavailable. Never modality=face."""
+    try:
+        import open_clip
+        import torch
+        from PIL import Image
+    except Exception:
+        return None
+    try:
+        model, _, preprocess = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
+        model.eval()
+        arr = np.asarray(img)
+        if arr.ndim != 3:
+            return {"error": "bad-image", "note": "need BGR"}
+        rgb = arr[:, :, ::-1].copy()
+        with torch.no_grad():
+            feat = model.encode_image(preprocess(Image.fromarray(rgb)).unsqueeze(0))
+            feat = feat / feat.norm(dim=-1, keepdim=True)
+        vec = feat.squeeze(0).detach().cpu().numpy().astype(np.float32)
+        return {"embedding": vec.tobytes(), "pack_id": CLIP_PACK, "dim": int(vec.size)}
+    except Exception as e:  # noqa: BLE001 — optional extra must not crash ingest
+        return {"error": type(e).__name__, "note": str(e)[:240]}
+
+
+def pose_landmarks(img) -> dict | None:
+    """Optional pose landmarks. None = unavailable. Not a person."""
+    try:
+        import mediapipe as mp
+    except Exception:
+        return None
+    try:
+        arr = np.asarray(img)
+        if arr.ndim != 3:
+            return {"error": "bad-image", "note": "need BGR"}
+        h, w = arr.shape[:2]
+        rgb = arr[:, :, ::-1]
+        with mp.solutions.pose.Pose(static_image_mode=True) as pose:
+            res = pose.process(rgb)
+        if not res.pose_landmarks:
+            return {"landmarks": [], "score": 0.0}
+        lms = [
+            {"i": i, "x": float(p.x), "y": float(p.y), "z": float(p.z), "v": float(p.visibility)}
+            for i, p in enumerate(res.pose_landmarks.landmark)
+        ]
+        xs = [p["x"] for p in lms]
+        ys = [p["y"] for p in lms]
+        bbox = (min(xs) * w, min(ys) * h, max(xs) * w, max(ys) * h)
+        return {"landmarks": lms[:33], "score": 1.0, "bbox": bbox}
+    except Exception as e:  # noqa: BLE001 — optional extra must not crash ingest
+        return {"error": type(e).__name__, "note": str(e)[:240]}
 
 
 def persist_item(
@@ -187,19 +259,109 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
                 score=obj["score"],
             )
             counts["object"] += 1
-    status = optional_status()
-    for kind, key in (("text", "ocr"), ("clip", "clip"), ("pose", "pose")):
-        if kind in wanted or key in wanted:
-            if not status.get(key if key != "ocr" else "ocr"):
-                persist_item(
-                    conn,
-                    observation_id=observation_id,
-                    run_id=run_id,
-                    kind=kind if kind != "text" else "text",
-                    provider=key,
-                    payload={"status": "unavailable", "note": status["notes"].get(key, "unavailable")},
-                    score=0.0,
-                )
+    if "text" in wanted or "ocr" in wanted:
+        rec = ocr_image(img)
+        if rec is None:
+            persist_item(
+                conn,
+                observation_id=observation_id,
+                run_id=run_id,
+                kind="text",
+                provider=OCR_PROVIDER,
+                payload={"status": "unavailable", "note": optional_status()["notes"].get("ocr", "unavailable")},
+                score=0.0,
+            )
+        elif rec.get("error"):
+            persist_item(
+                conn,
+                observation_id=observation_id,
+                run_id=run_id,
+                kind="text",
+                provider=OCR_PROVIDER,
+                payload={"status": "error", "error": rec["error"], "note": rec.get("note", "")},
+                score=0.0,
+            )
+        else:
+            persist_item(
+                conn,
+                observation_id=observation_id,
+                run_id=run_id,
+                kind="text",
+                provider=OCR_PROVIDER,
+                payload={"text": rec.get("text") or "", "identity": "not facekit"},
+                score=rec.get("score"),
+            )
+            counts["text"] += 1
+    if "clip" in wanted:
+        rec = clip_embed(img)
+        if rec is None:
+            persist_item(
+                conn,
+                observation_id=observation_id,
+                run_id=run_id,
+                kind="clip",
+                provider="open-clip",
+                payload={"status": "unavailable", "note": optional_status()["notes"].get("clip", "unavailable")},
+                score=0.0,
+            )
+        elif rec.get("error"):
+            persist_item(
+                conn,
+                observation_id=observation_id,
+                run_id=run_id,
+                kind="clip",
+                provider="open-clip",
+                payload={"status": "error", "error": rec["error"], "note": rec.get("note", "")},
+                score=0.0,
+            )
+        else:
+            persist_item(
+                conn,
+                observation_id=observation_id,
+                run_id=run_id,
+                kind="clip",
+                provider="open-clip",
+                payload={"space": "clip", "identity": "not facekit"},
+                embedding=rec["embedding"],
+                modality="clip",
+                pack_id=rec["pack_id"],
+                dim=rec["dim"],
+            )
+            counts["clip"] += 1
+    if "pose" in wanted:
+        rec = pose_landmarks(img)
+        if rec is None:
+            persist_item(
+                conn,
+                observation_id=observation_id,
+                run_id=run_id,
+                kind="pose",
+                provider=POSE_PROVIDER,
+                payload={"status": "unavailable", "note": optional_status()["notes"].get("pose", "unavailable")},
+                score=0.0,
+            )
+        elif rec.get("error"):
+            persist_item(
+                conn,
+                observation_id=observation_id,
+                run_id=run_id,
+                kind="pose",
+                provider=POSE_PROVIDER,
+                payload={"status": "error", "error": rec["error"], "note": rec.get("note", "")},
+                score=0.0,
+            )
+        else:
+            persist_item(
+                conn,
+                observation_id=observation_id,
+                run_id=run_id,
+                kind="pose",
+                provider=POSE_PROVIDER,
+                payload={"landmarks": rec.get("landmarks") or [], "identity": "not facekit"},
+                bbox=rec.get("bbox"),
+                score=rec.get("score"),
+            )
+            counts["pose"] += 1
     return counts
 
 

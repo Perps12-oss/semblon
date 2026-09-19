@@ -30,7 +30,7 @@ py -3.12 -m venv .venv
 Then **double-click `semblon.cmd`** to open **Home**: Choose folder to process, or Open Review to name people.
 (Transparent / Mica full shell stays on the PySide6 dump-gate path — not this window.)
 
-S7 video Canvas and full search UI stay deferred; static `review.html` remains a read-only export.
+Home has People / Unknown / Activity / Settings list windows, person search, and Canvas (image + observation boxes). Extra observers never become people. Static `review.html` remains a read-only export.
 
 ```text
 semblon.cmd home

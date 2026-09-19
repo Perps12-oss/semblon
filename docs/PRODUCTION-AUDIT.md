@@ -347,6 +347,23 @@ Recorded here. `docs/PRODUCTION-STATUS.md` should match this file on watchdog an
 6. After P1: native ARM64 measure — then reconsider workers
 7. ARCH-003 docs when earned
 
+---
+
+## Addendum — after freeze (`c07220e` and later)
+
+The freeze snapshot above is **historical** (`main@8403292`, version 1.3.0). Do not treat PARTIAL FaceKit/Watchdog or DEFERRED ARCH-003…010 in this file as current product status.
+
+Current status: `docs/PRODUCTION-STATUS.md`.
+
+Verified on later `main` (portable pytest; no InsightFace download):
+
+- `FaceKitProvider.load()` is the ingest load path (`semblon/ingest.py` `load_app`)
+- Home constructs `Watchdog` and can show `stalled` without killing the job; Home emits `queued`
+- Schema v2 tables are written from clusters, FaceKit faces, and S6 memory (`confirmed=0`)
+- `watch` / `live` / `canvas` / `search --similar` exist; extras do not vote on identity
+- Optional OCR/CLIP/pose observers persist items when asked; missing libraries are unavailable/error items
+
+
 ## FINAL ENGINEERING VERDICT
 
 - **Engineering completeness (defined boundary):** complete enough to freeze. Core loop, identity firewall, cancel honesty, persistence, and portable tests hold.

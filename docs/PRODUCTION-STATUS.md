@@ -1,41 +1,50 @@
 # Semblon production status
 
 **Date:** 2026-09-19  
-**Version:** 1.4.0 (`full-stack` architectural expansion on top of the freeze)  
-**Branch intent:** strongest honest production engineering for the defined release boundary.
+**Version:** 1.4.0 (`main` @ schema v2 write-through + optional observers)  
+**Branch intent:** full-stack architecture on the frozen identity contract.
 
 Authority: `docs/PRODUCT.md` (v1 + 2026-09-19 production amendment), `docs/CONTRACTS.md`, `docs/SEM-ARCH.md`.  
-Freeze audit: `docs/PRODUCTION-AUDIT.md`.
+Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical freeze at `8403292`). Addendum below that file records later main.
 
 ## Hierarchy
 
-1. **Identity contract** — immutable. Unknown valid; cluster ≠ person; no silent auto-ID; native/emulated honesty.
-2. **Production capabilities** — Home/review-ui, cancel, backup, integrity, search lookup, CI, sampled video tracks. FaceKit CPU is recorded in `runtime_json`; stall watchdog exists as a library (not on the Home/`process` path).
-3. **Experimental / unavailable** — workers>1, GPU, MSI+weights, Canvas, objects, 10k run.
+1. **Identity contract** — immutable. Unknown valid; cluster ≠ person; no silent auto-ID; native/emulated honesty. FaceKit is the only identity engine.
+2. **Production capabilities** — Home/review-ui, cancel, backup, integrity, person search, Canvas overlay, schema v2 write-through, stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks.
+3. **Experimental / unavailable** — workers>1, GPU when no EP, MSI+weights, 10k run, OCR/CLIP/pose unless those libraries are installed.
 
 ## COMPLETE (verified in portable pytest)
 
 - Identity loop, FACE-002→005 evidence, S1 golden frozen
 - Incremental ingest, inbox (RO), identify vs persons
-- Home + review-ui; empty states; file missing; People/Unknown/Activity/Settings
+- Home + review-ui; empty states; file missing; People/Unknown/Activity/Settings list windows; person search field
 - Cancel (GUI + SIGINT at file boundaries); cancelled ≠ completed; partial then cancelled
 - Backup/restore; integrity report; unfinished runs stamped interrupted (not completed)
-- Single-decode stills path; CPU/`provider` fields in `runtime_json`
-- `search --person/--people/--face`
+- `FaceKitProvider.load()` is the ingest load path (`ingest.load_app` wraps it)
+- Stall watchdog on Home status; stalled ≠ killed
+- Schema v2: `observation_items`, `embeddings`, `tracks`, `observation_groups`, `relationships`, `events`
+- Face dual-write as `observation_items` kind=`face` without identity vectors in `embeddings`
+- DBSCAN clusters snapshot to `observation_groups` (group ≠ person)
+- S6 together/events snapshot to `relationships`/`events` with `confirmed=0`
+- `search --person/--people/--face/--similar` (similar is same-modality only; face refused)
+- `watch`, `live`, `canvas` (image + bbox overlay)
+- Color-hist + OpenCV contour observers; OCR/CLIP/pose run when libraries exist, otherwise an unavailable/error item
 - S7a/S7b; S6 memory
 - Portable CI workflow (no weight download)
 
 ## PARTIAL
 
-- `FaceKitProvider`: class exists; ingest still calls `load_app()` (`docs/PRODUCTION-AUDIT.md`)
-- Stall watchdog: unit-tested; not wired into Home/`process`
-- Home People/Unknown/Activity/Settings are dialogs, not full pages
+- Home People/Unknown/Activity/Settings are list windows, not a full sidebar shell
+- OCR/CLIP/pose: implemented behind optional imports; not in `requirements.txt`; CLIP/pose may fail without local weights (recorded as error items, not crashes)
+- Canvas overlay is tk PhotoImage, not a pixel compositor
+- `KIND_QUEUED` is emitted by Home before process starts
 
 ## COMPLETE — ENVIRONMENT-LIMITED
 
 - ARM64 native OpenCV ingest (binary exists; load hang)
 - x64 native FACE-000 (no x64 PC here)
 - Video tracking quality on real camera motion (synthetic tests only)
+- Webcam/RTSP live capture (fake-capture unit tested)
 
 ## EXPERIMENTAL
 
@@ -43,7 +52,7 @@ Freeze audit: `docs/PRODUCTION-AUDIT.md`.
 
 ## DEFERRED
 
-ARCH-003…010 code, Canvas, objects/OCR/CLIP, folder watcher, webcam/RTSP, identify/inbox full UI, default GPU/workers, vector DB.
+Identify/inbox as dedicated full pages; default GPU/workers; vector DB; PySide6 shell as the default Home.
 
 ## UNAVAILABLE
 
@@ -54,4 +63,4 @@ ARCH-003…010 code, Canvas, objects/OCR/CLIP, folder watcher, webcam/RTSP, iden
 ## Evidence
 
 Portable: `python -m pytest -q` (no InsightFace download).  
-Live dump / 10k / GPU: not executed this run — human verification required.
+Live dump / 10k / GPU / real webcam: not executed this run — human verification required.

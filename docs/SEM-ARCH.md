@@ -622,10 +622,10 @@ Verb set: KEEP / ADAPT / DEFER / REJECT. This is not a FACE-ticket queue.
 | PERF P1 native ARM64 | KEEP / BLOCKED | Do not open workers/EP. |
 | Progress `on_event` | KEEP | |
 | Video tracklets | KEEP (derived) | S7b read-only IoU+time per Media (`docs/S7B.md`). No table. Not identity. S7c–d still deferred. |
-| Webcam / RTSP | DEFER | |
+| Webcam / RTSP | ADAPT | `semblon live` samples into `source_type=live`. Not identity. |
 | Identify / inbox UI + POSSIBLE | DEFER | |
 | Full shell / search | DEFER | Canvas is ARCH-010 / Phase K. Search is ARCH-008 / Phase I. |
-| Objects / OCR / body / scene / CLIP / MediaPipe | REJECT as current work | Phase E+ and only after ARCH-001…004 exist. |
+| Objects / OCR / body / scene / CLIP / MediaPipe | ADAPT (optional extras) | Color-hist + OpenCV contours always; OCR/CLIP/pose if installed. **Not identity.** |
 | Vector DB / graph DB / LLM / cloud APIs | REJECT | |
 | Video product DBSCAN to shrink `unassigned` | REJECT | |
 | Parallel OBS / SIM / VISION tickets | REJECT | |
@@ -749,3 +749,4 @@ Illegal: silently comparing incompatible embedding spaces; silently mixing space
 | V1 | 2026-09-19 | Architecture Reset. This file is the north star and planned-work source of truth. Faces are the first ObservationProvider. No FACE-n successor queue. No code, no columns. |
 | V1.1 | 2026-09-19 | ARCH-001 completed as docs in `docs/CONTRACTS.md`. No DDL. Next code-bearing slice remains ARCH-002+ only when earned; production KEEP hardening is recorded in `docs/PRODUCTION-STATUS.md`. |
 | V1.2 | 2026-09-19 | Thin FaceKitProvider (CPU) ships as ARCH-002. No second provider. GPU not claimed. |
+| V1.3 | 2026-09-19 | ARCH-003…010 tables on `main`; v2 write-through from clusters/memory/faces; optional extras; Canvas overlay. FaceKit remains the only identity engine. |
