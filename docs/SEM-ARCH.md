@@ -633,9 +633,11 @@ Verb set: KEEP / ADAPT / DEFER / REJECT. This is not a FACE-ticket queue.
 
 ---
 
-## 16. SEM-ARCH-001 — Observation Architecture (first slice, when opened)
+## 16. SEM-ARCH-001 — Observation Architecture (COMPLETE as docs)
 
-**Immediate objective (when the owner opens it):**
+**Recorded in** `docs/CONTRACTS.md` (Observation primitives). No DDL. No second detector.
+
+**Immediate objective (done as documentation):**
 
 > Make Semblon capable of accepting different kinds of observations without redesigning the core every time a new vision capability is added.
 
