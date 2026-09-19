@@ -621,7 +621,7 @@ Verb set: KEEP / ADAPT / DEFER / REJECT. This is not a FACE-ticket queue.
 | PERF P0 | KEEP | Frozen. |
 | PERF P1 native ARM64 | KEEP / BLOCKED | Do not open workers/EP. |
 | Progress `on_event` | KEEP | |
-| Video tracklets | DEFER | ARCH-005 / Phase D. After contracts + inspectability. |
+| Video tracklets | KEEP (derived) | S7b read-only IoU+time per Media (`docs/S7B.md`). No table. Not identity. S7c–d still deferred. |
 | Webcam / RTSP | DEFER | |
 | Identify / inbox UI + POSSIBLE | DEFER | |
 | Full shell / search | DEFER | Canvas is ARCH-010 / Phase K. Search is ARCH-008 / Phase I. |
