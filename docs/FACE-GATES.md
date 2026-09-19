@@ -44,7 +44,7 @@ This file is a validation index, not the plan. **Planned work:** `docs/SEM-ARCH.
 
 `review-ui` + `export` video face inspectability: `docs/S8-REVIEW-UI.md` (on `main`, PR #28; `review.html` uses the same seek/crop).  
 Sampled video evidence: `docs/S7A.md` (run `20260917T161452Z-a012c0fe`).  
-S7b derived tracks (IoU+time, no table): `docs/S7B.md`.  
+S7b derived tracks (IoU+time, no table): `docs/S7B.md`. S8 renders those tracks in `review-ui` / `review.html`.  
 PERF: `docs/PERF-P0-BASELINE.md` (frozen); P1 **blocked** — `docs/PERF-P1-ARM64.md`.
 
 Do not enable video DBSCAN to shrink the unassigned count. Do not invent a parallel plan.

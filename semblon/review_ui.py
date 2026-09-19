@@ -11,6 +11,7 @@ from pathlib import Path
 
 from semblon.export import STRONG_MIN_INTRA
 from semblon.process import default_store_path
+from semblon.tracks import TracksError, derive_tracks
 from semblon.review import (
     ReviewError,
     ignore_subject,
@@ -71,6 +72,53 @@ def resolve_run_id(store: Path, run_id: str | None) -> str:
     if row is None:
         raise ReviewUiError("store has no runs")
     return row["run_id"]
+
+
+def _basename(path: str) -> str:
+    return (path or "").replace("\\", "/").rstrip("/").split("/")[-1] or path or ""
+
+
+def _track_items(
+    store: Path, run_id: str, video_faces: list[dict]
+) -> tuple[list[dict], list[dict]]:
+    """Render derived S7 tracks. Leftovers stay untracked observations."""
+    if not video_faces:
+        return [], []
+    try:
+        rec = derive_tracks(store, run_id)
+    except TracksError:
+        return [], list(video_faces)
+    by_id = {f["face_id"]: f for f in video_faces}
+    used: set[str] = set()
+    items: list[dict] = []
+    for tr in rec["tracks"]:
+        members = [by_id[fid] for fid in tr["face_ids"] if fid in by_id]
+        if len(members) < 2:
+            continue
+        used.update(m["face_id"] for m in members)
+        person_names = sorted({m["person_name"] for m in members if m["person_name"]})
+        items.append(
+            {
+                "kind": "track",
+                "track_id": tr["track_id"],
+                "media_id": tr["media_id"],
+                "path": tr["path"],
+                "face_id": "",
+                "band": "unassigned",
+                "face_count": len(members),
+                "min_intra": None,
+                "status": "ok",
+                "person_names": person_names,
+                "named": bool(person_names),
+                "t_ms_start": tr["t_ms_start"],
+                "t_ms_end": tr["t_ms_end"],
+                "representative_face_id": tr["representative_face_id"],
+                "members": members,
+                "note": "temporal association; not a person",
+            }
+        )
+    leftover = [f for f in video_faces if f["face_id"] not in used]
+    return items, leftover
 
 
 def load_board(
@@ -173,47 +221,16 @@ def load_board(
     )
 
     still_unassigned: list[dict] = []
-    video_groups: dict[str, list[dict]] = {}
-    video_order: list[str] = []
+    video_unassigned: list[dict] = []
     for u in unassigned:
         if u["source_type"] == "video":
-            key = u["media_id"]
-            if key not in video_groups:
-                video_order.append(key)
-                video_groups[key] = []
-            video_groups[key].append(u)
+            video_unassigned.append(u)
         else:
             still_unassigned.append(u)
 
-    for mid in video_order:
-        members = sorted(
-            video_groups[mid],
-            key=lambda m: (
-                m["t_ms"] is None,
-                m["t_ms"] if m["t_ms"] is not None else 0,
-                m["frame_id"] is None,
-                m["frame_id"] if m["frame_id"] is not None else 0,
-                m["face_id"],
-            ),
-        )
-        person_names = sorted({m["person_name"] for m in members if m["person_name"]})
-        items.append(
-            {
-                "kind": "unassigned_media",
-                "media_id": mid,
-                "path": members[0]["path"],
-                "face_id": members[0]["face_id"] if len(members) == 1 else "",
-                "band": "unassigned",
-                "face_count": len(members),
-                "min_intra": None,
-                "status": "ok",
-                "person_names": person_names,
-                "named": bool(person_names),
-                "members": members,
-            }
-        )
-
-    for u in still_unassigned:
+    track_items, leftover_video = _track_items(store, run_id, video_unassigned)
+    items.extend(track_items)
+    for u in leftover_video + still_unassigned:
         items.append(
             {
                 "kind": "unassigned",
@@ -256,7 +273,15 @@ def load_board(
             "review_required": sum(1 for it in items if it["band"] == "review"),
             "strong": sum(1 for it in items if it["band"] == "strong"),
             "unassigned": len(unassigned),
-            "unassigned_media": len(video_order),
+            "tracks": sum(1 for it in items if it["kind"] == "track"),
+            "untracked": sum(
+                1
+                for it in items
+                if it["kind"] == "unassigned"
+                and it["members"]
+                and it["members"][0].get("source_type") == "video"
+            ),
+            "unassigned_media": len({u["media_id"] for u in video_unassigned}),
             "named_persons": len(persons),
             "decisions": len(decisions),
         },
@@ -341,8 +366,8 @@ def apply_name(store: Path, run_id: str, item: dict, display_name: str) -> dict:
     if item["kind"] == "cluster":
         return name_cluster(store, run_id, item["cluster_id"], display_name)
     fid = item.get("face_id")
-    if item["kind"] == "unassigned_media" and not fid:
-        raise ReviewUiError("click a face in the video to Name (a file is not a person)")
+    if item["kind"] in ("track", "unassigned_media") and not fid:
+        raise ReviewUiError("click a face in the video to Name (a track is not a person)")
     if not fid:
         raise ReviewUiError("select an unassigned face to Name")
     return name_face(store, run_id, fid, display_name)
@@ -362,8 +387,8 @@ def apply_ignore(store: Path, run_id: str, item: dict, disposition: str | None =
             store, run_id, cluster_id=item["cluster_id"], disposition=disposition or "not_a_person"
         )
     fid = item.get("face_id")
-    if item["kind"] == "unassigned_media" and not fid:
-        raise ReviewUiError("click a face in the video to Ignore (a file is not a person)")
+    if item["kind"] in ("track", "unassigned_media") and not fid:
+        raise ReviewUiError("click a face in the video to Ignore (a track is not a person)")
     return ignore_subject(
         store, run_id, face_id=fid, disposition=disposition or "singleton"
     )
@@ -373,15 +398,20 @@ def apply_note(store: Path, run_id: str, item: dict, text: str) -> dict:
     if item["kind"] == "cluster":
         return note_subject(store, run_id, cluster_id=item["cluster_id"], text=text)
     fid = item.get("face_id")
-    if item["kind"] == "unassigned_media" and not fid:
-        raise ReviewUiError("click a face in the video to Note (a file is not a person)")
+    if item["kind"] in ("track", "unassigned_media") and not fid:
+        raise ReviewUiError("click a face in the video to Note (a track is not a person)")
     return note_subject(store, run_id, face_id=fid, text=text)
 
 
 def item_label(item: dict) -> str:
+    if item["kind"] == "track":
+        name = _basename(item.get("path") or "")
+        tag = f" named:{','.join(item['person_names'])}" if item["named"] else " unnamed"
+        t0 = item.get("t_ms_start")
+        t1 = item.get("t_ms_end")
+        return f"TRACK {name}  n={item['face_count']}  t={t0}-{t1}ms{tag}"
     if item["kind"] == "unassigned_media":
-        path = item.get("path") or ""
-        name = path.replace("\\", "/").rstrip("/").split("/")[-1] or path
+        name = _basename(item.get("path") or "")
         tag = f" named:{','.join(item['person_names'])}" if item["named"] else " unnamed"
         return f"VIDEO {name}  n={item['face_count']}{tag}"
     if item["kind"] == "unassigned":
@@ -434,7 +464,7 @@ class ReviewApp:
         body.add(left, weight=1)
         body.add(right, weight=3)
 
-        ttk.Label(left, text="Clusters / videos / unassigned").pack(anchor=tk.W)
+        ttk.Label(left, text="Clusters / tracks / unassigned").pack(anchor=tk.W)
         self.listbox = tk.Listbox(left, exportselection=False)
         self.listbox.pack(fill=tk.BOTH, expand=True)
         self.listbox.bind("<<ListboxSelect>>", self._on_select)
@@ -466,7 +496,8 @@ class ReviewApp:
             text=(
                 f"store={self.store}  run={self.run_id}  "
                 f"review={c['review_required']} strong={c['strong']} "
-                f"unassigned={c['unassigned']} videos={c.get('unassigned_media', 0)} "
+                f"unassigned={c['unassigned']} tracks={c.get('tracks', 0)} "
+                f"untracked={c.get('untracked', 0)} "
                 f"persons={c['named_persons']} "
                 f"decisions={c['decisions']}"
             )
@@ -550,12 +581,12 @@ class ReviewApp:
         item = self._current_item()
         if item is None:
             return None
-        if item["kind"] == "unassigned_media":
+        if item["kind"] in ("track", "unassigned_media"):
             if len(self._selected_faces) == 1:
                 return {**item, "face_id": next(iter(self._selected_faces))}
             if len(item["members"]) == 1:
                 return {**item, "face_id": item["members"][0]["face_id"]}
-            raise ReviewUiError("click one face in the video (a file is not a person)")
+            raise ReviewUiError("click one face in the video (a track is not a person)")
         return item
 
     def _do_name(self) -> None:

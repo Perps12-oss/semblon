@@ -3,7 +3,7 @@
 **Status:** shipping vertical on main-line work; **S8 Reviewability** (video face thumbs) is on `main` (PR #28). Static `review.html` (`export`) uses the same `path`+`frame_id`+`bbox` seek/crop.  
 **This is** the beginning of S8 (smallest interactive vertical).  
 **Design target** for the broader canvas: `docs/SEM-ARCH.md`. This file is the shipping review slice, not the plan.  
-**Not yet:** full shell, Intelligence Canvas, tracklet review groups, identify/inbox UI, search. **Not:** S7b engine.
+**Not yet:** full shell, Intelligence Canvas, identify/inbox UI, search. S7b derived tracks are rendered here; the engine stays in `semblon tracks`.
 
 ## What this slice is
 
@@ -59,7 +59,7 @@ video:  path + frame_id → VideoCapture seek → bbox crop → thumbnail
 
 Applies to `review-ui` and static `review.html`. No mass on-disk PNG dump. No clustering / threshold / sampling changes.
 
-**List:** video unassigned faces are grouped by Media (one row per file, members sorted by `t_ms`). A file is not a person — Name/Ignore/Note require a clicked face. Stills stay one row per face. This is inspectability, not S7b Track.
+**List:** video unassigned faces are grouped by derived S7 Track (IoU+time). A track is not a person — Name/Ignore/Note require a clicked face. Untracked video faces and stills stay one row each.
 
 ## Next
 
