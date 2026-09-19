@@ -202,7 +202,7 @@ OBSERVATIONS → ENTITIES → RELATIONSHIPS → EVENTS / CONTEXT → VISUAL MEMO
 
 Not necessarily a graph database. That is an implementation decision for much later (parked §20 still parked).
 
-Today: S6 `memory together` / `events` derive person × time / co-appearance from owned metadata. No relationship table. Time/place must not change identity scores.
+Today: S6 `memory history` / `together` / `events` derive person × time / co-appearance from owned metadata, including named video presence (`source_type` + `t_ms` intervals). No relationship table. Time/place must not change identity scores.
 
 ### 3.6 The other five (same discipline)
 

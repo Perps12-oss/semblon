@@ -226,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     mh.add_argument("--person", required=True, help="person_id or display_name")
     mh.add_argument("--store", required=True, type=Path)
     mh.add_argument("--run", default=None)
-    mt = mem_sub.add_parser("together", help="named people on the same still")
+    mt = mem_sub.add_parser("together", help="named people on the same still or video clip")
     mt.add_argument("--store", required=True, type=Path)
     mt.add_argument("--run", default=None)
     me = mem_sub.add_parser("events", help="burst/day/folder signals; no LLM titles")

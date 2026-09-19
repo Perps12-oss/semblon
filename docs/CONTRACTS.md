@@ -43,7 +43,7 @@ Implemented now: `lab profile` (FACE-000); `process` (happy-path ingest -> clust
 
 `stats --run --store` (read-only JSON counts; FAR/FRR only if confirmatory is measurable). `report --run --store --out` (read-only markdown; writes `--out` only, never the store).
 
-`memory history --person --store` / `memory together --store` / `memory events --store` (S6; read-only; optional `--run`; time from EXIF then filename then `mtime_ns`; place is folder plus GPS if EXIF has it; no geocoding; no new columns). Time/place/co-appearance must not change `compare()` or clustering.
+`memory history --person --store` / `memory together --store` / `memory events --store` (S6; read-only; optional `--run`; time from EXIF then filename then `mtime_ns`; video observations add in-file `t_ms` to that time; place is folder plus GPS if EXIF has it; named video faces appear as history items plus per-media `presence` intervals; together is same still or same clip; no geocoding; no new columns). Time/place/co-appearance must not change `compare()` or clustering.
 
 Not implemented: folder watcher. Ingest-family commands that address a stored run require `--run`. Exit 0/2/3 as specified. `identify` unknown is exit 0.
 
