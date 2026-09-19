@@ -32,8 +32,9 @@ S6 `memory` 1.2 is on `main` (not part of FACE-002–005).
 
 ## Deferred (explicit)
 
-- Bounded concurrent ingest workers / EP / GPU / batch / duplicate imread / SQLite commit policy — **after PERF P1 only**
-- Recording actual provider / device / worker in run evidence
+- Bounded concurrent ingest workers / EP / GPU / batch / SQLite commit policy — **after PERF P1 only** (non-gating debt)
+- Stills duplicate `imread` removed in ingest (`embed_bgr` on the decoded array); live P0 re-time **not executed** (non-gating)
+- Recording actual provider / device / worker in run evidence (`runtime_json` now records CPU/`provider`; `FaceKitProvider.load()` still unused)
 - Folder watcher / daemon
 - 10k ingest
 - Consuming the ARM64 OpenCV pyd in the **S1** path (P1 may use it in an isolated env)

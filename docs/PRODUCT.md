@@ -23,7 +23,9 @@ The long-term north star is `docs/SEM-ARCH.md`. It does **not** redefine this v1
 
 ## v1 out
 
-Public lookup · live CCTV · USB webcam · video files · ACC · mobile · multi-user · sharing · CustomTkinter · FastAPI · watchdog · automatic identity
+Public lookup · live CCTV · USB webcam · video files · ACC · mobile · multi-user · sharing · CustomTkinter · FastAPI · folder watcher (v1 “watchdog”) · automatic identity
+
+v1 **out** “watchdog” means **folder watcher**, not `semblon/watchdog.py` (stall detector; library only, not on the Home/`process` path).
 
 ## v1 ship test
 
@@ -53,7 +55,9 @@ This amendment does **not** erase frozen v1. It records what the shipping applic
 
 **Level 1 — identity contract (immutable):** unknown is valid; cluster ≠ person; STRONG ≠ person; no silent auto-identity; native vs emulated is labelled honestly.
 
-**Level 2 — production capabilities (shipping):** `process` / `home` / `review-ui`; incremental ingest; backup/restore; integrity report; cooperative cancel (GUI + SIGINT at file boundaries); stall watchdog (does not kill); FaceKit CPU provider record; evidence-based `search` of named persons / identify; S7a sampled video + S7b derived tracks; S6 memory; portable CI without weight download.
+**Level 2 — production capabilities (shipping):** `process` / `home` / `review-ui` (KEEP GUI; v1 still “no GUI required”); incremental ingest; backup/restore; integrity report (orphans + `PRAGMA integrity_check`; missing originals counted, do not fail `ok`); cooperative cancel (GUI + SIGINT at file boundaries); FaceKit CPU **recorded** in `runtime_json` (ingest still `load_app()`); evidence-based `search` of named persons (RO) / identify; S7a sampled video + S7b derived tracks; S6 memory; portable CI without weight download.
+
+Stall watchdog is a **library** (`semblon/watchdog.py`), unit-tested, **not wired** into Home/`process`. It does not kill jobs. It is not a Level 2 shipping control.
 
 **Level 3 — experimental / unavailable:** `ingest --workers`; ARM64 native OpenCV; GPU; buffalo_l redistribution; MSI/frozen exe; 10k library run; Intelligence Canvas; second observers.
 

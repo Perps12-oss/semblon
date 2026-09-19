@@ -1,6 +1,6 @@
 # SEM-ARCH — North star and planned work
 
-**Status:** Architecture Reset V1. **This file is the source of truth** for what Semblon is and how it grows. Drawing board only — no code, no columns.  
+**Status:** Architecture Reset V1. **This file is the source of truth** for planned work. Architecture may anticipate Canvas/search/objects; KEEP code must not silently implement them. No new schema columns from this file.  
 **Date:** 2026-09-19
 
 | File | Job |
@@ -504,7 +504,7 @@ Instead: make the architecture general first. Add intelligence capabilities one 
 | Layer | Name | Job | Now? |
 |---|---|---|---|
 | **ARCH-001** | Core observation model | Name the primitives and the detector / group / decision rule | **COMPLETE (docs)** — `docs/CONTRACTS.md` Observation primitives. No columns. |
-| **ARCH-002** | Capability / provider boundary | `ObservationProvider` declares what it produces; shared execution | **COMPLETE (thin)** — `FaceKitProvider` CPU-only in `semblon/providers.py`. No second provider. GPU not claimed. |
+| **ARCH-002** | Capability / provider boundary | `ObservationProvider` declares what it produces; shared execution | **PARTIAL (thin)** — `FaceKitProvider` CPU record in `semblon/providers.py` / `runtime_json`. `load()` unused; ingest still `load_app()`. No second provider. GPU not claimed. |
 | **ARCH-003** | Universal similarity | Embedding envelope; never compare incompatible spaces | After ARCH-001. Face `pack_id` remains the identity key. |
 | **ARCH-004** | Grouping / hypothesis | `ObservationGroup` = related under a model/config, not “the same thing” | Vocabulary first. Do not retune `eps`. |
 | **ARCH-005** | Temporal intelligence | Frame → observation → track → track-level hypothesis | After contracts. Sampled-video evidence already exists. Tracks not opened by this paper. |
@@ -641,7 +641,7 @@ Verb set: KEEP / ADAPT / DEFER / REJECT. This is not a FACE-ticket queue.
 
 > Make Semblon capable of accepting different kinds of observations without redesigning the core every time a new vision capability is added.
 
-**This drawing-board PR does not open that slice.** When opened, it is **docs / conceptual contracts only**.
+**Recorded COMPLETE as docs** (2026-09-19). The drawing-board slice did not add columns. This section is the historical scope of that docs pass, not a ticket still waiting to open.
 
 In scope then:
 
@@ -666,7 +666,7 @@ Face vocabulary is *adapted to the nouns*. The face universe is not preserved as
 
 ---
 
-## 17. Provider sketch (ARCH-002, not now)
+## 17. Provider sketch (ARCH-002 — thin CPU record; not a second detector)
 
 ```text
 ObservationProvider
@@ -679,7 +679,7 @@ Face  Object    OCR     Scene    Body
 Each provider declares what it produces.
 
 ```text
-FaceProvider        (exists, not yet wrapped)
+FaceProvider        (thin FaceKitProvider class; ingest still load_app())
   → face observation
   → face embedding
   → bounding box
@@ -749,3 +749,4 @@ Illegal: silently comparing incompatible embedding spaces; silently mixing space
 | V1 | 2026-09-19 | Architecture Reset. This file is the north star and planned-work source of truth. Faces are the first ObservationProvider. No FACE-n successor queue. No code, no columns. |
 | V1.1 | 2026-09-19 | ARCH-001 completed as docs in `docs/CONTRACTS.md`. No DDL. Next code-bearing slice remains ARCH-002+ only when earned; production KEEP hardening is recorded in `docs/PRODUCTION-STATUS.md`. |
 | V1.2 | 2026-09-19 | Thin FaceKitProvider (CPU) ships as ARCH-002. No second provider. GPU not claimed. |
+| V1.3 | 2026-09-19 | ARCH-002 recorded PARTIAL: class + `runtime_json`; ingest still `load_app()`. §16 leftover “when opened” retired. Remaining production items are non-gating debt (`docs/PRODUCTION-STATUS.md`). |

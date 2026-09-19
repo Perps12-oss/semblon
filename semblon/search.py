@@ -10,7 +10,6 @@ from pathlib import Path
 
 from semblon.identify import IdentifyError, identify_face
 from semblon.memory import MemoryError, history
-from semblon.store import connect, init_db
 
 
 class SearchError(ValueError):
@@ -18,11 +17,15 @@ class SearchError(ValueError):
 
 
 def _open(store: Path):
+    """Named-person lookup is read-only. Identify (`search_face`) writes via identify_face."""
     p = Path(store)
     if not p.is_file():
         raise SearchError(f"store not found: {p}")
-    conn = connect(p)
-    init_db(conn)
+    import sqlite3
+
+    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -32,16 +35,18 @@ def search_person(store: Path, query: str) -> dict:
     if not q:
         raise SearchError("person query is empty")
     conn = _open(store)
-    rows = conn.execute(
-        """SELECT person_id, display_name, status, created_run,
-                  (SELECT COUNT(*) FROM faces f WHERE f.person_id = p.person_id) AS faces
-           FROM persons p
-           WHERE status='active'
-             AND (person_id = ? OR display_name = ? OR display_name LIKE ?)
-           ORDER BY display_name, person_id""",
-        (q, q, f"%{q}%"),
-    ).fetchall()
-    conn.close()
+    try:
+        rows = conn.execute(
+            """SELECT person_id, display_name, status, created_run,
+                      (SELECT COUNT(*) FROM faces f WHERE f.person_id = p.person_id) AS faces
+               FROM persons p
+               WHERE status='active'
+                 AND (person_id = ? OR display_name = ? OR display_name LIKE ?)
+               ORDER BY display_name, person_id""",
+            (q, q, f"%{q}%"),
+        ).fetchall()
+    finally:
+        conn.close()
     items = [
         {
             "person_id": r["person_id"],
@@ -86,13 +91,15 @@ def search_face(store: Path, run_id: str, face_id: str) -> dict:
 
 def search_people(store: Path) -> dict:
     conn = _open(store)
-    rows = conn.execute(
-        """SELECT person_id, display_name, status,
-                  (SELECT COUNT(*) FROM faces f WHERE f.person_id = p.person_id) AS faces
-           FROM persons p WHERE status='active'
-           ORDER BY display_name, person_id"""
-    ).fetchall()
-    conn.close()
+    try:
+        rows = conn.execute(
+            """SELECT person_id, display_name, status,
+                      (SELECT COUNT(*) FROM faces f WHERE f.person_id = p.person_id) AS faces
+               FROM persons p WHERE status='active'
+               ORDER BY display_name, person_id"""
+        ).fetchall()
+    finally:
+        conn.close()
     items = [
         {
             "person_id": r["person_id"],

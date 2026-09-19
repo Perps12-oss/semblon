@@ -20,13 +20,19 @@ def test_is_interactive_launch_forwards_cli():
 
 
 def test_normalize_repo_root_strips_trailing_backslash():
-    assert normalize_repo_root("C:\\repo\\SEMBRON\\") == Path("C:/repo/SEMBRON")
+    """Trailing \\ or / is stripped. Do not compare PosixPath to C:/... literals."""
+    got = str(normalize_repo_root("C:\\repo\\SEMBRON\\"))
+    assert got.endswith("SEMBRON")
+    assert not got.endswith("\\")
+    assert not got.endswith("/")
+    posix = str(normalize_repo_root("/repo/semblon/"))
+    assert posix.endswith("semblon")
+    assert not posix.endswith("/")
 
 
-def test_interactive_script_path():
-    root = Path(r"C:\repo\SEMBRON")
-    p = interactive_script_path(root)
-    assert p == Path(r"C:\repo\SEMBRON\tools\semblon-interactive.ps1")
+def test_interactive_script_path(tmp_path):
+    p = interactive_script_path(tmp_path)
+    assert p == tmp_path.resolve() / "tools" / "semblon-interactive.ps1"
 
 
 def test_install_windows_script_present():

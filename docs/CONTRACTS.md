@@ -51,7 +51,7 @@ Not implemented: folder watcher. Ingest-family commands that address a stored ru
 
 Progress `on_event` kinds: `queued` / `started` / `progress` / `partial` / `completed` / `failed` / `cancelled` / `stalled`. Skip is an `outcome` on `progress` (`skipped_seen`, `skipped_same_run`), not a silent success. Cancel stamps `runs.finished_at` and `runs.notes=cancelled`. SIGINT is cooperative at file boundaries. Partial per-file commits remain. Cancelled work must not emit `completed`. A stall watchdog may emit `stalled`; it does not kill the job.
 
-`search --person` / `--people` / `--face --run` (lookup of named persons or identify vs persons; not a vector DB; similarity is not identity). `lab integrity --store` (read-only; exit 3 if unfinished/orphans). `lab models` (weight presence; does not download).
+`search --person` / `--people` / `--face --run` (lookup of named persons or identify vs persons; not a vector DB; similarity is not identity). `--person` / `--people` open the store **read-only** (same as inbox). `--face` is identify and may write `decisions`; it does not auto-assign `faces.person_id`. `lab integrity --store` (read-only; exit 3 if SQLite orphans / `PRAGMA integrity_check` fail; unfinished runs are listed and are not completed; `media_missing_path` is counted and does **not** fail `ok` — originals may move). `lab models` (weight presence; does not download).
 
 ## Observation primitives (ARCH-001)
 
@@ -74,7 +74,7 @@ Frozen rule: detector → observation; grouping → hypothesis; human → decisi
 
 Embedding envelope (conceptual): modality, provider/`pack_id`, dimensions, normalisation, version, vector. Incompatible spaces never compare. Face identity remains FaceKit/`pack_id` only.
 
-`ObservationProvider` (sketch, not a class today): FaceKit is the first provider (face observation + embedding + bbox + quality + pack_id). No second provider is authorized.
+`ObservationProvider`: thin `FaceKitProvider` class in `semblon/providers.py` (CPU recorded). Ingest/identify still call `engine.load_app()`. No second provider is authorized. GPU is not claimed.
 
 `ObservationGroup`: today's `clusters` — related under a model/config, not “the same thing”. Do not retune `eps=0.40`.
 
