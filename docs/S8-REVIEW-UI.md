@@ -1,6 +1,6 @@
 # S8 Interactive Review slice
 
-**Status:** shipping vertical on main-line work; **S8 Reviewability** (video face thumbs) is on `main` (PR #28).  
+**Status:** shipping vertical on main-line work; **S8 Reviewability** (video face thumbs) is on `main` (PR #28). Static `review.html` (`export`) uses the same `path`+`frame_id`+`bbox` seek/crop.  
 **This is** the beginning of S8 (smallest interactive vertical).  
 **Design target** for the broader canvas: `docs/SEM-ARCH.md`. This file is the shipping review slice, not the plan.  
 **Not yet:** full shell, Intelligence Canvas, tracklet review groups, identify/inbox UI, search. **Not:** S7b engine.
@@ -50,14 +50,16 @@ Forensic run `20260917T161452Z-a012c0fe` (2 videos, 1 Hz): **231** sampled frame
 
 **Bug:** thumbs used `cv2.imread(media.path)`, which returns `None` for `.mp4`, so the UI drew empty rectangles.
 
-**Fix (narrow):** board members carry provenance (`source_type`, `path`, `frame_id`, `t_ms`, `bbox`, `face_id`, `observation_id`). Render-time crop:
+**Fix (narrow):** board members and `export` face rows carry provenance (`source_type`, `path`, `frame_id`, `t_ms`, `bbox`, `face_id`, `observation_id`). Render-time crop:
 
 ```text
 stills: path → imread → bbox crop
 video:  path + frame_id → VideoCapture seek → bbox crop → thumbnail
 ```
 
-No mass on-disk PNG dump. No clustering / threshold / sampling changes. List may still be one row per face until S7b tracklets exist — inspectability first.
+Applies to `review-ui` and static `review.html`. No mass on-disk PNG dump. No clustering / threshold / sampling changes.
+
+**List:** video unassigned faces are grouped by Media (one row per file, members sorted by `t_ms`). A file is not a person — Name/Ignore/Note require a clicked face. Stills stay one row per face. This is inspectability, not S7b Track.
 
 ## Next
 

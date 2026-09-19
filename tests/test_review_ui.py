@@ -221,8 +221,10 @@ def test_board_carries_video_observation_provenance(tmp_path):
 
     board = load_board(store, "rv")
     assert board["counts"]["unassigned"] == 1
+    assert board["counts"]["unassigned_media"] == 1
     item = board["items"][0]
-    assert item["kind"] == "unassigned"
+    assert item["kind"] == "unassigned_media"
+    assert item["face_count"] == 1
     m = item["members"][0]
     assert m["face_id"] == "fv"
     assert m["observation_id"] == "ov"
@@ -250,6 +252,47 @@ def test_crop_png_b64_video_seeks_instead_of_imread():
         )
     assert b64 is not None
     rb.assert_called_once_with("C:/clips/a.mp4", 1300)
+
+
+def test_board_groups_video_unassigned_by_media(tmp_path):
+    store = tmp_path / "s.sqlite"
+    conn = sqlite3.connect(str(store))
+    conn.execute("PRAGMA foreign_keys=ON")
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("rg", "t0", "t1", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute("INSERT INTO media VALUES ('mv','video','C:/clips/a.mp4','vvv',1920,1080,0,1)")
+    conn.execute("INSERT INTO media VALUES ('ms','folder','C:/stills/a.jpg','sss',100,100,0,1)")
+    conn.execute("INSERT INTO observations VALUES ('ov1','mv',10,400,'rg')")
+    conn.execute("INSERT INTO observations VALUES ('ov2','mv',20,800,'rg')")
+    conn.execute("INSERT INTO observations VALUES ('os','ms',NULL,NULL,'rg')")
+    for fid, oid in (("fv1", "ov1"), ("fv2", "ov2"), ("fs1", "os")):
+        conn.execute(
+            """INSERT INTO faces(face_id,observation_id,run_id,bbox_x1,bbox_y1,bbox_x2,bbox_y2,
+               det_score,face_w,face_h,size_band,status,embedding,embedding_pack,embedding_dim)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (fid, oid, "rg", 0, 0, 20, 20, 0.9, 20, 20, "80-119", "ok", _vec(1.0, 0.0), "pack-a", 2),
+        )
+    conn.commit()
+    conn.close()
+    board = load_board(store, "rg")
+    assert board["counts"]["unassigned"] == 3
+    assert board["counts"]["unassigned_media"] == 1
+    video = next(it for it in board["items"] if it["kind"] == "unassigned_media")
+    still = next(it for it in board["items"] if it["kind"] == "unassigned")
+    assert [m["face_id"] for m in video["members"]] == ["fv1", "fv2"]
+    assert still["face_id"] == "fs1"
+    from semblon.review_ui import apply_name, item_label
+
+    assert "VIDEO" in item_label(video)
+    with pytest.raises(ReviewUiError, match="not a person"):
+        apply_name(store, "rg", video, "Nope")
+    named = apply_name(store, "rg", {**video, "face_id": "fv1"}, "Ada")
+    assert named["display_name"] == "Ada"
 
 
 def test_crop_png_b64_video_without_frame_id_returns_none():

@@ -7,9 +7,7 @@ Does not retune clustering. Does not identify. Static review.html stays read-onl
 from __future__ import annotations
 
 import sqlite3
-import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, simpledialog, ttk
 
 from semblon.export import STRONG_MIN_INTRA
 from semblon.process import default_store_path
@@ -25,6 +23,24 @@ from semblon.review import (
 from semblon.store import connect, init_db
 
 THUMB_MAX = 96
+
+tk = ttk = messagebox = simpledialog = None
+
+
+def _ensure_tk() -> None:
+    """Load tkinter only when the window runs. Board/API stay headless."""
+    global tk, ttk, messagebox, simpledialog
+    if tk is not None:
+        return
+    import tkinter as _tk
+    from tkinter import messagebox as _mb
+    from tkinter import simpledialog as _sd
+    from tkinter import ttk as _ttk
+
+    tk = _tk
+    ttk = _ttk
+    messagebox = _mb
+    simpledialog = _sd
 
 
 class ReviewUiError(ValueError):
@@ -79,7 +95,7 @@ def load_board(
     ).fetchall()
     faces = conn.execute(
         """
-        SELECT f.*, m.path, m.source_type,
+        SELECT f.*, m.path, m.source_type, m.media_id,
                o.observation_id AS obs_id, o.frame_id, o.t_ms,
                p.display_name AS person_name
         FROM faces f
@@ -112,6 +128,7 @@ def load_board(
             "person_name": f["person_name"],
             "status": f["status"],
             "source_type": f["source_type"],
+            "media_id": f["media_id"],
             "path": f["path"],
             "frame_id": f["frame_id"],
             "t_ms": f["t_ms"],
@@ -155,7 +172,48 @@ def load_board(
         )
     )
 
+    still_unassigned: list[dict] = []
+    video_groups: dict[str, list[dict]] = {}
+    video_order: list[str] = []
     for u in unassigned:
+        if u["source_type"] == "video":
+            key = u["media_id"]
+            if key not in video_groups:
+                video_order.append(key)
+                video_groups[key] = []
+            video_groups[key].append(u)
+        else:
+            still_unassigned.append(u)
+
+    for mid in video_order:
+        members = sorted(
+            video_groups[mid],
+            key=lambda m: (
+                m["t_ms"] is None,
+                m["t_ms"] if m["t_ms"] is not None else 0,
+                m["frame_id"] is None,
+                m["frame_id"] if m["frame_id"] is not None else 0,
+                m["face_id"],
+            ),
+        )
+        person_names = sorted({m["person_name"] for m in members if m["person_name"]})
+        items.append(
+            {
+                "kind": "unassigned_media",
+                "media_id": mid,
+                "path": members[0]["path"],
+                "face_id": members[0]["face_id"] if len(members) == 1 else "",
+                "band": "unassigned",
+                "face_count": len(members),
+                "min_intra": None,
+                "status": "ok",
+                "person_names": person_names,
+                "named": bool(person_names),
+                "members": members,
+            }
+        )
+
+    for u in still_unassigned:
         items.append(
             {
                 "kind": "unassigned",
@@ -198,6 +256,7 @@ def load_board(
             "review_required": sum(1 for it in items if it["band"] == "review"),
             "strong": sum(1 for it in items if it["band"] == "strong"),
             "unassigned": len(unassigned),
+            "unassigned_media": len(video_order),
             "named_persons": len(persons),
             "decisions": len(decisions),
         },
@@ -281,7 +340,12 @@ def crop_jpeg_bytes(
 def apply_name(store: Path, run_id: str, item: dict, display_name: str) -> dict:
     if item["kind"] == "cluster":
         return name_cluster(store, run_id, item["cluster_id"], display_name)
-    return name_face(store, run_id, item["face_id"], display_name)
+    fid = item.get("face_id")
+    if item["kind"] == "unassigned_media" and not fid:
+        raise ReviewUiError("click a face in the video to Name (a file is not a person)")
+    if not fid:
+        raise ReviewUiError("select an unassigned face to Name")
+    return name_face(store, run_id, fid, display_name)
 
 
 def apply_merge(store: Path, run_id: str, cluster_ids: list[str]) -> dict:
@@ -297,18 +361,29 @@ def apply_ignore(store: Path, run_id: str, item: dict, disposition: str | None =
         return ignore_subject(
             store, run_id, cluster_id=item["cluster_id"], disposition=disposition or "not_a_person"
         )
+    fid = item.get("face_id")
+    if item["kind"] == "unassigned_media" and not fid:
+        raise ReviewUiError("click a face in the video to Ignore (a file is not a person)")
     return ignore_subject(
-        store, run_id, face_id=item["face_id"], disposition=disposition or "singleton"
+        store, run_id, face_id=fid, disposition=disposition or "singleton"
     )
 
 
 def apply_note(store: Path, run_id: str, item: dict, text: str) -> dict:
     if item["kind"] == "cluster":
         return note_subject(store, run_id, cluster_id=item["cluster_id"], text=text)
-    return note_subject(store, run_id, face_id=item["face_id"], text=text)
+    fid = item.get("face_id")
+    if item["kind"] == "unassigned_media" and not fid:
+        raise ReviewUiError("click a face in the video to Note (a file is not a person)")
+    return note_subject(store, run_id, face_id=fid, text=text)
 
 
 def item_label(item: dict) -> str:
+    if item["kind"] == "unassigned_media":
+        path = item.get("path") or ""
+        name = path.replace("\\", "/").rstrip("/").split("/")[-1] or path
+        tag = f" named:{','.join(item['person_names'])}" if item["named"] else " unnamed"
+        return f"VIDEO {name}  n={item['face_count']}{tag}"
     if item["kind"] == "unassigned":
         fid = item["face_id"][:8]
         tag = f" named:{item['person_names'][0]}" if item["named"] else " unnamed"
@@ -328,6 +403,7 @@ class ReviewApp:
     """Minimal tkinter surface. All mutations go through review.py."""
 
     def __init__(self, store: Path, run_id: str):
+        _ensure_tk()
         self.store = Path(store)
         self.run_id = run_id
         self.board = load_board(self.store, self.run_id)
@@ -358,7 +434,7 @@ class ReviewApp:
         body.add(left, weight=1)
         body.add(right, weight=3)
 
-        ttk.Label(left, text="Clusters / unassigned").pack(anchor=tk.W)
+        ttk.Label(left, text="Clusters / videos / unassigned").pack(anchor=tk.W)
         self.listbox = tk.Listbox(left, exportselection=False)
         self.listbox.pack(fill=tk.BOTH, expand=True)
         self.listbox.bind("<<ListboxSelect>>", self._on_select)
@@ -390,7 +466,8 @@ class ReviewApp:
             text=(
                 f"store={self.store}  run={self.run_id}  "
                 f"review={c['review_required']} strong={c['strong']} "
-                f"unassigned={c['unassigned']} persons={c['named_persons']} "
+                f"unassigned={c['unassigned']} videos={c.get('unassigned_media', 0)} "
+                f"persons={c['named_persons']} "
                 f"decisions={c['decisions']}"
             )
         )
@@ -441,6 +518,8 @@ class ReviewApp:
                 )
             mark = "*" if m["face_id"] in self._selected_faces else " "
             label = f"{mark}{m['face_id'][:8]}"
+            if m.get("source_type") == "video":
+                label += f" f={m.get('frame_id')}"
             self.canvas.create_text(
                 x, y + th + 2, anchor=tk.NW, fill="#eee", text=label, tags=(tag,)
             )
@@ -467,8 +546,24 @@ class ReviewApp:
     def _err(self, e: Exception) -> None:
         messagebox.showerror("Semblon Review", str(e), parent=self.root)
 
-    def _do_name(self) -> None:
+    def _item_for_face_action(self) -> dict | None:
         item = self._current_item()
+        if item is None:
+            return None
+        if item["kind"] == "unassigned_media":
+            if len(self._selected_faces) == 1:
+                return {**item, "face_id": next(iter(self._selected_faces))}
+            if len(item["members"]) == 1:
+                return {**item, "face_id": item["members"][0]["face_id"]}
+            raise ReviewUiError("click one face in the video (a file is not a person)")
+        return item
+
+    def _do_name(self) -> None:
+        try:
+            item = self._item_for_face_action()
+        except ReviewUiError as e:
+            self._err(e)
+            return
         if item is None:
             self._err(ReviewUiError("select a cluster or unassigned face"))
             return
@@ -544,7 +639,11 @@ class ReviewApp:
         self.reload()
 
     def _do_ignore(self) -> None:
-        item = self._current_item()
+        try:
+            item = self._item_for_face_action()
+        except ReviewUiError as e:
+            self._err(e)
+            return
         if item is None:
             self._err(ReviewUiError("select a cluster or face"))
             return
@@ -562,7 +661,11 @@ class ReviewApp:
         self.reload()
 
     def _do_note(self) -> None:
-        item = self._current_item()
+        try:
+            item = self._item_for_face_action()
+        except ReviewUiError as e:
+            self._err(e)
+            return
         if item is None:
             self._err(ReviewUiError("select a cluster or face"))
             return
