@@ -10,7 +10,7 @@ import sqlite3
 from pathlib import Path
 
 from semblon.export import STRONG_MIN_INTRA
-from semblon.process import default_store_path
+from semblon.process import default_store_path, latest_run_id
 from semblon.tracks import TracksError, derive_tracks
 from semblon.review import (
     ReviewError,
@@ -50,7 +50,10 @@ class ReviewUiError(ValueError):
 
 
 def resolve_run_id(store: Path, run_id: str | None) -> str:
-    """Use --run when given; otherwise the latest finished/started run on the store."""
+    """Use --run when given; otherwise the latest run that still has faces.
+
+    Empty incremental runs (FACE-005 skip-all) must not hide a prior populated run.
+    """
     store = Path(store)
     if not store.is_file():
         raise ReviewUiError(f"store not found: {store}")
@@ -62,17 +65,10 @@ def resolve_run_id(store: Path, run_id: str | None) -> str:
         if row is None:
             raise ReviewUiError(f"unknown run: {run_id}")
         return run_id
-    conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        """SELECT run_id FROM runs
-           ORDER BY COALESCE(finished_at, started_at) DESC, run_id DESC
-           LIMIT 1"""
-    ).fetchone()
-    conn.close()
-    if row is None:
+    rid = latest_run_id(store, with_faces=True) or latest_run_id(store)
+    if rid is None:
         raise ReviewUiError("store has no runs")
-    return row["run_id"]
+    return rid
 
 
 def _basename(path: str) -> str:

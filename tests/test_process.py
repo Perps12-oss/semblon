@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,6 +14,7 @@ from semblon.process import (
     ProcessError,
     default_review_out,
     default_store_path,
+    latest_run_id,
     process_folder,
 )
 
@@ -88,6 +90,59 @@ def test_process_folder_orchestrates_and_owns_run_id(tmp_path):
     assert rec["run_id"] == "RUN-ABC"
     assert any("Ingesting" in line for line in lines)
     assert any("Review ready" in line for line in lines)
+
+
+def test_process_skip_all_exports_prior_run_with_faces(tmp_path):
+    """A later empty ingest must not overwrite review.html with a blank page."""
+    from semblon.export import EVIDENCE_SCRIPT_ID
+    from tests.test_review_ui import _seed
+
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    store = tmp_path / "store.sqlite"
+    out = tmp_path / "review.html"
+    _seed(store)
+    conn = sqlite3.connect(str(store))
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("r-empty", "t9", "t9b", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.commit()
+    conn.close()
+    assert latest_run_id(store) == "r-empty"
+    assert latest_run_id(store, with_faces=True) == "r1"
+
+    lines: list[str] = []
+    with (
+        patch(
+            "semblon.process.ingest",
+            return_value={
+                "run_id": "r-empty",
+                "new_media": 0,
+                "faces": 0,
+                "ok": 0,
+                "skipped_seen": 2,
+            },
+        ),
+        patch("semblon.process.cluster_run") as clu,
+        patch("semblon.process._try_open", return_value=False),
+    ):
+        rec = process_folder(
+            folder,
+            store=store,
+            out=out,
+            open_review=False,
+            progress=lines.append,
+        )
+
+    clu.assert_not_called()
+    assert rec["run_id"] == "r1"
+    html = out.read_text(encoding="utf-8")
+    assert EVIDENCE_SCRIPT_ID in html
+    assert "faces 5" in html
+    assert any("reviewing existing run_id=r1" in line for line in lines)
 
 
 def test_process_folder_missing_dir(tmp_path):

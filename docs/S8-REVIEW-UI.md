@@ -61,6 +61,8 @@ Applies to `review-ui` and static `review.html`. No mass on-disk PNG dump. No cl
 
 **List:** video unassigned faces are grouped by derived S7 Track (IoU+time). Name on a track enrols member observations as one person (human decision). Track id is never person id. Ignore/Note on a track still require a clicked face. Untracked video faces and stills stay one row each.
 
+`--run` omitted (and `process` after a skip-all ingest) uses the latest run **that still has faces**. An empty incremental run must not blank `review-ui` / `review.html` while prior results remain on the store.
+
 ## Next
 
 This file is the shipping review vertical, not the plan. **Planned work:** `docs/SEM-ARCH.md`. Do not grow a full shell or a second identity path from this file.

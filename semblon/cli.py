@@ -273,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
     rui.add_argument(
         "--run",
         default=None,
-        help="run id (default: latest run on the store)",
+        help="run id (default: latest run that has faces)",
     )
 
     home = sub.add_parser(

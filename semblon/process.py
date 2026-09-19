@@ -7,6 +7,7 @@ Optional on_event is the UI-agnostic progress contract. progress=print stays the
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -42,6 +43,30 @@ def default_store_path() -> Path:
 
 def default_review_out(store: Path) -> Path:
     return Path(store).resolve().parent / "review.html"
+
+
+def latest_run_id(store: Path, *, with_faces: bool = False) -> str | None:
+    """Newest run on the store. with_faces skips empty incremental runs."""
+    p = Path(store)
+    if not p.is_file():
+        return None
+    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    if with_faces:
+        row = conn.execute(
+            """SELECT r.run_id FROM runs r
+               WHERE EXISTS (SELECT 1 FROM faces f WHERE f.run_id = r.run_id)
+               ORDER BY COALESCE(r.finished_at, r.started_at) DESC, r.run_id DESC
+               LIMIT 1"""
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """SELECT run_id FROM runs
+               ORDER BY COALESCE(finished_at, started_at) DESC, run_id DESC
+               LIMIT 1"""
+        ).fetchone()
+    conn.close()
+    return None if row is None else str(row["run_id"])
 
 
 def process_folder(
@@ -93,43 +118,65 @@ def process_folder(
             f"ok={ing.get('ok')} skipped_seen={ing.get('skipped_seen', 0)}"
         )
 
-        progress(f"Clustering (eps={DEFAULT_EPS}, min_samples={DEFAULT_MIN_SAMPLES})...")
-        emit(
-            on_event,
-            make_event(
-                STAGE_CLUSTER,
-                KIND_STARTED,
-                run_id=run_id,
-                message=f"Clustering (eps={DEFAULT_EPS}, min_samples={DEFAULT_MIN_SAMPLES})",
-            ),
-        )
-        try:
-            clu = cluster_run(
-                store_path,
-                run_id,
-                eps=DEFAULT_EPS,
-                min_samples=DEFAULT_MIN_SAMPLES,
+        # FACE-005 skip-all creates a new empty run. Review that and the HTML
+        # would be blank even though prior faces still exist on the store.
+        if int(ing.get("faces") or 0) == 0:
+            prior = latest_run_id(store_path, with_faces=True)
+            if prior:
+                progress(
+                    f"No new faces this run; reviewing existing run_id={prior} "
+                    f"(skipped_seen={ing.get('skipped_seen', 0)})"
+                )
+                run_id = prior
+                clu = {
+                    "clusters": None,
+                    "clustered": None,
+                    "unassigned": None,
+                    "note": "no new faces; reused prior run for review",
+                }
+            else:
+                clu = None
+        else:
+            clu = None
+
+        if clu is None:
+            progress(f"Clustering (eps={DEFAULT_EPS}, min_samples={DEFAULT_MIN_SAMPLES})...")
+            emit(
+                on_event,
+                make_event(
+                    STAGE_CLUSTER,
+                    KIND_STARTED,
+                    run_id=run_id,
+                    message=f"Clustering (eps={DEFAULT_EPS}, min_samples={DEFAULT_MIN_SAMPLES})",
+                ),
             )
-        except ClusterError as e:
-            raise ProcessError(str(e)) from e
-        emit(
-            on_event,
-            make_event(
-                STAGE_CLUSTER,
-                KIND_COMPLETED,
-                run_id=run_id,
-                elapsed_s=clu.get("cluster_s"),
-                counts={
-                    "clusters": int(clu.get("clusters") or 0),
-                    "clustered": int(clu.get("clustered") or 0),
-                    "unassigned": int(clu.get("unassigned") or 0),
-                },
-            ),
-        )
-        progress(
-            f"Cluster done. clusters={clu.get('clusters')} "
-            f"clustered={clu.get('clustered')} unassigned={clu.get('unassigned')}"
-        )
+            try:
+                clu = cluster_run(
+                    store_path,
+                    run_id,
+                    eps=DEFAULT_EPS,
+                    min_samples=DEFAULT_MIN_SAMPLES,
+                )
+            except ClusterError as e:
+                raise ProcessError(str(e)) from e
+            emit(
+                on_event,
+                make_event(
+                    STAGE_CLUSTER,
+                    KIND_COMPLETED,
+                    run_id=run_id,
+                    elapsed_s=clu.get("cluster_s"),
+                    counts={
+                        "clusters": int(clu.get("clusters") or 0),
+                        "clustered": int(clu.get("clustered") or 0),
+                        "unassigned": int(clu.get("unassigned") or 0),
+                    },
+                ),
+            )
+            progress(
+                f"Cluster done. clusters={clu.get('clusters')} "
+                f"clustered={clu.get('clustered')} unassigned={clu.get('unassigned')}"
+            )
 
         progress(f"Writing review HTML: {out_path.resolve()}")
         emit(
