@@ -18,7 +18,7 @@ Unknown is valid. False merge > false split. Wrong identity > unknown.
 
 S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do not retune clustering. Do not re-ingest that dump. FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue.
 
-**Authorized next:** **ARCH-003** — embedding envelope remains conceptual; FaceKit `pack_id` is the identity key. ARCH-001 docs are recorded. ARCH-002 `FaceKitProvider` is a **thin CPU record** (ingest still `load_app()`). Production status: `docs/PRODUCTION-STATUS.md`. Remaining production-readiness items there are **non-gating debt**. Freeze audit: `docs/PRODUCTION-AUDIT.md`.
+**Authorized next:** **ARCH-004** — ObservationGroup vocabulary (`clusters` remain face-only; do not retune `eps`). ARCH-001 docs and ARCH-003 envelope docs are recorded. ARCH-002 `FaceKitProvider` is a **thin CPU record** (ingest still `load_app()`). Production status: `docs/PRODUCTION-STATUS.md`. Remaining production-readiness items there are **non-gating debt**. Freeze audit: `docs/PRODUCTION-AUDIT.md`.
 
 FACE gates and the KEEP identity loop are **closed**. Architecture continues; do not reopen clustering to close debt.
 

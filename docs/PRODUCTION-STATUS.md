@@ -11,7 +11,7 @@ Freeze audit: `docs/PRODUCTION-AUDIT.md`.
 
 FACE-002 → FACE-005 are a **closed** validation index (`docs/FACE-GATES.md`).  
 The KEEP identity loop (`cluster → review → person → name`) is **closed**.  
-Architecture continues at **ARCH-003** when earned (`docs/SEM-ARCH.md`).  
+Architecture continues at **ARCH-004** when earned (`docs/SEM-ARCH.md`). ARCH-003 envelope is recorded as docs (`pack_id` remains the identity key).  
 Remaining production-readiness observations are **tracked technical debt**, not phase gates.
 
 ## Hierarchy
@@ -30,6 +30,7 @@ Remaining production-readiness observations are **tracked technical debt**, not 
 - Integrity report: orphans, unfinished, `PRAGMA integrity_check`; missing originals are counted and do not fail `ok`
 - Single-decode stills path; CPU/`provider` fields in `runtime_json`
 - `search --person/--people` read-only lookup; `--face` is identify (writes decisions)
+- ARCH-003 embedding envelope as docs; `compare()` refuses incompatible pack/dim
 - S7a/S7b; S6 memory
 - Portable CI workflow (no weight download); Windows-path tests do not assume POSIX `Path` identity
 - GitHub Actions on this honesty slice: **ubuntu-latest + windows-latest pytest SUCCESS** (`35455505696`, 2026-09-19)
