@@ -151,6 +151,8 @@ Corrections write `decisions` rows. Naming links `cluster_person` and stamps `fa
 |---|---|
 | `docs/PRODUCT.md` | frozen v1 (folder-first, face-first, local-first) |
 | `docs/CONTRACTS.md` | schema / CLI / runtime |
+| `docs/PRODUCTION-STATUS.md` | current production classification |
+| `docs/PRODUCTION-AUDIT.md` | freeze audit vs plans, tests, and code |
 | `docs/SEMBLON_MATURITY_BLUEPRINT.md` | long-term plan: structure + S0–S9 + absorb + measure |
 | `docs/runtime.md` | FACE-000 output (fill on each machine) |
 | `docs/licenses.md` | weights / licence record |
