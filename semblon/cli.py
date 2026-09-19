@@ -9,6 +9,7 @@ process: happy-path ingest -> cluster -> export review.html.
 home: double-click Choose folder / Open Review (not full shell).
 review-ui: S8 Interactive Review slice (tkinter over review APIs).
 S7a: video files in the ingest folder are sampled (not every frame).
+S7b: tracks --run is derived IoU+time association (not identity, not written).
 """
 
 from __future__ import annotations
@@ -229,6 +230,15 @@ def main(argv: list[str] | None = None) -> int:
     me = mem_sub.add_parser("events", help="burst/day/folder signals; no LLM titles")
     me.add_argument("--store", required=True, type=Path)
     me.add_argument("--run", default=None)
+
+    trk = sub.add_parser(
+        "tracks",
+        help="S7b derived video tracks (IoU+time; read-only; not persons)",
+    )
+    trk.add_argument("--run", required=True)
+    trk.add_argument("--store", required=True, type=Path)
+    trk.add_argument("--iou-min", type=float, default=None)
+    trk.add_argument("--max-t-ms-gap", type=int, default=None)
 
     rev = sub.add_parser("review", help="0.4 persist review decisions (does not rewrite DBSCAN)")
     rev.add_argument("--run", required=True)
@@ -617,6 +627,22 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 rec = events(args.store, run_id=args.run)
         except MemoryError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2, default=str))
+        return 0
+
+    if args.cmd == "tracks":
+        from semblon.tracks import TracksError, derive_tracks
+
+        kwargs = {}
+        if args.iou_min is not None:
+            kwargs["iou_min"] = args.iou_min
+        if args.max_t_ms_gap is not None:
+            kwargs["max_t_ms_gap"] = args.max_t_ms_gap
+        try:
+            rec = derive_tracks(args.store, args.run, **kwargs)
+        except TracksError as e:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2, default=str))
