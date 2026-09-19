@@ -91,6 +91,9 @@ def test_derive_tracks_iou_time_not_embeddings(tmp_path):
     assert rec["counts"]["untracked"] == 1
     assert rec["counts"]["video_ok_faces"] == 7
     assert rec["note"].startswith("derived S7b")
+    tracked_ids = {fid for t in rec["tracks"] for fid in t["face_ids"]}
+    assert "fs" not in tracked_ids
+    assert "fs" not in {u["face_id"] for u in rec["untracked"]}
 
 
 def test_gap_keeps_fragments_separate(tmp_path):

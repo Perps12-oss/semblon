@@ -25,8 +25,25 @@ def test_python_m_semblon_help():
     )
     assert proc.returncode == 0
     out = proc.stdout + proc.stderr
-    for cmd in ("lab", "ingest", "process", "cluster", "export", "name", "merge", "split"):
-        assert cmd in out
+    for cmd in (
+        "lab",
+        "ingest",
+        "process",
+        "cluster",
+        "export",
+        "name",
+        "merge",
+        "split",
+        "home",
+        "review-ui",
+        "tracks",
+        "memory",
+        "identify",
+        "inbox",
+        "stats",
+        "report",
+    ):
+        assert cmd in out, cmd
 
 
 def test_main_py_present():
