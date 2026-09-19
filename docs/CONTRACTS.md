@@ -4,7 +4,7 @@
 **Note:** 2026-09-13 — staging pointer and CLI surface clarified. No column changes.
 
 This file is the only schema authority.  
-Staging authority is FACE / build 0.x as mapped in `docs/SEMBLON_MATURITY_BLUEPRINT.md` §9. There is no `SEMBLON_IMPLEMENTATION_PLAN.md` and no OBS / SIM clock.  
+Planned work is `docs/SEM-ARCH.md`. There is no `SEMBLON_IMPLEMENTATION_PLAN.md` and no OBS / SIM / FACE-n successor clock.  
 The plan does not invent columns.  
 Do not invent columns. Do not implement the pre-correction V1.1 draft.
 

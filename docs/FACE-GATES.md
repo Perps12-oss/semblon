@@ -40,12 +40,10 @@ S6 `memory` 1.2 is on `main` (not part of FACE-002–005).
 
 ## After FACE gates
 
-S8 Interactive Review slice: `docs/S8-REVIEW-UI.md` (`review-ui`).  
-Roadmap + perf track: `docs/ROADMAP-RECONCILE.md`, `docs/PERF-P0-BASELINE.md` (P0: run `20260917T021045Z-48095f25`, 221 files, ingest 1299.3 s, x64 emulated).  
-PERF P1 native ARM64: **blocked** — `docs/PERF-P1-ARM64.md` (`opencv_geometry500.dll` hang; ORT win_arm64 OK). Emulation speedup unmeasured.
+This file is a validation index, not the plan. **Planned work:** `docs/SEM-ARCH.md`.
 
-**2026-09-17 — Phase 1 human tests approved. S7a gate open.**  
-Owner approved Phase 1 real-world `review-ui` tests. Phase 3 axis = **S7a** (video files, sampled observations). Slice: `docs/S7A.md`. Clustering params remain frozen. S7b tracklets, S7c webcam, S7d RTSP, and full S8 shell stay deferred. Do not invent a parallel plan.
+`review-ui` + video face inspectability: `docs/S8-REVIEW-UI.md` (on `main`, PR #28).  
+Sampled video evidence: `docs/S7A.md` (run `20260917T161452Z-a012c0fe`).  
+PERF: `docs/PERF-P0-BASELINE.md` (frozen); P1 **blocked** — `docs/PERF-P1-ARM64.md`.
 
-**2026-09-17 — S7a dump + S8 Reviewability.**  
-Owner dump `20260917T161452Z-a012c0fe`: sampled video → many face observations → product holdout leaves them unassigned (observation count ≠ identity count). Open friction: **S8 Reviewability** — render-time video thumbs from `path`+`frame_id`+`bbox` (`docs/S8-REVIEW-UI.md`). S7b remains deferred until observations are inspectable. Do not enable video DBSCAN to shrink the unassigned count.
+Do not enable video DBSCAN to shrink the unassigned count. Do not invent a parallel plan.

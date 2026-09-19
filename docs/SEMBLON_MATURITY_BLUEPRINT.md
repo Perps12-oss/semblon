@@ -1,8 +1,9 @@
-# SEMBLON — Plan (maturity blueprint V1.5)
+# SEMBLON — Earned history (maturity blueprint V1.9)
 
-**Status:** The one long-term plan. System structure + S0–S9 + how to absorb + how to measure.  
-**Not:** a schema, a ticket list, or a v1 rewrite.  
-**Date:** 2026-09-16 (V1.6 S7 temporal + S8 shell/Canvas design reconciled; FACE gates V1.5)  
+**Status:** Earned generations S0–S9 + how to absorb + how to measure.  
+**North star and planned work:** `docs/SEM-ARCH.md` (one source of truth).  
+**Not:** a schema, a ticket list, a v1 rewrite, or a second architecture.  
+**Date:** 2026-09-19  
 **Working name:** Semblon (`SEM-blon`)
 
 **Core docs only**
@@ -11,30 +12,30 @@
 |---|---|
 | `docs/PRODUCT.md` | frozen v1 (what the user can do now) |
 | `docs/CONTRACTS.md` | schema / CLI / runtime |
-| **This file** | scoped long-term phased plan |
+| `docs/SEM-ARCH.md` | **north star + planned work** |
+| **This file** | earned history + absorb + measure |
 | `docs/runtime.md` | FACE-000 machine record |
 | `docs/licenses.md` | licence record |
 | `docs/FACE-GATES.md` | FACE-002→005 validation index |
 
-`docs/ARCHITECTURE.md`, `docs/SEMBLON_CAPABILITY_DISCOVERY_BLUEPRINT.md`, and `docs/SEMBLON_ENGINEERING_OBSERVATORY.md` are **pointers** here. Do not maintain a second plan in those files.
+`docs/ARCHITECTURE.md` and `docs/ROADMAP-RECONCILE.md` point at `docs/SEM-ARCH.md`. Discovery and observatory files remain pointers to §18 / §19 here. Do not maintain a second plan anywhere. There is no `SEMBLON_IMPLEMENTATION_PLAN.md` and no OBS / SIM / VISION clock.
 
-FACE-002 → FACE-003 → FACE-004 → FACE-005 **validation is recorded** (`docs/FACE-GATES.md`). **S1 PASS — closed.** Do not retune `eps`. Do not re-run FACE-005 scale work. Do not invent a 10k claim.
-
-S5 incremental/inbox (1.1) and S6 memory (1.2) are already on `main`. S7a (sampled video files) has dump evidence (`docs/S7A.md`). **S8 Reviewability** (video face inspectability) is the open Phase 2 friction fix before S7b. Do not implement S7b–d, S8 full shell, S9, MediaPipe, CLIP, live, public lookup, ACC, or a vector database because this file is extensive.
+FACE-002 → FACE-005 **validation is recorded** (`docs/FACE-GATES.md`). **S1 PASS — closed.** Do not retune `eps`. Do not re-run FACE-005 scale work. Do not invent a 10k claim. Do not implement MediaPipe, CLIP, objects, live, public lookup, ACC, or a vector database because this file is extensive.
 
 ---
 
 ## 0. How to read this
 
-Three clocks only:
+Four files, four jobs. Do not collapse them:
 
 ```
-PRODUCT v1 ........ ship a local stills CLI with reviewed persons
-BUILD 0.1–1.0 ..... FACE tickets under S0–S4
-MATURITY S0–S9 .... capability generations (this file)
+PRODUCT v1 ........ what the user can do now (frozen)
+CONTRACTS ......... schema / CLI / runtime
+SEM-ARCH .......... north star + planned work
+THIS FILE ......... earned S0–S9 + absorb + measure
 ```
 
-They must not be collapsed. FACE-004 is not “Semblon is mature.” S9 is not a v1 backlog. This plan does not redefine PRODUCT v1.
+FACE-004 is not “Semblon is mature.” S9 is not a v1 backlog. This file does not redefine PRODUCT v1. Planned work is not a FACE-n queue.
 
 Operating model (frozen 2026-09-12; do not reopen):
 
@@ -50,14 +51,18 @@ BUILD → SCAVENGE → MEASURE → KEEP/ADAPT/DEFER/REJECT → GOLDEN (if justif
 
 ## 1. North Star
 
-Semblon is a **local visual-intelligence system**. Generations:
+**Authority:** `docs/SEM-ARCH.md`. Do not restate or fork that board here.
+
+Semblon is a **local visual intelligence system**. Faces are the first mature capability, not the centre. Planned work is `CORE → PROVIDERS → OBSERVATIONS → CONNECTIONS → MEMORY`.
+
+Identity work already earned (this file’s generations):
 
 ```
 observe faces → organise → measure → review as evidence → recognise
   → remember time/place → see sequences → interrogate → extend
 ```
 
-System structure (destination, not backlog):
+System structure as earned / still true (destination detail lives in SEM-ARCH):
 
 ```text
 SEMBLON
@@ -103,7 +108,7 @@ v1 does **not** require hands, pose, objects, scene understanding, CLIP, public 
 
 ### 1.2 Capability map
 
-Status is architectural. **Current roadmap** = already on FACE / 0.x. Do not turn this table into tickets.
+Status is what exists today. **Planned work is `docs/SEM-ARCH.md`.** Do not turn this table into tickets.
 
 | Capability | Space | Role | Status |
 |---|---|---|---|
@@ -111,9 +116,9 @@ Status is architectural. **Current roadmap** = already on FACE / 0.x. Do not tur
 | Face embedding | identity | identity representation | **Current** |
 | Face comparison | identity | identity similarity | **Current** |
 | Face clustering | identity | conservative grouping | **Current** |
-| Human review | human meaning | resolve clusters | **Current roadmap** |
-| Person gallery | identity / human meaning | named identities | **Current roadmap** |
-| 1:N identification | identity | identify against gallery | **Current roadmap** |
+| Human review | human meaning | resolve clusters | **Shipped** |
+| Person gallery | identity / human meaning | named identities | **Shipped** |
+| 1:N identification | identity | identify against gallery | **Shipped** |
 | Face landmarks | geometry | facial structure | Future |
 | Hands | geometry | hand / keypoint observations | Future |
 | Pose | geometry | body / keypoint observations | Future |
@@ -129,13 +134,7 @@ Status is architectural. **Current roadmap** = already on FACE / 0.x. Do not tur
 | Public information | enrichment | external context | Much later (S9) |
 | ACC | integration | external client | Last (S9) |
 
-After face-maturity work is genuinely closed, broader work still maps into S0–S9 — never an OBS / SIM clock:
-
-```text
-observation experiments → geometry → appearance / quality → semantic
-  → per-space similarity → explicit relationships
-  → video / live → public information → ACC
-```
+Broader work is sequenced in `docs/SEM-ARCH.md`, not as `FACE-n → OBJECT-n` and not as an OBS / SIM clock.
 
 ### 1.3 Candidate technology — names are not authorization
 
@@ -903,7 +902,9 @@ Hard rules:
 
 ---
 
-## 9. FACE map (engineering machinery, not the product)
+## 9. FACE map (earned engineering, not the queue)
+
+Closed identity work. Not the planned-work source — that is `docs/SEM-ARCH.md`.
 
 | Maturity | Engineering | Build version | Status 2026-09-12 |
 |---|---|---|---|
@@ -914,7 +915,7 @@ Hard rules:
 | S4 | FACE-004 persons + identify | **1.0** | Code on `main`. Dump `--face`/`--image` evidence in `docs/FACE-004-IDENTIFY.md`. |
 | S5 | FACE-005 regression / scale | **1.1** | Incremental/inbox already on `main`. Regression/scale: `docs/FACE-005-REGRESSION.md`. 10k not run. |
 | S6 | visual memory | **1.2** | `memory history/together/events` on `main`. No new columns. |
-| S7–S9 | future | v2 / later | Do not open tickets from this blueprint |
+| S7–S9 | future | v2 / later | Earned-history labels only. Planned work: `docs/SEM-ARCH.md` |
 
 PRODUCT.md later-row mapping:
 
@@ -1085,7 +1086,8 @@ S4  FACE-004     recorded: identify vs named persons (`--face` / `--image`)
 S5  FACE-005     incremental/inbox 1.1 on main; regression/scale recorded;
                  live scale 90 stills; 10k not evidenced
 S6               memory 1.2 on main (not part of FACE-002–005)
-S7–S9            not started
+S7–S9            S7a + S8 Reviewability on main; later S7/S8 not started
+Planned work     `docs/SEM-ARCH.md` (ARCH-001 next; docs only)
 v1 ship          stills slice: ingest → cluster → review → name → identify
 ```
 
@@ -1095,7 +1097,7 @@ Completed validation sequence (evidence index: `docs/FACE-GATES.md`):
 FACE-002 → FACE-003 → FACE-004 → FACE-005
 ```
 
-Do not retune `eps`. Do not re-run FACE-005 scale. Do not start S7–S9, MediaPipe, CLIP, or vector-DB work from this paper.
+Do not retune `eps`. Do not re-run FACE-005 scale. Do not start MediaPipe, CLIP, objects, or vector-DB work from this paper. Next work is named in `docs/SEM-ARCH.md`, not by opening the next FACE or S-number.
 
 Deferred: bounded concurrent ingest workers; CPU/GPU execution-provider selection; recording actual provider/device/worker in run evidence.
 
@@ -1118,9 +1120,9 @@ Deferred: bounded concurrent ingest workers; CPU/GPU execution-provider selectio
 
 ---
 
-## 16. How this plan may change
+## 16. How this record may change
 
-This file is **alive**. It is not a second frozen PRODUCT.md.
+North star and planned-work changes go in `docs/SEM-ARCH.md`. This file stays the earned-history + absorb + measure record. It is not a second frozen PRODUCT.md.
 
 At every maturity transition, look outward and inward (§18), then apply exactly one verb per candidate:
 
@@ -1138,7 +1140,7 @@ Rules:
 5. “A GitHub app has it” is not a promotion criterion. Dump evidence is.  
 6. Version this file (V1, V1.1, …) with a dated changelog at the bottom.  
 7. A scavenged KEEP is eligibility for a named stage, not a ticket.  
-8. Do not remap S0–S9 (video is S7, extra channels are S6+, search is S8). Clothing / CLIP / MediaPipe are not S4.
+8. Do not remap S0–S9 in this file (they are earned history). Planned work is `docs/SEM-ARCH.md`. Clothing / CLIP / MediaPipe are not identity work.
 
 ---
 
@@ -1255,6 +1257,7 @@ A vector store is retrieval infrastructure, not intelligence. Do not add a parke
 | V1.6 | 2026-09-16 | S7 temporal observation model + S8 shell/Intelligence Canvas IA reconciled (no engine code). Appearance (temporal) ≠ appearance space. POSSIBLE = planned UI state. Phase 1 remains review-ui validation (`docs/ROADMAP-RECONCILE.md`). |
 | V1.7 | 2026-09-17 | Phase 1 human tests approved. S7a gate open (`docs/S7A.md`): sampled video-file observations on existing `frame_id`/`t_ms`. S7b–d and full S8 shell still deferred. eps frozen. |
 | V1.8 | 2026-09-17 | S7a dump evidence `20260917T161452Z-a012c0fe`. S8 Reviewability: inspect video face observations via render-time seek/crop (`docs/S8-REVIEW-UI.md`). `observation ≠ tracklet ≠ person`; do not enable video DBSCAN to shrink unassigned. S7b after inspectability. |
+| V1.9 | 2026-09-19 | North star and planned work move to `docs/SEM-ARCH.md` (one source of truth). This file remains earned history + absorb + measure. No FACE-n successor queue. No columns, no second detector. |
 
 ---
 

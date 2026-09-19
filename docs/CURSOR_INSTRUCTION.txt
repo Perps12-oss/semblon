@@ -1,17 +1,20 @@
 SEMBLON — standing instruction for Cursor
 
-Core docs: docs/PRODUCT.md (frozen v1) → docs/CONTRACTS.md (schema/CLI/runtime) → docs/SEMBLON_MATURITY_BLUEPRINT.md (the plan) → FACE / 0.x (what to code).
-Do not grow a parallel architecture / discovery / observatory plan. Those files are pointers.
-There is no SEMBLON_IMPLEMENTATION_PLAN.md. Do not create OBS/SIM/VISION ticket numbers.
+Core docs: docs/PRODUCT.md (frozen v1) → docs/CONTRACTS.md (schema/CLI/runtime) → docs/SEM-ARCH.md (north star + planned work).
+docs/SEMBLON_MATURITY_BLUEPRINT.md is earned history + absorb + measure. docs/FACE-GATES.md is a closed validation index.
+Do not grow a parallel architecture / discovery / observatory / roadmap plan. Those files are pointers.
+There is no SEMBLON_IMPLEMENTATION_PLAN.md. Do not create OBS/SIM/VISION ticket numbers. Do not open a FACE-n successor queue.
 
 CONTRACTS.md is V1.1-corrected. Do not invent schema columns.
 Architecture may anticipate the future. Implementation must earn the future.
-Do not implement MediaPipe, CLIP, hands, pose, objects, semantic clustering, video, live, public lookup, ACC, or a vector database unless the current FACE id explicitly requires it.
+Do not implement MediaPipe, CLIP, hands, pose, objects, semantic clustering, live, public lookup, ACC, or a vector database unless the current SEM-ARCH slice explicitly requires it.
 
-Authorized now (parallel): S8 Reviewability — video face observation thumbs via path+frame_id+bbox seek/crop (docs/S8-REVIEW-UI.md); S7a video files continue (docs/S7A.md) — dump evidence 20260917T161452Z-a012c0fe, holdout from product DBSCAN retained; S8 toolkit spike (docs/S8-TOOLKIT.md, tools/s8_toolkit_spike) — PySide6/QML proof, does not replace review-ui; PERF P0 frozen (docs/PERF-P0-BASELINE.md); PERF P1 native ARM64 BLOCKED (docs/PERF-P1-ARM64.md — opencv_geometry hang; ORT arm64 OK) — do not swap S1, do not retune eps, do not open workers/EP until P1 unblocks. S7b–d and full S8 shell remain deferred until video observations are inspectable. Progress `on_event` retained. eps=0.40 frozen. Cluster is not a person until Name. observation ≠ tracklet ≠ person. Identify vs named persons only. Appearance (temporal track) ≠ appearance space (quality). Do not put FaceKit in the GUI.
+Authorized now: SEM-ARCH-001 observation contracts — docs / conceptual types only (docs/SEM-ARCH.md). No new columns. No second detector. No pipeline rewrite.
+KEEP (not the plan): review-ui; sampled-video holdout (docs/S7A.md); S8 toolkit spike (docs/S8-TOOLKIT.md); PERF P0 frozen; PERF P1 native ARM64 BLOCKED (docs/PERF-P1-ARM64.md) — do not swap S1, do not retune eps, do not open workers/EP until P1 unblocks.
+Progress on_event retained. Cluster is not a person until Name. observation ≠ tracklet ≠ person. Identify vs named persons only. Do not put FaceKit in the GUI.
 
 FaceKit / InsightFace is the identity engine. No cross-pack compare. pack_id includes weight hashes.
-Do not add libraries from the plan §20 parked list.
+Do not add libraries from the blueprint §20 parked list.
 Do not treat cluster as person.
 Unknown is valid. False merge > false split. Wrong identity > unknown.
 Do not print precision without --eval-set confirmatory.

@@ -1,13 +1,13 @@
 ---
 name: pr-slice
-description: One-ticket git workflow for Semblon. Use at the start of any coding task.
+description: One-slice git workflow for Semblon. Use at the start of any coding task.
 ---
 
 # PR slice
 
-1. Name the FACE id or dump-gate item.
-2. Touch only the files that item needs.
-3. Branch `grok/<ticket>`.
+1. Name the current `docs/SEM-ARCH.md` slice (or a KEEP leftover).
+2. Touch only the files that slice needs.
+3. Branch `grok/<slice>`.
 4. Tests for that slice.
 5. Stop before push. Draft PR only if asked.
 6. Do not start a Cursor Cloud Agent.

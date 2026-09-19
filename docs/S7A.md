@@ -2,7 +2,7 @@
 
 **Status:** gate open 2026-09-17. Dump evidence on owner machine (run `20260917T161452Z-a012c0fe`).  
 **This is** the first S7 engine slice: video *files* as temporal sources.  
-**Design:** `docs/SEMBLON_MATURITY_BLUEPRINT.md` §S7.  
+**Design (historical S7 note):** `docs/SEMBLON_MATURITY_BLUEPRINT.md` §S7. **Planned work:** `docs/SEM-ARCH.md`.  
 **Not yet:** S7b tracklets / Appearances, S7c webcam, S7d RTSP, Canvas(Video), JPEG-per-frame dumps.
 
 ## What this slice is
@@ -58,9 +58,6 @@ Cluster is still a hypothesis. Video sampled `status=ok` faces are **held out of
 
 Run `20260917T161452Z-a012c0fe`: 2 videos → 231 samples @1 Hz → 434 ok faces → 0 product clusters (holdout). Offline frozen DBSCAN compresses those faces into a few groups (two dominant cross-video); that supports temporal repetition, **not** person labels. S8 must make each observation inspectable (`docs/S8-REVIEW-UI.md` Reviewability) before S7b design locks.
 
-## Next (ordered, not this ticket)
+## Next
 
-1. **S8 Reviewability** — video path + `frame_id` + bbox → render-time thumb (`docs/S8-REVIEW-UI.md`).  
-2. S7b design decision: tracklets / Appearances as the video review unit (observation → tracklet → representative frames → optional person).  
-3. S7c webcam / S7d RTSP remain deferred.  
-4. S8 Canvas(Video) only after S7a + inspectability evidence exists.
+This file is the sampled-video evidence record, not the plan. **Planned work:** `docs/SEM-ARCH.md`. Do not open tracklets from this file.
