@@ -95,11 +95,21 @@ def test_eval_pair_canonical(tmp_path):
 
 
 def test_compare_rejects():
+    """ARCH-003: incompatible spaces must not produce an identity score."""
     blob = struct.pack("<2f", 1.0, 0.0)
-    with pytest.raises(CompareError):
+    with pytest.raises(CompareError, match="pack_id mismatch"):
         compare("a", 2, blob, "b", 2, blob)
-    with pytest.raises(CompareError):
+    with pytest.raises(CompareError, match="dimension mismatch"):
         compare("a", 2, blob, "a", 3, blob)
     with pytest.raises(CompareError):
         compare("a", 2, None, "a", 2, blob)
     assert compare("a", 2, blob, "a", 2, blob) == pytest.approx(1.0)
+
+
+def test_compare_does_not_treat_family_name_as_pack():
+    """buffalo_l is a family label. Different pack_id strings do not compare."""
+    blob = struct.pack("<2f", 1.0, 0.0)
+    family = "insightface/buffalo_l"
+    pack = "insightface/buffalo_l@2.0/adapter-1/sha256:deadbeef"
+    with pytest.raises(CompareError, match="pack_id mismatch"):
+        compare(family, 2, blob, pack, 2, blob)

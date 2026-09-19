@@ -1,4 +1,10 @@
-"""compare() contract: pack_id + dim + payload. No clustering here."""
+"""compare() contract: pack_id + dim + payload. No clustering here.
+
+ARCH-003 envelope (face identity space only): pack_id is the space key
+(family + versions + weight hashes). Dim and l2 payload must match.
+Incompatible spaces raise CompareError. A second modality must not
+silently vote on identity. buffalo_l is a family name, not the key.
+"""
 
 from __future__ import annotations
 

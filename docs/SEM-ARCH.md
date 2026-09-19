@@ -505,7 +505,7 @@ Instead: make the architecture general first. Add intelligence capabilities one 
 |---|---|---|---|
 | **ARCH-001** | Core observation model | Name the primitives and the detector / group / decision rule | **COMPLETE (docs)** — `docs/CONTRACTS.md` Observation primitives. No columns. |
 | **ARCH-002** | Capability / provider boundary | `ObservationProvider` declares what it produces; shared execution | **PARTIAL (thin)** — `FaceKitProvider` CPU record in `semblon/providers.py` / `runtime_json`. `load()` unused; ingest still `load_app()`. No second provider. GPU not claimed. |
-| **ARCH-003** | Universal similarity | Embedding envelope; never compare incompatible spaces | After ARCH-001. Face `pack_id` remains the identity key. |
+| **ARCH-003** | Universal similarity | Embedding envelope; never compare incompatible spaces | **COMPLETE (docs)** — `docs/CONTRACTS.md` Embedding envelope. Face `pack_id` remains the identity key. No columns. No second space. |
 | **ARCH-004** | Grouping / hypothesis | `ObservationGroup` = related under a model/config, not “the same thing” | Vocabulary first. Do not retune `eps`. |
 | **ARCH-005** | Temporal intelligence | Frame → observation → track → track-level hypothesis | After contracts. Sampled-video evidence already exists. Tracks not opened by this paper. |
 | **ARCH-006** | Relationship engine | Explicit links with evidence, bounds, provider, confirmation | After a second observer exists or face-only links are earned. |
@@ -698,11 +698,17 @@ Shared execution (workers, EP, device) lives behind this boundary so the next mo
 
 ---
 
-## 18. Similarity sketch (ARCH-003, not now)
+## 18. Similarity envelope (ARCH-003 — COMPLETE as docs)
 
-Today we think: face embedding → cosine.
+**Recorded in** `docs/CONTRACTS.md` (Embedding envelope). No DDL. `compare()` already refuses pack/dim mismatch.
 
-The architecture becomes:
+**Immediate objective (done as documentation):**
+
+> Name the embedding envelope so a second space cannot silently enter identity `compare()`.
+
+Today we think: face embedding → cosine (dot of l2 vectors) keyed by `pack_id`.
+
+The architecture is:
 
 ```text
 Embedding
@@ -720,6 +726,8 @@ Illegal: silently comparing incompatible embedding spaces; silently mixing space
 
 `pack_id` (family + versions + weight hashes) remains the identity compare key. `buffalo_l` remains a family name, not the key.
 
+Out of scope (now): a stored envelope table; a second provider; vector DB; changing `eps`.
+
 ---
 
 ## 19. What this paper authorizes
@@ -727,7 +735,7 @@ Illegal: silently comparing incompatible embedding spaces; silently mixing space
 **Authorizes**
 
 - Treating this file as the **one source of truth** for north star and planned work.  
-- Naming ARCH-001 (contracts, docs only) as the next slice — not OBJECT-001, not FACE-006.  
+- Recording ARCH-001 (docs) and ARCH-003 (envelope docs). Next earned docs slice: **ARCH-004** ObservationGroup vocabulary — not OBJECT-001, not FACE-006.  
 - Reading the sampled-video 434-face holdout as an architectural requirement for tracks.  
 - Keeping all face gates, the firewall, and v1.
 
@@ -750,3 +758,4 @@ Illegal: silently comparing incompatible embedding spaces; silently mixing space
 | V1.1 | 2026-09-19 | ARCH-001 completed as docs in `docs/CONTRACTS.md`. No DDL. Next code-bearing slice remains ARCH-002+ only when earned; production KEEP hardening is recorded in `docs/PRODUCTION-STATUS.md`. |
 | V1.2 | 2026-09-19 | Thin FaceKitProvider (CPU) ships as ARCH-002. No second provider. GPU not claimed. |
 | V1.3 | 2026-09-19 | ARCH-002 recorded PARTIAL: class + `runtime_json`; ingest still `load_app()`. §16 leftover “when opened” retired. Remaining production items are non-gating debt (`docs/PRODUCTION-STATUS.md`). |
+| V1.4 | 2026-09-19 | ARCH-003 completed as docs: embedding envelope in `docs/CONTRACTS.md`. `compare()` already refuses pack/dim mismatch. No second space. Next: ARCH-004 vocabulary. |
