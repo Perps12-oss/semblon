@@ -13,6 +13,7 @@ from pathlib import Path
 import sqlite3
 
 from semblon.compare import CompareError, compare
+from semblon.tracks import TracksError, derive_tracks
 
 EVIDENCE_SCHEMA = "1"
 EVIDENCE_SCRIPT_ID = "semblon-run-evidence"
@@ -299,47 +300,44 @@ def _render_faces(title: str, anchor: str, rows: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def _render_unassigned(rows: list[dict]) -> str:
-    """Video faces grouped by Media for inspectability. Stills stay one-each."""
-    videos: dict[str, list[dict]] = {}
-    video_order: list[str] = []
-    stills: list[dict] = []
-    for m in rows:
-        if m.get("source_type") == "video":
-            key = m.get("path") or ""
-            if key not in videos:
-                video_order.append(key)
-                videos[key] = []
-            videos[key].append(m)
-        else:
-            stills.append(m)
+def _render_unassigned(rows: list[dict], tracks_rec: dict | None = None) -> str:
+    """Video faces grouped by derived Track. Stills stay one-each."""
+    stills = [m for m in rows if m.get("source_type") != "video"]
+    videos = [m for m in rows if m.get("source_type") == "video"]
     parts = [
         '<section id="unassigned">',
         f"<h2>UNASSIGNED ({len(rows)})</h2>",
-        '<p class="meta">Video faces are grouped by file for inspectability. '
-        "A file is not a person. observation ≠ track ≠ person.</p>",
+        '<p class="meta">Video faces are grouped by derived Track (IoU+time). '
+        "A track is not a person. observation ≠ track ≠ person. Untracked stays valid.</p>",
     ]
     if not rows:
         parts.append("<p>none</p></section>")
         return "\n".join(parts)
-    for path in video_order:
-        members = sorted(
-            videos[path],
-            key=lambda m: (
-                m.get("t_ms") is None,
-                m.get("t_ms") if m.get("t_ms") is not None else 0,
-                m.get("frame_id") is None,
-                m.get("frame_id") if m.get("frame_id") is not None else 0,
-                m["face_id"],
-            ),
+    by_id = {m["face_id"]: m for m in videos}
+    used: set[str] = set()
+    for tr in (tracks_rec or {}).get("tracks") or []:
+        members = [by_id[fid] for fid in tr.get("face_ids") or [] if fid in by_id]
+        if len(members) < 2:
+            continue
+        used.update(m["face_id"] for m in members)
+        name = (tr.get("path") or "").replace("\\", "/").rstrip("/").split("/")[-1]
+        parts.append(f'<article class="cluster" id="t-{_esc(tr.get("track_id") or name)}">')
+        parts.append(
+            f'<h3>track {_esc(name)} · {len(members)} observations · '
+            f't={tr.get("t_ms_start")}-{tr.get("t_ms_end")}ms · not a person</h3>'
         )
-        name = path.replace("\\", "/").rstrip("/").split("/")[-1] or path
-        parts.append(f'<article class="cluster" id="v-{_esc(name)}">')
-        parts.append(f"<h3>video {_esc(name)} · {len(members)} observations · not a person</h3>")
         parts.append('<div class="thumbs">')
         for m in members:
             parts.append(_face_figure(m))
         parts.append("</div></article>")
+    leftover = [m for m in videos if m["face_id"] not in used]
+    if leftover:
+        parts.append(f"<h3>untracked ({len(leftover)})</h3>")
+        parts.append('<p class="meta">No temporal neighbour. Still an observation, not a person.</p>')
+        parts.append('<div class="thumbs">')
+        for m in leftover:
+            parts.append(_face_figure(m))
+        parts.append("</div>")
     if stills:
         parts.append("<h3>stills</h3>")
         parts.append('<div class="thumbs">')
@@ -386,6 +384,7 @@ def render_review_html(
     faces,
     strong_min_intra: float = STRONG_MIN_INTRA,
     decisions=(),
+    tracks=None,
 ) -> str:
     pack_id = run["pack_id"]
     by_cluster: dict[str, list[dict]] = {}
@@ -504,7 +503,7 @@ timings { _esc(timings) }</p>
 {body_clusters_strong}
 </section>
 
-{_render_unassigned(unassigned)}
+{_render_unassigned(unassigned, tracks)}
 {_render_faces("REJECTED", "rejected", rejected)}
 {_render_decisions(decisions)}
 </body>
@@ -530,10 +529,19 @@ def export_review(
 ) -> dict:
     conn = _connect_ro(store)
     run, clusters, faces, decisions = _load(conn, run_id)
-    html_text = render_review_html(
-        run, clusters, faces, strong_min_intra=strong_min_intra, decisions=decisions
-    )
     conn.close()
+    try:
+        tracks_rec = derive_tracks(store, run_id)
+    except TracksError:
+        tracks_rec = None
+    html_text = render_review_html(
+        run,
+        clusters,
+        faces,
+        strong_min_intra=strong_min_intra,
+        decisions=decisions,
+        tracks=tracks_rec,
+    )
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html_text, encoding="utf-8")

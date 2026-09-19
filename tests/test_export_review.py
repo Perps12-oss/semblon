@@ -72,7 +72,7 @@ def test_export_html_video_thumb_seeks_instead_of_imread(tmp_path):
     assert 'class="missing"' not in html
     assert "video frame=1300 t_ms=64973" in html
     assert "held out of clustering" in html
-    assert "video a.mp4" in html
+    assert "untracked" in html
     assert "not a person" in html
     rb.assert_called_once_with("C:/clips/a.mp4", 1300)
 
@@ -104,3 +104,39 @@ def test_crop_jpeg_still_uses_read_bgr_without_frame():
     assert uri is not None
     assert uri.startswith("data:image/jpeg;base64,")
     rb.assert_called_once_with("/a.jpg", None)
+
+
+def test_export_html_groups_video_faces_by_track(tmp_path):
+    np = pytest.importorskip("numpy")
+    store = tmp_path / "s.sqlite"
+    conn = sqlite3.connect(str(store))
+    conn.execute("PRAGMA foreign_keys=ON")
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("rt", "t0", "t1", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute("INSERT INTO media VALUES ('mv','video','C:/clips/a.mp4','vvv',320,240,0,1)")
+    conn.execute("INSERT INTO observations VALUES ('o1','mv',0,0,'rt')")
+    conn.execute("INSERT INTO observations VALUES ('o2','mv',25,1000,'rt')")
+    for fid, oid in (("fa", "o1"), ("fb", "o2")):
+        conn.execute(
+            """INSERT INTO faces(face_id,observation_id,run_id,bbox_x1,bbox_y1,bbox_x2,bbox_y2,
+               det_score,face_w,face_h,size_band,status,embedding,embedding_pack,embedding_dim)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (fid, oid, "rt", 10, 10, 110, 110, 0.9, 100, 100, "80-119", "ok", _vec(1.0, 0.0), "pack-a", 2),
+        )
+    conn.commit()
+    conn.close()
+    out = tmp_path / "review.html"
+    frame = np.zeros((200, 200, 3), dtype=np.uint8)
+    frame[10:110, 10:110] = 180
+    with patch("semblon.temporal.read_bgr", return_value=frame):
+        export_review(store, "rt", out)
+    html = out.read_text(encoding="utf-8")
+    assert "track a.mp4" in html
+    assert "t=0-1000ms" in html
+    assert "not a person" in html
+    assert html.count("data:image/jpeg;base64,") == 2
