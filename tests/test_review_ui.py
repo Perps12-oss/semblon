@@ -79,6 +79,65 @@ def test_resolve_run_defaults_to_latest(tmp_path):
         resolve_run_id(store, "nope")
 
 
+def test_empty_state_line_names_populated_run(tmp_path):
+    """Empty skip-all run must still point at faces that remain on the store."""
+    from semblon.process import empty_state_line
+
+    store = tmp_path / "s.sqlite"
+    _seed(store)
+    conn = sqlite3.connect(str(store))
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("r-empty", "t9", "t9b", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.commit()
+    conn.close()
+    line = empty_state_line(store, "r-empty")
+    assert line.startswith("this run: 0 faces")
+    assert "store has 5 on run r1" in line
+    board = load_board(store, "r-empty")
+    assert board["items"] == []
+    assert board["empty_state"] == line
+    assert board["counts"]["faces"] == 0
+    assert board["counts"]["ok"] == 0
+
+
+def test_empty_state_line_flags_held_out_ok_zero(tmp_path):
+    """low_quality faces exist but never appear on the board."""
+    from semblon.process import empty_state_line
+
+    store = tmp_path / "s.sqlite"
+    conn = sqlite3.connect(str(store))
+    conn.execute("PRAGMA foreign_keys=ON")
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("rlq", "t0", "t1", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute("INSERT INTO media VALUES ('m1','folder','/a.jpg','aaa',100,100,0,1)")
+    conn.execute("INSERT INTO observations VALUES ('o1','m1',NULL,NULL,'rlq')")
+    conn.execute(
+        """INSERT INTO faces(face_id,observation_id,run_id,bbox_x1,bbox_y1,bbox_x2,bbox_y2,
+           det_score,face_w,face_h,size_band,status,embedding,embedding_pack,embedding_dim)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        ("flq", "o1", "rlq", 0, 0, 20, 20, 0.2, 20, 20, "<80", "low_quality", _vec(1.0, 0.0), "pack-a", 2),
+    )
+    conn.commit()
+    conn.close()
+    line = empty_state_line(store, "rlq")
+    assert "this run: 1 faces (0 ok)" in line
+    assert "store has 1 on run rlq" in line
+    board = load_board(store, "rlq")
+    assert board["items"] == []
+    assert board["counts"]["faces"] == 1
+    assert board["counts"]["ok"] == 0
+    assert board["counts"]["unassigned"] == 0
+
+
 def test_resolve_run_skips_empty_later_run(tmp_path):
     """FACE-005 skip-all leaves a newer run with zero faces. Review must not go blank."""
     store = tmp_path / "s.sqlite"

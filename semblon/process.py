@@ -69,6 +69,45 @@ def latest_run_id(store: Path, *, with_faces: bool = False) -> str | None:
     return None if row is None else str(row["run_id"])
 
 
+def empty_state_line(store: Path, run_id: str) -> str:
+    """One-line: this run's face count vs a populated run still on the store.
+
+    Distinguishes an empty skip-all run from a store that still has faces,
+    and (when ok=0) a run whose faces are all held-out of Review.
+    """
+    p = Path(store)
+    if not p.is_file():
+        return f"this run: 0 faces; store has 0 on run {run_id}"
+    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    this = conn.execute(
+        """SELECT COUNT(*) AS n,
+                  COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END), 0) AS ok
+           FROM faces WHERE run_id=?""",
+        (run_id,),
+    ).fetchone()
+    this_n = int(this["n"] or 0)
+    this_ok = int(this["ok"] or 0)
+    best = conn.execute(
+        """SELECT r.run_id AS run_id, COUNT(f.face_id) AS n
+           FROM runs r
+           JOIN faces f ON f.run_id = r.run_id
+           GROUP BY r.run_id
+           ORDER BY n DESC, COALESCE(r.finished_at, r.started_at) DESC
+           LIMIT 1"""
+    ).fetchone()
+    conn.close()
+    if this_n == 0:
+        this_bit = "this run: 0 faces"
+    elif this_ok == this_n:
+        this_bit = f"this run: {this_n} faces"
+    else:
+        this_bit = f"this run: {this_n} faces ({this_ok} ok)"
+    if best is None:
+        return f"{this_bit}; store has 0 on run {run_id}"
+    return f"{this_bit}; store has {int(best['n'])} on run {best['run_id']}"
+
+
 def process_folder(
     folder: Path,
     *,

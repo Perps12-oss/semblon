@@ -168,7 +168,7 @@ def _img_tag(data_uri: str | None, path: str, face_id: str, cls: str) -> str:
     if data_uri:
         img = f'<img class="{cls}" src="{data_uri}" alt="{alt}">'
     else:
-        img = f'<span class="missing">{alt}</span>'
+        img = f'<span class="missing" title="{alt}">file missing</span>'
     if href:
         return f'<a href="{_esc(href)}">{img}</a>'
     return img
@@ -385,6 +385,7 @@ def render_review_html(
     strong_min_intra: float = STRONG_MIN_INTRA,
     decisions=(),
     tracks=None,
+    empty_state: str | None = None,
 ) -> str:
     pack_id = run["pack_id"]
     by_cluster: dict[str, list[dict]] = {}
@@ -458,6 +459,7 @@ article.strong {{ border-color: #385; }}
 img.thumb, img.worstimg {{ display: block; background: #222; }}
 .worst {{ margin: .5rem 0; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }}
 .meta, figcaption {{ color: #aaa; font-size: .8rem; }}
+.empty-state {{ color: #fc6; }}
 .missing {{ display: inline-block; width: 6rem; height: 6rem; background: #333; font-size: .7rem; padding: .3rem; }}
 </style>
 </head>
@@ -479,6 +481,7 @@ img.thumb, img.worstimg {{ display: block; background: #222; }}
   <span>UNASSIGNED {len(unassigned)}</span>
   <span>DECISIONS {len(decisions)}</span>
 </p>
+{f'<p class="empty-state">{_esc(empty_state)}</p>' if empty_state else ''}
 <p class="meta">cluster → review → person → name. Clusters are not persons.
 STRONG means min_intra ≥ {strong_min_intra:.2f} (hypothesis). Open originals via the thumbnails.
 Video faces are observations (held out of clustering), not persons; thumbs seek path+frame_id+bbox.
@@ -534,6 +537,8 @@ def export_review(
         tracks_rec = derive_tracks(store, run_id)
     except TracksError:
         tracks_rec = None
+    from semblon.process import empty_state_line
+
     html_text = render_review_html(
         run,
         clusters,
@@ -541,6 +546,7 @@ def export_review(
         strong_min_intra=strong_min_intra,
         decisions=decisions,
         tracks=tracks_rec,
+        empty_state=empty_state_line(store, run_id),
     )
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)

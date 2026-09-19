@@ -10,7 +10,7 @@ import sqlite3
 from pathlib import Path
 
 from semblon.export import STRONG_MIN_INTRA
-from semblon.process import default_store_path, latest_run_id
+from semblon.process import default_store_path, empty_state_line, latest_run_id
 from semblon.tracks import TracksError, derive_tracks
 from semblon.review import (
     ReviewError,
@@ -281,7 +281,10 @@ def load_board(
             "unassigned_media": len({u["media_id"] for u in video_unassigned}),
             "named_persons": len(persons),
             "decisions": len(decisions),
+            "faces": len(faces),
+            "ok": sum(1 for f in faces if f["status"] == "ok"),
         },
+        "empty_state": empty_state_line(store, run_id),
     }
     conn.close()
     return board
@@ -463,6 +466,8 @@ class ReviewApp:
                 "STRONG is not a person until you Name."
             ),
         ).pack(anchor=tk.W)
+        self.empty_state = ttk.Label(top, text="")
+        self.empty_state.pack(anchor=tk.W)
         self.status = ttk.Label(top, text="")
         self.status.pack(anchor=tk.W)
 
@@ -502,6 +507,7 @@ class ReviewApp:
         for item in self.board["items"]:
             self.listbox.insert(tk.END, item_label(item))
         c = self.board["counts"]
+        self.empty_state.config(text=self.board.get("empty_state") or "")
         self.status.config(
             text=(
                 f"store={self.store}  run={self.run_id}  "
@@ -556,6 +562,13 @@ class ReviewApp:
                 tw = th = THUMB_MAX
                 self.canvas.create_rectangle(
                     x, y, x + tw, y + th, fill="#444", outline="#888", tags=(tag,)
+                )
+                self.canvas.create_text(
+                    x + tw / 2,
+                    y + th / 2,
+                    text="file missing",
+                    fill="#ccc",
+                    tags=(tag,),
                 )
             mark = "*" if m["face_id"] in self._selected_faces else " "
             label = f"{mark}{m['face_id'][:8]}"
