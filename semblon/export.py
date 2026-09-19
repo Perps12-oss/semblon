@@ -273,6 +273,18 @@ def _render_cluster(c, members, pack_id: str, kind: str) -> str:
     return "\n".join(parts)
 
 
+def _face_figure(m: dict) -> str:
+    extra = ""
+    if m.get("source_type") == "video":
+        extra = f' video frame={m.get("frame_id")} t_ms={m.get("t_ms")}'
+    label = f'{m["face_id"][:8]} {m["status"]} {m["face_w"]}x{m["face_h"]}{extra}'
+    return (
+        "<figure>"
+        + _img_tag(_member_crop(m, THUMB_MAX), m["path"], m["face_id"], "thumb")
+        + f"<figcaption>{_esc(label)}</figcaption></figure>"
+    )
+
+
 def _render_faces(title: str, anchor: str, rows: list[dict]) -> str:
     parts = [
         f'<section id="{anchor}">',
@@ -280,18 +292,61 @@ def _render_faces(title: str, anchor: str, rows: list[dict]) -> str:
         '<div class="thumbs">',
     ]
     for m in rows:
-        extra = ""
-        if m.get("source_type") == "video":
-            extra = f' video frame={m.get("frame_id")} t_ms={m.get("t_ms")}'
-        label = f'{m["face_id"][:8]} {m["status"]} {m["face_w"]}x{m["face_h"]}{extra}'
-        parts.append(
-            "<figure>"
-            + _img_tag(_member_crop(m, THUMB_MAX), m["path"], m["face_id"], "thumb")
-            + f"<figcaption>{_esc(label)}</figcaption></figure>"
-        )
+        parts.append(_face_figure(m))
     if not rows:
         parts.append("<p>none</p>")
     parts.append("</div></section>")
+    return "\n".join(parts)
+
+
+def _render_unassigned(rows: list[dict]) -> str:
+    """Video faces grouped by Media for inspectability. Stills stay one-each."""
+    videos: dict[str, list[dict]] = {}
+    video_order: list[str] = []
+    stills: list[dict] = []
+    for m in rows:
+        if m.get("source_type") == "video":
+            key = m.get("path") or ""
+            if key not in videos:
+                video_order.append(key)
+                videos[key] = []
+            videos[key].append(m)
+        else:
+            stills.append(m)
+    parts = [
+        '<section id="unassigned">',
+        f"<h2>UNASSIGNED ({len(rows)})</h2>",
+        '<p class="meta">Video faces are grouped by file for inspectability. '
+        "A file is not a person. observation ≠ track ≠ person.</p>",
+    ]
+    if not rows:
+        parts.append("<p>none</p></section>")
+        return "\n".join(parts)
+    for path in video_order:
+        members = sorted(
+            videos[path],
+            key=lambda m: (
+                m.get("t_ms") is None,
+                m.get("t_ms") if m.get("t_ms") is not None else 0,
+                m.get("frame_id") is None,
+                m.get("frame_id") if m.get("frame_id") is not None else 0,
+                m["face_id"],
+            ),
+        )
+        name = path.replace("\\", "/").rstrip("/").split("/")[-1] or path
+        parts.append(f'<article class="cluster" id="v-{_esc(name)}">')
+        parts.append(f"<h3>video {_esc(name)} · {len(members)} observations · not a person</h3>")
+        parts.append('<div class="thumbs">')
+        for m in members:
+            parts.append(_face_figure(m))
+        parts.append("</div></article>")
+    if stills:
+        parts.append("<h3>stills</h3>")
+        parts.append('<div class="thumbs">')
+        for m in stills:
+            parts.append(_face_figure(m))
+        parts.append("</div>")
+    parts.append("</section>")
     return "\n".join(parts)
 
 
@@ -449,7 +504,7 @@ timings { _esc(timings) }</p>
 {body_clusters_strong}
 </section>
 
-{_render_faces("UNASSIGNED", "unassigned", unassigned)}
+{_render_unassigned(unassigned)}
 {_render_faces("REJECTED", "rejected", rejected)}
 {_render_decisions(decisions)}
 </body>

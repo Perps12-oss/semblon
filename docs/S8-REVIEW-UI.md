@@ -57,7 +57,9 @@ stills: path → imread → bbox crop
 video:  path + frame_id → VideoCapture seek → bbox crop → thumbnail
 ```
 
-Applies to `review-ui` and static `review.html`. No mass on-disk PNG dump. No clustering / threshold / sampling changes. List may still be one row per face — inspectability first. Track is not required for this crop.
+Applies to `review-ui` and static `review.html`. No mass on-disk PNG dump. No clustering / threshold / sampling changes.
+
+**List:** video unassigned faces are grouped by Media (one row per file, members sorted by `t_ms`). A file is not a person — Name/Ignore/Note require a clicked face. Stills stay one row per face. This is inspectability, not S7b Track.
 
 ## Next
 

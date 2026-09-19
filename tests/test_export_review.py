@@ -72,6 +72,8 @@ def test_export_html_video_thumb_seeks_instead_of_imread(tmp_path):
     assert 'class="missing"' not in html
     assert "video frame=1300 t_ms=64973" in html
     assert "held out of clustering" in html
+    assert "video a.mp4" in html
+    assert "not a person" in html
     rb.assert_called_once_with("C:/clips/a.mp4", 1300)
 
 
