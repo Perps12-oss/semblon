@@ -32,6 +32,7 @@ Remaining production-readiness observations are **tracked technical debt**, not 
 - `search --person/--people` read-only lookup; `--face` is identify (writes decisions)
 - S7a/S7b; S6 memory
 - Portable CI workflow (no weight download); Windows-path tests do not assume POSIX `Path` identity
+- GitHub Actions on this honesty slice: **ubuntu-latest + windows-latest pytest SUCCESS** (`35455505696`, 2026-09-19)
 
 ## PARTIAL (not in-product complete)
 
@@ -71,7 +72,7 @@ Tracked. **Not** FACE gates. **Not** KEEP identity-loop gates. **Not** a reason 
 | Dead `unassigned_media` handlers in `review_ui.py` | Board emits `track` / `unassigned`, not that kind |
 | Schema migrate / uninstall installer | `SCHEMA_VERSION` is `"1"`; no upgrade path required for this freeze |
 | Live P0 re-time after single `imread` | Code path is single-decode; 221-still P0 remains historical |
-| GitHub Actions confirmation on `main` after this slice | Tests are portable; first-run confirmation is process, not identity |
+| GitHub Actions on `main` after merge | Slice Actions already green on PR #37 (`35455505696`); merge confirmation is process |
 | GUI widget tests / visual Home | Board/API tests cover decisions; pixels are HUMAN |
 | 10k / owner-dump / real video / native ARM64 OpenCV / x64 FACE-000 | Environment / dataset; do not retune eps to compensate |
 | MSI + bundled `buffalo_l` | Licence, not engineering |
@@ -80,4 +81,5 @@ Tracked. **Not** FACE gates. **Not** KEEP identity-loop gates. **Not** a reason 
 ## Evidence
 
 Portable: `python -m pytest -q` (no InsightFace download).  
+GitHub Actions (PR #37): windows-latest 3.12 and ubuntu-latest 3.12 **SUCCESS** — https://github.com/Perps12-oss/semblon/actions/runs/35455505696  
 Live dump / 10k / GPU: not executed this run — human verification required, not a phase gate.
