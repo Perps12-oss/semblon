@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,9 +10,10 @@ import numpy as np
 import pytest
 
 from semblon.cluster import ClusterError
-from semblon.ingest import discover_stills, ingest
-from semblon.process import ProcessError, process_folder
+from semblon.ingest import CancelledError, discover_stills, ingest
+from semblon.process import ProcessCancelled, ProcessError, process_folder
 from semblon.progress import (
+    KIND_CANCELLED,
     KIND_COMPLETED,
     KIND_FAILED,
     KIND_PROGRESS,
@@ -305,3 +307,90 @@ def test_missing_folder_emits_failed_without_started(tmp_path):
         )
     assert _pairs(events) == [(STAGE_PROCESS, KIND_FAILED)]
     assert events[0].error is not None
+
+
+def _fake_embed_env(faces_for):
+    fake_if = type("m", (), {"__version__": "0.test"})()
+    fake_ort = type("m", (), {"__version__": "0.test"})()
+    stack = ExitStack()
+    stack.enter_context(patch("semblon.ingest.load_app", return_value=object()))
+    stack.enter_context(patch("semblon.ingest.discover_weight_hashes", return_value={}))
+    stack.enter_context(
+        patch("semblon.ingest.embed_image", side_effect=lambda app, path: faces_for(path))
+    )
+    stack.enter_context(
+        patch("semblon.ingest.cv2.imread", return_value=np.zeros((20, 20, 3), dtype=np.uint8))
+    )
+    stack.enter_context(patch.dict("sys.modules", {"insightface": fake_if, "onnxruntime": fake_ort}))
+    return stack
+
+
+def test_ingest_cancel_emits_cancelled_not_completed(tmp_path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    (folder / "a.jpg").write_bytes(b"aaaa")
+    (folder / "b.jpg").write_bytes(b"bbbb")
+    events: list[ProgressEvent] = []
+    processed = {"n": 0}
+
+    def faces_for(path):
+        processed["n"] += 1
+        vec = np.zeros(4, dtype=np.float32)
+        return [
+            {
+                "bbox": (0.0, 0.0, 100.0, 100.0),
+                "det_score": 0.9,
+                "face_w": 100,
+                "face_h": 100,
+                "dim": 4,
+                "embedding": vec,
+            }
+        ]
+
+    def cancel():
+        return processed["n"] >= 1
+
+    with _fake_embed_env(faces_for):
+        with pytest.raises(CancelledError, match="cancelled"):
+            ingest(folder, tmp_path / "store.sqlite", on_event=events.append, cancel=cancel)
+
+    pairs = _pairs(events)
+    assert (STAGE_INGEST, KIND_CANCELLED) in pairs
+    assert (STAGE_INGEST, KIND_COMPLETED) not in pairs
+    assert events[-1].kind == KIND_CANCELLED
+    assert events[-1].outcome == "cancelled"
+    conn = __import__("sqlite3").connect(str(tmp_path / "store.sqlite"))
+    row = conn.execute("SELECT notes, timings_json FROM runs").fetchone()
+    n_faces = conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
+    n_media = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+    conn.close()
+    assert row[0] == "cancelled"
+    assert '"cancelled": true' in row[1]
+    assert n_media == 1
+    assert n_faces == 1
+
+
+def test_process_cancel_is_not_success(tmp_path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    events: list[ProgressEvent] = []
+
+    with patch(
+        "semblon.process.ingest",
+        side_effect=CancelledError("ingest cancelled", run_id="RUN-C"),
+    ):
+        with pytest.raises(ProcessCancelled, match="cancelled"):
+            process_folder(
+                folder,
+                store=tmp_path / "s.sqlite",
+                out=tmp_path / "r.html",
+                open_review=False,
+                progress=lambda *_: None,
+                on_event=events.append,
+            )
+
+    pairs = _pairs(events)
+    assert pairs[0] == (STAGE_PROCESS, KIND_STARTED)
+    assert pairs[-1] == (STAGE_PROCESS, KIND_CANCELLED)
+    assert (STAGE_PROCESS, KIND_COMPLETED) not in pairs
+    assert (STAGE_PROCESS, KIND_FAILED) not in pairs

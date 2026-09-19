@@ -66,6 +66,14 @@ def main(argv: list[str] | None = None) -> int:
         help="exit 3 on unexplained regression (maturity claim only)",
     )
 
+    bak = lab_sub.add_parser("backup", help="copy the SQLite store (WAL-aware; does not write the source)")
+    bak.add_argument("--store", required=True, type=Path)
+    bak.add_argument("--out", required=True, type=Path)
+    rst = lab_sub.add_parser("restore", help="restore a store backup; refuses to overwrite unless --force")
+    rst.add_argument("--from", dest="backup_from", required=True, type=Path)
+    rst.add_argument("--store", required=True, type=Path)
+    rst.add_argument("--force", action="store_true")
+
     ev = lab_sub.add_parser("eval", help="FACE-002 confirmatory eval harness")
     ev_sub = ev.add_subparsers(dest="evalcmd", required=True)
 
@@ -331,6 +339,31 @@ def main(argv: list[str] | None = None) -> int:
             return 3
         return 0
 
+    if args.cmd == "lab" and args.labcmd == "backup":
+        from semblon.store import backup_store
+
+        try:
+            rec = backup_store(args.store, args.out)
+        except FileNotFoundError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "restore":
+        from semblon.store import restore_store
+
+        try:
+            rec = restore_store(args.backup_from, args.store, force=args.force)
+        except FileNotFoundError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        except FileExistsError as e:
+            print(f"refusing to overwrite: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
     if args.cmd == "lab" and args.labcmd == "eval":
         from semblon.eval import (
             DEFAULT_MINE_MAX,
@@ -407,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "process":
-        from semblon.process import ProcessError, process_folder
+        from semblon.process import ProcessCancelled, ProcessError, process_folder
 
         try:
             process_folder(
@@ -417,6 +450,9 @@ def main(argv: list[str] | None = None) -> int:
                 reprocess=args.reprocess,
                 open_review=not args.no_open,
             )
+        except ProcessCancelled as e:
+            print(str(e), file=sys.stderr)
+            return 2
         except ProcessError as e:
             print(str(e), file=sys.stderr)
             return 2

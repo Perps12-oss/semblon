@@ -1,6 +1,6 @@
 """Double-click home — Choose folder / Open review. Not full S8 shell.
 
-Opaque tkinter. No Mica. No cancel (cooperative cancel is deferred).
+Opaque tkinter. No Mica. Cooperative cancel stops ingest between files.
 Progress text comes from process on_event only — no invented percent.
 """
 
@@ -13,7 +13,7 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from semblon.process import ProcessError, default_store_path, process_folder
+from semblon.process import ProcessCancelled, ProcessError, default_store_path, process_folder
 from semblon.progress import ProgressEvent
 
 
@@ -41,6 +41,8 @@ class HomeApp:
     def __init__(self, store: Path | None = None):
         self.store = Path(store) if store is not None else default_store_path()
         self._busy = False
+        self._cancel = threading.Event()
+        self._exit_after_cancel = False
         self._last_run_id: str | None = None
         self._last_review_html: Path | None = None
         self._q: queue.Queue = queue.Queue()
@@ -58,7 +60,12 @@ class HomeApp:
             frm,
             text="Choose a photo folder to process, or open Review to name people.",
             wraplength=480,
-        ).pack(anchor=tk.W, pady=(4, 12))
+        ).pack(anchor=tk.W, pady=(4, 4))
+        ttk.Label(
+            frm,
+            text="Local-first. buffalo_l weights are internal evaluation only — not a commercial pack.",
+            wraplength=480,
+        ).pack(anchor=tk.W, pady=(0, 12))
 
         row = ttk.Frame(frm)
         row.pack(fill=tk.X, pady=(0, 8))
@@ -68,6 +75,8 @@ class HomeApp:
         self.btn_review.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_html = ttk.Button(row, text="Open review.html", command=self._open_html)
         self.btn_html.pack(side=tk.LEFT, padx=(8, 0))
+        self.btn_cancel = ttk.Button(row, text="Cancel", command=self._request_cancel, state=tk.DISABLED)
+        self.btn_cancel.pack(side=tk.LEFT, padx=(8, 0))
 
         self.status = tk.StringVar(value=f"Store: {self.store}")
         ttk.Label(frm, textvariable=self.status, wraplength=480, justify=tk.LEFT).pack(
@@ -83,6 +92,13 @@ class HomeApp:
         self.btn_folder.configure(state=state)
         self.btn_review.configure(state=state)
         self.btn_html.configure(state=state)
+        self.btn_cancel.configure(state=tk.NORMAL if busy else tk.DISABLED)
+
+    def _request_cancel(self) -> None:
+        if not self._busy:
+            return
+        self._cancel.set()
+        self.status.set("Cancelling…")
 
     def _choose_folder(self) -> None:
         if self._busy:
@@ -91,6 +107,8 @@ class HomeApp:
         if not folder:
             return
         path = Path(folder)
+        self._cancel.clear()
+        self._exit_after_cancel = False
         self._set_busy(True)
         self.status.set(f"Processing: {path}")
         threading.Thread(target=self._run_process, args=(path,), daemon=True).start()
@@ -106,8 +124,12 @@ class HomeApp:
                 open_review=False,
                 progress=lambda *_: None,
                 on_event=on_event,
+                cancel=self._cancel.is_set,
             )
             self._q.put(("done", rec))
+        except ProcessCancelled as e:
+            rid = e.run_id or ""
+            self._q.put(("cancelled", rid))
         except ProcessError as e:
             self._q.put(("error", str(e)))
         except Exception as e:  # noqa: BLE001 — surface unexpected failures in home UI
@@ -126,10 +148,22 @@ class HomeApp:
                     self._set_busy(False)
                     rid = self._last_run_id or "?"
                     self.status.set(f"Done. run_id={rid}  Open Review to name people.")
+                elif kind == "cancelled":
+                    self._set_busy(False)
+                    extra = f" run_id={payload}" if payload else ""
+                    self.status.set(
+                        f"Cancelled.{extra} Partial results remain in the store. Open Review for what exists."
+                    )
+                    if self._exit_after_cancel and self.root.winfo_exists():
+                        self.root.destroy()
+                        return
                 elif kind == "error":
                     self._set_busy(False)
                     self.status.set(f"Failed: {payload}")
                     messagebox.showerror("Semblon", payload)
+                    if self._exit_after_cancel and self.root.winfo_exists():
+                        self.root.destroy()
+                        return
         except queue.Empty:
             pass
         if self.root.winfo_exists():
@@ -165,10 +199,12 @@ class HomeApp:
 
     def _on_close(self) -> None:
         if self._busy:
-            messagebox.showinfo(
+            if messagebox.askyesno(
                 "Semblon",
-                "Processing is still running. Wait for it to finish (cancel is not available yet).",
-            )
+                "Processing is still running. Cancel and exit?",
+            ):
+                self._exit_after_cancel = True
+                self._request_cancel()
             return
         self.root.destroy()
 

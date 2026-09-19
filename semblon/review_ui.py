@@ -10,7 +10,7 @@ import sqlite3
 from pathlib import Path
 
 from semblon.export import STRONG_MIN_INTRA
-from semblon.process import default_store_path, latest_run_id
+from semblon.process import default_store_path, empty_state_line, latest_run_id
 from semblon.tracks import TracksError, derive_tracks
 from semblon.review import (
     ReviewError,
@@ -281,7 +281,10 @@ def load_board(
             "unassigned_media": len({u["media_id"] for u in video_unassigned}),
             "named_persons": len(persons),
             "decisions": len(decisions),
+            "faces": len(faces),
+            "ok": sum(1 for f in faces if f["status"] == "ok"),
         },
+        "empty_state": empty_state_line(store, run_id),
     }
     conn.close()
     return board
@@ -463,6 +466,8 @@ class ReviewApp:
                 "STRONG is not a person until you Name."
             ),
         ).pack(anchor=tk.W)
+        self.empty_state = ttk.Label(top, text="")
+        self.empty_state.pack(anchor=tk.W)
         self.status = ttk.Label(top, text="")
         self.status.pack(anchor=tk.W)
 
@@ -486,13 +491,25 @@ class ReviewApp:
 
         actions = ttk.Frame(self.root, padding=6)
         actions.pack(fill=tk.X)
-        ttk.Button(actions, text="Name", command=self._do_name).pack(side=tk.LEFT, padx=2)
-        ttk.Button(actions, text="Merge…", command=self._do_merge).pack(side=tk.LEFT, padx=2)
-        ttk.Button(actions, text="Split selected", command=self._do_split).pack(side=tk.LEFT, padx=2)
-        ttk.Button(actions, text="Ignore", command=self._do_ignore).pack(side=tk.LEFT, padx=2)
-        ttk.Button(actions, text="Note…", command=self._do_note).pack(side=tk.LEFT, padx=2)
+        self.btn_name = ttk.Button(actions, text="Name", command=self._do_name)
+        self.btn_name.pack(side=tk.LEFT, padx=2)
+        self.btn_merge = ttk.Button(actions, text="Merge…", command=self._do_merge)
+        self.btn_merge.pack(side=tk.LEFT, padx=2)
+        self.btn_split = ttk.Button(actions, text="Split selected", command=self._do_split)
+        self.btn_split.pack(side=tk.LEFT, padx=2)
+        self.btn_ignore = ttk.Button(actions, text="Ignore", command=self._do_ignore)
+        self.btn_ignore.pack(side=tk.LEFT, padx=2)
+        self.btn_note = ttk.Button(actions, text="Note…", command=self._do_note)
+        self.btn_note.pack(side=tk.LEFT, padx=2)
         ttk.Button(actions, text="Reload", command=self.reload).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions, text="Close", command=self.root.destroy).pack(side=tk.RIGHT, padx=2)
+        self._review_actions = (
+            self.btn_name,
+            self.btn_merge,
+            self.btn_split,
+            self.btn_ignore,
+            self.btn_note,
+        )
 
         self.reload()
 
@@ -502,6 +519,7 @@ class ReviewApp:
         for item in self.board["items"]:
             self.listbox.insert(tk.END, item_label(item))
         c = self.board["counts"]
+        self.empty_state.config(text=self.board.get("empty_state") or "")
         self.status.config(
             text=(
                 f"store={self.store}  run={self.run_id}  "
@@ -513,7 +531,19 @@ class ReviewApp:
             )
         )
         self._selected_faces.clear()
+        has_items = bool(self.board["items"])
+        state = tk.NORMAL if has_items else tk.DISABLED
+        for btn in self._review_actions:
+            btn.configure(state=state)
         self._draw_faces([])
+        if not has_items:
+            self.canvas.create_text(
+                12,
+                12,
+                anchor=tk.NW,
+                fill="#ccc",
+                text="Nothing to review on this run. Open a populated run or process a folder.",
+            )
 
     def _current_item(self) -> dict | None:
         sel = self.listbox.curselection()
@@ -531,6 +561,14 @@ class ReviewApp:
 
     def _draw_faces(self, members: list[dict]) -> None:
         self.canvas.delete("all")
+        if not members and self.board.get("items"):
+            self.canvas.create_text(
+                12,
+                12,
+                anchor=tk.NW,
+                fill="#ccc",
+                text="Select a cluster, track, or unassigned face.",
+            )
         self._photos = []
         x, y = 8, 8
         row_h = THUMB_MAX + 28
@@ -556,6 +594,13 @@ class ReviewApp:
                 tw = th = THUMB_MAX
                 self.canvas.create_rectangle(
                     x, y, x + tw, y + th, fill="#444", outline="#888", tags=(tag,)
+                )
+                self.canvas.create_text(
+                    x + tw / 2,
+                    y + th / 2,
+                    text="file missing",
+                    fill="#ccc",
+                    tags=(tag,),
                 )
             mark = "*" if m["face_id"] in self._selected_faces else " "
             label = f"{mark}{m['face_id'][:8]}"

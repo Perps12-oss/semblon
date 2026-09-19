@@ -19,6 +19,7 @@ KIND_STARTED = "started"
 KIND_PROGRESS = "progress"
 KIND_COMPLETED = "completed"
 KIND_FAILED = "failed"
+KIND_CANCELLED = "cancelled"
 
 STAGES = (
     STAGE_PROCESS,
@@ -27,7 +28,13 @@ STAGES = (
     STAGE_CLUSTER,
     STAGE_EXPORT,
 )
-KINDS = (KIND_STARTED, KIND_PROGRESS, KIND_COMPLETED, KIND_FAILED)
+KINDS = (
+    KIND_STARTED,
+    KIND_PROGRESS,
+    KIND_COMPLETED,
+    KIND_FAILED,
+    KIND_CANCELLED,
+)
 
 
 @dataclass(frozen=True)

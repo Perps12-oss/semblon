@@ -85,8 +85,32 @@ def test_export_html_video_without_frame_id_is_missing(tmp_path):
         export_review(store, "rv", out)
     html = out.read_text(encoding="utf-8")
     assert "data:image/jpeg;base64," not in html
+    assert "file missing" in html
+    assert 'class="missing"' in html
     assert "fv" in html
     rb.assert_not_called()
+
+
+def test_export_html_empty_run_names_populated_store(tmp_path):
+    from tests.test_review_ui import _seed
+
+    store = tmp_path / "s.sqlite"
+    _seed(store)
+    conn = sqlite3.connect(str(store))
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        ("r-empty", "t9", "t9b", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.commit()
+    conn.close()
+    out = tmp_path / "review.html"
+    export_review(store, "r-empty", out)
+    html = out.read_text(encoding="utf-8")
+    assert "this run: 0 faces" in html
+    assert "store has 5 on run r1" in html
+    assert 'class="empty-state"' in html
 
 
 def test_crop_jpeg_video_without_frame_id_returns_none():

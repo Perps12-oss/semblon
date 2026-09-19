@@ -27,6 +27,7 @@ def _connect_ro(store: Path) -> sqlite3.Connection:
         raise MemoryError(f"store not found: {p}")
     conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -106,11 +107,11 @@ def _dms_to_deg(vals: list[float], ref: bytes) -> float | None:
 
 
 def read_still_exif(path: Path) -> dict:
-    """Best-effort JPEG EXIF. Empty dict if missing or not JPEG."""
+    """Best-effort JPEG EXIF. Empty dict if missing, unreadable, or not JPEG."""
     p = Path(path)
-    if not p.is_file():
-        return {}
     try:
+        if not p.is_file():
+            return {}
         data = p.read_bytes()
     except OSError:
         return {}

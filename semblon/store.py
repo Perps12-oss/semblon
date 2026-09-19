@@ -153,6 +153,7 @@ def connect(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path))
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -164,3 +165,51 @@ def init_db(conn: sqlite3.Connection) -> None:
         ("schema_version", SCHEMA_VERSION),
     )
     conn.commit()
+
+
+def backup_store(store: Path, out: Path) -> dict:
+    """Online SQLite backup (WAL-aware). Does not write the source store."""
+    src = Path(store)
+    if not src.is_file():
+        raise FileNotFoundError(src)
+    dest = Path(out)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    src_conn = sqlite3.connect(str(src))
+    try:
+        dst_conn = sqlite3.connect(str(dest))
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+    finally:
+        src_conn.close()
+    return {
+        "store": str(src.resolve()),
+        "out": str(dest.resolve()),
+        "bytes": dest.stat().st_size,
+    }
+
+
+def restore_store(src: Path, dest: Path, *, force: bool = False) -> dict:
+    """Restore a backup onto dest. Refuses to overwrite unless force=True."""
+    src_path = Path(src)
+    dest_path = Path(dest)
+    if not src_path.is_file():
+        raise FileNotFoundError(src_path)
+    if dest_path.exists() and not force:
+        raise FileExistsError(dest_path)
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    src_conn = sqlite3.connect(str(src_path))
+    try:
+        dst_conn = sqlite3.connect(str(dest_path))
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+    finally:
+        src_conn.close()
+    return {
+        "from": str(src_path.resolve()),
+        "store": str(dest_path.resolve()),
+        "bytes": dest_path.stat().st_size,
+    }

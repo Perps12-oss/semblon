@@ -6,7 +6,7 @@ from pathlib import Path
 
 from semblon.home_ui import format_progress_line
 from semblon.launcher import interactive_script_path, is_interactive_launch, normalize_repo_root
-from semblon.progress import KIND_PROGRESS, KIND_STARTED, STAGE_INGEST, make_event
+from semblon.progress import KIND_CANCELLED, KIND_PROGRESS, KIND_STARTED, STAGE_INGEST, make_event
 
 
 def test_is_interactive_launch_empty_argv():
@@ -27,6 +27,15 @@ def test_interactive_script_path():
     root = Path(r"C:\repo\SEMBRON")
     p = interactive_script_path(root)
     assert p == Path(r"C:\repo\SEMBRON\tools\semblon-interactive.ps1")
+
+
+def test_install_windows_script_present():
+    repo = Path(__file__).resolve().parents[1]
+    script = repo / "tools" / "install-windows.ps1"
+    assert script.is_file()
+    text = script.read_text(encoding="utf-8")
+    assert "pip install -e" in text
+    assert "buffalo_l" in text
 
 
 def test_interactive_script_opens_home():
@@ -58,3 +67,8 @@ def test_format_progress_line_does_not_invent_percent():
     line2 = format_progress_line(ev2)
     assert "files 3/10" in line2
     assert "30%" in line2
+
+    ev3 = make_event(STAGE_INGEST, KIND_CANCELLED, message="cancelled", outcome="cancelled")
+    line3 = format_progress_line(ev3)
+    assert "ingest:cancelled" in line3
+    assert "%" not in line3
