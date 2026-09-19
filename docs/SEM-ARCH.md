@@ -503,7 +503,7 @@ Instead: make the architecture general first. Add intelligence capabilities one 
 
 | Layer | Name | Job | Now? |
 |---|---|---|---|
-| **ARCH-001** | Core observation model | Name the primitives and the detector / group / decision rule | **Next slice** (docs only) |
+| **ARCH-001** | Core observation model | Name the primitives and the detector / group / decision rule | **COMPLETE (docs)** — `docs/CONTRACTS.md` Observation primitives. No columns. |
 | **ARCH-002** | Capability / provider boundary | `ObservationProvider` declares what it produces; shared execution | After ARCH-001. No new providers. |
 | **ARCH-003** | Universal similarity | Embedding envelope; never compare incompatible spaces | After ARCH-001. Face `pack_id` remains the identity key. |
 | **ARCH-004** | Grouping / hypothesis | `ObservationGroup` = related under a model/config, not “the same thing” | Vocabulary first. Do not retune `eps`. |
@@ -745,3 +745,4 @@ Illegal: silently comparing incompatible embedding spaces; silently mixing space
 | Ver | Date | Note |
 |---|---|---|
 | V1 | 2026-09-19 | Architecture Reset. This file is the north star and planned-work source of truth. Faces are the first ObservationProvider. No FACE-n successor queue. No code, no columns. |
+| V1.1 | 2026-09-19 | ARCH-001 completed as docs in `docs/CONTRACTS.md`. No DDL. Next code-bearing slice remains ARCH-002+ only when earned; production KEEP hardening is recorded in `docs/PRODUCTION-STATUS.md`. |

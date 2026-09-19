@@ -63,7 +63,7 @@ Applies to `review-ui` and static `review.html`. No mass on-disk PNG dump. No cl
 
 `--run` omitted (and `process` after a skip-all ingest) uses the latest run **that still has faces**. An empty incremental run must not blank `review-ui` / `review.html` while prior results remain on the store.
 
-Both surfaces show a one-line empty state (`this run: N faces; store has M on run …`) so an empty skip-all, all-held-out (`ok=0`), and missing `media.path` are distinguishable. Failed thumbs render **file missing** instead of a blank rectangle.
+Both surfaces show a one-line empty state (`this run: N faces; store has M on run …`) so an empty skip-all, all-held-out (`ok=0`), and missing `media.path` are distinguishable. Failed thumbs render **file missing** instead of a blank rectangle. An empty board disables Name/Merge/Split/Ignore/Note and says nothing to review; a populated board with no selection asks the user to select a cluster, track, or face.
 
 ## Next
 

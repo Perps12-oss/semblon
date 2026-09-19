@@ -15,6 +15,12 @@ S1 golden (repo record): `docs/S1-GOLDEN.md` — run `20260913T153515Z-1e915abe`
 One-time setup in this folder (PowerShell or Command Prompt):
 
 ```text
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
+```
+
+Equivalent by hand:
+
+```text
 py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -U pip
 .venv\Scripts\python.exe -m pip install -r requirements.txt

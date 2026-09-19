@@ -47,9 +47,6 @@ if exist "%ALT_PY%" (
 
 echo Semblon: repo .venv not found.
 echo From this folder, once:
-echo   py -3.12 -m venv .venv
-echo   .venv\Scripts\python.exe -m pip install -U pip
-echo   .venv\Scripts\python.exe -m pip install -r requirements.txt
-echo   .venv\Scripts\python.exe -m pip install -e .
+echo   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
 echo Then double-click semblon.cmd, or run:  semblon.cmd process "D:\photos\dump"
 exit /b 1

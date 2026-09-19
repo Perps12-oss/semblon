@@ -18,7 +18,7 @@ Unknown is valid. False merge > false split. Wrong identity > unknown.
 
 S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do not retune clustering. Do not re-ingest that dump. FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue.
 
-**Authorized next:** **SEM-ARCH-001** — observation contracts (`docs/SEM-ARCH.md`). Docs / conceptual types only. No new columns. No second detector. No pipeline rewrite.
+**Authorized next:** **ARCH-002** — provider boundary (docs / interface sketch only; no new providers). ARCH-001 observation contracts are recorded in `docs/CONTRACTS.md`. Production KEEP status: `docs/PRODUCTION-STATUS.md`.
 
 **KEEP (not the plan):** `semblon review-ui`; S7a sampled-video holdout (`docs/S7A.md`); S8 toolkit spike (`docs/S8-TOOLKIT.md`); PERF P0 frozen; P1 native ARM64 **blocked** (`docs/PERF-P1-ARM64.md`) — do not open workers/EP/batch until P1 unblocks. Do **not** retune eps or enable video DBSCAN to shrink `unassigned`.
 
