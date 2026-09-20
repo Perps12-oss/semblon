@@ -560,10 +560,17 @@ def _actions_for_kind(kind: str) -> dict[str, bool]:
     return {"name": False, "merge": False, "split": False, "ignore": False, "note": False}
 
 
+def _create_review_window(parent=None):
+    """Build review window on an existing root when present."""
+    if parent is None:
+        return tk.Tk(), True
+    return tk.Toplevel(parent), False
+
+
 class ReviewApp:
     """Minimal tkinter surface. All mutations go through review.py."""
 
-    def __init__(self, store: Path, run_id: str):
+    def __init__(self, store: Path, run_id: str, *, parent=None):
         _ensure_tk()
         self.store = Path(store)
         self.run_id = run_id
@@ -574,7 +581,9 @@ class ReviewApp:
         self._selected_faces: set[str] = set()
         self._draw_gen = 0
 
-        self.root = tk.Tk()
+        self.root, self._owns_mainloop = _create_review_window(parent)
+        if parent is not None:
+            self.root.transient(parent)
         self.root.title(f"Semblon Review — {self.run_id}")
         self.root.geometry("980x640")
 
@@ -763,10 +772,7 @@ class ReviewApp:
                     tags=(tag,),
                 )
                 continue
-            try:
-                photo = tk.PhotoImage(data=b64)
-            except tk.TclError:
-                continue
+            photo = tk.PhotoImage(data=b64, master=self.canvas)
             self._photos.append(photo)
             self.canvas.delete(rect)
             self.canvas.create_image(x, y, anchor=tk.NW, image=photo, tags=(tag,))
@@ -938,12 +944,22 @@ class ReviewApp:
         self.reload(invalidate_tracks=False)
 
     def run(self) -> None:
-        self.root.mainloop()
+        if self._owns_mainloop:
+            self.root.mainloop()
+            return
+        # Called from an already running Tk app (e.g. Home): nested event loop
+        # waits for this review window only and avoids creating another Tk root.
+        self.root.wait_window()
 
 
-def run_review_ui(store: Path | None = None, run_id: str | None = None) -> dict:
+def run_review_ui(
+    store: Path | None = None,
+    run_id: str | None = None,
+    *,
+    parent=None,
+) -> dict:
     store_path = Path(store) if store is not None else default_store_path()
     rid = resolve_run_id(store_path, run_id)
-    app = ReviewApp(store_path, rid)
+    app = ReviewApp(store_path, rid, parent=parent)
     app.run()
     return {"store": str(store_path.resolve()), "run_id": rid}

@@ -507,14 +507,9 @@ class HomeApp:
         from semblon.review_ui import ReviewUiError, run_review_ui
 
         try:
-            # Hide home while review-ui owns the event loop feel; destroy after return.
-            self.root.withdraw()
-            run_review_ui(store=self.store, run_id=self._last_run_id)
+            run_review_ui(store=self.store, run_id=self._last_run_id, parent=self.root)
         except ReviewUiError as e:
             messagebox.showerror("Semblon", str(e))
-        finally:
-            if self.root.winfo_exists():
-                self.root.deiconify()
 
     def _open_html(self) -> None:
         if self._busy:

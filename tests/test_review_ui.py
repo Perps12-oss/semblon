@@ -426,3 +426,178 @@ def test_crop_png_b64_video_without_frame_id_returns_none():
     assert (
         crop_png_b64("C:/clips/a.mp4", (0, 0, 10, 10), source_type="video") is None
     )
+
+
+def test_draw_faces_reselect_keeps_photo_owner_and_refs(monkeypatch):
+    from semblon import review_ui
+
+    class _TkStub:
+        NW = "nw"
+
+        class TclError(Exception):
+            pass
+
+        _default_root = type("HomeRoot", (), {"tk": "home-interpreter"})()
+
+        class PhotoImage:
+            _n = 0
+
+            def __init__(self, *, data, master=None):
+                assert data
+                type(self)._n += 1
+                self.name = f"pyimage{type(self)._n}"
+                owner = master if master is not None else _TkStub._default_root
+                self.tk = getattr(owner, "tk", None)
+
+    class _Root:
+        def __init__(self, tk_name: str):
+            self.tk = tk_name
+
+        def after(self, _ms, callback):
+            callback()
+
+    class _Canvas:
+        def __init__(self, tk_name: str):
+            self.tk = tk_name
+            self.images = []
+            self._next = 1
+
+        def delete(self, what):
+            if what == "all":
+                self.images = []
+
+        def create_rectangle(self, *_args, **_kwargs):
+            out = self._next
+            self._next += 1
+            return out
+
+        def create_text(self, *_args, **_kwargs):
+            out = self._next
+            self._next += 1
+            return out
+
+        def create_image(self, _x, _y, *, anchor, image, tags):
+            assert anchor == "nw"
+            assert tags
+            if image.tk != self.tk:
+                raise _TkStub.TclError(f'image "{image.name}" doesn\'t exist')
+            self.images.append(image)
+            out = self._next
+            self._next += 1
+            return out
+
+    class _Listbox:
+        def __init__(self):
+            self._selection: tuple[int, ...] = ()
+
+        def set_selection(self, idx: int) -> None:
+            self._selection = (idx,)
+
+        def curselection(self):
+            return self._selection
+
+    class _ImmediateThread:
+        def __init__(self, *, target, daemon):
+            self._target = target
+            self._daemon = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(review_ui, "tk", _TkStub)
+    monkeypatch.setattr(review_ui.threading, "Thread", _ImmediateThread)
+    monkeypatch.setattr(review_ui, "crop_png_b64", lambda *_a, **_k: "ZmFrZQ==")
+
+    app = review_ui.ReviewApp.__new__(review_ui.ReviewApp)
+    app.root = _Root("review-interpreter")
+    app.canvas = _Canvas("review-interpreter")
+    app._photos = []
+    app._selected_faces = set()
+    app._draw_gen = 0
+    app._update_action_buttons = lambda: None
+    app.listbox = _Listbox()
+    members_a = [
+        {
+            "face_id": "face-a1",
+            "path": "/a.jpg",
+            "bbox": (0, 0, 32, 32),
+            "frame_id": None,
+            "source_type": "folder",
+        },
+        {
+            "face_id": "face-a2",
+            "path": "/a.jpg",
+            "bbox": (1, 1, 33, 33),
+            "frame_id": None,
+            "source_type": "folder",
+        },
+    ]
+    members_b = [
+        {
+            "face_id": "face-b1",
+            "path": "/b.jpg",
+            "bbox": (4, 4, 36, 36),
+            "frame_id": 42,
+            "source_type": "video",
+        }
+    ]
+    app.board = {
+        "items": [
+            {"kind": "cluster", "members": members_a},
+            {"kind": "unassigned", "members": members_b},
+        ]
+    }
+
+    for idx in (0, 1, 0, 1, 0):
+        app.listbox.set_selection(idx)
+        app._on_select()
+        expected = len(app.board["items"][idx]["members"])
+        assert len(app._photos) == expected
+        assert len(app.canvas.images) == expected
+        assert all(photo.tk == app.canvas.tk for photo in app._photos)
+        for photo in app._photos:
+            assert photo in app.canvas.images
+
+
+def test_create_review_window_uses_toplevel_under_parent(monkeypatch):
+    from semblon import review_ui
+
+    calls = {"tk": 0, "toplevel": 0}
+
+    class _Root:
+        def __init__(self):
+            calls["tk"] += 1
+            self.tk = f"interp-{calls['tk']}"
+
+    class _Top:
+        def __init__(self, parent):
+            calls["toplevel"] += 1
+            self.tk = parent.tk
+            self.parent = parent
+
+        def destroy(self):
+            return None
+
+    class _TkStub:
+        Tk = _Root
+        Toplevel = _Top
+
+    monkeypatch.setattr(review_ui, "tk", _TkStub)
+
+    root, own_root = review_ui._create_review_window(None)
+    assert own_root is True
+    assert calls["tk"] == 1
+    assert calls["toplevel"] == 0
+
+    review_win, own_child = review_ui._create_review_window(root)
+    assert own_child is False
+    assert review_win.tk == root.tk
+    assert calls["tk"] == 1
+    assert calls["toplevel"] == 1
+
+    review_win.destroy()
+    reopened, own_reopen = review_ui._create_review_window(root)
+    assert own_reopen is False
+    assert reopened.tk == root.tk
+    assert calls["tk"] == 1
+    assert calls["toplevel"] == 2
