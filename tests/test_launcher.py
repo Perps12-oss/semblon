@@ -20,13 +20,19 @@ def test_is_interactive_launch_forwards_cli():
 
 
 def test_normalize_repo_root_strips_trailing_backslash():
-    assert normalize_repo_root("C:\\repo\\SEMBRON\\") == Path("C:/repo/SEMBRON")
+    """Trailing \\ or / is stripped. Do not compare PosixPath to C:/... literals."""
+    got = str(normalize_repo_root("C:\\repo\\SEMBRON\\"))
+    assert got.endswith("SEMBRON")
+    assert not got.endswith("\\")
+    assert not got.endswith("/")
+    posix = str(normalize_repo_root("/repo/semblon/"))
+    assert posix.endswith("semblon")
+    assert not posix.endswith("/")
 
 
-def test_interactive_script_path():
-    root = Path(r"C:\repo\SEMBRON")
-    p = interactive_script_path(root)
-    assert p == Path(r"C:\repo\SEMBRON\tools\semblon-interactive.ps1")
+def test_interactive_script_path(tmp_path):
+    p = interactive_script_path(tmp_path)
+    assert p == tmp_path.resolve() / "tools" / "semblon-interactive.ps1"
 
 
 def test_install_windows_script_present():
@@ -87,4 +93,7 @@ def test_home_wires_watchdog_and_optional_observers():
     assert "KIND_STALLED" in src
     assert HOME_OBSERVERS == "face,color,object"
     assert "observers=HOME_OBSERVERS" in src
+    assert "btn_resume" in src
+    assert 'text="Resume"' in src
+    assert "StillProgressBar" in src
     assert format_people_lines({"items": []})[0].startswith("No named people")

@@ -148,6 +148,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     ing.add_argument("--prefer-gpu", action="store_true", help="use GPU EP if available; recorded honestly")
     ing.add_argument("--batch", type=int, default=1, help="recorded batch size; FaceKit still per-image")
+    ing.add_argument(
+        "--resume-run",
+        default=None,
+        help="continue a cancelled/interrupted ingest on this run_id (same-run skip)",
+    )
 
     proc = sub.add_parser(
         "process",
@@ -180,6 +185,11 @@ def main(argv: list[str] | None = None) -> int:
     proc.add_argument("--observers", default="face")
     proc.add_argument("--prefer-gpu", action="store_true")
     proc.add_argument("--batch", type=int, default=1)
+    proc.add_argument(
+        "--resume",
+        action="store_true",
+        help="continue the latest unfinished process for this folder from the next stage",
+    )
 
     clu = sub.add_parser("cluster", help="0.3 DBSCAN on ok faces for a run")
     clu.add_argument("--run", required=True)
@@ -529,6 +539,7 @@ def main(argv: list[str] | None = None) -> int:
                 observers=args.observers,
                 prefer_gpu=args.prefer_gpu,
                 batch=args.batch,
+                resume_run_id=args.resume_run,
             )
         except CancelledError as e:
             print(json.dumps({"cancelled": True, "run_id": e.run_id, **e.timings}, indent=2, default=str))
@@ -546,6 +557,11 @@ def main(argv: list[str] | None = None) -> int:
         from semblon.process import ProcessCancelled, ProcessError, process_folder
 
         try:
+            from semblon.progress import format_progress_line
+
+            def _cli_progress(ev):
+                print(format_progress_line(ev), flush=True)
+
             process_folder(
                 args.folder,
                 store=args.store,
@@ -556,6 +572,8 @@ def main(argv: list[str] | None = None) -> int:
                 observers=args.observers,
                 prefer_gpu=args.prefer_gpu,
                 batch=args.batch,
+                resume=args.resume,
+                on_event=_cli_progress,
             )
         except ProcessCancelled as e:
             print(str(e), file=sys.stderr)
