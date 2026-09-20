@@ -14,29 +14,74 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from semblon.process import ProcessCancelled, ProcessError, default_store_path, process_folder
-from semblon.progress import KIND_QUEUED, KIND_STALLED, STAGE_PROCESS, ProgressEvent, make_event
+from semblon.progress import (
+    KIND_QUEUED,
+    KIND_STALLED,
+    STAGE_PROCESS,
+    ProgressEvent,
+    format_duration,
+    format_progress_line,
+    make_event,
+    stills_percent,
+)
+
+# Tests and callers import the status line from home_ui.
+__all__ = ["HOME_OBSERVERS", "HomeApp", "format_progress_line", "run_home_ui"]
 from semblon.watchdog import Watchdog
 
 # Home ingest fills cheap non-identity items for Canvas. Face remains identity.
 HOME_OBSERVERS = "face,color,object"
 
 
-def format_progress_line(ev: ProgressEvent) -> str:
-    """Human status line. Never invents a percent when the event has none."""
-    parts = [f"{ev.stage}:{ev.kind}"]
-    if ev.message:
-        parts.append(ev.message)
-    if ev.files_processed is not None and ev.files_total is not None:
-        parts.append(f"files {ev.files_processed}/{ev.files_total}")
-    elif ev.current is not None and ev.total is not None:
-        parts.append(f"{ev.current}/{ev.total}")
-    if ev.percent is not None:
-        parts.append(f"{ev.percent:g}%")
-    if ev.run_id:
-        parts.append(f"run={ev.run_id}")
-    if ev.error:
-        parts.append(ev.error)
-    return "  ".join(parts)
+class StillProgressBar(tk.Canvas):
+    """Determinate stills bar. Fills only when the event has a real percent."""
+
+    TRACK = "#1c1c1c"
+    FILL = "#3d8bfd"
+    TEXT = "#f4f4f4"
+    EDGE = "#3a3a3a"
+
+    def __init__(self, master, width: int = 520, height: int = 28, **kw):
+        super().__init__(
+            master,
+            width=width,
+            height=height,
+            highlightthickness=0,
+            bg="#121212",
+            **kw,
+        )
+        self._percent = 0.0
+        self._label = "0%"
+        self.bind("<Configure>", lambda _e: self.redraw())
+        self.redraw()
+
+    def reset(self) -> None:
+        self._percent = 0.0
+        self._label = "0%"
+        self.redraw()
+
+    def set_from_event(self, ev: ProgressEvent) -> None:
+        pct = stills_percent(ev)
+        if pct is None:
+            return
+        bits = [f"{pct:g}%"]
+        if ev.files_processed is not None and ev.files_total is not None:
+            bits.append(f"{ev.files_processed}/{ev.files_total}")
+        self._percent = pct
+        self._label = "  ".join(bits)
+        self.redraw()
+
+    def redraw(self) -> None:
+        self.delete("all")
+        w = max(int(self.winfo_width() or 520), 8)
+        h = max(int(self.winfo_height() or 28), 8)
+        pad = 2
+        self.create_rectangle(pad, pad, w - pad, h - pad, fill=self.TRACK, outline=self.EDGE)
+        inner = w - 2 * pad
+        fill_w = pad + int(inner * self._percent / 100.0)
+        if self._percent > 0:
+            self.create_rectangle(pad, pad, max(pad + 1, fill_w), h - pad, fill=self.FILL, outline="")
+        self.create_text(w / 2, h / 2, text=self._label, fill=self.TEXT, font=("Segoe UI", 10, "bold"))
 
 
 def format_people_lines(rec: dict) -> list[str]:
@@ -93,12 +138,14 @@ class HomeApp:
         self._wd = Watchdog(stall_s=120.0)
         self._last_run_id: str | None = None
         self._last_review_html: Path | None = None
+        self._last_folder: Path | None = None
+        self._resume_ready = False
         self._q: queue.Queue = queue.Queue()
 
         self.root = tk.Tk()
         self.root.title("Semblon")
-        self.root.minsize(480, 320)
-        self.root.geometry("560x400")
+        self.root.minsize(480, 380)
+        self.root.geometry("560x460")
 
         frm = ttk.Frame(self.root, padding=16)
         frm.pack(fill=tk.BOTH, expand=True)
@@ -125,6 +172,8 @@ class HomeApp:
         self.btn_html.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_cancel = ttk.Button(row, text="Cancel", command=self._request_cancel, state=tk.DISABLED)
         self.btn_cancel.pack(side=tk.LEFT, padx=(8, 0))
+        self.btn_resume = ttk.Button(row, text="Resume", command=self._resume, state=tk.DISABLED)
+        self.btn_resume.pack(side=tk.LEFT, padx=(8, 0))
 
         row2 = ttk.Frame(frm)
         row2.pack(fill=tk.X, pady=(0, 8))
@@ -148,9 +197,15 @@ class HomeApp:
         self.btn_search.pack(side=tk.LEFT, padx=(8, 0))
 
         self.status = tk.StringVar(value=f"Store: {self.store}")
-        ttk.Label(frm, textvariable=self.status, wraplength=480, justify=tk.LEFT).pack(
+        ttk.Label(frm, textvariable=self.status, wraplength=520, justify=tk.LEFT).pack(
             anchor=tk.W, fill=tk.X, pady=(8, 0)
         )
+        self.clock = tk.StringVar(value="")
+        ttk.Label(frm, textvariable=self.clock, wraplength=520, justify=tk.LEFT).pack(
+            anchor=tk.W, fill=tk.X, pady=(2, 4)
+        )
+        self.bar = StillProgressBar(frm)
+        self.bar.pack(fill=tk.X, pady=(0, 8))
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._drain_queue)
@@ -168,6 +223,9 @@ class HomeApp:
         self.btn_canvas.configure(state=state)
         self.btn_search.configure(state=state)
         self.btn_cancel.configure(state=tk.NORMAL if busy else tk.DISABLED)
+        self.btn_resume.configure(
+            state=tk.DISABLED if busy or not self._resume_ready else tk.NORMAL
+        )
 
     def _request_cancel(self) -> None:
         if not self._busy:
@@ -175,24 +233,36 @@ class HomeApp:
         self._cancel.set()
         self.status.set("Cancelling…")
 
+    def _start_process(self, path: Path, *, resume: bool) -> None:
+        self._last_folder = path
+        self._cancel.clear()
+        self._exit_after_cancel = False
+        self._wd = Watchdog(stall_s=120.0)
+        self._resume_ready = False
+        self.bar.reset()
+        self.clock.set("")
+        self._set_busy(True)
+        queued = make_event(STAGE_PROCESS, KIND_QUEUED, path=str(path), outcome="resumed" if resume else None)
+        self.status.set(format_progress_line(queued))
+        threading.Thread(target=self._run_process, args=(path, resume), daemon=True).start()
+
     def _choose_folder(self) -> None:
         if self._busy:
             return
         folder = filedialog.askdirectory(title="Choose a folder of photos for Semblon")
         if not folder:
             return
-        path = Path(folder)
-        self._cancel.clear()
-        self._exit_after_cancel = False
-        self._wd = Watchdog(stall_s=120.0)
-        self._set_busy(True)
-        self.status.set(format_progress_line(make_event(STAGE_PROCESS, KIND_QUEUED, path=str(path))))
-        threading.Thread(target=self._run_process, args=(path,), daemon=True).start()
+        self._start_process(Path(folder), resume=False)
 
-    def _run_process(self, folder: Path) -> None:
+    def _resume(self) -> None:
+        if self._busy or self._last_folder is None:
+            return
+        self._start_process(self._last_folder, resume=True)
+
+    def _run_process(self, folder: Path, resume: bool = False) -> None:
         def on_event(ev: ProgressEvent) -> None:
             self._wd.note(ev)
-            self._q.put(("status", format_progress_line(ev)))
+            self._q.put(("event", ev))
 
         try:
             rec = process_folder(
@@ -203,6 +273,7 @@ class HomeApp:
                 on_event=on_event,
                 cancel=self._cancel.is_set,
                 observers=HOME_OBSERVERS,
+                resume=resume,
             )
             self._q.put(("done", rec))
         except ProcessCancelled as e:
@@ -219,23 +290,49 @@ class HomeApp:
                 kind, payload = self._q.get_nowait()
                 if kind == "status":
                     self.status.set(payload)
+                elif kind == "event":
+                    self.status.set(format_progress_line(payload))
+                    self.bar.set_from_event(payload)
+                    bits = []
+                    if payload.clock:
+                        bits.append(payload.clock)
+                    elapsed = format_duration(payload.elapsed_s)
+                    if elapsed:
+                        bits.append(f"elapsed {elapsed}")
+                    eta = format_duration(payload.eta_s)
+                    if eta:
+                        bits.append(f"eta {eta}")
+                    self.clock.set("   ".join(bits))
                 elif kind == "done":
                     self._last_run_id = payload.get("run_id")
                     out = payload.get("out")
                     self._last_review_html = Path(out) if out else None
+                    self._resume_ready = False
                     self._set_busy(False)
                     rid = self._last_run_id or "?"
                     self.status.set(f"Done. run_id={rid}  Open Review to name people.")
+                    self.bar.set_from_event(
+                        make_event(
+                            STAGE_PROCESS,
+                            "completed",
+                            current=1,
+                            total=1,
+                            files_processed=1,
+                            files_total=1,
+                        )
+                    )
                 elif kind == "cancelled":
+                    self._resume_ready = self._last_folder is not None
                     self._set_busy(False)
                     extra = f" run_id={payload}" if payload else ""
                     self.status.set(
-                        f"Cancelled.{extra} Partial results remain in the store. Open Review for what exists."
+                        f"Cancelled.{extra} Partial results remain. Resume continues from the next unfinished stage."
                     )
                     if self._exit_after_cancel and self.root.winfo_exists():
                         self.root.destroy()
                         return
                 elif kind == "error":
+                    self._resume_ready = self._last_folder is not None
                     self._set_busy(False)
                     self.status.set(f"Failed: {payload}")
                     messagebox.showerror("Semblon", payload)
@@ -390,6 +487,8 @@ class HomeApp:
             [
                 f"Store: {self.store}",
                 "Cancel: between files (not mid-file)",
+                "Resume: next to Cancel; continues cancelled/interrupted run from next unfinished stage",
+                "Stills bar: real files done / files total, climbs to 100%",
                 "Provider: FaceKit CPU (not claimed GPU)",
                 f"Home observers: {HOME_OBSERVERS}",
                 f"Weights dir: {w['dir']}",

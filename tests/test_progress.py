@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
@@ -11,7 +12,7 @@ import pytest
 
 from semblon.cluster import ClusterError
 from semblon.ingest import CancelledError, discover_stills, ingest
-from semblon.process import ProcessCancelled, ProcessError, process_folder
+from semblon.process import ProcessCancelled, ProcessError, find_resumable_run, process_folder
 from semblon.progress import (
     KIND_CANCELLED,
     KIND_COMPLETED,
@@ -25,8 +26,13 @@ from semblon.progress import (
     STAGE_PROCESS,
     ProgressEvent,
     emit,
+    estimate_eta_s,
+    format_duration,
+    format_progress_bar,
+    format_progress_line,
     make_event,
     ratio_percent,
+    stills_percent,
 )
 
 
@@ -397,3 +403,147 @@ def test_process_cancel_is_not_success(tmp_path):
     assert pairs[-1] == (STAGE_PROCESS, KIND_CANCELLED)
     assert (STAGE_PROCESS, KIND_COMPLETED) not in pairs
     assert (STAGE_PROCESS, KIND_FAILED) not in pairs
+
+
+def test_eta_and_bar_need_real_counts():
+    assert estimate_eta_s(10.0, 2, 6) == 20.0
+    assert estimate_eta_s(10.0, 0, 6) is None
+    assert estimate_eta_s(10.0, 6, 6) is None
+    assert format_duration(65) == "1:05"
+    assert format_duration(None) is None
+    assert format_progress_bar(0, width=10) == "[----------]"
+    assert format_progress_bar(100, width=10) == "[##########]"
+    ev = make_event(
+        STAGE_INGEST,
+        KIND_PROGRESS,
+        files_processed=2,
+        files_total=4,
+        elapsed_s=10.0,
+        clock="12:00:00",
+    )
+    assert stills_percent(ev) == 50.0
+    line = format_progress_line(ev)
+    assert "50%" in line
+    assert "elapsed 0:10" in line
+    assert "eta 0:10" in line
+    assert "12:00:00" in line
+    assert "#" in line
+    bare = make_event(STAGE_INGEST, KIND_STARTED, message="reading stills", clock="12:00:01")
+    assert stills_percent(bare) is None
+    assert "%" not in format_progress_line(bare)
+
+
+def test_process_resume_skips_finished_stages(tmp_path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    store = tmp_path / "store.sqlite"
+    out = tmp_path / "review.html"
+    from semblon.store import connect, init_db
+
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution, notes)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "r-resume",
+            "t0",
+            "t1",
+            "0.0.1",
+            "pack-a",
+            2,
+            "l2",
+            json.dumps({"folder": str(folder.resolve())}),
+            "{}",
+            "x64",
+            "native",
+            None,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO media VALUES ('m1','folder',?,?,100,100,0,1)",
+        (str(folder / "a.jpg"), "aaa"),
+    )
+    conn.execute("INSERT INTO observations VALUES ('o1','m1',NULL,NULL,'r-resume')")
+    conn.execute(
+        """INSERT INTO clusters(cluster_id, run_id, strategy, face_count, centroid, min_intra, status)
+           VALUES ('c1','r-resume','dbscan',1,NULL,1.0,'auto')"""
+    )
+    conn.execute(
+        """INSERT INTO faces(face_id,observation_id,run_id,bbox_x1,bbox_y1,bbox_x2,bbox_y2,
+           det_score,face_w,face_h,size_band,status,embedding,embedding_pack,embedding_dim,cluster_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        ("f1", "o1", "r-resume", 0, 0, 20, 20, 0.9, 20, 20, "80-119", "ok", b"xxxxxxxx", "pack-a", 2, "c1"),
+    )
+    conn.commit()
+    conn.close()
+    assert find_resumable_run(store, folder) == "r-resume"
+
+    with (
+        patch("semblon.process.ingest") as ing,
+        patch("semblon.process.cluster_run") as clu,
+        patch(
+            "semblon.process.export_review",
+            return_value={"run_id": "r-resume", "out": str(out)},
+        ) as exp,
+        patch("semblon.process._try_open", return_value=False),
+    ):
+        rec = process_folder(
+            folder,
+            store=store,
+            out=out,
+            open_review=False,
+            resume=True,
+            progress=lambda *_: None,
+        )
+
+    ing.assert_not_called()
+    clu.assert_not_called()
+    exp.assert_called_once()
+    assert rec["run_id"] == "r-resume"
+    assert rec["ingest"]["resumed"] is True
+    assert rec["cluster"]["resumed"] is True
+
+
+def test_ingest_resume_reuses_run_id(tmp_path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    (folder / "a.jpg").write_bytes(b"aaaa")
+    (folder / "b.jpg").write_bytes(b"bbbb")
+    processed = {"n": 0}
+
+    def faces_for(path):
+        processed["n"] += 1
+        vec = np.zeros(4, dtype=np.float32)
+        return [
+            {
+                "bbox": (0.0, 0.0, 100.0, 100.0),
+                "det_score": 0.9,
+                "face_w": 100,
+                "face_h": 100,
+                "dim": 4,
+                "embedding": vec,
+            }
+        ]
+
+    def cancel_first():
+        return processed["n"] >= 1
+
+    with _fake_embed_env(faces_for):
+        with pytest.raises(CancelledError) as ei:
+            ingest(folder, tmp_path / "store.sqlite", cancel=cancel_first)
+    run_id = ei.value.run_id
+    assert run_id
+    processed["n"] = 0
+    with _fake_embed_env(faces_for):
+        rec = ingest(folder, tmp_path / "store.sqlite", resume_run_id=run_id)
+    assert rec["run_id"] == run_id
+    conn = __import__("sqlite3").connect(str(tmp_path / "store.sqlite"))
+    n_runs = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+    n_media = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+    notes = conn.execute("SELECT notes FROM runs WHERE run_id=?", (run_id,)).fetchone()[0]
+    conn.close()
+    assert n_runs == 1
+    assert n_media == 2
+    assert notes is None

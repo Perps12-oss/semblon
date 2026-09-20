@@ -252,6 +252,7 @@ def ingest(
     observers: str = "face",
     prefer_gpu: bool = False,
     batch: int = 1,
+    resume_run_id: str | None = None,
 ) -> dict:
     folder = Path(folder).resolve()
     if not folder.is_dir():
@@ -280,7 +281,6 @@ def ingest(
         app = load_app(DET_SIZE, prefer_gpu=prefer_gpu)
         load_s = time.perf_counter() - t_load
 
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     runtime = {
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "hostname": platform.node(),
@@ -321,26 +321,40 @@ def ingest(
         "prefer_gpu": bool(prefer_gpu),
         "batch": int(batch),
     }
-    conn.execute(
-        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
-           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution,
-           ort_version)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-        (
-            run_id,
-            datetime.now(timezone.utc).isoformat(),
-            __version__,
-            pid,
-            512,
-            "l2",
-            json.dumps(config),
-            json.dumps(runtime),
-            _arch(),
-            _execution(),
-            ort.__version__,
-        ),
-    )
-    conn.commit()
+    if resume_run_id:
+        row = conn.execute("SELECT * FROM runs WHERE run_id=?", (resume_run_id,)).fetchone()
+        if row is None:
+            conn.close()
+            raise ValueError(f"unknown run: {resume_run_id}")
+        run_id = str(row["run_id"])
+        pid = str(row["pack_id"])
+        conn.execute(
+            "UPDATE runs SET finished_at=NULL, notes=NULL WHERE run_id=?",
+            (run_id,),
+        )
+        conn.commit()
+    else:
+        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
+        conn.execute(
+            """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+               embedding_dim, embedding_norm, config_json, runtime_json, arch, execution,
+               ort_version)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                run_id,
+                datetime.now(timezone.utc).isoformat(),
+                __version__,
+                pid,
+                512,
+                "l2",
+                json.dumps(config),
+                json.dumps(runtime),
+                _arch(),
+                _execution(),
+                ort.__version__,
+            ),
+        )
+        conn.commit()
     stamp_unfinished_runs(conn, except_run_id=run_id)
 
     emit(on_event, make_event(STAGE_DISCOVER, KIND_STARTED, path=str(folder), run_id=run_id))
