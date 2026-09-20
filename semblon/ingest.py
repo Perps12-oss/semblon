@@ -552,11 +552,8 @@ def ingest(
         img0,
         faces: list,
     ) -> None:
-        nonlocal n_media, n_faces, n_ok, n_lq, n_rej, n_fail, dirty
-        if want_cancel():
-            return
+        nonlocal n_media, n_faces, n_ok, n_lq, n_rej, dirty
         if img0 is None:
-            n_fail += 1
             tick(path, "failed", force=True)
             return
         h, w = img0.shape[:2]
@@ -576,16 +573,6 @@ def ingest(
             (obs_id, media_id, None, None, run_id),
         )
         dirty += 1
-        try:
-            if want_cancel():
-                return
-            faces = embed_bgr(app, img0)
-        except Exception:
-            n_fail += 1
-            dirty += 1
-            maybe_commit(force=True)
-            tick(path, "failed", force=True)
-            return
 
         nf, nok, nlq, nrej = _persist_faces(
             conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
