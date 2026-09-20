@@ -76,11 +76,30 @@ Docs/conceptual only. No new columns. Map of SEM-ARCH nouns onto today's store:
 
 Frozen rule: detector → observation; grouping → hypothesis; human → decision. `cluster ≠ person`. `group ≠ entity`. Unknown is valid.
 
-Embedding envelope (conceptual): modality, provider/`pack_id`, dimensions, normalisation, version, vector. Incompatible spaces never compare. Face identity remains FaceKit/`pack_id` only.
+Embedding envelope (conceptual, ARCH-001 name / ARCH-003 map): modality, provider/`pack_id`, dimensions, normalisation, version, vector. Incompatible spaces never compare. Face identity remains FaceKit/`pack_id` only. Full map: **Embedding envelope (ARCH-003)** below.
 
-`ObservationProvider` (sketch, not a class today): FaceKit is the first provider (face observation + embedding + bbox + quality + pack_id). No second provider is authorized.
+`ObservationProvider`: thin `FaceKitProvider` class in `semblon/providers.py` (CPU recorded). Ingest/identify still call `engine.load_app()`. No second provider is authorized. GPU is not claimed.
 
 `ObservationGroup`: today's `clusters` — related under a model/config, not “the same thing”. Do not retune `eps=0.40`.
+
+## Embedding envelope (ARCH-003)
+
+Docs/conceptual. **No new columns.** Face identity `compare()` stays `pack_id` + dim + l2 payload (`semblon/compare.py`). `buffalo_l` is a family name, not the compare key.
+
+| Envelope field | Today (face identity) | In store? |
+|---|---|---|
+| modality | implicit: face only | no separate column (face-shaped `faces`) |
+| provider / pack_id | `runs.pack_id`, `faces.embedding_pack` | yes |
+| dimensions | `faces.embedding_dim`, `runs.embedding_dim` | yes |
+| normalisation | `runs.embedding_norm` CHECK `l2` | yes |
+| version | packed inside `pack_id` (family@version/adapter/sha) | yes (packed) |
+| vector | `faces.embedding` BLOB | yes (face only) |
+
+**Legal:** face↔face inside the same `pack_id` and dim.
+
+**Illegal:** `pack_id` mismatch; dim mismatch; silently mixing a future object/OCR/CLIP space into identity `compare()`; treating family name `buffalo_l` as the key.
+
+No second embedding space exists. This slice does not add one. Grouping (`clusters`) and entities (`persons`) are not envelope fields.
 
 ## Metrics
 

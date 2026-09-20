@@ -6,6 +6,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from semblon.cli import main
 from semblon.progress import KIND_STALLED, STAGE_INGEST, make_event
 from semblon.providers import FaceKitProvider, weights_status
@@ -42,6 +44,8 @@ def test_integrity_and_interrupted_stamp(tmp_path):
     conn = _seed(store)
     rec = integrity_report(store)
     assert rec["ok"] is True
+    assert rec["pragma_integrity"] == "ok"
+    assert rec["media_missing_path"] == 2
     assert "r1" in rec["unfinished_runs"]
     stamped = stamp_unfinished_runs(conn, except_run_id="live")
     conn.close()
@@ -49,6 +53,34 @@ def test_integrity_and_interrupted_stamp(tmp_path):
     rec3 = integrity_report(store)
     assert rec3["unfinished_runs"] == []
     assert rec3["ok"] is True
+
+
+def test_integrity_missing_original_does_not_fail_ok(tmp_path):
+    store = tmp_path / "s.sqlite"
+    conn = _seed(store)
+    real = tmp_path / "a.jpg"
+    real.write_bytes(b"x")
+    conn.execute("UPDATE media SET path=? WHERE media_id='m1'", (str(real),))
+    conn.commit()
+    conn.close()
+    rec = integrity_report(store)
+    assert rec["ok"] is True
+    assert rec["media_missing_path"] == 1
+    assert rec["pragma_integrity"] == "ok"
+
+
+def test_search_person_lookup_is_readonly(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    name_cluster(store, "r1", assigned["f1"], "Alice")
+    from semblon.search import _open
+
+    ro = _open(store)
+    with pytest.raises(sqlite3.OperationalError):
+        ro.execute("INSERT INTO schema_meta(key, value) VALUES ('probe', '1')")
+    ro.close()
+    rec = search_person(store, "Alice")
+    assert rec["count"] == 1
 
 
 def test_search_person_not_cluster(tmp_path):

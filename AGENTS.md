@@ -6,7 +6,7 @@ Read in order: `docs/PRODUCT.md` → `docs/CONTRACTS.md` → `docs/SEM-ARCH.md`.
 
 ## Product
 
-Personal local-first Windows CLI. One user. No cloud. No ACC. No GUI required. Files stay put. SQLite + originals are authoritative.
+Personal local-first Windows CLI. One user. No cloud. No ACC. Files stay put. SQLite + originals are authoritative. Frozen v1 still says **no GUI required**; Home + `review-ui` are KEEP (PRODUCT 2026-09-19 Level 2), not a v1 identity-contract requirement.
 
 Loop: `cluster → review → person → name`. Never `cluster = person`. Generalized (plan only): `group ≠ entity`.
 

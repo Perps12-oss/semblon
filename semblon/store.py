@@ -442,8 +442,21 @@ def integrity_report(store: Path) -> dict:
     n_media = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
     n_faces = conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
     n_persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    pragma_row = conn.execute("PRAGMA integrity_check").fetchone()
+    pragma_integrity = "ok" if pragma_row is None else str(pragma_row[0])
+    pragma_ok = pragma_integrity == "ok"
+    media_missing_path = 0
+    for row in conn.execute("SELECT path FROM media"):
+        src = row["path"] if isinstance(row, sqlite3.Row) else row[0]
+        if not src or not Path(src).is_file():
+            media_missing_path += 1
     conn.close()
-    ok = orphan_faces == 0 and orphan_obs == 0 and faces_missing_run == 0
+    ok = (
+        orphan_faces == 0
+        and orphan_obs == 0
+        and faces_missing_run == 0
+        and pragma_ok
+    )
     return {
         "store": str(p.resolve()),
         "schema_version": None if schema is None else schema[0],
@@ -452,10 +465,15 @@ def integrity_report(store: Path) -> dict:
         "orphan_faces": int(orphan_faces),
         "orphan_observations": int(orphan_obs),
         "faces_missing_run": int(faces_missing_run),
+        "pragma_integrity": pragma_integrity,
+        "media_missing_path": int(media_missing_path),
         "media": int(n_media),
         "faces": int(n_faces),
         "persons": int(n_persons),
-        "note": "read-only; unfinished_runs are not completed",
+        "note": (
+            "read-only; unfinished_runs are not completed; "
+            "media_missing_path does not fail ok (originals may move)"
+        ),
     }
 
 
