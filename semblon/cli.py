@@ -340,14 +340,33 @@ def main(argv: list[str] | None = None) -> int:
     wat.add_argument("--once", action="store_true")
     wat.add_argument("--observers", default="face")
 
-    liv = sub.add_parser("live", help="sample webcam index or RTSP URL into the store")
+    liv = sub.add_parser(
+        "live",
+        help="webcam/RTSP capture: detect->track->selective embed->identify vs persons (not always-on unless --seconds 0)",
+    )
     liv.add_argument("--store", required=True, type=Path)
     liv.add_argument("--source", default="0", help="camera index or RTSP URL")
-    liv.add_argument("--seconds", type=float, default=5.0)
+    liv.add_argument("--seconds", type=float, default=5.0, help="capture duration in seconds; 0 runs until cancel/SIGINT")
     liv.add_argument("--hz", type=float, default=1.0)
+    liv.add_argument(
+        "--reembed-s",
+        type=float,
+        default=2.0,
+        help="re-embed a track when its last persisted embedding is older than this many seconds",
+    )
+    liv.add_argument(
+        "--retain-s",
+        type=float,
+        default=None,
+        help="rolling retention window for this live media (delete older observations)",
+    )
+    liv.add_argument("--strict", action="store_true", help="fail run on detect/embed errors")
     liv.add_argument("--prefer-gpu", action="store_true")
 
-    canv = sub.add_parser("canvas", help="Intelligence Canvas over observations (not identity)")
+    canv = sub.add_parser(
+        "canvas",
+        help="observation overlay (boxes + tracks; not identity; not the S8 shell)",
+    )
     canv.add_argument("--store", default=None, type=Path)
     canv.add_argument("--run", default=None)
 
@@ -858,6 +877,9 @@ def main(argv: list[str] | None = None) -> int:
                 source=args.source,
                 seconds=args.seconds,
                 sample_hz=args.hz,
+                reembed_s=args.reembed_s,
+                retain_s=args.retain_s,
+                strict=args.strict,
                 prefer_gpu=args.prefer_gpu,
             )
         except (LiveError, FileNotFoundError) as e:

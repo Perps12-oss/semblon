@@ -1,4 +1,4 @@
-"""Stall vs slow vs failed. Does not kill jobs. Does not invent percent."""
+"""Stall detector, not a folder watcher. Does not kill jobs or invent percent."""
 
 from __future__ import annotations
 

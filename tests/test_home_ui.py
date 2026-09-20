@@ -1,0 +1,45 @@
+"""Home activity semantics readers."""
+
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+from semblon.home_ui import format_activity_lines, read_activity_snapshot
+from semblon.observers import snapshot_memory_graph
+from semblon.review import name_cluster, name_face
+from tests.test_review import _clustered
+
+
+def test_activity_lines_include_group_semantics(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    name_cluster(store, "r1", assigned["f1"], "Alice")
+    name_face(store, "r1", "f5", "Bob")
+    snapshot_memory_graph(store, run_id="r1")
+
+    rec = read_activity_snapshot(store, "r1")
+    lines = format_activity_lines(
+        run_line="run=r1",
+        integrity_line="integrity ok=1 unfinished=0",
+        groups=rec["groups"],
+        relationships=rec["relationships"],
+        events=rec["events"],
+        track_count=rec["track_count"],
+    )
+    text = "\n".join(lines)
+    assert "observation_groups" in text
+    assert "members=" in text
+    assert "not a person" in text
+    assert "relationships:" in text
+    assert "events:" in text
+    assert "track ≠ person" in text
+
+
+def test_activity_reader_broken_db_is_not_swallowed(tmp_path):
+    bad = tmp_path / "broken.sqlite"
+    bad.write_text("this is not sqlite")
+    with pytest.raises(sqlite3.DatabaseError):
+        read_activity_snapshot(Path(bad), "r1")

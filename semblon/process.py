@@ -11,7 +11,7 @@ import os
 import sqlite3
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from semblon.cluster import DEFAULT_EPS, DEFAULT_MIN_SAMPLES, ClusterError, cluster_run
 from semblon.export import ExportError, export_review
@@ -20,6 +20,7 @@ from semblon.progress import (
     KIND_CANCELLED,
     KIND_COMPLETED,
     KIND_FAILED,
+    KIND_QUEUED,
     KIND_STARTED,
     STAGE_CLUSTER,
     STAGE_EXPORT,
@@ -42,16 +43,25 @@ class ProcessCancelled(ProcessError):
         self.run_id = run_id
 
 
+def _looks_windows_path(path: Path | str) -> bool:
+    s = str(path)
+    return ("\\" in s) or (len(s) >= 2 and s[1] == ":")
+
+
 def default_store_path() -> Path:
     """User-local SQLite store. Windows: %LOCALAPPDATA%\\Semblon\\store.sqlite."""
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA")
         if base:
-            return Path(base) / "Semblon" / "store.sqlite"
+            # Keep path parts addressable in cross-platform tests.
+            return Path(base.replace("\\", "/")) / "Semblon" / "store.sqlite"
     return Path.home() / ".local" / "share" / "semblon" / "store.sqlite"
 
 
 def default_review_out(store: Path) -> Path:
+    if _looks_windows_path(store):
+        p = PureWindowsPath(str(store))
+        return Path(str(p.with_name("review.html")))
     return Path(store).resolve().parent / "review.html"
 
 
@@ -308,7 +318,7 @@ def process_folder(
     stages = (
         inspect_run_stages(store_path, resume_run, out=out_path) if resume_run else None
     )
-    start_msg = f"Ingesting stills from: {folder.resolve()}"
+    start_msg = f"Ingesting media from: {folder.resolve()}"
     if resume_run and stages:
         nxt = "ingest"
         if stages["ingest_done"] and not stages["cluster_done"]:
@@ -319,6 +329,15 @@ def process_folder(
             nxt = "already complete"
         start_msg = f"Resume run_id={resume_run} at {nxt}"
 
+    emit(
+        on_event,
+        make_event(
+            STAGE_PROCESS,
+            KIND_QUEUED,
+            path=str(folder.resolve()),
+            message=f"Queued: {folder.resolve()}",
+        ),
+    )
     emit(
         on_event,
         make_event(
@@ -378,6 +397,7 @@ def process_folder(
             raise ProcessError(str(e)) from e
 
         run_id = ing["run_id"]
+        ingest_run_id = run_id
         progress(f"Ingest done. run_id={run_id}")
         progress(
             f"  new_media={ing.get('new_media')} faces={ing.get('faces')} "
@@ -411,11 +431,13 @@ def process_folder(
                     f"No new faces this run; reviewing existing run_id={prior} "
                     f"(skipped_seen={ing.get('skipped_seen', 0)})"
                 )
+                if prior != ingest_run_id:
+                    _drop_empty_run(store_path, ingest_run_id)
                 run_id = prior
                 clu = {
-                    "clusters": None,
-                    "clustered": None,
-                    "unassigned": None,
+                    "clusters": 0,
+                    "clustered": 0,
+                    "unassigned": 0,
                     "note": "no new faces; reused prior run for review",
                 }
             else:
@@ -553,15 +575,33 @@ def _try_open(path: Path, progress) -> bool:
         if sys.platform == "darwin":
             import subprocess
 
-            subprocess.run(["open", str(path)], check=False)
+            subprocess.Popen(["open", str(path)])  # noqa: S603,S607
             progress("Opened review.")
             return True
         import subprocess
 
-        subprocess.run(["xdg-open", str(path)], check=False)
+        subprocess.Popen(["xdg-open", str(path)])  # noqa: S603,S607
         progress("Opened review.")
         return True
     except OSError as e:
         progress(f"Could not open review automatically ({e}). Open it yourself:")
         progress(f"  {path}")
         return False
+
+
+def _drop_empty_run(store: Path, run_id: str) -> bool:
+    """Best-effort cleanup for FACE-005 skip-all empty runs."""
+    conn = sqlite3.connect(str(store))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        n_obs = int(conn.execute("SELECT COUNT(*) FROM observations WHERE run_id=?", (run_id,)).fetchone()[0])
+        n_faces = int(conn.execute("SELECT COUNT(*) FROM faces WHERE run_id=?", (run_id,)).fetchone()[0])
+        n_decisions = int(conn.execute("SELECT COUNT(*) FROM decisions WHERE run_id=?", (run_id,)).fetchone()[0])
+        if n_obs == 0 and n_faces == 0 and n_decisions == 0:
+            conn.execute("DELETE FROM runs WHERE run_id=?", (run_id,))
+            conn.commit()
+            return True
+        return False
+    finally:
+        conn.close()

@@ -27,9 +27,10 @@ Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical freeze at `8403292`). Adden
 - DBSCAN clusters snapshot to `observation_groups` (group ≠ person)
 - S6 together/events snapshot to `relationships`/`events` with `confirmed=0`
 - `search --person/--people/--face/--similar` (similar is same-modality only; face refused)
-- `watch`, `live`, `canvas` (image + bbox overlay)
+- `watch`; `live` detect→track→selective embed→identify vs named persons (`--seconds 0` unbounded, `--retain-s` optional); `canvas` observation overlay
 - Color-hist + OpenCV contour observers; OCR/CLIP/pose run when libraries exist, otherwise an unavailable/error item
 - S7a/S7b; S6 memory
+- Process callback emits `KIND_QUEUED` before `KIND_STARTED`
 - Portable CI workflow (no weight download)
 
 ## PARTIAL
@@ -37,14 +38,12 @@ Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical freeze at `8403292`). Adden
 - Home People/Unknown/Activity/Settings are list windows, not a full sidebar shell
 - OCR/CLIP/pose: implemented behind optional imports; not in `requirements.txt`; CLIP/pose may fail without local weights (recorded as error items, not crashes)
 - Canvas overlay is tk PhotoImage, not a pixel compositor
-- `KIND_QUEUED` is emitted by Home before process starts
-
 ## COMPLETE — ENVIRONMENT-LIMITED
 
 - ARM64 native OpenCV ingest (binary exists; load hang)
 - x64 native FACE-000 (no x64 PC here)
 - Video tracking quality on real camera motion (synthetic tests only)
-- Webcam/RTSP live capture (fake-capture unit tested)
+- Webcam/RTSP hardware validation on real devices is pending; live engine is seam-tested in portable CI
 
 ## EXPERIMENTAL
 

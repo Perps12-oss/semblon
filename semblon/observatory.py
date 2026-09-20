@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -61,6 +62,7 @@ def _connect_ro(store: Path) -> sqlite3.Connection:
         raise ObservatoryError(f"store not found: {p}")
     conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -174,7 +176,10 @@ def freeze(
             board["notes"] = text
     path = Path(out) if out else golden_path(store, stage)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(board, indent=2), encoding="utf-8")
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=str(path.parent), delete=False) as tmp:
+        tmp.write(json.dumps(board, indent=2))
+        tmp_path = Path(tmp.name)
+    tmp_path.replace(path)
     board["golden"] = str(path)
     return board
 
@@ -183,7 +188,7 @@ def _rel(old, new) -> float | None:
     if old in (None, 0) or new is None:
         return None
     try:
-        return (float(new) - float(old)) / abs(float(old))
+        return (float(new) - float(old)) / float(old)
     except (TypeError, ValueError, ZeroDivisionError):
         return None
 
@@ -203,9 +208,10 @@ def compare_boards(golden: dict, current: dict) -> dict:
 
     g_acc = (golden.get("accuracy") or {}).get("status")
     c_acc = (current.get("accuracy") or {}).get("status")
-    if g_acc in ("not_measurable", "underpowered") or c_acc in (
+    if g_acc in ("not_measurable", "underpowered", "not_confirmatory") or c_acc in (
         "not_measurable",
         "underpowered",
+        "not_confirmatory",
     ):
         marks["accuracy"] = "not_measurable"
         notes.append("accuracy not measurable (no powered confirmatory eval)")

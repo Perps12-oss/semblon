@@ -104,6 +104,9 @@ semblon review-ui --store "D:\semblon\store.sqlite" --run RUN_ID
 semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite"
 semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite" --reprocess
 
+semblon live --store "D:\semblon\store.sqlite" --source 0 --seconds 5 --hz 1
+semblon live --store "D:\semblon\store.sqlite" --source "rtsp://cam/stream" --seconds 0 --hz 5 --reembed-s 2 --retain-s 30
+
 semblon cluster --run RUN_ID --store "D:\semblon\store.sqlite"
 semblon export --run RUN_ID --store "D:\semblon\store.sqlite" --out "review.html"
 semblon export --run RUN_ID --store "D:\semblon\store.sqlite" --views "D:\semblon\views"
@@ -136,6 +139,8 @@ semblon memory history --person "Alice" --store "D:\semblon\store.sqlite"
 semblon memory together --store "D:\semblon\store.sqlite"
 semblon memory events --store "D:\semblon\store.sqlite"
 ```
+
+`live` runs a real loop: detect → track → selective embed → identify vs named persons. `--seconds 0` keeps running until cancel/SIGINT. `--reembed-s` controls per-track re-embed cadence; `--retain-s` applies rolling retention on that live media. `UNKNOWN` is valid and live faces are never auto-assigned `person_id`.
 
 Quote Windows paths. Put a space between `--out` and the next argument — do not glue `docs\runtime.md` onto another path.
 

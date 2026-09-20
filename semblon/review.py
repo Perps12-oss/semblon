@@ -511,7 +511,7 @@ def name_track(
     track_id: str,
     display_name: str,
 ) -> dict:
-    """Name current members of a derived track. Re-derives; does not persist a track row."""
+    """Name current members of a derived/persisted track. Track ≠ person."""
     track_id = (track_id or "").strip()
     if not track_id:
         raise ReviewError("track id must be non-empty")
@@ -822,7 +822,7 @@ def note_subject(
     cluster_id: str | None = None,
     face_id: str | None = None,
 ) -> dict:
-    """Durable review note. Stored as decisions.kind=reject (schema has no note kind)."""
+    """Durable review note. Stored as decisions.kind=note."""
     text = (text or "").strip()
     if not text:
         raise ReviewError("note text must be non-empty")
@@ -841,7 +841,7 @@ def note_subject(
         cluster_id = row["cluster_id"]
     decision_id = _record_decision(
         conn,
-        kind="reject",
+        kind="note",
         run_id=run_id,
         pack_id=run["pack_id"],
         cluster_id=cluster_id,

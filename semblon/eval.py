@@ -41,6 +41,7 @@ def _open(store: Path, readonly: bool = False):
             raise EvalError(f"store not found: {p}")
         conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
     conn = connect(p)
     init_db(conn)
@@ -87,7 +88,7 @@ def create_set(
 ) -> dict:
     if kind not in KINDS:
         raise EvalError(f"unknown kind: {kind}")
-    if not eval_set_id or eval_set_id == "confirmatory":
+    if not eval_set_id or eval_set_id.lower() == "confirmatory":
         raise EvalError("eval_set id is required")
     conn = _open(store)
     exists = conn.execute(
@@ -133,6 +134,13 @@ def add_pair(
         if conn.execute("SELECT 1 FROM faces WHERE face_id=?", (fid,)).fetchone() is None:
             conn.close()
             raise EvalError(f"unknown face: {fid}")
+    existing = conn.execute(
+        "SELECT 1 FROM eval_pairs WHERE eval_set_id=? AND face_a=? AND face_b=?",
+        (eval_set_id, a, b),
+    ).fetchone()
+    if existing is not None:
+        conn.close()
+        raise EvalError(f"pair already in set: {a} {b}")
     try:
         conn.execute(
             """INSERT INTO eval_pairs(eval_set_id, face_a, face_b, label, stratum)
@@ -140,9 +148,9 @@ def add_pair(
             (eval_set_id, a, b, label, stratum),
         )
         conn.commit()
-    except sqlite3.IntegrityError:
+    except sqlite3.IntegrityError as e:
         conn.close()
-        raise EvalError(f"pair already in set or invalid: {a} {b}")
+        raise EvalError(f"invalid pair or eval set for insert: {a} {b}") from e
     conn.close()
     return {
         "eval_set_id": eval_set_id,
@@ -198,11 +206,13 @@ def mine_discovery(
         SELECT face_id, cluster_id, embedding, embedding_pack, embedding_dim
         FROM faces
         WHERE run_id=? AND status='ok' AND embedding IS NOT NULL
+          AND cluster_id IS NOT NULL
+          AND embedding_pack=?
         ORDER BY face_id
         """,
-        (run_id,),
+        (run_id, pack_id),
     ).fetchall()
-    faces = [r for r in rows if r["embedding_pack"] == pack_id and r["cluster_id"]]
+    faces = rows
     candidates: list[tuple[float, str, str]] = []
     for i, a in enumerate(faces):
         for b in faces[i + 1 :]:
@@ -224,14 +234,14 @@ def mine_discovery(
                 candidates.append((float(s), fa, fb))
     candidates.sort(key=lambda x: (-x[0], x[1], x[2]))
     picked = candidates[: max(0, int(max_pairs))]
-    conn.execute("DELETE FROM eval_pairs WHERE eval_set_id=?", (eval_set_id,))
-    for _s, fa, fb in picked:
-        conn.execute(
-            """INSERT INTO eval_pairs(eval_set_id, face_a, face_b, label, stratum)
-               VALUES (?,?,?,?,?)""",
-            (eval_set_id, fa, fb, "different", "mined"),
-        )
-    conn.commit()
+    with conn:
+        conn.execute("DELETE FROM eval_pairs WHERE eval_set_id=?", (eval_set_id,))
+        for _s, fa, fb in picked:
+            conn.execute(
+                """INSERT INTO eval_pairs(eval_set_id, face_a, face_b, label, stratum)
+                   VALUES (?,?,?,?,?)""",
+                (eval_set_id, fa, fb, "different", "mined"),
+            )
     conn.close()
     return {
         "eval_set_id": eval_set_id,
@@ -245,9 +255,16 @@ def mine_discovery(
     }
 
 
-def _score_pair(conn, eset, face_a: str, face_b: str, threshold: float) -> dict:
-    a = conn.execute("SELECT * FROM faces WHERE face_id=?", (face_a,)).fetchone()
-    b = conn.execute("SELECT * FROM faces WHERE face_id=?", (face_b,)).fetchone()
+def _score_pair(conn, eset, face_a: str, face_b: str, threshold: float, face_cache: dict[str, sqlite3.Row] | None = None) -> dict:
+    cache = face_cache if face_cache is not None else {}
+    a = cache.get(face_a)
+    if a is None and face_a not in cache:
+        a = conn.execute("SELECT * FROM faces WHERE face_id=?", (face_a,)).fetchone()
+        cache[face_a] = a
+    b = cache.get(face_b)
+    if b is None and face_b not in cache:
+        b = conn.execute("SELECT * FROM faces WHERE face_id=?", (face_b,)).fetchone()
+        cache[face_b] = b
     out = {
         "face_a": face_a,
         "face_b": face_b,
@@ -313,16 +330,20 @@ def score_set(
         n_fa = n_fr = 0
         n_hard = 0
         n_impure = 0
+        skip_reasons: dict[str, int] = {}
+        face_cache: dict[str, sqlite3.Row | None] = {}
         for p in pairs:
             if p["label"] == "same":
                 n_same += 1
             else:
                 n_diff += 1
-            rec = _score_pair(conn, eset, p["face_a"], p["face_b"], threshold)
+            rec = _score_pair(conn, eset, p["face_a"], p["face_b"], threshold, face_cache)
             rec["label"] = p["label"]
             rec["stratum"] = p["stratum"]
             if rec["decision"] == "skip":
                 n_skipped += 1
+                reason = rec.get("skip_reason") or "unknown"
+                skip_reasons[reason] = int(skip_reasons.get(reason, 0)) + 1
             else:
                 n_scored += 1
                 if p["label"] == "different" and rec["decision"] == "accept":
@@ -390,6 +411,7 @@ def score_set(
                 "false_reject": n_fr,
                 "hard_negatives": n_hard,
                 "cluster_impurity": n_impure,
+                "skip_reasons": skip_reasons,
             },
             "far": far,
             "frr": frr,
