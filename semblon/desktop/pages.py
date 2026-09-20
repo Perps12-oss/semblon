@@ -34,8 +34,10 @@ class HomePage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.welcome = QLabel("SEMBLON")
+        self.welcome.setObjectName("title")
         self.welcome.setAccessibleName("Welcome")
         self.stats = QLabel("")
+        self.stats.setObjectName("subtitle")
         self.stats.setWordWrap(True)
         self.stats.setAccessibleName("Library stats")
         self.recent = QListWidget()
@@ -86,6 +88,7 @@ class _MediaPage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.heading = QLabel(title)
+        self.heading.setObjectName("title")
         self.heading.setAccessibleName(title)
         self.stack = QStackedWidget()
         self.empty = folder_empty_state(self, empty_title, empty_body, on_add=self.add_folder.emit)
@@ -156,6 +159,7 @@ class PeoplePage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.heading = QLabel("People")
+        self.heading.setObjectName("title")
         self.heading.setAccessibleName("People")
         self.empty = EmptyState(
             "No named people",
@@ -192,6 +196,7 @@ class UnknownPage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.heading = QLabel("Unknown")
+        self.heading.setObjectName("title")
         self.heading.setAccessibleName("Unknown")
         self.empty = EmptyState(
             "Nothing to review",
@@ -252,6 +257,7 @@ class ActivityPage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.heading = QLabel("Activity")
+        self.heading.setObjectName("title")
         self.heading.setAccessibleName("Activity")
         self.list = QListWidget()
         self.list.setAccessibleName("Activity list")
@@ -277,6 +283,7 @@ class SettingsPage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.heading = QLabel("Settings")
+        self.heading.setObjectName("title")
         self.heading.setAccessibleName("Settings")
         self.body = QLabel("")
         self.body.setWordWrap(True)

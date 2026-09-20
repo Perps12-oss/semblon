@@ -48,6 +48,19 @@ def test_list_item_flags_on_installed_pyside():
     assert flags & Qt.ItemFlag.ItemIsSelectable
 
 
+def test_desktop_package_init_does_not_import_qt_modules():
+    init = Path(__file__).resolve().parents[1] / "semblon" / "desktop" / "__init__.py"
+    tree = ast.parse(init.read_text(encoding="utf-8"))
+    banned = {"pages", "window", "app", "widgets", "theme", "workers", "backdrop"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            tail = node.module.rsplit(".", 1)[-1]
+            assert tail not in banned, node.module
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert "PySide6" not in alias.name
+
+
 def test_semblon_list_model_flags_on_installed_pyside():
     pytest.importorskip("PySide6")
     from PySide6.QtCore import QModelIndex, Qt

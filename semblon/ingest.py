@@ -1,4 +1,4 @@
-"""0.2 ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster.
+"""Ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster.
 
 Optional experimental --workers > 1: thread-local FaceAnalysis for stills only,
 single SQLite writer. Video sampling stays sequential on the main thread.

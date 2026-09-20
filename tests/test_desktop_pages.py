@@ -143,6 +143,7 @@ def test_home_recent_is_list_and_empty_add_folder(qapp):
     from semblon.desktop.pages import HomePage
 
     page = HomePage()
+    page.show()
     assert isinstance(page.recent, QListWidget)
     fired = {"n": 0}
     page.add_folder.connect(lambda: fired.__setitem__("n", fired["n"] + 1))

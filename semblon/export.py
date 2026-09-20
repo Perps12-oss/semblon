@@ -1,4 +1,4 @@
-"""0.3 export: static review.html. Read-only. No server."""
+"""Export: static review.html. Read-only. No server."""
 
 from __future__ import annotations
 
@@ -502,7 +502,7 @@ timings { _esc(timings) }</p>
 
 <section id="strong">
 <h2>STRONG ({len(strong_cs)})</h2>
-<p class="meta">Tight groups. Still not persons until named in 0.4.</p>
+<p class="meta">Tight groups. Still not persons until named after review.</p>
 {body_clusters_strong}
 </section>
 

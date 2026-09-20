@@ -1,4 +1,4 @@
-"""0.3 cluster + export — no InsightFace."""
+"""Cluster + export — no InsightFace."""
 
 from __future__ import annotations
 

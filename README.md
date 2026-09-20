@@ -28,7 +28,8 @@ py -3.12 -m venv .venv
 ```
 
 Then **double-click `semblon.cmd`** to open **Home**: Choose folder to process, or Open Review to name people.
-(Transparent / Mica full shell stays on the PySide6 dump-gate path — not this window.)
+
+**Status:** the shipping UI is tkinter (`semblon home`, `semblon review-ui`). The PySide6 Widgets workspace is optional and not default Home — install `pip install -e ".[gui]"` then run `semblon-desktop` or `semblon desktop`. The QML tree under `tools/s8_toolkit_spike/` is a research spike, not a product UI.
 
 Home has People / Unknown / Activity / Settings list windows, person search, and Canvas (image + observation boxes). Extra observers never become people. Static `review.html` remains a read-only export.
 
@@ -36,6 +37,7 @@ Home has People / Unknown / Activity / Settings list windows, person search, and
 semblon.cmd home
 semblon.cmd review-ui
 semblon.cmd review-ui --store "%LOCALAPPDATA%\Semblon\store.sqlite"
+semblon.cmd desktop
 ```
 
 Or pass a path explicitly (no need to activate the venv, no need to copy a run id):

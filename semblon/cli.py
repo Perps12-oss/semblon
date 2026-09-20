@@ -6,8 +6,9 @@ FACE-004: identify vs persons, never clusters. Unknown is valid.
 FACE-005: incremental ingest + inbox. No watcher.
 S6: memory history / together / events. Time/place are not identity.
 process: happy-path ingest -> cluster -> export review.html.
-home: double-click Choose folder / Open Review (not full shell).
+home: double-click Choose folder / Open Review (tkinter; not the Widgets shell).
 review-ui: S8 Interactive Review slice (tkinter over review APIs).
+desktop: optional PySide6 workspace (pip install -e ".[gui]"; not default Home).
 S7a: video files in the ingest folder are sampled (not every frame).
 S7b: tracks --run is derived IoU+time association (not identity, not written).
 """
@@ -126,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
 
     ing = sub.add_parser(
         "ingest",
-        help="0.2/FACE-005 folder stills + S7a sampled video -> store (incremental by default)",
+        help="FACE-005 folder stills + S7a sampled video -> store (incremental by default)",
     )
     ing.add_argument("folder", type=Path)
     ing.add_argument("--store", required=True, type=Path)
@@ -191,13 +192,13 @@ def main(argv: list[str] | None = None) -> int:
         help="continue the latest unfinished process for this folder from the next stage",
     )
 
-    clu = sub.add_parser("cluster", help="0.3 DBSCAN on ok faces for a run")
+    clu = sub.add_parser("cluster", help="DBSCAN on ok faces for a run")
     clu.add_argument("--run", required=True)
     clu.add_argument("--store", required=True, type=Path)
     clu.add_argument("--eps", type=float, default=None, help="DBSCAN eps on 1-cosine (default 0.40)")
     clu.add_argument("--min-samples", type=int, default=None)
 
-    exp = sub.add_parser("export", help="0.3 review.html and/or person view folders")
+    exp = sub.add_parser("export", help="review.html and/or person view folders")
     exp.add_argument("--run", required=True)
     exp.add_argument("--store", required=True, type=Path)
     exp.add_argument("--out", default=None, type=Path, help="review.html")
@@ -209,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         help="min_intra >= this -> STRONG (default 0.50)",
     )
 
-    nam = sub.add_parser("name", help="0.4/FACE-005 name a cluster, face, or derived track -> person")
+    nam = sub.add_parser("name", help="FACE-005 name a cluster, face, or derived track -> person")
     nam.add_argument("--cluster", default=None)
     nam.add_argument("--face", default=None, help="unassigned inbox face (not a clustered face)")
     nam.add_argument("--track", default=None, help="derived S7 track id (not a person id)")
@@ -218,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
     nam.add_argument("--run", required=True)
     nam.add_argument("--store", required=True, type=Path)
 
-    mer = sub.add_parser("merge", help="0.4 merge clusters into the first id (correction)")
+    mer = sub.add_parser("merge", help="merge clusters into the first id (correction)")
     mer.add_argument(
         "--clusters",
         nargs="+",
@@ -228,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
     mer.add_argument("--run", required=True)
     mer.add_argument("--store", required=True, type=Path)
 
-    spl = sub.add_parser("split", help="0.4 move faces into a new cluster")
+    spl = sub.add_parser("split", help="move faces into a new cluster")
     spl.add_argument("--cluster", required=True)
     spl.add_argument("--faces", nargs="+", required=True)
     spl.add_argument("--run", required=True)
@@ -277,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     trk.add_argument("--iou-min", type=float, default=None)
     trk.add_argument("--max-t-ms-gap", type=int, default=None)
 
-    rev = sub.add_parser("review", help="0.4 persist review decisions (does not rewrite DBSCAN)")
+    rev = sub.add_parser("review", help="persist review decisions (does not rewrite DBSCAN)")
     rev.add_argument("--run", required=True)
     rev.add_argument("--store", required=True, type=Path)
     rev_sub = rev.add_subparsers(dest="reviewcmd", required=True)
@@ -313,9 +314,21 @@ def main(argv: list[str] | None = None) -> int:
 
     home = sub.add_parser(
         "home",
-        help="Double-click home: Choose folder / Open Review (not full S8 shell)",
+        help="Double-click home: Choose folder / Open Review (tkinter; not the Widgets shell)",
     )
     home.add_argument(
+        "--store",
+        default=None,
+        type=Path,
+        help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
+    )
+
+    desk = sub.add_parser(
+        "desktop",
+        help="PySide6 workspace (optional extra; not the default Home)",
+        description="PySide6 workspace. Optional extra; not the default Home.",
+    )
+    desk.add_argument(
         "--store",
         default=None,
         type=Path,
@@ -748,6 +761,18 @@ def main(argv: list[str] | None = None) -> int:
         from semblon.home_ui import run_home_ui
 
         return run_home_ui(store=args.store)
+
+    if args.cmd == "desktop":
+        try:
+            from semblon.desktop.app import main as desktop_main
+        except ImportError:
+            print(
+                'desktop needs the gui extra: pip install -e ".[gui]"',
+                file=sys.stderr,
+            )
+            return 2
+        argv = ["--store", str(args.store)] if args.store is not None else []
+        return desktop_main(argv)
 
     if args.cmd == "stats":
         from semblon.stats import StatsError, stats as run_stats

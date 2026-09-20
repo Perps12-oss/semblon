@@ -1,9 +1,9 @@
 [project]
 name = "semblon"
-version = "1.4.0"
+dynamic = ["version"]
 description = "Local face intelligence — folder-first observation engine"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
   "insightface",
   "onnxruntime",
@@ -13,15 +13,21 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
-cluster = ["scikit-learn"]
 gui = ["PySide6>=6.6"]
 
 [project.scripts]
 semblon = "semblon.cli:main"
+semblon-desktop = "semblon.desktop.app:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.dynamic]
+version = {attr = "semblon.__version__"}
+
 [tool.setuptools.packages.find]
 include = ["semblon*"]
+
+[tool.setuptools.package-data]
+"semblon.desktop" = ["*.qss"]
