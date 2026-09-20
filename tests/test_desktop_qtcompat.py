@@ -39,16 +39,26 @@ def test_models_py_does_not_attribute_lookup_keyboard_focusable():
     assert hits == []
 
 
+def test_list_item_flags_on_installed_pyside():
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import Qt
+
+    flags = list_item_flags()
+    assert flags & Qt.ItemFlag.ItemIsEnabled
+    assert flags & Qt.ItemFlag.ItemIsSelectable
+
+
 def test_semblon_list_model_flags_on_installed_pyside():
     pytest.importorskip("PySide6")
-    from PySide6.QtCore import QModelIndex
+    from PySide6.QtCore import QModelIndex, Qt
 
     from semblon.desktop.models import ReviewListModel
 
     model = ReviewListModel()
     model.reset_rows([{"label": "c1", "kind": "cluster", "cluster_id": "c1"}])
     flags = model.flags(model.index(0, 0))
-    assert int(flags) != 0
-    assert int(model.flags(QModelIndex())) == 0
+    assert flags & Qt.ItemFlag.ItemIsEnabled
+    assert flags & Qt.ItemFlag.ItemIsSelectable
+    assert model.flags(QModelIndex()) == Qt.ItemFlag.NoItemFlags
     assert model.rowCount() == 1
     assert model.data(model.index(0, 0)) == "c1"
