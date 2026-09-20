@@ -27,8 +27,10 @@ def test_derive_episodes_from_tracks(tmp_path):
     rec = derive_episodes(store, run_id="rt", max_gap_ms=2500)
     assert rec["counts"]["tracks"] >= 1
     assert rec["counts"]["episodes"] >= 1
+    assert "identified_tracks" in rec["counts"]
     assert "track != person" in rec["note"]
     assert any("p1" in (ep.get("person_ids") or []) for ep in rec["episodes"])
+    assert any("state_counts" in ep for ep in rec["episodes"])
 
 
 def test_cli_episodes(tmp_path):

@@ -148,6 +148,34 @@ def test_overlay_boxes_skip_dual_write_faces():
     assert "object" in kinds
 
 
+def test_overlay_boxes_uses_track_state_labels():
+    board = {
+        "faces": [
+            {
+                "media_id": "m1",
+                "face_id": "f1",
+                "bbox_x1": 0,
+                "bbox_y1": 0,
+                "bbox_x2": 10,
+                "bbox_y2": 10,
+                "cluster_id": None,
+                "person_id": None,
+            }
+        ],
+        "items": [],
+        "track_lane_by_face": {"f1": "t-1"},
+        "track_states_by_id": {
+            "t-1": {
+                "track_id": "t-1",
+                "state": "identified",
+                "label": "Alice ✓ identified",
+            }
+        },
+    }
+    boxes = overlay_boxes(board, "m1")
+    assert boxes[0]["tag"] == "Alice ✓ identified"
+
+
 def test_observer_payload_normalized(tmp_path):
     store = tmp_path / "s.sqlite"
     _seed(store).close()

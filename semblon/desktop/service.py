@@ -372,7 +372,23 @@ class StoreLibraryService:
                 if rid:
                     eps = derive_episodes(self.store, run_id=rid)
                     budget = max(0, int(limit) - len(items))
+                    tc = eps.get("counts") or {}
+                    items.append(
+                        {
+                            "id": f"episode-summary:{rid}",
+                            "run_id": rid,
+                            "label": (
+                                f"episodes summary  tracks={tc.get('tracks', 0)}  "
+                                f"episodes={tc.get('episodes', 0)}  "
+                                f"identified={tc.get('identified_tracks', 0)}  "
+                                f"unknown={tc.get('unknown_tracks', 0)}  "
+                                f"hypothesis={tc.get('hypothesis_tracks', 0)}"
+                            ),
+                            "kind": "episode-summary",
+                        }
+                    )
                     for ep in (eps.get("episodes") or [])[:budget]:
+                        sc = ep.get("state_counts") or {}
                         items.append(
                             {
                                 "id": f"episode:{rid}:{ep.get('episode_id')}",
@@ -380,7 +396,10 @@ class StoreLibraryService:
                                 "label": (
                                     f"episode {ep.get('episode_id')}  "
                                     f"tracks={ep.get('track_count', 0)}  "
-                                    f"people={ep.get('people', 0)}"
+                                    f"people={ep.get('people', 0)}  "
+                                    f"id={sc.get('identified', 0)}  "
+                                    f"unk={sc.get('unknown', 0)}  "
+                                    f"hyp={sc.get('hypothesis', 0)}"
                                 ),
                                 "kind": "episode",
                             }

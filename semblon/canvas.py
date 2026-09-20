@@ -10,6 +10,7 @@ import sqlite3
 from pathlib import Path
 
 from semblon.process import default_store_path, latest_run_id
+from semblon.track_state import derive_track_states_from_conn
 
 
 class CanvasError(ValueError):
@@ -82,6 +83,11 @@ def load_canvas(store: Path, run_id: str | None = None) -> dict:
         ).fetchall()
     except sqlite3.OperationalError as e:
         warnings.append(f"track memberships unavailable: {e}")
+    try:
+        track_states = derive_track_states_from_conn(conn, rid)
+    except Exception as e:  # noqa: BLE001 - canvas should stay inspectable even without state summaries
+        warnings.append(f"track state unavailable: {type(e).__name__}")
+        track_states = {"run_id": rid, "tracks": [], "counts": {"total": 0, "identified": 0, "unknown": 0, "hypothesis": 0}}
     conn.close()
     lane_by_face: dict[str, str] = {}
     lane_by_item: dict[str, str] = {}
@@ -105,6 +111,8 @@ def load_canvas(store: Path, run_id: str | None = None) -> dict:
         "track_members": [dict(r) for r in track_members],
         "track_lane_by_face": lane_by_face,
         "track_lane_by_item": lane_by_item,
+        "track_states": track_states,
+        "track_states_by_id": {t.get("track_id"): t for t in (track_states.get("tracks") or [])},
         "note": note,
     }
 
@@ -114,13 +122,16 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
     boxes = []
     lane_by_face = board.get("track_lane_by_face") or {}
     lane_by_item = board.get("track_lane_by_item") or {}
+    track_states = board.get("track_states_by_id") or {}
     for f in board.get("faces") or []:
         if f.get("media_id") != media_id:
             continue
         lane = lane_by_face.get(f.get("face_id"))
         tag = "named" if f.get("person_id") else ("group" if f.get("cluster_id") else "unassigned")
         if lane:
-            tag = f"{tag} lane={lane}"
+            lane_state = track_states.get(lane) or {}
+            lane_label = lane_state.get("label")
+            tag = lane_label if lane_label else f"{tag} lane={lane}"
         boxes.append(
             {
                 "kind": "face",
@@ -138,7 +149,9 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
         lane = lane_by_item.get(it.get("item_id"))
         tag = it.get("provider")
         if lane:
-            tag = f"{tag} lane={lane}"
+            lane_state = track_states.get(lane) or {}
+            lane_label = lane_state.get("label")
+            tag = f"{tag} {lane_label}" if lane_label else f"{tag} lane={lane}"
         boxes.append(
             {
                 "kind": it.get("kind"),

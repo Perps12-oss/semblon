@@ -9,6 +9,7 @@ import sqlite3
 from pathlib import Path
 
 from semblon.process import latest_run_id
+from semblon.track_state import derive_track_states_from_conn
 
 DEFAULT_EPISODE_GAP_MS = 3000
 
@@ -72,9 +73,19 @@ def derive_episodes(
             return {
                 "run_id": rid,
                 "episodes": [],
-                "counts": {"tracks": 0, "episodes": 0, "named_people": 0},
+                "counts": {
+                    "tracks": 0,
+                    "episodes": 0,
+                    "named_people": 0,
+                    "identified_tracks": 0,
+                    "unknown_tracks": 0,
+                    "hypothesis_tracks": 0,
+                },
                 "note": "No tracks. observation != track != person.",
             }
+
+        states = derive_track_states_from_conn(conn, rid)
+        state_by_track = {str(t["track_id"]): t for t in states.get("tracks") or []}
 
         person_rows = conn.execute(
             """
@@ -115,6 +126,7 @@ def derive_episodes(
                         "track_count": 1,
                         "item_count": int(t["item_count"] or 0),
                         "person_ids": set(persons_by_track.get(t["track_id"], set())),
+                        "track_states": [state_by_track.get(str(t["track_id"]), {"track_id": t["track_id"], "state": "hypothesis"})],
                     }
                     continue
 
@@ -124,12 +136,24 @@ def derive_episodes(
                     cur["track_count"] = int(cur["track_count"]) + 1
                     cur["item_count"] = int(cur["item_count"]) + int(t["item_count"] or 0)
                     cur["person_ids"].update(persons_by_track.get(t["track_id"], set()))
+                    cur["track_states"].append(
+                        state_by_track.get(str(t["track_id"]), {"track_id": t["track_id"], "state": "hypothesis"})
+                    )
                 else:
+                    st_items = list(cur["track_states"])
+                    state_counts = {
+                        "identified": sum(1 for x in st_items if x.get("state") == "identified"),
+                        "unknown": sum(1 for x in st_items if x.get("state") == "unknown"),
+                        "hypothesis": sum(1 for x in st_items if x.get("state") == "hypothesis"),
+                    }
+                    ep_base = {k: v for k, v in cur.items() if k != "track_states"}
                     episodes.append(
                         {
-                            **cur,
+                            **ep_base,
                             "person_ids": sorted(cur["person_ids"]),
                             "people": len(cur["person_ids"]),
+                            "state_counts": state_counts,
+                            "tracks_stateful": st_items,
                         }
                     )
                     idx += 1
@@ -144,13 +168,23 @@ def derive_episodes(
                         "track_count": 1,
                         "item_count": int(t["item_count"] or 0),
                         "person_ids": set(persons_by_track.get(t["track_id"], set())),
+                        "track_states": [state_by_track.get(str(t["track_id"]), {"track_id": t["track_id"], "state": "hypothesis"})],
                     }
             if cur is not None:
+                st_items = list(cur["track_states"])
+                state_counts = {
+                    "identified": sum(1 for x in st_items if x.get("state") == "identified"),
+                    "unknown": sum(1 for x in st_items if x.get("state") == "unknown"),
+                    "hypothesis": sum(1 for x in st_items if x.get("state") == "hypothesis"),
+                }
+                ep_base = {k: v for k, v in cur.items() if k != "track_states"}
                 episodes.append(
                     {
-                        **cur,
+                        **ep_base,
                         "person_ids": sorted(cur["person_ids"]),
                         "people": len(cur["person_ids"]),
+                        "state_counts": state_counts,
+                        "tracks_stateful": st_items,
                     }
                 )
 
@@ -166,8 +200,12 @@ def derive_episodes(
                 "tracks": len(rows),
                 "episodes": len(episodes),
                 "named_people": len(named_people),
+                "identified_tracks": states["counts"]["identified"],
+                "unknown_tracks": states["counts"]["unknown"],
+                "hypothesis_tracks": states["counts"]["hypothesis"],
             },
-            "note": "Derived episode hypotheses from tracks; observation != track != person.",
+            "track_states": states,
+            "note": "Derived episode hypotheses from tracks + track-state evidence; observation != track != person.",
         }
     finally:
         conn.close()

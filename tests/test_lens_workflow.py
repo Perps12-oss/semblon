@@ -87,6 +87,7 @@ def test_search_lens_workflow_sections(tmp_path):
     sec = rec["sections"]
     assert sec["similar_images"]
     assert sec["people"]
+    assert "related_episodes" in sec
     assert sec["people"][0]["display_name"] == "Alice"
     assert "face_identity_path" in rec["identity_firewall"]
     assert "Local Lens-style" in rec["note"]

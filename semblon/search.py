@@ -13,6 +13,7 @@ from semblon.identify import IdentifyError, identify_face
 from semblon.memory import MemoryError, history
 from semblon.observers import ocr_image
 from semblon.retrieval import RetrievalError, query_by_image, query_text, similar_from_item
+from semblon.episodes import EpisodeError, derive_episodes
 
 
 class SearchError(ValueError):
@@ -292,6 +293,26 @@ def search_lens_workflow(
         conn.close()
 
     memories, related_videos = _memory_sections(store, people, max_people=5)
+    related_media_ids = {v.get("media_id") for v in related_videos if v.get("media_id")}
+    related_episodes: list[dict] = []
+    if related_media_ids:
+        try:
+            eps = derive_episodes(store)
+            for ep in eps.get("episodes") or []:
+                if ep.get("media_id") in related_media_ids:
+                    related_episodes.append(
+                        {
+                            "episode_id": ep.get("episode_id"),
+                            "media_id": ep.get("media_id"),
+                            "path": ep.get("path"),
+                            "track_count": ep.get("track_count"),
+                            "people": ep.get("people"),
+                            "state_counts": ep.get("state_counts") or {},
+                            "why": "episode overlaps related video presence",
+                        }
+                    )
+        except EpisodeError:
+            related_episodes = []
     text_q = _query_text_from_image(store, image, limit=max(8, limit))
     objects = [i for i in items if i.get("kind") == "object"]
     concepts = [i for i in items if i.get("kind") == "clip" or i.get("modality") == "clip"]
@@ -309,6 +330,7 @@ def search_lens_workflow(
             "visual_concepts": concepts,
             "related_memories": memories,
             "related_videos": related_videos,
+            "related_episodes": related_episodes,
         },
         "filters": {
             "modality": modality,

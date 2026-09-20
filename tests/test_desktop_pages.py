@@ -181,6 +181,7 @@ def test_store_service_activity_includes_episode_rows(tmp_path):
     svc = StoreLibraryService(store, cache_ttl_s=0.0)
     rows = svc.list_activity(limit=20)
     assert any(r.get("kind") == "run" for r in rows)
+    assert any(r.get("kind") == "episode-summary" for r in rows)
     assert any(r.get("kind") == "episode" for r in rows)
 
 

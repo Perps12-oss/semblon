@@ -34,6 +34,7 @@ from semblon.progress import (
     make_event,
 )
 from semblon.store import connect, init_db
+from semblon.track_state import derive_track_states_from_conn
 from semblon.tracks import DEFAULT_IOU_MIN, DEFAULT_MAX_T_MS_GAP, _associate_media, bbox_iou
 
 
@@ -233,6 +234,23 @@ def _track_mapping(all_detections: list[dict]) -> tuple[dict[str, str], int]:
     for s in singles:
         mapping[s["face_id"]] = s["face_id"]
     return mapping, len(set(mapping.values()))
+
+
+def _track_state_counts(track_state: dict[str, dict]) -> dict[str, int]:
+    identified = unknown = hypothesis = 0
+    for st in track_state.values():
+        state = st.get("state", "hypothesis")
+        if state == "identified":
+            identified += 1
+        elif state == "unknown":
+            unknown += 1
+        else:
+            hypothesis += 1
+    return {
+        "identified": identified,
+        "unknown_state": unknown,
+        "hypothesis": hypothesis,
+    }
 
 
 def live_capture(
@@ -448,6 +466,9 @@ def live_capture(
                         "last_seen_t_ms": None,
                         "last_embed_t_ms": None,
                         "has_decision": False,
+                        "state": "hypothesis",
+                        "person_id": None,
+                        "display_name": None,
                     },
                 )
                 is_new_track = state["last_seen_t_ms"] is None
@@ -507,7 +528,14 @@ def live_capture(
                         track_key = selected_track_keys[i]
                         state = track_state.setdefault(
                             track_key,
-                            {"last_seen_t_ms": t_ms, "last_embed_t_ms": None, "has_decision": False},
+                            {
+                                "last_seen_t_ms": t_ms,
+                                "last_embed_t_ms": None,
+                                "has_decision": False,
+                                "state": "hypothesis",
+                                "person_id": None,
+                                "display_name": None,
+                            },
                         )
                         if row["status"] != "ok":
                             continue
@@ -521,10 +549,16 @@ def live_capture(
                         state["has_decision"] = True
                         if ident["decision"] == "ACCEPT":
                             identified_accept += 1
+                            state["state"] = "identified"
+                            state["person_id"] = ident["person_id"]
+                            state["display_name"] = ident["display_name"]
                         else:
                             identified_unknown += 1
+                            if state.get("state") != "identified":
+                                state["state"] = "unknown"
                         decisions.append(
                             {
+                                "track_id": track_key,
                                 "face_id": row["face_id"],
                                 "decision_id": ident["decision_id"],
                                 "decision": ident["decision"],
@@ -558,6 +592,7 @@ def live_capture(
                         "tracks": track_count,
                         "accept": identified_accept,
                         "unknown": identified_unknown,
+                        **_track_state_counts(track_state),
                         "failed_embeds": failed_embeds,
                     },
                 ),
@@ -596,6 +631,7 @@ def live_capture(
         raise LiveError("no frames captured")
 
     tracks_rec = persist_derived_tracks(store, run_id, conn=conn)
+    track_states = derive_track_states_from_conn(conn, run_id)
     timings = _finish(None)
     conn.close()
     emit(
@@ -612,6 +648,9 @@ def live_capture(
                 "tracks": int(tracks_rec.get("tracks") or track_count),
                 "accept": identified_accept,
                 "unknown": identified_unknown,
+                "state_identified": track_states["counts"]["identified"],
+                "state_unknown": track_states["counts"]["unknown"],
+                "state_hypothesis": track_states["counts"]["hypothesis"],
                 "failed_embeds": failed_embeds,
                 "dropped_frames": dropped_frames,
             },
@@ -629,7 +668,9 @@ def live_capture(
         "identified_accept": identified_accept,
         "identified_unknown": identified_unknown,
         "decisions": decisions,
+        "track_states": track_states,
         "seconds_requested": float(seconds),
         "unbounded": bool(seconds == 0),
         "timings": timings,
+        "note": "live: detection -> track -> identity evidence; track != person",
     }

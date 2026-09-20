@@ -123,6 +123,8 @@ def test_live_identifies_vs_named_person(tmp_path):
     assert rec["tracks"] >= 1
     assert rec["identified_accept"] >= 1
     assert rec["failed_embeds"] >= 0
+    assert "track_states" in rec
+    assert rec["track_states"]["counts"]["identified"] >= 1
 
     conn = sqlite3.connect(str(store))
     src = conn.execute("SELECT source_type FROM media WHERE media_id=?", (rec["media_id"],)).fetchone()[0]
@@ -211,6 +213,7 @@ def test_live_unknown_when_gallery_empty_or_mismatch(tmp_path):
 
     assert rec["identified_accept"] == 0
     assert rec["identified_unknown"] >= 1
+    assert rec["track_states"]["counts"]["unknown"] >= 1
     conn = sqlite3.connect(str(store))
     rows = conn.execute(
         "SELECT policy_json FROM decisions WHERE run_id=? AND kind='identify'",
