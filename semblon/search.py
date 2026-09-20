@@ -28,6 +28,11 @@ def _open_ro(store: Path) -> sqlite3.Connection:
     return conn
 
 
+def _open(store: Path) -> sqlite3.Connection:
+    """Compatibility alias for tests and legacy callers."""
+    return _open_ro(store)
+
+
 def _like_pattern(q: str) -> str:
     """Escape LIKE wildcards so user input is literal substring match."""
     esc = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
