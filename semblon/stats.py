@@ -18,6 +18,7 @@ def _connect_ro(store: Path) -> sqlite3.Connection:
         raise StatsError(f"store not found: {p}")
     conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -36,7 +37,7 @@ def stats(store: Path, run_id: str) -> dict:
         named = int(
             conn.execute(
                 """SELECT COUNT(*) FROM faces
-                   WHERE run_id=? AND person_id IS NOT NULL""",
+                   WHERE run_id=? AND person_id IS NOT NULL AND status='ok'""",
                 (run_id,),
             ).fetchone()[0]
         )

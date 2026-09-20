@@ -271,7 +271,6 @@ def ingest(
 
     hashes = discover_weight_hashes()
     ifver = getattr(insightface, "__version__", "unknown")
-    pid = pack_id(ifver, hashes)
 
     load_s = 0.0
     app = None
@@ -280,6 +279,13 @@ def ingest(
         t_load = time.perf_counter()
         app = load_app(DET_SIZE, prefer_gpu=prefer_gpu)
         load_s = time.perf_counter() - t_load
+        # Re-hash after load so first-run download is not recorded as sha256:unhashed.
+        hashes = discover_weight_hashes() or hashes
+    elif not hashes:
+        # Workers path: ensure weights exist before sealing pack_id.
+        load_app(DET_SIZE, prefer_gpu=prefer_gpu)
+        hashes = discover_weight_hashes()
+    pid = pack_id(ifver, hashes)
 
     runtime = {
         "recorded_at": datetime.now(timezone.utc).isoformat(),

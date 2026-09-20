@@ -61,6 +61,7 @@ def _connect_ro(store: Path) -> sqlite3.Connection:
         raise ObservatoryError(f"store not found: {p}")
     conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 

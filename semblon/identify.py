@@ -23,9 +23,19 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _open(store: Path):
-    conn = connect(Path(store))
-    init_db(conn)
+def _open(store: Path, *, writable: bool = True):
+    p = Path(store)
+    if writable:
+        conn = connect(p)
+        init_db(conn)
+        return conn
+    import sqlite3
+
+    if not p.is_file():
+        raise IdentifyError(f"store not found: {p}")
+    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -160,9 +170,23 @@ def identify_face(
     face_id: str,
     *,
     threshold: float = DEFAULT_THRESHOLD,
+    record: bool = True,
 ) -> dict:
-    """1:N a stored ok face against reviewed persons on this run."""
-    conn = _open(store)
+    """1:N a stored ok face against reviewed persons on this run.
+
+    record=False: score only (search). Opens read-only; does not write a decision.
+    """
+    import sqlite3
+
+    store_p = Path(store)
+    if not store_p.is_file():
+        raise IdentifyError(f"store not found: {store_p}")
+    if record:
+        conn = _open(store_p)
+    else:
+        conn = sqlite3.connect(f"file:{store_p.resolve()}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
     try:
         run = _require_run(conn, run_id)
         pack_id = run["pack_id"]
@@ -180,21 +204,24 @@ def identify_face(
         gallery = _gallery(conn, pack_id, exclude_face=face_id)
         ranked = _person_scores(face, gallery, pack_id)
         verdict = _decide(ranked, threshold)
-        decision_id = _write_decision(
-            conn,
-            run_id=run_id,
-            pack_id=pack_id,
-            face_id=face_id,
-            verdict=verdict,
-            threshold=threshold,
-            source="face",
-        )
-        conn.commit()
+        decision_id = None
+        if record:
+            decision_id = _write_decision(
+                conn,
+                run_id=run_id,
+                pack_id=pack_id,
+                face_id=face_id,
+                verdict=verdict,
+                threshold=threshold,
+                source="face",
+            )
+            conn.commit()
         return {
             "run_id": run_id,
             "face_id": face_id,
             "decision_id": decision_id,
             "threshold": threshold,
+            "recorded": bool(record),
             "note": "identify vs persons; cluster is not a person; person_id not auto-assigned",
             **{k: verdict[k] for k in (
                 "decision", "person_id", "display_name",

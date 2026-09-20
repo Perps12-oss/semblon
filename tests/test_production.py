@@ -59,11 +59,21 @@ def test_search_person_not_cluster(tmp_path):
     assert rec["count"] == 1
     assert rec["items"][0]["display_name"] == "Alice"
     assert rec["items"][0]["person_id"] != assigned["f1"]
+    assert rec["items"][0]["why"] == "display_name exact"
     people = search_people(store)
     assert people["count"] == 1
+    conn = sqlite3.connect(str(store))
+    before = conn.execute("SELECT COUNT(*) FROM decisions WHERE kind='identify'").fetchone()[0]
+    conn.close()
     ident = search_face(store, "r1", "f2")
     assert ident["identify"]["decision"] in {"ACCEPT", "UNKNOWN"}
+    assert ident["identify"]["recorded"] is False
+    assert ident["identify"]["decision_id"] is None
     assert ident["why"].startswith("identify vs named")
+    conn = sqlite3.connect(str(store))
+    after = conn.execute("SELECT COUNT(*) FROM decisions WHERE kind='identify'").fetchone()[0]
+    conn.close()
+    assert after == before
 
 
 def test_cli_integrity_models_search(tmp_path):
