@@ -109,6 +109,46 @@ def test_store_service_lists_photos_sorted(tmp_path):
     assert svc.list_photos(sort="bogus")[0]["label"] == "z.jpg"
 
 
+def test_store_service_cache_refreshes_when_store_changes(tmp_path):
+    store = tmp_path / "store.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES ('r1','t0','t1','0','p',2,'l2','{}','{}','x64','native')"""
+    )
+    conn.execute("INSERT INTO media VALUES ('m1','folder','/a.jpg','h1',1,1,10,1)")
+    conn.commit()
+    conn.close()
+    svc = StoreLibraryService(store, cache_ttl_s=60.0)
+    assert svc.home_summary()["photos"] == 1
+    conn2 = connect(store)
+    conn2.execute("INSERT INTO media VALUES ('m2','folder','/b.jpg','h2',1,1,20,1)")
+    conn2.commit()
+    conn2.close()
+    assert svc.home_summary()["photos"] == 2
+
+
+def test_store_service_manual_invalidate_clears_cache(tmp_path):
+    store = tmp_path / "store.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES ('r1','t0','t1','0','p',2,'l2','{}','{}','x64','native')"""
+    )
+    conn.execute("INSERT INTO media VALUES ('m1','folder','/a.jpg','h1',1,1,10,1)")
+    conn.commit()
+    conn.close()
+    svc = StoreLibraryService(store, cache_ttl_s=60.0)
+    _ = svc.home_summary()
+    assert svc._cache
+    svc.invalidate()
+    assert not svc._cache
+
+
 def test_home_summary_counts_are_uncapped(tmp_path):
     store = tmp_path / "store.sqlite"
     conn = connect(store)
@@ -217,11 +257,14 @@ def test_home_recent_item_emits_payload(qapp):
 
     page = HomePage()
     opened: list[dict] = []
+    opened_run: list[dict] = []
     page.open_recent.connect(opened.append)
+    page.open_run.connect(opened_run.append)
     page.refresh(FakeService())
     page.recent.setCurrentRow(0)
     page._open_recent_item(page.recent.currentItem())
     assert opened
+    assert opened_run
     assert opened[0]["run_id"] == "run-1"
 
 
@@ -254,3 +297,53 @@ def test_settings_text_is_selectable(qapp):
     page.refresh(FakeService())
     flags = page.body.textInteractionFlags()
     assert bool(flags & Qt.TextInteractionFlag.TextSelectableByMouse)
+
+
+def test_activity_item_emits_open_run_payload(qapp):
+    from semblon.desktop.pages import ActivityPage
+
+    page = ActivityPage()
+    opened: list[dict] = []
+    page.open_run.connect(opened.append)
+    page.refresh(FakeService())
+    page.list.setCurrentRow(0)
+    page._open_selected_run(page.list.currentItem())
+    assert opened
+    assert opened[0]["run_id"] == "run-1"
+
+
+def test_home_refresh_async_path(qapp, monkeypatch):
+    from semblon.desktop.pages import HomePage
+
+    class _ImmediateThread:
+        def __init__(self, *, target, daemon):
+            self._target = target
+            self._daemon = daemon
+
+        def start(self):
+            self._target()
+
+    from semblon.desktop import pages as pages_mod
+
+    monkeypatch.setattr(pages_mod.threading, "Thread", _ImmediateThread)
+    page = HomePage()
+    page.refresh_async(FakeService())
+    assert "photos" in page.stats.text()
+
+
+def test_settings_refresh_async_path(qapp, monkeypatch):
+    from semblon.desktop.pages import SettingsPage
+    from semblon.desktop import pages as pages_mod
+
+    class _ImmediateThread:
+        def __init__(self, *, target, daemon):
+            self._target = target
+            self._daemon = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(pages_mod.threading, "Thread", _ImmediateThread)
+    page = SettingsPage()
+    page.refresh_async(FakeService())
+    assert "Store:" in page.body.text()

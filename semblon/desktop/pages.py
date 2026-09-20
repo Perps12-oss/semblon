@@ -6,6 +6,7 @@ actions. Mutations stay in review.py. No FaceKit.
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
@@ -29,10 +30,15 @@ class HomePage(QWidget):
     add_folder = Signal()
     open_unknown = Signal()
     open_recent = Signal(object)
+    open_run = Signal(object)
+    refresh_failed = Signal(str)
+    _summary_ready = Signal(int, object, object)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._service: LibraryService | None = None
+        self._refresh_seq = 0
+        self._summary_ready.connect(self._on_summary_ready)
         lay = QVBoxLayout(self)
         self.welcome = QLabel("SEMBLON")
         self.welcome.setAccessibleName("Welcome")
@@ -62,6 +68,28 @@ class HomePage(QWidget):
     def refresh(self, service: LibraryService) -> None:
         self._service = service
         rec = service.home_summary()
+        self._apply_summary(rec)
+
+    def refresh_async(self, service: LibraryService) -> None:
+        """Load the Home summary off the UI thread."""
+        self._service = service
+        self._refresh_seq += 1
+        seq = self._refresh_seq
+        self.stats.setText("Loading library summary…")
+        self.btn_unknown.setEnabled(False)
+
+        def worker() -> None:
+            try:
+                rec = service.home_summary()
+                err = None
+            except Exception as e:  # noqa: BLE001 - surface refresh failure via signal
+                rec = None
+                err = e
+            self._summary_ready.emit(seq, rec, err)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_summary(self, rec: dict[str, Any]) -> None:
         if not bool(rec.get("available", True)):
             self.stats.setText("Store unavailable. Pick or create a Semblon store to continue.")
             self.recent.clear()
@@ -85,10 +113,21 @@ class HomePage(QWidget):
         self.empty.setVisible(not has_media)
         self.btn_unknown.setEnabled(n_unknown > 0)
 
+    def _on_summary_ready(self, seq: int, rec: object, err: object) -> None:
+        if seq != self._refresh_seq:
+            return
+        if err is not None:
+            self.stats.setText("Could not refresh Home summary.")
+            self.refresh_failed.emit(str(err))
+            return
+        if isinstance(rec, dict):
+            self._apply_summary(rec)
+
     def _open_recent_item(self, item: QListWidgetItem) -> None:
         row = item.data(Qt.ItemDataRole.UserRole)
         if isinstance(row, dict):
             self.open_recent.emit(row)
+            self.open_run.emit(row)
 
 
 class _MediaPage(QWidget):
@@ -114,6 +153,10 @@ class _MediaPage(QWidget):
     def _show_rows(self, rows: list[dict[str, Any]]) -> None:
         self.grid.set_items(rows)
         self.stack.setCurrentWidget(self.grid if rows else self.empty)
+
+    def refresh_async(self, service: LibraryService) -> None:
+        """Default async contract: cheap pages can refresh synchronously."""
+        self.refresh(service)
 
     def _insert_above_stack(self, widget: QWidget) -> None:
         idx = self._layout.indexOf(self.stack)
@@ -175,10 +218,14 @@ class PeoplePage(QWidget):
     inspect = Signal(object)
     rename = Signal(object)
     open_unknown = Signal()
+    refresh_failed = Signal(str)
+    _rows_ready = Signal(int, object, object)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._service: LibraryService | None = None
+        self._refresh_seq = 0
+        self._rows_ready.connect(self._on_rows_ready)
         lay = QVBoxLayout(self)
         self.heading = QLabel("People")
         self.heading.setAccessibleName("People")
@@ -205,18 +252,49 @@ class PeoplePage(QWidget):
     def refresh(self, service: LibraryService) -> None:
         self._service = service
         rows = service.list_people()
+        self._apply_rows(rows)
+
+    def refresh_async(self, service: LibraryService) -> None:
+        self._service = service
+        self._refresh_seq += 1
+        seq = self._refresh_seq
+
+        def worker() -> None:
+            try:
+                rows = service.list_people()
+                err = None
+            except Exception as e:  # noqa: BLE001
+                rows = []
+                err = e
+            self._rows_ready.emit(seq, rows, err)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_rows(self, rows: list[dict[str, Any]]) -> None:
         self.grid.set_items(rows)
         self.stack.setCurrentWidget(self.grid if rows else self.empty)
+
+    def _on_rows_ready(self, seq: int, rows: object, err: object) -> None:
+        if seq != self._refresh_seq:
+            return
+        if err is not None:
+            self.refresh_failed.emit(str(err))
+        if isinstance(rows, list):
+            self._apply_rows(rows)
 
 
 class UnknownPage(QWidget):
     inspect = Signal(object)
     name = Signal(object)
     ignore = Signal(object)
+    refresh_failed = Signal(str)
+    _rows_ready = Signal(int, object, object)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._service: LibraryService | None = None
+        self._refresh_seq = 0
+        self._rows_ready.connect(self._on_rows_ready)
         lay = QVBoxLayout(self)
         self.heading = QLabel("Unknown")
         self.heading.setAccessibleName("Unknown")
@@ -269,11 +347,37 @@ class UnknownPage(QWidget):
     def refresh(self, service: LibraryService) -> None:
         self._service = service
         rows = service.list_unknown()
+        self._apply_rows(rows)
+
+    def refresh_async(self, service: LibraryService) -> None:
+        self._service = service
+        self._refresh_seq += 1
+        seq = self._refresh_seq
+
+        def worker() -> None:
+            try:
+                rows = service.list_unknown()
+                err = None
+            except Exception as e:  # noqa: BLE001
+                rows = []
+                err = e
+            self._rows_ready.emit(seq, rows, err)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_rows(self, rows: object) -> None:
         if not isinstance(rows, list):
             raise TypeError("list_unknown must return list[dict]")
         self.grid.set_items(rows)
         self.stack.setCurrentWidget(self.grid if rows else self.empty)
         self._sync_buttons()
+
+    def _on_rows_ready(self, seq: int, rows: object, err: object) -> None:
+        if seq != self._refresh_seq:
+            return
+        if err is not None:
+            self.refresh_failed.emit(str(err))
+        self._apply_rows(rows)
 
     def _sync_buttons(self, *_args) -> None:
         enabled = self.grid.current_payload() is not None
@@ -282,14 +386,21 @@ class UnknownPage(QWidget):
 
 
 class ActivityPage(QWidget):
+    open_run = Signal(object)
+    refresh_failed = Signal(str)
+    _rows_ready = Signal(int, object, object)
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._service: LibraryService | None = None
+        self._refresh_seq = 0
+        self._rows_ready.connect(self._on_rows_ready)
         lay = QVBoxLayout(self)
         self.heading = QLabel("Activity")
         self.heading.setAccessibleName("Activity")
         self.list = QListWidget()
         self.list.setAccessibleName("Activity list")
+        self.list.itemActivated.connect(self._open_selected_run)
         self.empty = EmptyState("No activity", "Process a folder to record a run.")
         self.stack = QStackedWidget()
         self.stack.addWidget(self.empty)
@@ -300,16 +411,55 @@ class ActivityPage(QWidget):
     def refresh(self, service: LibraryService) -> None:
         self._service = service
         rows = service.list_activity()
+        self._apply_rows(rows)
+
+    def refresh_async(self, service: LibraryService) -> None:
+        self._service = service
+        self._refresh_seq += 1
+        seq = self._refresh_seq
+
+        def worker() -> None:
+            try:
+                rows = service.list_activity()
+                err = None
+            except Exception as e:  # noqa: BLE001
+                rows = []
+                err = e
+            self._rows_ready.emit(seq, rows, err)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_rows(self, rows: list[dict[str, Any]]) -> None:
         self.list.clear()
         for row in rows:
-            self.list.addItem(str(row.get("label") or row.get("run_id") or ""))
+            item = QListWidgetItem(str(row.get("label") or row.get("run_id") or ""))
+            item.setData(Qt.ItemDataRole.UserRole, row)
+            self.list.addItem(item)
         self.stack.setCurrentWidget(self.list if rows else self.empty)
+
+    def _on_rows_ready(self, seq: int, rows: object, err: object) -> None:
+        if seq != self._refresh_seq:
+            return
+        if err is not None:
+            self.refresh_failed.emit(str(err))
+        if isinstance(rows, list):
+            self._apply_rows(rows)
+
+    def _open_selected_run(self, item: QListWidgetItem) -> None:
+        row = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(row, dict):
+            self.open_run.emit(row)
 
 
 class SettingsPage(QWidget):
+    refresh_failed = Signal(str)
+    _lines_ready = Signal(int, object, object)
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._service: LibraryService | None = None
+        self._refresh_seq = 0
+        self._lines_ready.connect(self._on_lines_ready)
         lay = QVBoxLayout(self)
         self.heading = QLabel("Settings")
         self.heading.setAccessibleName("Settings")
@@ -326,4 +476,32 @@ class SettingsPage(QWidget):
     def refresh(self, service: LibraryService) -> None:
         self._service = service
         lines = service.settings_lines()
+        self._apply_lines(lines)
+
+    def refresh_async(self, service: LibraryService) -> None:
+        self._service = service
+        self._refresh_seq += 1
+        seq = self._refresh_seq
+        self.body.setText("Loading settings…")
+
+        def worker() -> None:
+            try:
+                lines = service.settings_lines()
+                err = None
+            except Exception as e:  # noqa: BLE001
+                lines = []
+                err = e
+            self._lines_ready.emit(seq, lines, err)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_lines(self, lines: list[str]) -> None:
         self.body.setText("\n".join(lines))
+
+    def _on_lines_ready(self, seq: int, lines: object, err: object) -> None:
+        if seq != self._refresh_seq:
+            return
+        if err is not None:
+            self.refresh_failed.emit(str(err))
+        if isinstance(lines, list):
+            self._apply_lines(lines)
