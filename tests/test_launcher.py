@@ -93,4 +93,7 @@ def test_home_wires_watchdog_and_optional_observers():
     assert "KIND_STALLED" in src
     assert HOME_OBSERVERS == "face,color,object"
     assert "observers=HOME_OBSERVERS" in src
+    assert "btn_resume" in src
+    assert 'text="Resume"' in src
+    assert "StillProgressBar" in src
     assert format_people_lines({"items": []})[0].startswith("No named people")

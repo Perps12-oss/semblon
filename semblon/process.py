@@ -6,6 +6,7 @@ Optional on_event is the UI-agnostic progress contract. progress=print stays the
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import sys
@@ -119,6 +120,159 @@ def empty_state_line(store: Path, run_id: str) -> str:
     return f"{this_bit}; store has {int(best['n'])} on run {best['run_id']}"
 
 
+_INCOMPLETE_NOTES = frozenset({"cancelled", "interrupted"})
+
+
+def _folder_matches(cfg_folder: str, folder: Path) -> bool:
+    if not cfg_folder:
+        return False
+    try:
+        return Path(cfg_folder).resolve() == Path(folder).resolve()
+    except OSError:
+        return os.path.normcase(str(cfg_folder).rstrip("\\/")) == os.path.normcase(
+            str(folder).rstrip("\\/")
+        )
+
+
+def inspect_run_stages(store: Path, run_id: str, *, out: Path | None = None) -> dict:
+    """Which process stages already landed. No new columns."""
+    p = Path(store)
+    empty = {
+        "run_id": run_id,
+        "ingest_done": False,
+        "cluster_done": False,
+        "export_done": False,
+        "notes": None,
+        "faces": 0,
+        "ok": 0,
+        "clusters": 0,
+    }
+    if not p.is_file():
+        return empty
+    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    row = conn.execute(
+        "SELECT notes, finished_at FROM runs WHERE run_id=?", (run_id,)
+    ).fetchone()
+    if row is None:
+        conn.close()
+        return empty
+    notes = row["notes"]
+    faces = conn.execute(
+        """SELECT COUNT(*) AS n,
+                  COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END), 0) AS ok
+           FROM faces WHERE run_id=?""",
+        (run_id,),
+    ).fetchone()
+    n_faces = int(faces["n"] or 0)
+    n_ok = int(faces["ok"] or 0)
+    n_clusters = int(
+        conn.execute("SELECT COUNT(*) FROM clusters WHERE run_id=?", (run_id,)).fetchone()[0]
+    )
+    conn.close()
+    ingest_done = row["finished_at"] is not None and notes not in _INCOMPLETE_NOTES
+    cluster_done = ingest_done and (n_ok == 0 or n_clusters > 0)
+    export_done = bool(out) and Path(out).is_file()
+    return {
+        "run_id": run_id,
+        "ingest_done": ingest_done,
+        "cluster_done": cluster_done,
+        "export_done": export_done,
+        "notes": notes,
+        "faces": n_faces,
+        "ok": n_ok,
+        "clusters": n_clusters,
+    }
+
+
+def find_resumable_run(store: Path, folder: Path) -> str | None:
+    """Latest run for this folder that still has an unfinished process stage."""
+    p = Path(store)
+    if not p.is_file():
+        return None
+    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    rows = conn.execute(
+        """SELECT run_id, config_json FROM runs
+           ORDER BY COALESCE(finished_at, started_at) DESC, run_id DESC"""
+    ).fetchall()
+    conn.close()
+    out = default_review_out(p)
+    for row in rows:
+        try:
+            cfg = json.loads(row["config_json"] or "{}")
+        except json.JSONDecodeError:
+            cfg = {}
+        if not _folder_matches(str(cfg.get("folder") or ""), folder):
+            continue
+        stages = inspect_run_stages(p, str(row["run_id"]), out=out)
+        if not stages["ingest_done"] or not stages["cluster_done"] or not stages["export_done"]:
+            return str(row["run_id"])
+    return None
+
+
+def _ingest_record_from_run(store: Path, run_id: str) -> dict:
+    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    row = conn.execute("SELECT timings_json FROM runs WHERE run_id=?", (run_id,)).fetchone()
+    n_faces = int(
+        conn.execute("SELECT COUNT(*) FROM faces WHERE run_id=?", (run_id,)).fetchone()[0]
+    )
+    n_ok = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM faces WHERE run_id=? AND status='ok'", (run_id,)
+        ).fetchone()[0]
+    )
+    conn.close()
+    timings = {}
+    if row and row["timings_json"]:
+        try:
+            timings = json.loads(row["timings_json"])
+        except json.JSONDecodeError:
+            timings = {}
+    return {
+        "run_id": run_id,
+        "new_media": int(timings.get("new_media") or 0),
+        "faces": int(timings.get("faces") or n_faces),
+        "ok": int(timings.get("ok") or n_ok),
+        "skipped_seen": int(timings.get("skipped_seen") or 0),
+        "files": int(timings.get("files") or 0),
+        "resumed": True,
+    }
+
+
+def _cluster_record_from_run(store: Path, run_id: str) -> dict:
+    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    n_clusters = int(
+        conn.execute("SELECT COUNT(*) FROM clusters WHERE run_id=?", (run_id,)).fetchone()[0]
+    )
+    n_clustered = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM faces WHERE run_id=? AND cluster_id IS NOT NULL",
+            (run_id,),
+        ).fetchone()[0]
+    )
+    n_ok = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM faces WHERE run_id=? AND status='ok'", (run_id,)
+        ).fetchone()[0]
+    )
+    conn.close()
+    return {
+        "run_id": run_id,
+        "clusters": n_clusters,
+        "clustered": n_clustered,
+        "unassigned": max(0, n_ok - n_clustered),
+        "note": "resumed; clusters already on run",
+        "resumed": True,
+    }
+
+
 def process_folder(
     folder: Path,
     *,
@@ -133,6 +287,7 @@ def process_folder(
     observers: str = "face",
     prefer_gpu: bool = False,
     batch: int = 1,
+    resume: bool = False,
 ) -> dict:
     """Run ingest -> cluster -> export. Uses frozen cluster defaults."""
     folder = Path(folder)
@@ -149,30 +304,62 @@ def process_folder(
     out_path = Path(out) if out is not None else default_review_out(store_path)
     store_path.parent.mkdir(parents=True, exist_ok=True)
 
+    resume_run = find_resumable_run(store_path, folder) if resume else None
+    stages = (
+        inspect_run_stages(store_path, resume_run, out=out_path) if resume_run else None
+    )
+    start_msg = f"Ingesting stills from: {folder.resolve()}"
+    if resume_run and stages:
+        nxt = "ingest"
+        if stages["ingest_done"] and not stages["cluster_done"]:
+            nxt = "cluster"
+        elif stages["cluster_done"] and not stages["export_done"]:
+            nxt = "export"
+        elif stages["ingest_done"] and stages["cluster_done"] and stages["export_done"]:
+            nxt = "already complete"
+        start_msg = f"Resume run_id={resume_run} at {nxt}"
+
     emit(
         on_event,
         make_event(
             STAGE_PROCESS,
             KIND_STARTED,
             path=str(folder.resolve()),
-            message=f"Ingesting stills from: {folder.resolve()}",
+            run_id=resume_run,
+            message=start_msg,
+            outcome="resumed" if resume_run else None,
         ),
     )
-    progress(f"Ingesting stills from: {folder.resolve()}")
+    progress(start_msg)
     progress(f"Store: {store_path.resolve()}")
     try:
         try:
-            ing = ingest(
-                folder,
-                store_path,
-                reprocess=reprocess,
-                on_event=on_event,
-                cancel=cancel,
-                workers=workers,
-                observers=observers,
-                prefer_gpu=prefer_gpu,
-                batch=batch,
-            )
+            if resume_run and stages and stages["ingest_done"]:
+                progress(f"Resume: skip ingest (run_id={resume_run})")
+                emit(
+                    on_event,
+                    make_event(
+                        STAGE_PROCESS,
+                        KIND_STARTED,
+                        run_id=resume_run,
+                        message=f"Resume: skip ingest (run_id={resume_run})",
+                        outcome="skipped_stage",
+                    ),
+                )
+                ing = _ingest_record_from_run(store_path, resume_run)
+            else:
+                ing = ingest(
+                    folder,
+                    store_path,
+                    reprocess=reprocess,
+                    on_event=on_event,
+                    cancel=cancel,
+                    workers=workers,
+                    observers=observers,
+                    prefer_gpu=prefer_gpu,
+                    batch=batch,
+                    resume_run_id=resume_run if resume else None,
+                )
         except CancelledError as e:
             progress("Cancelled.")
             emit(
@@ -199,7 +386,25 @@ def process_folder(
 
         # FACE-005 skip-all creates a new empty run. Review that and the HTML
         # would be blank even though prior faces still exist on the store.
-        if int(ing.get("faces") or 0) == 0:
+        if resume_run and stages and stages["cluster_done"] and run_id == resume_run:
+            clu = _cluster_record_from_run(store_path, run_id)
+            progress(f"Resume: skip cluster (run_id={run_id})")
+            emit(
+                on_event,
+                make_event(
+                    STAGE_CLUSTER,
+                    KIND_COMPLETED,
+                    run_id=run_id,
+                    message=f"Resume: skip cluster (run_id={run_id})",
+                    outcome="skipped_stage",
+                    counts={
+                        "clusters": int(clu.get("clusters") or 0),
+                        "clustered": int(clu.get("clustered") or 0),
+                        "unassigned": int(clu.get("unassigned") or 0),
+                    },
+                ),
+            )
+        elif int(ing.get("faces") or 0) == 0:
             prior = latest_run_id(store_path, with_faces=True)
             if prior:
                 progress(
@@ -257,30 +462,45 @@ def process_folder(
                 f"clustered={clu.get('clustered')} unassigned={clu.get('unassigned')}"
             )
 
-        progress(f"Writing review HTML: {out_path.resolve()}")
-        emit(
-            on_event,
-            make_event(
-                STAGE_EXPORT,
-                KIND_STARTED,
-                run_id=run_id,
-                path=str(out_path.resolve()),
-            ),
-        )
-        try:
-            exp = export_review(store_path, run_id, out_path)
-        except ExportError as e:
-            raise ProcessError(str(e)) from e
-        emit(
-            on_event,
-            make_event(
-                STAGE_EXPORT,
-                KIND_COMPLETED,
-                run_id=run_id,
-                path=str(exp["out"]),
-            ),
-        )
-        progress(f"Review ready: {exp['out']}")
+        if resume_run and stages and stages["export_done"] and out_path.is_file():
+            exp = {"run_id": run_id, "out": str(out_path.resolve()), "resumed": True}
+            progress(f"Resume: skip export ({out_path.resolve()})")
+            emit(
+                on_event,
+                make_event(
+                    STAGE_EXPORT,
+                    KIND_COMPLETED,
+                    run_id=run_id,
+                    path=str(out_path.resolve()),
+                    message="Resume: skip export",
+                    outcome="skipped_stage",
+                ),
+            )
+        else:
+            progress(f"Writing review HTML: {out_path.resolve()}")
+            emit(
+                on_event,
+                make_event(
+                    STAGE_EXPORT,
+                    KIND_STARTED,
+                    run_id=run_id,
+                    path=str(out_path.resolve()),
+                ),
+            )
+            try:
+                exp = export_review(store_path, run_id, out_path)
+            except ExportError as e:
+                raise ProcessError(str(e)) from e
+            emit(
+                on_event,
+                make_event(
+                    STAGE_EXPORT,
+                    KIND_COMPLETED,
+                    run_id=run_id,
+                    path=str(exp["out"]),
+                ),
+            )
+            progress(f"Review ready: {exp['out']}")
 
         opened = False
         if open_review:

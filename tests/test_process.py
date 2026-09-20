@@ -185,7 +185,8 @@ def test_cli_process_wires_flags(tmp_path, monkeypatch):
     assert seen["kwargs"]["out"] == out
     assert seen["kwargs"]["reprocess"] is True
     assert seen["kwargs"]["open_review"] is False
-    assert "on_event" not in seen["kwargs"]
+    assert seen["kwargs"]["resume"] is False
+    assert callable(seen["kwargs"].get("on_event"))
 
 
 def test_top_level_help_is_ascii():
