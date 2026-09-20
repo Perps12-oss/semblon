@@ -6,7 +6,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "4"
 
 DDL = """
 PRAGMA journal_mode=WAL;
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS cluster_person (
 
 CREATE TABLE IF NOT EXISTS decisions (
   decision_id     TEXT PRIMARY KEY,
-  kind            TEXT NOT NULL CHECK (kind IN ('identify','merge','split','name','reject')),
+  kind            TEXT NOT NULL CHECK (kind IN ('identify','merge','split','name','reject','note')),
   face_id         TEXT REFERENCES faces(face_id),
   person_id       TEXT REFERENCES persons(person_id),
   cluster_id      TEXT REFERENCES clusters(cluster_id),
@@ -146,6 +146,14 @@ CREATE TABLE IF NOT EXISTS eval_pairs (
   CHECK (face_a < face_b),
   PRIMARY KEY (eval_set_id, face_a, face_b)
 );
+
+CREATE INDEX IF NOT EXISTS ix_faces_run ON faces(run_id);
+CREATE INDEX IF NOT EXISTS ix_faces_run_status ON faces(run_id, status);
+CREATE INDEX IF NOT EXISTS ix_faces_cluster ON faces(cluster_id);
+CREATE INDEX IF NOT EXISTS ix_faces_person ON faces(person_id);
+CREATE INDEX IF NOT EXISTS ix_clusters_run ON clusters(run_id);
+CREATE INDEX IF NOT EXISTS ix_observations_run ON observations(run_id);
+CREATE INDEX IF NOT EXISTS ix_decisions_run_kind ON decisions(run_id, kind);
 """
 
 
@@ -238,7 +246,51 @@ CREATE TABLE IF NOT EXISTS events (
 );
 """
 
-MIGRATIONS = ((2, MIGRATION_2),)
+MIGRATION_3 = """
+CREATE INDEX IF NOT EXISTS ix_faces_run ON faces(run_id);
+CREATE INDEX IF NOT EXISTS ix_faces_run_status ON faces(run_id, status);
+CREATE INDEX IF NOT EXISTS ix_faces_cluster ON faces(cluster_id);
+CREATE INDEX IF NOT EXISTS ix_faces_person ON faces(person_id);
+CREATE INDEX IF NOT EXISTS ix_clusters_run ON clusters(run_id);
+CREATE INDEX IF NOT EXISTS ix_observations_run ON observations(run_id);
+CREATE INDEX IF NOT EXISTS ix_tracks_run ON tracks(run_id);
+CREATE INDEX IF NOT EXISTS ix_observation_items_run ON observation_items(run_id);
+CREATE INDEX IF NOT EXISTS ix_decisions_run_kind ON decisions(run_id, kind);
+"""
+
+MIGRATION_4 = """
+CREATE TABLE IF NOT EXISTS decisions_new (
+  decision_id     TEXT PRIMARY KEY,
+  kind            TEXT NOT NULL CHECK (kind IN ('identify','merge','split','name','reject','note')),
+  face_id         TEXT REFERENCES faces(face_id),
+  person_id       TEXT REFERENCES persons(person_id),
+  cluster_id      TEXT REFERENCES clusters(cluster_id),
+  pack_id         TEXT NOT NULL,
+  score_top1      REAL,
+  score_top2      REAL,
+  margin          REAL,
+  policy_json     TEXT NOT NULL,
+  run_id          TEXT NOT NULL REFERENCES runs(run_id),
+  created_at      TEXT NOT NULL
+);
+INSERT INTO decisions_new(
+  decision_id, kind, face_id, person_id, cluster_id, pack_id,
+  score_top1, score_top2, margin, policy_json, run_id, created_at
+)
+SELECT
+  decision_id, kind, face_id, person_id, cluster_id, pack_id,
+  score_top1, score_top2, margin, policy_json, run_id, created_at
+FROM decisions;
+DROP TABLE decisions;
+ALTER TABLE decisions_new RENAME TO decisions;
+CREATE INDEX IF NOT EXISTS ix_decisions_run_kind ON decisions(run_id, kind);
+"""
+
+MIGRATIONS = (
+    (2, MIGRATION_2),
+    (3, MIGRATION_3),
+    (4, MIGRATION_4),
+)
 
 
 def schema_version_int(conn: sqlite3.Connection) -> int:
@@ -256,15 +308,22 @@ def schema_version_int(conn: sqlite3.Connection) -> int:
 def apply_migrations(conn: sqlite3.Connection) -> int:
     """Apply pending schema migrations. Identity tables (faces/clusters/persons) are unchanged."""
     conn.executescript(
-        """CREATE TABLE IF NOT EXISTS schema_migrations (
+        """CREATE TABLE IF NOT EXISTS schema_meta (
+             key   TEXT PRIMARY KEY,
+             value TEXT NOT NULL
+           );
+           CREATE TABLE IF NOT EXISTS schema_migrations (
              version INTEGER PRIMARY KEY,
              applied_at TEXT NOT NULL
            );"""
     )
     v = schema_version_int(conn)
     if v == 0:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('schema_version', '1')")
         conn.execute(
-            "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('schema_version', '1')"
+            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (1, now),
         )
         v = 1
     now = datetime.now(timezone.utc).isoformat()
@@ -298,8 +357,10 @@ def backup_store(store: Path, out: Path) -> dict:
     dest = Path(out)
     dest.parent.mkdir(parents=True, exist_ok=True)
     src_conn = sqlite3.connect(str(src))
+    src_conn.execute("PRAGMA busy_timeout=5000")
     try:
         dst_conn = sqlite3.connect(str(dest))
+        dst_conn.execute("PRAGMA busy_timeout=5000")
         try:
             src_conn.backup(dst_conn)
         finally:
@@ -321,26 +382,32 @@ def stamp_unfinished_runs(conn: sqlite3.Connection, *, except_run_id: str | None
     """
     if except_run_id:
         rows = conn.execute(
-            "SELECT run_id, notes FROM runs WHERE finished_at IS NULL AND run_id != ?",
+            "SELECT run_id FROM runs WHERE finished_at IS NULL AND run_id != ?",
             (except_run_id,),
         ).fetchall()
     else:
-        rows = conn.execute(
-            "SELECT run_id, notes FROM runs WHERE finished_at IS NULL"
-        ).fetchall()
+        rows = conn.execute("SELECT run_id FROM runs WHERE finished_at IS NULL").fetchall()
     now = datetime.now(timezone.utc).isoformat()
-    stamped: list[str] = []
-    for row in rows:
-        rid = str(row["run_id"] if isinstance(row, sqlite3.Row) else row[0])
-        notes = row["notes"] if isinstance(row, sqlite3.Row) else row[1]
-        if not notes:
-            notes = "interrupted"
-        conn.execute(
-            "UPDATE runs SET finished_at=?, notes=? WHERE run_id=? AND finished_at IS NULL",
-            (now, notes, rid),
-        )
-        stamped.append(rid)
+    stamped = [str(row["run_id"] if isinstance(row, sqlite3.Row) else row[0]) for row in rows]
     if stamped:
+        if except_run_id:
+            conn.execute(
+                """
+                UPDATE runs
+                SET finished_at=?, notes=COALESCE(NULLIF(notes, ''), 'interrupted')
+                WHERE finished_at IS NULL AND run_id != ?
+                """,
+                (now, except_run_id),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE runs
+                SET finished_at=?, notes=COALESCE(NULLIF(notes, ''), 'interrupted')
+                WHERE finished_at IS NULL
+                """,
+                (now,),
+            )
         conn.commit()
     return stamped
 
@@ -401,9 +468,22 @@ def restore_store(src: Path, dest: Path, *, force: bool = False) -> dict:
     if dest_path.exists() and not force:
         raise FileExistsError(dest_path)
     dest_path.parent.mkdir(parents=True, exist_ok=True)
+    if force:
+        for p in (
+            dest_path,
+            Path(str(dest_path) + "-wal"),
+            Path(str(dest_path) + "-shm"),
+        ):
+            try:
+                if p.exists():
+                    p.unlink()
+            except OSError:
+                pass
     src_conn = sqlite3.connect(str(src_path))
+    src_conn.execute("PRAGMA busy_timeout=5000")
     try:
         dst_conn = sqlite3.connect(str(dest_path))
+        dst_conn.execute("PRAGMA busy_timeout=5000")
         try:
             src_conn.backup(dst_conn)
         finally:

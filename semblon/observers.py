@@ -20,6 +20,8 @@ OBJECT_PROVIDER = "opencv-contour"
 CLIP_PACK = "clip/openclip-vitb32@1"
 OCR_PROVIDER = "tesseract"
 POSE_PROVIDER = "mediapipe-pose"
+_CLIP_CACHE = None
+_POSE_CACHE = None
 
 
 class ProviderUnavailable(RuntimeError):
@@ -125,6 +127,7 @@ def ocr_image(img) -> dict | None:
 
 def clip_embed(img) -> dict | None:
     """Optional CLIP visual embedding. None = unavailable. Never modality=face."""
+    global _CLIP_CACHE
     try:
         import open_clip
         import torch
@@ -132,8 +135,11 @@ def clip_embed(img) -> dict | None:
     except Exception:
         return None
     try:
-        model, _, preprocess = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
-        model.eval()
+        if _CLIP_CACHE is None:
+            model, _, preprocess = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
+            model.eval()
+            _CLIP_CACHE = (model, preprocess)
+        model, preprocess = _CLIP_CACHE
         arr = np.asarray(img)
         if arr.ndim != 3:
             return {"error": "bad-image", "note": "need BGR"}
@@ -149,6 +155,7 @@ def clip_embed(img) -> dict | None:
 
 def pose_landmarks(img) -> dict | None:
     """Optional pose landmarks. None = unavailable. Not a person."""
+    global _POSE_CACHE
     try:
         import mediapipe as mp
     except Exception:
@@ -159,8 +166,9 @@ def pose_landmarks(img) -> dict | None:
             return {"error": "bad-image", "note": "need BGR"}
         h, w = arr.shape[:2]
         rgb = arr[:, :, ::-1]
-        with mp.solutions.pose.Pose(static_image_mode=True) as pose:
-            res = pose.process(rgb)
+        if _POSE_CACHE is None:
+            _POSE_CACHE = mp.solutions.pose.Pose(static_image_mode=True)
+        res = _POSE_CACHE.process(rgb)
         if not res.pose_landmarks:
             return {"landmarks": [], "score": 0.0}
         lms = [
@@ -368,7 +376,8 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
 def ensure_face_item(conn, *, face_id: str, observation_id: str, run_id: str, bbox=None, score=None, status: str = "ok") -> str:
     """Dual-write a FaceKit face as an observation_item. No identity embedding here."""
     row = conn.execute(
-        "SELECT item_id FROM observation_items WHERE face_id=?", (face_id,)
+        "SELECT item_id FROM observation_items WHERE face_id=? AND kind='face'",
+        (face_id,),
     ).fetchone()
     if row:
         return row["item_id"] if not isinstance(row, tuple) else row[0]
@@ -450,13 +459,13 @@ def snapshot_memory_graph(store: Path, run_id: str | None = None) -> dict:
     except MemoryError:
         tog = {"items": []}
         ev = {"bursts": [], "days": [], "folders": []}
-    conn.execute("DELETE FROM relationships WHERE confirmed=0")
-    conn.execute("DELETE FROM events WHERE confirmed=0")
-    n_rel = 0
     rid = run_id or ""
     if not rid:
         row = conn.execute("SELECT run_id FROM runs ORDER BY started_at DESC LIMIT 1").fetchone()
         rid = row["run_id"] if row else "unknown"
+    conn.execute("DELETE FROM relationships WHERE confirmed=0 AND run_id=?", (rid,))
+    conn.execute("DELETE FROM events WHERE confirmed=0 AND run_id=?", (rid,))
+    n_rel = 0
     for item in tog.get("items") or []:
         ids = item.get("person_ids") or []
         if len(ids) < 2:

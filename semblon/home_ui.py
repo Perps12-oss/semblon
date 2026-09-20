@@ -76,7 +76,15 @@ def format_search_lines(rec: dict) -> list[str]:
             rec.get("note") or "Similarity is not identity.",
         ]
         for i in rec.get("items") or []:
-            lines.append(f"{i.get('score'):.4f}  {i.get('kind')}  {i.get('item_id')}  {i.get('why','')}")
+            score = i.get("score")
+            if score is None:
+                s = "n/a"
+            else:
+                try:
+                    s = f"{float(score):.4f}"
+                except (TypeError, ValueError):
+                    s = "n/a"
+            lines.append(f"{s}  {i.get('kind')}  {i.get('item_id')}  {i.get('why','')}")
         if rec.get("count") == 0:
             lines.append("No same-space neighbours.")
         return lines
@@ -128,10 +136,9 @@ def format_activity_lines(
 
 
 def read_activity_snapshot(store: Path, run_id: str) -> dict:
-    from semblon.store import connect, init_db
-
-    conn = connect(store)
-    init_db(conn)
+    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     try:
         groups_rows = conn.execute(
             """
@@ -407,8 +414,13 @@ class HomeApp:
         win = tk.Toplevel(self.root)
         win.title(title)
         win.geometry("520x360")
-        lb = tk.Listbox(win)
-        lb.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        body = ttk.Frame(win)
+        body.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        lb = tk.Listbox(body)
+        sb = ttk.Scrollbar(body, orient=tk.VERTICAL, command=lb.yview)
+        lb.configure(yscrollcommand=sb.set)
+        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb.pack(side=tk.LEFT, fill=tk.Y)
         for line in lines:
             lb.insert(tk.END, line)
         ttk.Button(win, text="Close", command=win.destroy).pack(pady=(0, 8))

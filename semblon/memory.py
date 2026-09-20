@@ -11,6 +11,7 @@ import json
 import re
 import sqlite3
 import struct
+from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -113,23 +114,33 @@ def read_still_exif(path: Path) -> dict:
     try:
         if not p.is_file():
             return {}
-        data = p.read_bytes()
+        with p.open("rb") as fh:
+            if fh.read(2) != b"\xff\xd8":
+                return {}
+            app1 = None
+            while True:
+                b = fh.read(1)
+                if not b:
+                    break
+                if b != b"\xff":
+                    continue
+                marker = fh.read(1)
+                if not marker:
+                    break
+                if marker == b"\xda":  # SOS
+                    break
+                seglen_raw = fh.read(2)
+                if len(seglen_raw) != 2:
+                    break
+                seglen = struct.unpack(">H", seglen_raw)[0]
+                if seglen < 2:
+                    break
+                payload = fh.read(seglen - 2)
+                if marker == b"\xe1" and payload.startswith(b"Exif\x00\x00"):
+                    app1 = payload[6:]
+                    break
     except OSError:
         return {}
-    if not data.startswith(b"\xff\xd8"):
-        return {}
-    i = 2
-    app1 = None
-    while i + 4 <= len(data) and data[i] == 0xFF:
-        marker = data[i + 1]
-        if marker == 0xDA:
-            break
-        seglen = struct.unpack(">H", data[i + 2 : i + 4])[0]
-        payload = data[i + 4 : i + 2 + seglen]
-        i += 2 + seglen
-        if marker == 0xE1 and payload.startswith(b"Exif\x00\x00"):
-            app1 = payload[6:]
-            break
     if not app1 or len(app1) < 8:
         return {}
     endian = "<" if app1[:2] == b"II" else ">"
@@ -198,7 +209,9 @@ def when_where(
     t_ms: int | None = None,
     source_type: str | None = None,
 ) -> dict:
-    exif = read_still_exif(Path(path)) if path else {}
+    exif = {}
+    if path and source_type not in {"video", "live"}:
+        exif = _read_still_exif_cached(str(path), int(mtime_ns) if mtime_ns else 0)
     ns = exif.get("datetime_original_ns") or exif.get("datetime_ns")
     source = "exif"
     if ns is None:
@@ -223,6 +236,11 @@ def when_where(
     else:
         rec["place_source"] = "folder"
     return rec
+
+
+@lru_cache(maxsize=8192)
+def _read_still_exif_cached(path: str, mtime_ns: int) -> dict:
+    return read_still_exif(Path(path))
 
 
 def _named_rows(conn, run_id: str | None, person_id: str | None):
@@ -453,10 +471,11 @@ def events(store: Path, *, run_id: str | None = None) -> dict:
             j = i + 1
             media = {dated[i]["media_id"]}
             people = {dated[i]["person_id"]}
+            start_ns = dated[i]["when_ns"]
             while (
                 j < len(dated)
                 and dated[j]["folder"] == dated[i]["folder"]
-                and dated[j]["when_ns"] - dated[j - 1]["when_ns"] <= BURST_NS
+                and dated[j]["when_ns"] - start_ns <= BURST_NS
             ):
                 media.add(dated[j]["media_id"])
                 people.add(dated[j]["person_id"])

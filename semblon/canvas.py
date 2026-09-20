@@ -10,7 +10,6 @@ import sqlite3
 from pathlib import Path
 
 from semblon.process import default_store_path, latest_run_id
-from semblon.store import connect, init_db
 
 
 class CanvasError(ValueError):
@@ -22,27 +21,32 @@ def load_canvas(store: Path, run_id: str | None = None) -> dict:
     store = Path(store)
     if not store.is_file():
         raise CanvasError(f"store not found: {store}")
-    conn = connect(store)
-    init_db(conn)
+    conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     rid = run_id or latest_run_id(store, with_faces=True) or latest_run_id(store)
     if rid is None:
         conn.close()
         raise CanvasError("store has no runs")
-    media = conn.execute(
-        """SELECT DISTINCT m.media_id, m.path, m.source_type
-           FROM media m
-           JOIN observations o ON o.media_id = m.media_id
-           WHERE o.run_id=?
-           ORDER BY m.path""",
-        (rid,),
-    ).fetchall()
-    faces = conn.execute(
-        """SELECT f.face_id, f.observation_id, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
-                  f.status, f.cluster_id, f.person_id, o.media_id, o.frame_id, o.t_ms
-           FROM faces f JOIN observations o ON o.observation_id=f.observation_id
-           WHERE f.run_id=?""",
-        (rid,),
-    ).fetchall()
+    try:
+        media = conn.execute(
+            """SELECT DISTINCT m.media_id, m.path, m.source_type
+               FROM media m
+               JOIN observations o ON o.media_id = m.media_id
+               WHERE o.run_id=?
+               ORDER BY m.path""",
+            (rid,),
+        ).fetchall()
+        faces = conn.execute(
+            """SELECT f.face_id, f.observation_id, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
+                      f.status, f.cluster_id, f.person_id, o.media_id, o.frame_id, o.t_ms
+               FROM faces f JOIN observations o ON o.observation_id=f.observation_id
+               WHERE f.run_id=?""",
+            (rid,),
+        ).fetchall()
+    except sqlite3.DatabaseError as e:
+        conn.close()
+        raise CanvasError(f"canvas load failed: {e}") from e
     warnings: list[str] = []
     items = []
     tracks = []
@@ -213,7 +217,8 @@ def run_canvas(store: Path | None = None, run_id: str | None = None, *, parent=N
         root._photo = photo
         preview.create_image(0, 0, anchor=tk.NW, image=photo)
         preview.config(scrollregion=(0, 0, nw, nh))
-        for box in overlay_boxes(board, m["media_id"]):
+        boxes = overlay_boxes(board, m["media_id"])
+        for box in boxes:
             x1, y1, x2, y2 = box["bbox"]
             if None in (x1, y1, x2, y2):
                 continue
@@ -232,7 +237,7 @@ def run_canvas(store: Path | None = None, run_id: str | None = None, *, parent=N
                 fill=box["color"],
                 text=f"{box['kind']} {box['tag']}",
             )
-        status.set(f"{path}  boxes={len(overlay_boxes(board, m['media_id']))}  group ≠ person")
+        status.set(f"{path}  boxes={len(boxes)}  group ≠ person")
 
     def on_select(_evt=None) -> None:
         sel = lb.curselection()

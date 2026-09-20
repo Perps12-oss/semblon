@@ -173,10 +173,10 @@ def process_folder(
             STAGE_PROCESS,
             KIND_STARTED,
             path=str(folder.resolve()),
-            message=f"Ingesting stills from: {folder.resolve()}",
+            message=f"Ingesting media from: {folder.resolve()}",
         ),
     )
-    progress(f"Ingesting stills from: {folder.resolve()}")
+    progress(f"Ingesting media from: {folder.resolve()}")
     progress(f"Store: {store_path.resolve()}")
     try:
         try:
@@ -209,6 +209,7 @@ def process_folder(
             raise ProcessError(str(e)) from e
 
         run_id = ing["run_id"]
+        ingest_run_id = run_id
         progress(f"Ingest done. run_id={run_id}")
         progress(
             f"  new_media={ing.get('new_media')} faces={ing.get('faces')} "
@@ -224,11 +225,13 @@ def process_folder(
                     f"No new faces this run; reviewing existing run_id={prior} "
                     f"(skipped_seen={ing.get('skipped_seen', 0)})"
                 )
+                if prior != ingest_run_id:
+                    _drop_empty_run(store_path, ingest_run_id)
                 run_id = prior
                 clu = {
-                    "clusters": None,
-                    "clustered": None,
-                    "unassigned": None,
+                    "clusters": 0,
+                    "clustered": 0,
+                    "unassigned": 0,
                     "note": "no new faces; reused prior run for review",
                 }
             else:
@@ -351,15 +354,33 @@ def _try_open(path: Path, progress) -> bool:
         if sys.platform == "darwin":
             import subprocess
 
-            subprocess.run(["open", str(path)], check=False)
+            subprocess.Popen(["open", str(path)])  # noqa: S603,S607
             progress("Opened review.")
             return True
         import subprocess
 
-        subprocess.run(["xdg-open", str(path)], check=False)
+        subprocess.Popen(["xdg-open", str(path)])  # noqa: S603,S607
         progress("Opened review.")
         return True
     except OSError as e:
         progress(f"Could not open review automatically ({e}). Open it yourself:")
         progress(f"  {path}")
         return False
+
+
+def _drop_empty_run(store: Path, run_id: str) -> bool:
+    """Best-effort cleanup for FACE-005 skip-all empty runs."""
+    conn = sqlite3.connect(str(store))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        n_obs = int(conn.execute("SELECT COUNT(*) FROM observations WHERE run_id=?", (run_id,)).fetchone()[0])
+        n_faces = int(conn.execute("SELECT COUNT(*) FROM faces WHERE run_id=?", (run_id,)).fetchone()[0])
+        n_decisions = int(conn.execute("SELECT COUNT(*) FROM decisions WHERE run_id=?", (run_id,)).fetchone()[0])
+        if n_obs == 0 and n_faces == 0 and n_decisions == 0:
+            conn.execute("DELETE FROM runs WHERE run_id=?", (run_id,))
+            conn.commit()
+            return True
+        return False
+    finally:
+        conn.close()
