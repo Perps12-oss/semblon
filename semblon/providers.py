@@ -1,13 +1,14 @@
 """ObservationProvider boundary. FaceKit is the only identity provider.
 
-CPU is recorded. GPU is not claimed. No second detector.
+CPU is the default record. GPU is only claimed when ORT lists a GPU EP
+(present ≠ proven usable). No second detector.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from semblon.engine import embed_bgr, load_app
+from semblon.engine import embed_bgr, load_app, select_execution_provider
 
 
 @dataclass(frozen=True)
@@ -32,9 +33,21 @@ class FaceKitProvider:
 
     def __init__(self):
         self._app = None
+        self._runtime: dict | None = None
 
     def load(self, det_size: tuple[int, int] = (640, 640), *, prefer_gpu: bool = False):
         self._app = load_app(det_size, prefer_gpu=prefer_gpu)
+        sel = getattr(self._app, "_semblon_ep", None) or select_execution_provider(
+            prefer_gpu=prefer_gpu
+        )
+        self._runtime = {
+            "provider": self.info.name,
+            "modality": self.info.modality,
+            "device": sel.get("device", "cpu"),
+            "execution_provider": sel.get("chosen", "CPUExecutionProvider"),
+            "pack_family": self.info.pack_family,
+            "note": sel.get("note"),
+        }
         return self
 
     @property
@@ -47,12 +60,15 @@ class FaceKitProvider:
         return embed_bgr(self.app, img)
 
     def as_runtime(self) -> dict:
+        if self._runtime is not None:
+            return dict(self._runtime)
         return {
             "provider": self.info.name,
             "modality": self.info.modality,
             "device": self.info.device,
             "execution_provider": self.info.execution_provider,
             "pack_family": self.info.pack_family,
+            "note": "load() not run; advertised CPU defaults only",
         }
 
 

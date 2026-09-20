@@ -11,12 +11,21 @@ canonical for this run and is returned directly. Re-derive only when empty.
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from pathlib import Path
 
-# 1 Hz sampling: allow one missed sample. IoU only — no compare().
+# 1 Hz sampling: allow ~2.5 s gap (≈ one missed sample at 1 Hz + jitter).
+# IoU only — no compare().
 DEFAULT_IOU_MIN = 0.30
 DEFAULT_MAX_T_MS_GAP = 2500
+
+
+def stable_track_id(media_id: str, face_ids: list[str]) -> str:
+    """Membership-stable id. Same face set → same id regardless of order."""
+    blob = "|".join(sorted(face_ids)).encode("utf-8")
+    digest = hashlib.sha256(blob).hexdigest()[:16]
+    return f"t-{media_id}-{digest}"
 
 
 class TracksError(ValueError):
@@ -119,15 +128,17 @@ def _associate_media(
 def _track_payload(members: list[dict], *, track_id: str | None = None) -> dict:
     first = members[0]
     last = members[-1]
+    face_ids = [m["face_id"] for m in members]
+    # Area first; tie-break by earliest face_id (stable, O(N), no index()).
     rep = max(
         members,
-        key=lambda m: (int(m["face_w"] or 0) * int(m["face_h"] or 0), -members.index(m)),
+        key=lambda m: (int(m["face_w"] or 0) * int(m["face_h"] or 0), m["face_id"]),
     )
     return {
-        "track_id": track_id or f"t-{first['media_id']}-{first['face_id']}",
+        "track_id": track_id or stable_track_id(first["media_id"], face_ids),
         "media_id": first["media_id"],
         "path": first["path"],
-        "face_ids": [m["face_id"] for m in members],
+        "face_ids": face_ids,
         "observation_ids": [m["observation_id"] for m in members],
         "face_count": len(members),
         "frame_id_start": first["frame_id"],
@@ -290,6 +301,7 @@ def derive_tracks(
 
     conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     run = conn.execute("SELECT run_id FROM runs WHERE run_id=?", (run_id,)).fetchone()
     if run is None:
         conn.close()

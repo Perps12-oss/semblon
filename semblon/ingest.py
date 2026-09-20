@@ -321,12 +321,14 @@ def ingest(
 
     hashes = discover_weight_hashes()
     ifver = getattr(insightface, "__version__", "unknown")
-    pid = pack_id(ifver, hashes)
 
     ep = select_execution_provider(prefer_gpu=prefer_gpu)
     t_load = time.perf_counter()
     app = load_app(DET_SIZE, prefer_gpu=prefer_gpu)
     load_s = time.perf_counter() - t_load
+    # Re-hash after load so first-run download is captured in pack_id.
+    hashes = discover_weight_hashes() or hashes
+    pid = pack_id(ifver, hashes)
 
     runtime = {
         "recorded_at": datetime.now(timezone.utc).isoformat(),
