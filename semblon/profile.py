@@ -182,7 +182,6 @@ def run_profile(image: Path, out: Path) -> dict:
         "device": "cpu",
         "device_name": None,
         "workers": 1,
-        "embed_batch": 1,
         "peak_rss_mb": _rss_mb(),
         "model_load_s": round(load_s, 3),
         "software_version": __version__,

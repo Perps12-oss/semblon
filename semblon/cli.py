@@ -139,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         "--workers",
         type=int,
         default=1,
-        help="experimental bounded ingest workers (default 1; thread-local FaceAnalysis, single SQLite writer)",
+        help="experimental bounded hash workers (default 1; single FaceAnalysis; single SQLite writer)",
     )
     ing.add_argument(
         "--observers",
@@ -147,7 +147,6 @@ def main(argv: list[str] | None = None) -> int:
         help="comma list: face,color,object,text,clip,pose (face is identity; extras never vote)",
     )
     ing.add_argument("--prefer-gpu", action="store_true", help="use GPU EP if available; recorded honestly")
-    ing.add_argument("--batch", type=int, default=1, help="recorded batch size; FaceKit still per-image")
     ing.add_argument(
         "--resume-run",
         default=None,
@@ -184,7 +183,6 @@ def main(argv: list[str] | None = None) -> int:
     proc.add_argument("--workers", type=int, default=1)
     proc.add_argument("--observers", default="face")
     proc.add_argument("--prefer-gpu", action="store_true")
-    proc.add_argument("--batch", type=int, default=1)
     proc.add_argument(
         "--resume",
         action="store_true",
@@ -538,7 +536,6 @@ def main(argv: list[str] | None = None) -> int:
                 workers=args.workers,
                 observers=args.observers,
                 prefer_gpu=args.prefer_gpu,
-                batch=args.batch,
                 resume_run_id=args.resume_run,
             )
         except CancelledError as e:
@@ -571,7 +568,6 @@ def main(argv: list[str] | None = None) -> int:
                 workers=args.workers,
                 observers=args.observers,
                 prefer_gpu=args.prefer_gpu,
-                batch=args.batch,
                 resume=args.resume,
                 on_event=_cli_progress,
             )

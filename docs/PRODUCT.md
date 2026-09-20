@@ -59,6 +59,6 @@ This amendment does **not** erase frozen v1. It records what the shipping applic
 
 ## Full-stack acceleration (2026-09-19)
 
-The freeze boundary is kept as the identity contract. The architecture is expanded **in parallel**: schema v2 (items, embeddings, tracks, groups, relationships, events), folder `watch`, `live` sources, Canvas, modality-scoped search, GPU detection, configurable workers/batch, migration engine. Extra observers (color/object always; OCR/CLIP/pose if installed) **must not** vote on identity.
+The freeze boundary is kept as the identity contract. The architecture is expanded **in parallel**: schema v2 (items, embeddings, tracks, groups, relationships, events), folder `watch`, `live` sources, Canvas, modality-scoped search, GPU detection, configurable workers, migration engine. Extra observers (color/object always; OCR/CLIP/pose if installed) **must not** vote on identity.
 
 Video files remain **out of frozen v1** and **in KEEP** as sampled holdout evidence. That is not a second identity engine.

@@ -36,7 +36,6 @@ Do not treat “ARM64 capable host” as native OpenCV. The binding itself must 
   "device": "cpu",
   "device_name": null,
   "workers": 1,
-  "embed_batch": 1,
   "peak_rss_mb": 825.1,
   "model_load_s": 12.771,
   "software_version": "1.1.0",
@@ -120,17 +119,16 @@ Not FACE-000. Not an S1 correctness gate. Full table: `docs/PERF-P0-BASELINE.md`
   "pack_id": "insightface/buffalo_l@2.0/adapter-1/sha256:20a9264f823c3c3c",
   "device": "cpu",
   "workers": 1,
-  "embed_batch": 1,
   "det_size": [640, 640],
   "model_load_s": 4.8,
   "ingest_s": 1299.3,
-  "notes": "PERF P0 baseline. Model load is not the bottleneck. Do not retune eps from this run. Native ARM64 speedup is unmeasured until PERF P1. P1 status 2026-09-17: BLOCKED — see docs/PERF-P1-ARM64.md (opencv_geometry500.dll hang; ORT ARM64 otherwise OK)."
+  "notes": "PERF P0 baseline. Model load is not the bottleneck. Do not retune eps from this run. Native ARM64 speedup is unmeasured (PERF P1 OpenCV hang — docs/PERF-P1-ARM64.md). P1 is a native-measure gap, not an ingest stop-work."
 }
 ```
 
-## windows arm64 native (PERF P1 — blocked)
+## windows arm64 native (PERF P1 — native measure gap)
 
-Semblon identity path **not** timed natively. Isolated env proved ARM64 Python + ORT; OpenCV load hangs. Full write-up: `docs/PERF-P1-ARM64.md`.
+Semblon identity path **not** timed natively. Isolated env proved ARM64 Python + ORT; OpenCV load hangs. Full write-up: `docs/PERF-P1-ARM64.md`. Does not block ingest pipeline engineering on the S1 (x64) path.
 
 ```json
 {

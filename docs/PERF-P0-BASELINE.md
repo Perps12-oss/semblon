@@ -16,20 +16,19 @@ S1 golden remains `20260913T153515Z-1e915abe`. Emulation cost vs native ARM64 is
 | faces | 961 → 393 ok / 530 low_quality / 38 rejected |
 | cluster | frozen `dbscan eps=0.40 min_samples=2 metric=1-dot` → 36 clusters (7 REVIEW, 29 STRONG), 88 UNASSIGNED, 0 decisions |
 | device | CPU (`CPUExecutionProvider`) |
-| workers / embed_batch | 1 / 1 |
+| workers | 1 |
 | det_size | 640 |
 | model_load_s | ~4.8 |
 | **ingest_s** | **1299.3** (~5.9 s/file) |
 
-Hot path (known): SHA-256 → `imread` → `imread` again → `FaceAnalysis.get()` (SCRFD + landmarks + buffalo_l + ArcFace) → per-file SQLite commit.
+Hot path at P0 (historical): SHA-256 → `imread` → `imread` again → `FaceAnalysis.get()` (SCRFD + landmarks + buffalo_l + ArcFace) → per-file SQLite commit. Later ingest rewrites supersede that hot path; this table stays the frozen P0 wall-clock.
 
 ## Track
 
 ```text
-P0  This baseline (documented) — no algorithm change
-P1  Native ARM64 measure — BLOCKED 2026-09-17 (docs/PERF-P1-ARM64.md)
-P2+ EP → workers → batching → drop duplicate imread → SQLite commits
-    (each alone; workers only after P1 unblocks)
+P0  This baseline (documented) — frozen evidence
+P1  Native ARM64 measure — open gap (docs/PERF-P1-ARM64.md); not an ingest stop-work
+Ingest pipeline  hash→skip→decode/embed→batched writer (no fake --batch knob)
 ```
 
 Standing pointers: `docs/SEM-ARCH.md` (planned work), `docs/runtime.md`, `docs/PERF-P1-ARM64.md`.  

@@ -32,11 +32,12 @@ S6 `memory` 1.2 is on `main` (not part of FACE-002–005).
 
 ## Deferred (explicit)
 
-- Bounded concurrent ingest workers / EP / GPU / batch / duplicate imread / SQLite commit policy — **after PERF P1 only**
-- Recording actual provider / device / worker in run evidence
-- Folder watcher / daemon
-- 10k ingest
-- Consuming the ARM64 OpenCV pyd in the **S1** path (P1 may use it in an isolated env)
+- Recording actual provider / device / worker defaults as product defaults (`workers>1` stays experimental)
+- Folder watcher / daemon as always-on product default
+- 10k ingest evidence claim
+- Consuming the ARM64 OpenCV pyd in the **S1** path (isolated P1 env only; never silent swap)
+
+Ingest pipeline work (bounded hash workers, skip-before-embed, streamed video, batched commits) is **authorized** — PERF P1 is not a stop-work order.
 
 ## After FACE gates
 
@@ -45,6 +46,6 @@ This file is a validation index, not the plan. **Planned work:** `docs/SEM-ARCH.
 `review-ui` + `export` video face inspectability: `docs/S8-REVIEW-UI.md` (on `main`, PR #28; `review.html` uses the same seek/crop).  
 Sampled video evidence: `docs/S7A.md` (run `20260917T161452Z-a012c0fe`).  
 S7b derived tracks (IoU+time, no table): `docs/S7B.md`. S8 renders those tracks in `review-ui` / `review.html`. `name --track` is a human Name, not identity clustering.  
-PERF: `docs/PERF-P0-BASELINE.md` (frozen); P1 **blocked** — `docs/PERF-P1-ARM64.md`.
+PERF: `docs/PERF-P0-BASELINE.md` (frozen evidence); P1 ARM64 OpenCV hang remains open as a native-measure gap — `docs/PERF-P1-ARM64.md` (does not block ingest engineering).
 
 Do not enable video DBSCAN to shrink the unassigned count. Do not invent a parallel plan.
