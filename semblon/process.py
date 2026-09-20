@@ -286,7 +286,6 @@ def process_folder(
     workers: int = 1,
     observers: str = "face",
     prefer_gpu: bool = False,
-    batch: int = 1,
     resume: bool = False,
 ) -> dict:
     """Run ingest -> cluster -> export. Uses frozen cluster defaults."""
@@ -357,7 +356,6 @@ def process_folder(
                     workers=workers,
                     observers=observers,
                     prefer_gpu=prefer_gpu,
-                    batch=batch,
                     resume_run_id=resume_run if resume else None,
                 )
         except CancelledError as e:

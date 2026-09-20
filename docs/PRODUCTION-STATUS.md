@@ -11,7 +11,7 @@ Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical freeze at `8403292`). Adden
 
 1. **Identity contract** — immutable. Unknown valid; cluster ≠ person; no silent auto-ID; native/emulated honesty. FaceKit is the only identity engine.
 2. **Production capabilities** — Home/review-ui, cancel, backup, integrity, person search, Canvas overlay, schema v2 write-through, stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks.
-3. **Experimental / unavailable** — workers>1, GPU when no EP, MSI+weights, 10k run, OCR/CLIP/pose unless those libraries are installed.
+3. **Experimental / unavailable** — product-default `workers>1`, GPU when no EP, MSI+weights, 10k run, OCR/CLIP/pose unless those libraries are installed.
 
 ## COMPLETE (verified in portable pytest)
 
@@ -48,7 +48,7 @@ Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical freeze at `8403292`). Adden
 
 ## EXPERIMENTAL
 
-- `ingest --workers` (default 1; P1 still blocks product default)
+- `ingest --workers` (default 1; hash-phase parallelism; single FaceAnalysis; product default stays 1 until measured)
 
 ## DEFERRED
 

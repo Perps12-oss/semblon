@@ -575,7 +575,7 @@ PHASE B   Adapt FACE into that architecture
 PHASE C   Performance / execution
           bounded workers · CPU/GPU providers · EP selection
           truthful run evidence
-          (still blocked on PERF P1 — docs/PERF-P1-ARM64.md)
+          (PERF P1 ARM64 OpenCV hang is a native-measure gap, not a Phase C stop)
                 │
 PHASE D   Temporal intelligence
           sampling (S7a KEEP) · tracking · track identities
@@ -598,7 +598,7 @@ PHASE K   Intelligence Canvas
 
 We do **not** decide today that Object is the second provider. We design so that answer can change without damaging the core.
 
-Phase C does not jump the P1 block. Native ARM64 OpenCV is still not loadable in the P1 venv (`opencv_geometry500.dll` hang). Do not open workers / EP / batch until P1 unblocks. Do not silently swap S1's x64 `cv2`.
+Phase C is open for ingest execution work. Native ARM64 OpenCV is still not loadable in the P1 venv (`opencv_geometry500.dll` hang) — that remains a measurement gap. Do not silently swap S1's x64 `cv2`. Do not invent a fake `--batch` knob until batched inference exists.
 
 ---
 
@@ -619,7 +619,7 @@ Verb set: KEEP / ADAPT / DEFER / REJECT. This is not a FACE-ticket queue.
 | S7a sampled video ingest + DBSCAN holdout | KEEP | Continue evidence. Do not expand to S7b from this paper. |
 | S8 toolkit spike | KEEP | Presentation only. Does not replace `review-ui`. |
 | PERF P0 | KEEP | Frozen. |
-| PERF P1 native ARM64 | KEEP / BLOCKED | Do not open workers/EP. |
+| PERF P1 native ARM64 | KEEP | OpenCV load hang is historical evidence; does not block ingest engineering. Never silent S1 swap. |
 | Progress `on_event` | KEEP | |
 | Video tracklets | KEEP (derived) | S7b read-only IoU+time per Media (`docs/S7B.md`). No table. Not identity. S7c–d still deferred. |
 | Webcam / RTSP | ADAPT | `semblon live` samples into `source_type=live`. Not identity. |
@@ -694,7 +694,7 @@ ObjectProvider      (does not exist)
   → optional embedding
 ```
 
-Shared execution (workers, EP, device) lives behind this boundary so the next model cannot invent its own runtime. That work is Phase C and is still gated on PERF P1.
+Shared execution (workers, EP, device) lives behind this boundary so the next model cannot invent its own runtime. That work is Phase C.
 
 ---
 
