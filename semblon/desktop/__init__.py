@@ -1,4 +1,7 @@
-"""Optional desktop / S8 presentation helpers. No FaceKit. No identity."""
+"""Optional desktop helpers. Importing this package does not require PySide6.
+
+Pages, widgets, window, and app live in sibling modules and need `.[gui]`.
+"""
 
 from semblon.desktop.qtcompat import list_item_flags
 

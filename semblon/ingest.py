@@ -1,4 +1,4 @@
-"""0.2 ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster.
+"""Ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster.
 
 Pipeline: one-pass discover → bounded hash → skip → decode/embed (one FaceAnalysis) →
 batched SQLite writer. Video frames stream; never materialize all samples.

@@ -34,8 +34,10 @@ class HomePage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.welcome = QLabel("SEMBLON")
+        self.welcome.setObjectName("title")
         self.welcome.setAccessibleName("Welcome")
         self.stats = QLabel("")
+        self.stats.setObjectName("subtitle")
         self.stats.setWordWrap(True)
         self.stats.setAccessibleName("Library stats")
         self.recent = QListWidget()
@@ -46,8 +48,8 @@ class HomePage(QWidget):
             "Add a folder of stills. Files stay where they are.",
             on_add=self.add_folder.emit,
         )
-        self.btn_unknown = QPushButton("Open unknown")
-        self.btn_unknown.setAccessibleName("Open unknown")
+        self.btn_unknown = QPushButton("Open Review")
+        self.btn_unknown.setAccessibleName("Open Review")
         self.btn_unknown.clicked.connect(self.open_unknown.emit)
         lay.addWidget(self.welcome)
         lay.addWidget(self.stats)
@@ -86,6 +88,7 @@ class _MediaPage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.heading = QLabel(title)
+        self.heading.setObjectName("title")
         self.heading.setAccessibleName(title)
         self.stack = QStackedWidget()
         self.empty = folder_empty_state(self, empty_title, empty_body, on_add=self.add_folder.emit)
@@ -156,6 +159,7 @@ class PeoplePage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.heading = QLabel("People")
+        self.heading.setObjectName("title")
         self.heading.setAccessibleName("People")
         self.empty = EmptyState(
             "No named people",
@@ -186,37 +190,59 @@ class UnknownPage(QWidget):
     inspect = Signal(object)
     name = Signal(object)
     ignore = Signal(object)
+    merge = Signal(object)
+    note = Signal(object)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
-        self.heading = QLabel("Unknown")
-        self.heading.setAccessibleName("Unknown")
+        self.heading = QLabel("Review")
+        self.heading.setObjectName("title")
+        self.heading.setAccessibleName("Review")
+        blurb = QLabel("Unknown groups in this window. A cluster is not a person until Name.")
+        blurb.setObjectName("subtitle")
+        blurb.setWordWrap(True)
         self.empty = EmptyState(
             "Nothing to review",
             "Unknown is valid. Process a folder, then Name groups you know.",
         )
         self.grid = ThumbGrid()
+        self.grid.setSelectionMode(self.grid.SelectionMode.ExtendedSelection)
         self.grid.set_context_actions(
-            [("inspect", "Inspect"), ("name", "Name"), ("ignore", "Ignore")]
+            [
+                ("inspect", "Inspect"),
+                ("name", "Name"),
+                ("ignore", "Ignore"),
+                ("note", "Note"),
+            ]
         )
         self.grid.inspect.connect(self.inspect.emit)
         self.grid.context_action.connect(self._on_context)
         bar = QHBoxLayout()
         self.btn_name = QPushButton("Name")
+        self.btn_name.setObjectName("primary")
         self.btn_name.setAccessibleName("Name unknown group")
         self.btn_ignore = QPushButton("Ignore")
         self.btn_ignore.setAccessibleName("Ignore unknown group")
+        self.btn_merge = QPushButton("Merge")
+        self.btn_merge.setAccessibleName("Merge selected groups")
+        self.btn_note = QPushButton("Note")
+        self.btn_note.setAccessibleName("Note unknown group")
         self.btn_name.clicked.connect(self._emit_name)
         self.btn_ignore.clicked.connect(self._emit_ignore)
+        self.btn_merge.clicked.connect(self._emit_merge)
+        self.btn_note.clicked.connect(self._emit_note)
         bar.addWidget(self.btn_name)
         bar.addWidget(self.btn_ignore)
+        bar.addWidget(self.btn_merge)
+        bar.addWidget(self.btn_note)
         bar.addStretch(1)
         self.stack = QStackedWidget()
         self.stack.addWidget(self.empty)
         self.stack.addWidget(self.grid)
         lay.addWidget(self.heading)
+        lay.addWidget(blurb)
         lay.addLayout(bar)
         lay.addWidget(self.stack)
 
@@ -225,6 +251,8 @@ class UnknownPage(QWidget):
             self.name.emit(payload)
         elif key == "ignore":
             self.ignore.emit(payload)
+        elif key == "note":
+            self.note.emit(payload)
 
     def _emit_name(self) -> None:
         payload = self.grid.current_payload()
@@ -236,6 +264,17 @@ class UnknownPage(QWidget):
         if payload is not None:
             self.ignore.emit(payload)
 
+    def _emit_note(self) -> None:
+        payload = self.grid.current_payload()
+        if payload is not None:
+            self.note.emit(payload)
+
+    def _emit_merge(self) -> None:
+        payloads = self.grid.selected_payloads()
+        ids = [p.get("cluster_id") for p in payloads if p.get("kind") == "cluster" and p.get("cluster_id")]
+        if len(ids) >= 2:
+            self.merge.emit(ids)
+
     def refresh(self, service: LibraryService) -> None:
         self._service = service
         rows = service.list_unknown()
@@ -244,6 +283,8 @@ class UnknownPage(QWidget):
         enabled = bool(rows)
         self.btn_name.setEnabled(enabled)
         self.btn_ignore.setEnabled(enabled)
+        self.btn_note.setEnabled(enabled)
+        self.btn_merge.setEnabled(enabled)
 
 
 class ActivityPage(QWidget):
@@ -252,6 +293,7 @@ class ActivityPage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.heading = QLabel("Activity")
+        self.heading.setObjectName("title")
         self.heading.setAccessibleName("Activity")
         self.list = QListWidget()
         self.list.setAccessibleName("Activity list")
@@ -277,6 +319,7 @@ class SettingsPage(QWidget):
         self._service: LibraryService | None = None
         lay = QVBoxLayout(self)
         self.heading = QLabel("Settings")
+        self.heading.setObjectName("title")
         self.heading.setAccessibleName("Settings")
         self.body = QLabel("")
         self.body.setWordWrap(True)

@@ -1,4 +1,4 @@
-"""0.3 cluster: DBSCAN on ok faces. Clusters are not persons."""
+"""Cluster: DBSCAN on ok faces. Clusters are not persons."""
 
 from __future__ import annotations
 

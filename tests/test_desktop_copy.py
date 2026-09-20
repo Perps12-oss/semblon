@@ -14,6 +14,7 @@ from semblon.desktop.copy import (
     headline,
     kind_label,
     percent_text,
+    process_event_snapshot,
     status_lines,
     status_text,
     user_state,
@@ -156,3 +157,11 @@ def test_completed_has_no_ellipsis():
     ev = make_event(STAGE_INGEST, KIND_COMPLETED, files_processed=2, files_total=2, clock="12:00:00")
     assert "…" not in headline(ev)
     assert headline(ev).endswith("done")
+
+
+def test_process_event_snapshot_carries_headline_not_percent_invention():
+    ev = make_event(STAGE_INGEST, KIND_PROGRESS, files_processed=4, clock="12:00:00")
+    snap = process_event_snapshot(ev)
+    assert snap["headline"]
+    assert snap["percent"] is None
+    assert snap["kind"] == KIND_PROGRESS
