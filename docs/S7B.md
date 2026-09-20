@@ -1,13 +1,13 @@
 # S7b — Derived video tracks
 
-**Status:** implemented as **derived evidence** (no store table).  
+**Status:** implemented as derived evidence with persisted snapshot (`tracks` + `track_members`).  
 **Depends on:** S7a sampled observations (`frame_id`, `t_ms`); S8 inspectability (`path`+`frame_id`+`bbox`).  
 **Does not depend on:** schema columns, ByteTrack / parked §20 libraries, video DBSCAN, S7c webcam, S7d RTSP, Canvas.  
 **Planned work:** `docs/SEM-ARCH.md`.
 
 ## What this slice is
 
-`semblon tracks --run --store` associates `status=ok` video face observations **inside one Media item** using:
+`semblon tracks --run --store` associates `status=ok` video/live face observations **inside one Media item** using:
 
 ```text
 same media
@@ -17,7 +17,7 @@ same media
   + exclusive membership (one face per track per timestamp)
 ```
 
-Output is JSON. It does **not** write the store. It does **not** set `cluster_id` or `person_id`.
+`tracks` CLI output is JSON/read-only. Store writes happen in ingest/live via `persist_derived_tracks`, which fills `tracks` and `track_members`. It never sets `cluster_id` or `person_id`.
 
 ```text
 Observation  →  Track (temporal)  →  Hypothesis (optional, not this slice)
@@ -40,13 +40,15 @@ Observation  →  Track (temporal)  →  Hypothesis (optional, not this slice)
 | `max_t_ms_gap` | `2500` |
 | stills `eps` | frozen `0.40` (untouched) |
 
+S7c live capture uses the same `iou_min` and `max_t_ms_gap` knobs for temporal association only (track ≠ person).
+
 ## Acceptance
 
 1. Two overlapping boxes 1 s apart on one `.mp4` become one Track even if embeddings differ.
 2. Two faces on the same frame never share a Track.
 3. A 4 s gap does not fuse fragments.
 4. A still (`source_type=folder`) is not a Track member.
-5. `sqlite_master` has no `tracks` table after the command.
+5. Persisted snapshots write `tracks` + `track_members`; reading prefers the persisted snapshot when present.
 6. `identify` / `cluster_run` behavior unchanged.
 
 ## Next

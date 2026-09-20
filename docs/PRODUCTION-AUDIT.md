@@ -44,15 +44,15 @@ Authority order: `docs/PRODUCT.md` → `docs/CONTRACTS.md` → `docs/SEM-ARCH.md
 | People / Unknown / Activity / Settings | Amendment / master | messagebox dialogs | none for dialogs | PARTIAL | YES visual |
 | Cooperative cancel | CONTRACTS | Home + SIGINT at file boundaries | `test_ingest_cancel`, `test_process_cancel` | COMPLETE | YES live Ctrl+C |
 | Backup / restore | CONTRACTS | `lab backup` / `lab restore` | `test_backup_restore_*` | COMPLETE | NO |
-| Integrity | CONTRACTS | `lab integrity` | `test_integrity_and_interrupted_stamp` | COMPLETE | NO |
-| Search lookup | CONTRACTS | `semblon/search.py` | `test_search_person_not_cluster` | COMPLETE | NO |
+| Integrity | CONTRACTS | `lab integrity` | `test_integrity_and_interrupted_stamp` | COMPLETE (pragma + missing-path count; missing does not fail `ok`) | NO |
+| Search lookup | CONTRACTS | `semblon/search.py` | `test_search_person_not_cluster` | COMPLETE (`--person/--people` RO) | NO |
 | FaceKit CPU provider | SEM-ARCH-002 | class + `runtime_json` fields | unit | PARTIAL (`load()` unused in ingest) | NO |
 | Stall watchdog | production push | `semblon/watchdog.py` | `test_watchdog_stall_vs_progress` | PARTIAL (not in Home/`process`) | NO |
 | Progress kind `queued` | CONTRACTS | constant only | never emitted | PARTIAL | NO |
 | S7a sampled video | KEEP | `temporal.py` | `tests/test_temporal.py` | COMPLETE | YES real video |
 | S7b derived tracks | KEEP | `tracks.py` | `tests/test_tracks.py` synthetic | COMPLETE synthetic | YES real video |
 | S6 memory | KEEP | `memory.py` | `tests/test_memory.py` | COMPLETE | NO |
-| Portable CI | workflow | `.github/workflows/ci.yml` | file exists | IMPLEMENTED / NOT EXECUTED here | YES Actions |
+| Portable CI | workflow | `.github/workflows/ci.yml` | Windows-path tests host-portable | IMPLEMENTED; confirm Actions on `main` | YES Actions |
 | ARCH-001 docs | SEM-ARCH | CONTRACTS primitives | docs | COMPLETE (docs) | NO |
 | ARCH-003…010 | SEM-ARCH | not built | — | DEFERRED | NO |
 | Canvas / objects / CLIP | SEM-ARCH | none | — | DEFERRED | NO |
@@ -71,7 +71,7 @@ Authority order: `docs/PRODUCT.md` → `docs/CONTRACTS.md` → `docs/SEM-ARCH.md
 | `except Exception` on embed → file `failed` | `semblon/ingest.py` | honest fail; hides exception type |
 | `emit()` swallows UI exceptions | `semblon/progress.py` | intentional |
 | `except MemoryError: pass` after person search | `semblon/search.py` | silent skip of history attach |
-| `search._open` uses RW `init_db` | `semblon/search.py` | inbox is RO; search is not |
+| `search._open` uses RW `init_db` | `semblon/search.py` | **fixed:** named-person lookup is RO; `--face` still identify |
 | `unassigned_media` action handlers | `semblon/review_ui.py` | dead path; board emits tracks/unassigned |
 | `FaceKitProvider.load()` never called | ingest uses `load_app` | unused architecture interface |
 | `Watchdog` never constructed in product | only tests | unused on shipping path |
@@ -276,8 +276,6 @@ If we freeze the current release boundary today, is there remaining engineering 
 - Stall `Watchdog`: unit-tested, not wired to Home/`process`
 - `KIND_QUEUED` defined, never emitted
 - Home People/Unknown/Activity/Settings = dialogs, not full pages
-- `search` opens the store RW (`init_db`)
-- Integrity does not scan missing original files
 - Video quality: synthetic only
 - `process` cannot set ingest workers
 - Dead `unassigned_media` handlers in `review_ui.py`
@@ -304,7 +302,7 @@ If we freeze the current release boundary today, is there remaining engineering 
 - Live Ctrl+C
 - Owner-dump / confirmatory re-score / 10k
 - GPU / native ARM64 OpenCV load
-- Secrets scanner; `PRAGMA integrity_check`
+- Secrets scanner
 - Home/Review widget automation
 
 ## ENVIRONMENT-LIMITED
@@ -337,15 +335,24 @@ None for the frozen identity + KEEP CLI/Home/`review-ui` boundary.
 
 Recorded here. `docs/PRODUCTION-STATUS.md` should match this file on watchdog and FaceKitProvider (PARTIAL, not COMPLETE in-product).
 
-## RECOMMENDED POST-RELEASE WORK
+## FOLLOW-UP (2026-09-19 honesty slice)
 
-1. Wire `Watchdog` into Home status, or stop calling it in-product COMPLETE
-2. Use `FaceKitProvider.load()` in ingest, or stop calling ARCH-002 pipeline-complete
+Addressed in code/docs (not identity retune):
+
+- Ubuntu CI Windows-path tests: compare path *parts*, not POSIX `Path(r"C:\\...")` identity
+- `search --person/--people` open the store read-only
+- `lab integrity` reports `PRAGMA integrity_check` and `media_missing_path` (missing originals do not fail `ok`)
+- PRODUCT/AGENTS/SEM-ARCH/CONTRACTS/PRODUCTION-STATUS overclaims corrected
+- Remaining items moved to **non-gating technical debt** in `docs/PRODUCTION-STATUS.md`
+
+## RECOMMENDED POST-RELEASE WORK (non-gating)
+
+1. Wire `Watchdog` into Home status, or leave it as a library
+2. Use `FaceKitProvider.load()` in ingest, or leave `load_app()` as the engine entry
 3. Remove or never-hit `unassigned_media` handlers
-4. `lab integrity` + `PRAGMA integrity_check` / missing-path count
-5. Confirm GitHub Actions on `main`
-6. After P1: native ARM64 measure — then reconsider workers
-7. ARCH-003 docs when earned
+4. Confirm GitHub Actions on `main` after this slice
+5. After P1: native ARM64 measure — then reconsider workers
+6. ARCH-003 docs when earned
 
 ---
 

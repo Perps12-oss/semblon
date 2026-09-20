@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from semblon.cli import main
+from semblon.observers import persist_derived_tracks
 from semblon.store import init_db
 from semblon.tracks import TracksError, bbox_iou, derive_tracks
 
@@ -173,3 +174,28 @@ def test_cli_tracks_json(tmp_path):
     assert "derived S7b" in out
     assert "fa" in out
     assert '"tracks"' in out
+
+
+def test_track_members_written_on_persist(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store)
+    snap = persist_derived_tracks(store, "rt")
+    assert snap["tracks"] >= 1
+
+    conn = sqlite3.connect(str(store))
+    n_tracks = conn.execute("SELECT COUNT(*) FROM tracks WHERE run_id='rt'").fetchone()[0]
+    n_members = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM track_members tm
+        JOIN tracks t ON t.track_id = tm.track_id
+        WHERE t.run_id='rt'
+        """
+    ).fetchone()[0]
+    conn.close()
+    assert n_tracks >= 1
+    assert n_members >= 2
+
+    rec = derive_tracks(store, "rt")
+    assert rec["note"].startswith("persisted S7 tracks snapshot")
+    assert rec["counts"]["tracks"] >= 1

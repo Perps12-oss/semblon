@@ -1,7 +1,9 @@
 # PERF P1 — native ARM64 measure (2026-09-17)
 
-**Outcome: BLOCKED before folder timing.** Emulation speedup vs P0 remains **unknown** (hypothesis only).  
+**Outcome: BLOCKED before folder timing** (OpenCV ARM64 load hang). Emulation speedup vs P0 remains **unknown** (hypothesis only).  
 S1 / x64 correctness environment was **not** swapped.
+
+**Status 2026-09-20:** This file is **historical evidence** of the native ARM64 measurement gap. It is **not** a stop-work order on ingest pipeline work (bounded hash workers, skip-before-embed, streamed video, batched SQLite commits, EP recording). Do not silently swap S1's x64 `cv2`.
 
 ## What worked (isolated env)
 
@@ -32,13 +34,12 @@ S1 / x64 correctness environment was **not** swapped.
 - Timed `process` of `E:\LIBRARY\Yandex.Disk\DCIMaw\me` to a separate store  
 - P0/P1 ingest_s ratio  
 
-## Must not (honoured)
+## Must not (still)
 
 - No silent S1 env swap  
 - No eps / threshold retune  
-- No workers / EP / batch / imread / SQLite “optimisation” fall-through  
 - Did not fake native via x64 ORT  
 
-## Next when unblocked
+## Next for the native measure
 
 Fix or replace ARM64 `opencv_geometry` load path (rebuild geometry module, different OpenCV config, or a real `win_arm64` wheel), then re-run one-image + same 221-file folder to a **separate** store and record ratio vs `docs/PERF-P0-BASELINE.md`.

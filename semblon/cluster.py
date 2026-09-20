@@ -16,6 +16,7 @@ from semblon.store import connect, init_db
 DEFAULT_EPS = 0.40  # distance = 1 - cosine; keep together only if sim >= 0.60
 DEFAULT_MIN_SAMPLES = 2
 METRIC = "1-dot"
+MAX_DBSCAN_FACES = 15000
 
 
 class ClusterError(ValueError):
@@ -36,6 +37,7 @@ def _dbscan_precomputed(dist: np.ndarray, eps: float, min_samples: int) -> np.nd
             continue
         labels[i] = cid
         seeds = neigh.tolist()
+        known = set(seeds)
         s = 0
         while s < len(seeds):
             q = seeds[s]
@@ -43,7 +45,6 @@ def _dbscan_precomputed(dist: np.ndarray, eps: float, min_samples: int) -> np.nd
                 visited[q] = True
                 qn = np.flatnonzero(dist[q] <= eps)
                 if qn.size >= min_samples:
-                    known = set(seeds)
                     for x in qn.tolist():
                         if x not in known:
                             seeds.append(x)
@@ -114,20 +115,53 @@ def _clear_unprotected_clusters(conn, run_id: str, locked_faces: set[str], locke
     ).fetchall()
     drop = [r[0] for r in rows if r[0] not in locked_clusters]
     if locked_faces:
-        qf = ",".join("?" * len(locked_faces))
-        conn.execute(
-            f"UPDATE faces SET cluster_id=NULL WHERE run_id=? AND face_id NOT IN ({qf})",
-            (run_id, *locked_faces),
+        conn.execute("DROP TABLE IF EXISTS tmp_locked_faces")
+        conn.execute("CREATE TEMP TABLE tmp_locked_faces(face_id TEXT PRIMARY KEY)")
+        conn.executemany(
+            "INSERT OR IGNORE INTO tmp_locked_faces(face_id) VALUES (?)",
+            ((fid,) for fid in locked_faces),
         )
+        conn.execute(
+            """
+            UPDATE faces
+            SET cluster_id=NULL
+            WHERE run_id=? AND face_id NOT IN (SELECT face_id FROM tmp_locked_faces)
+            """,
+            (run_id,),
+        )
+        conn.execute("DROP TABLE IF EXISTS tmp_locked_faces")
     else:
         conn.execute("UPDATE faces SET cluster_id=NULL WHERE run_id=?", (run_id,))
     if drop:
-        q = ",".join("?" * len(drop))
-        conn.execute(f"DELETE FROM cluster_person WHERE cluster_id IN ({q})", drop)
-        conn.execute(f"DELETE FROM clusters WHERE cluster_id IN ({q})", drop)
+        conn.execute("DROP TABLE IF EXISTS tmp_drop_clusters")
+        conn.execute("CREATE TEMP TABLE tmp_drop_clusters(cluster_id TEXT PRIMARY KEY)")
+        conn.executemany(
+            "INSERT OR IGNORE INTO tmp_drop_clusters(cluster_id) VALUES (?)",
+            ((cid,) for cid in drop),
+        )
+        conn.execute(
+            "DELETE FROM cluster_person WHERE cluster_id IN (SELECT cluster_id FROM tmp_drop_clusters)"
+        )
+        conn.execute(
+            "DELETE FROM clusters WHERE cluster_id IN (SELECT cluster_id FROM tmp_drop_clusters)"
+        )
+        conn.execute("DROP TABLE IF EXISTS tmp_drop_clusters")
 
 
 def _load_ok_faces(conn, run_id: str, pack_id: str):
+    total = int(
+        conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM faces f
+            JOIN observations o ON o.observation_id = f.observation_id
+            JOIN media m ON m.media_id = o.media_id
+            WHERE f.run_id=? AND f.status='ok' AND f.embedding IS NOT NULL
+              AND m.source_type = 'folder'
+            """,
+            (run_id,),
+        ).fetchone()[0]
+    )
     rows = conn.execute(
         """
         SELECT f.face_id, f.embedding, f.embedding_pack, f.embedding_dim
@@ -135,19 +169,13 @@ def _load_ok_faces(conn, run_id: str, pack_id: str):
         JOIN observations o ON o.observation_id = f.observation_id
         JOIN media m ON m.media_id = o.media_id
         WHERE f.run_id=? AND f.status='ok' AND f.embedding IS NOT NULL
+          AND f.embedding_pack=?
           AND m.source_type = 'folder'
         ORDER BY f.face_id
         """,
-        (run_id,),
+        (run_id, pack_id),
     ).fetchall()
-    faces = []
-    skipped_pack = 0
-    for r in rows:
-        if r["embedding_pack"] != pack_id:
-            skipped_pack += 1
-            continue
-        faces.append(r)
-    return faces, skipped_pack
+    return rows, max(0, total - len(rows))
 
 
 def _pairwise_min(faces_in_cluster, pack_id: str) -> tuple[float | None, tuple[str, str] | None]:
@@ -197,8 +225,14 @@ def cluster_run(
     dim = int(run["embedding_dim"])
     locked_faces, locked_clusters = _review_locks(conn, run_id)
     faces, skipped_pack = _load_ok_faces(conn, run_id, pack_id)
-    n_ok = len(faces)
+    n_ok_total = len(faces)
     faces = [f for f in faces if f["face_id"] not in locked_faces]
+    n_ok_active = len(faces)
+    if n_ok_active > MAX_DBSCAN_FACES:
+        conn.close()
+        raise ClusterError(
+            f"too many active still faces for in-memory DBSCAN ({n_ok_active} > {MAX_DBSCAN_FACES})"
+        )
 
     t0 = time.perf_counter()
     _clear_unprotected_clusters(conn, run_id, locked_faces, locked_clusters)
@@ -276,12 +310,13 @@ def cluster_run(
         "run_id": run_id,
         "pack_id": pack_id,
         "strategy": _strategy(eps, min_samples),
-        "ok_faces": n_ok,
+        "ok_faces": n_ok_total,
+        "ok_faces_active": n_ok_active,
         "skipped_pack_mismatch": skipped_pack,
         "review_locked": len(locked_faces),
         "clusters": n_clusters,
         "clustered": n_clustered,
-        "unassigned": n_noise if faces else 0,
+        "unassigned": n_noise,
         "eps": eps,
         "min_samples": min_samples,
         "cluster_s": round(elapsed, 3),

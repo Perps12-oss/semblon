@@ -508,11 +508,11 @@ Instead: make the architecture general first. Add intelligence capabilities one 
 | **ARCH-003** | Universal similarity | Embedding envelope; never compare incompatible spaces | **SHIPPED** `compare_space()` + `embeddings` table. Face identity still `compare()`. |
 | **ARCH-004** | Grouping / hypothesis | `ObservationGroup` = related under a model/config, not “the same thing” | **SHIPPED** `observation_groups` table. Face DBSCAN unchanged. |
 | **ARCH-005** | Temporal intelligence | Frame → observation → track → track-level hypothesis | **SHIPPED** `tracks` table snapshot of derived S7b. Track ≠ person. |
-| **ARCH-006** | Relationship engine | Explicit links with evidence, bounds, provider, confirmation | **SHIPPED** `relationships` table (confirmed flag). |
-| **ARCH-007** | Event intelligence | Media + entities → event hypotheses | **SHIPPED** `events` table. S6 still derived. |
-| **ARCH-008** | Visual search | Image / text / entity into owned memory | **SHIPPED** `search --similar` same-modality only. |
+| **ARCH-006** | Relationship engine | Explicit links with evidence, bounds, provider, confirmation | **SHIPPED** `relationships` table + Home Activity / memory readers (confirmed flag). |
+| **ARCH-007** | Event intelligence | Media + entities → event hypotheses | **SHIPPED** `events` table + Home Activity / memory readers. |
+| **ARCH-008** | Visual search | Image / text / entity into owned memory | **SHIPPED (bounded)** person lookup + same-modality similar only (`search --person/--people/--face/--similar`); not CLIP text search. |
 | **ARCH-009** | Visual memory | Durable index = media + observations + entities + relationships + events + decisions + time | **SHIPPED** as SQLite v2 tables + S6. |
-| **ARCH-010** | Intelligence Canvas | GUI consumes the architecture | **SHIPPED** `semblon canvas` / Home Canvas. |
+| **ARCH-010** | Intelligence Canvas | GUI consumes the architecture | **SHIPPED (overlay scope)** observation overlay (`semblon canvas` / Home Canvas). S8 shell is not default. |
 
 ```text
 CORE → PROVIDERS → OBSERVATIONS → CONNECTIONS → MEMORY
@@ -575,7 +575,7 @@ PHASE B   Adapt FACE into that architecture
 PHASE C   Performance / execution
           bounded workers · CPU/GPU providers · EP selection
           truthful run evidence
-          (still blocked on PERF P1 — docs/PERF-P1-ARM64.md)
+          (PERF P1 ARM64 OpenCV hang is a native-measure gap, not a Phase C stop)
                 │
 PHASE D   Temporal intelligence
           sampling (S7a KEEP) · tracking · track identities
@@ -598,7 +598,7 @@ PHASE K   Intelligence Canvas
 
 We do **not** decide today that Object is the second provider. We design so that answer can change without damaging the core.
 
-Phase C does not jump the P1 block. Native ARM64 OpenCV is still not loadable in the P1 venv (`opencv_geometry500.dll` hang). Do not open workers / EP / batch until P1 unblocks. Do not silently swap S1's x64 `cv2`.
+Phase C is open for ingest execution work. Native ARM64 OpenCV is still not loadable in the P1 venv (`opencv_geometry500.dll` hang) — that remains a measurement gap. Do not silently swap S1's x64 `cv2`. Do not invent a fake `--batch` knob until batched inference exists.
 
 ---
 
@@ -619,7 +619,7 @@ Verb set: KEEP / ADAPT / DEFER / REJECT. This is not a FACE-ticket queue.
 | S7a sampled video ingest + DBSCAN holdout | KEEP | Continue evidence. Do not expand to S7b from this paper. |
 | S8 toolkit spike | KEEP | Presentation only. Does not replace `review-ui`. |
 | PERF P0 | KEEP | Frozen. |
-| PERF P1 native ARM64 | KEEP / BLOCKED | Do not open workers/EP. |
+| PERF P1 native ARM64 | KEEP | OpenCV load hang is historical evidence; does not block ingest engineering. Never silent S1 swap. |
 | Progress `on_event` | KEEP | |
 | Video tracklets | KEEP (derived) | S7b read-only IoU+time per Media (`docs/S7B.md`). No table. Not identity. S7c–d still deferred. |
 | Webcam / RTSP | ADAPT | `semblon live` samples into `source_type=live`. Not identity. |
@@ -694,7 +694,7 @@ ObjectProvider      (does not exist)
   → optional embedding
 ```
 
-Shared execution (workers, EP, device) lives behind this boundary so the next model cannot invent its own runtime. That work is Phase C and is still gated on PERF P1.
+Shared execution (workers, EP, device) lives behind this boundary so the next model cannot invent its own runtime. That work is Phase C.
 
 ---
 

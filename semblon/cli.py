@@ -140,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         "--workers",
         type=int,
         default=1,
-        help="experimental bounded ingest workers (default 1; thread-local FaceAnalysis, single SQLite writer)",
+        help="experimental bounded hash workers (default 1; single FaceAnalysis; single SQLite writer)",
     )
     ing.add_argument(
         "--observers",
@@ -148,7 +148,6 @@ def main(argv: list[str] | None = None) -> int:
         help="comma list: face,color,object,text,clip,pose (face is identity; extras never vote)",
     )
     ing.add_argument("--prefer-gpu", action="store_true", help="use GPU EP if available; recorded honestly")
-    ing.add_argument("--batch", type=int, default=1, help="recorded batch size; FaceKit still per-image")
     ing.add_argument(
         "--resume-run",
         default=None,
@@ -185,7 +184,6 @@ def main(argv: list[str] | None = None) -> int:
     proc.add_argument("--workers", type=int, default=1)
     proc.add_argument("--observers", default="face")
     proc.add_argument("--prefer-gpu", action="store_true")
-    proc.add_argument("--batch", type=int, default=1)
     proc.add_argument(
         "--resume",
         action="store_true",
@@ -216,6 +214,12 @@ def main(argv: list[str] | None = None) -> int:
     nam.add_argument("--track", default=None, help="derived S7 track id (not a person id)")
     nam.add_argument("--faces", nargs="+", default=None, help="unassigned face ids (one person)")
     nam.add_argument("--as", dest="display_name", required=True, help="display name")
+    nam.add_argument(
+        "--attach-to",
+        default=None,
+        dest="attach_to",
+        help="existing person_id to attach (default: create a new person; no silent name reuse)",
+    )
     nam.add_argument("--run", required=True)
     nam.add_argument("--store", required=True, type=Path)
 
@@ -353,14 +357,33 @@ def main(argv: list[str] | None = None) -> int:
     wat.add_argument("--once", action="store_true")
     wat.add_argument("--observers", default="face")
 
-    liv = sub.add_parser("live", help="sample webcam index or RTSP URL into the store")
+    liv = sub.add_parser(
+        "live",
+        help="webcam/RTSP capture: detect->track->selective embed->identify vs persons (not always-on unless --seconds 0)",
+    )
     liv.add_argument("--store", required=True, type=Path)
     liv.add_argument("--source", default="0", help="camera index or RTSP URL")
-    liv.add_argument("--seconds", type=float, default=5.0)
+    liv.add_argument("--seconds", type=float, default=5.0, help="capture duration in seconds; 0 runs until cancel/SIGINT")
     liv.add_argument("--hz", type=float, default=1.0)
+    liv.add_argument(
+        "--reembed-s",
+        type=float,
+        default=2.0,
+        help="re-embed a track when its last persisted embedding is older than this many seconds",
+    )
+    liv.add_argument(
+        "--retain-s",
+        type=float,
+        default=None,
+        help="rolling retention window for this live media (delete older observations)",
+    )
+    liv.add_argument("--strict", action="store_true", help="fail run on detect/embed errors")
     liv.add_argument("--prefer-gpu", action="store_true")
 
-    canv = sub.add_parser("canvas", help="Intelligence Canvas over observations (not identity)")
+    canv = sub.add_parser(
+        "canvas",
+        help="observation overlay (boxes + tracks; not identity; not the S8 shell)",
+    )
     canv.add_argument("--store", default=None, type=Path)
     canv.add_argument("--run", default=None)
 
@@ -532,7 +555,6 @@ def main(argv: list[str] | None = None) -> int:
                 workers=args.workers,
                 observers=args.observers,
                 prefer_gpu=args.prefer_gpu,
-                batch=args.batch,
                 resume_run_id=args.resume_run,
             )
         except CancelledError as e:
@@ -565,7 +587,6 @@ def main(argv: list[str] | None = None) -> int:
                 workers=args.workers,
                 observers=args.observers,
                 prefer_gpu=args.prefer_gpu,
-                batch=args.batch,
                 resume=args.resume,
                 on_event=_cli_progress,
             )
@@ -637,14 +658,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         try:
+            attach = getattr(args, "attach_to", None)
+            kw = {"attach_to_person_id": attach, "create_new": attach is None}
             if args.cluster:
-                rec = name_cluster(args.store, args.run, args.cluster, args.display_name)
+                rec = name_cluster(args.store, args.run, args.cluster, args.display_name, **kw)
             elif args.face:
-                rec = name_face(args.store, args.run, args.face, args.display_name)
+                rec = name_face(args.store, args.run, args.face, args.display_name, **kw)
             elif args.track:
-                rec = name_track(args.store, args.run, args.track, args.display_name)
+                rec = name_track(args.store, args.run, args.track, args.display_name, **kw)
             else:
-                rec = name_faces(args.store, args.run, args.faces, args.display_name)
+                rec = name_faces(args.store, args.run, args.faces, args.display_name, **kw)
         except ReviewError as e:
             print(str(e), file=sys.stderr)
             return 2
@@ -883,6 +906,9 @@ def main(argv: list[str] | None = None) -> int:
                 source=args.source,
                 seconds=args.seconds,
                 sample_hz=args.hz,
+                reembed_s=args.reembed_s,
+                retain_s=args.retain_s,
+                strict=args.strict,
                 prefer_gpu=args.prefer_gpu,
             )
         except (LiveError, FileNotFoundError) as e:

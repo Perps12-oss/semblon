@@ -1,12 +1,15 @@
-"""Intelligence Canvas data + tk window. Consumes observations; does not own identity."""
+"""Observation overlay data + tk window.
+
+Draws boxes/tracks from persisted observations. Not identity and not the S8 shell.
+"""
 
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from semblon.process import default_store_path, latest_run_id
-from semblon.store import connect, init_db
 
 
 class CanvasError(ValueError):
@@ -14,32 +17,40 @@ class CanvasError(ValueError):
 
 
 def load_canvas(store: Path, run_id: str | None = None) -> dict:
-    """Overlay payload: media + face boxes + non-identity items. Cluster ≠ person."""
+    """Overlay payload: media + boxes + persisted track lanes. Cluster ≠ person."""
     store = Path(store)
     if not store.is_file():
         raise CanvasError(f"store not found: {store}")
-    conn = connect(store)
-    init_db(conn)
+    conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     rid = run_id or latest_run_id(store, with_faces=True) or latest_run_id(store)
     if rid is None:
         conn.close()
         raise CanvasError("store has no runs")
-    media = conn.execute(
-        """SELECT DISTINCT m.media_id, m.path, m.source_type
-           FROM media m
-           JOIN observations o ON o.media_id = m.media_id
-           WHERE o.run_id=?
-           ORDER BY m.path""",
-        (rid,),
-    ).fetchall()
-    faces = conn.execute(
-        """SELECT f.face_id, f.observation_id, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
-                  f.status, f.cluster_id, f.person_id, o.media_id, o.frame_id, o.t_ms
-           FROM faces f JOIN observations o ON o.observation_id=f.observation_id
-           WHERE f.run_id=?""",
-        (rid,),
-    ).fetchall()
+    try:
+        media = conn.execute(
+            """SELECT DISTINCT m.media_id, m.path, m.source_type
+               FROM media m
+               JOIN observations o ON o.media_id = m.media_id
+               WHERE o.run_id=?
+               ORDER BY m.path""",
+            (rid,),
+        ).fetchall()
+        faces = conn.execute(
+            """SELECT f.face_id, f.observation_id, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
+                      f.status, f.cluster_id, f.person_id, o.media_id, o.frame_id, o.t_ms
+               FROM faces f JOIN observations o ON o.observation_id=f.observation_id
+               WHERE f.run_id=?""",
+            (rid,),
+        ).fetchall()
+    except sqlite3.DatabaseError as e:
+        conn.close()
+        raise CanvasError(f"canvas load failed: {e}") from e
+    warnings: list[str] = []
     items = []
+    tracks = []
+    track_members = []
     try:
         items = conn.execute(
             """SELECT i.item_id, i.kind, i.provider, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2,
@@ -48,17 +59,40 @@ def load_canvas(store: Path, run_id: str | None = None) -> dict:
                WHERE i.run_id=?""",
             (rid,),
         ).fetchall()
-    except Exception:
-        items = []
-    tracks = []
+    except sqlite3.OperationalError as e:
+        warnings.append(f"items unavailable: {e}")
     try:
         tracks = conn.execute(
             "SELECT track_id, media_id, kind, t_ms_start, t_ms_end, item_count FROM tracks WHERE run_id=?",
             (rid,),
         ).fetchall()
-    except Exception:
-        tracks = []
+    except sqlite3.OperationalError as e:
+        warnings.append(f"tracks unavailable: {e}")
+    try:
+        track_members = conn.execute(
+            """
+            SELECT tm.track_id, tm.item_id, oi.face_id, oi.observation_id, o.media_id
+            FROM track_members tm
+            JOIN tracks t ON t.track_id = tm.track_id
+            JOIN observation_items oi ON oi.item_id = tm.item_id
+            JOIN observations o ON o.observation_id = oi.observation_id
+            WHERE t.run_id=?
+            """,
+            (rid,),
+        ).fetchall()
+    except sqlite3.OperationalError as e:
+        warnings.append(f"track memberships unavailable: {e}")
     conn.close()
+    lane_by_face: dict[str, str] = {}
+    lane_by_item: dict[str, str] = {}
+    for row in track_members:
+        d = dict(row)
+        lane_by_item[d["item_id"]] = d["track_id"]
+        if d.get("face_id"):
+            lane_by_face[d["face_id"]] = d["track_id"]
+    note = "Canvas overlays observations. Face identity stays FaceKit. Track ≠ person."
+    if warnings:
+        note = note + " " + " | ".join(warnings)
     return {
         "run_id": rid,
         "media": [dict(r) for r in media],
@@ -68,22 +102,31 @@ def load_canvas(store: Path, run_id: str | None = None) -> dict:
             for r in items
         ],
         "tracks": [dict(r) for r in tracks],
-        "note": "Canvas overlays observations. Face identity stays FaceKit. Track ≠ person.",
+        "track_members": [dict(r) for r in track_members],
+        "track_lane_by_face": lane_by_face,
+        "track_lane_by_item": lane_by_item,
+        "note": note,
     }
 
 
 def overlay_boxes(board: dict, media_id: str) -> list[dict]:
-    """Display boxes for one media. Face items are drawn from faces, not dual-write rows."""
+    """Display boxes for one media. Includes persisted track lane IDs when present."""
     boxes = []
+    lane_by_face = board.get("track_lane_by_face") or {}
+    lane_by_item = board.get("track_lane_by_item") or {}
     for f in board.get("faces") or []:
         if f.get("media_id") != media_id:
             continue
+        lane = lane_by_face.get(f.get("face_id"))
+        tag = "named" if f.get("person_id") else ("group" if f.get("cluster_id") else "unassigned")
+        if lane:
+            tag = f"{tag} lane={lane}"
         boxes.append(
             {
                 "kind": "face",
                 "id": f.get("face_id"),
                 "bbox": [f.get("bbox_x1"), f.get("bbox_y1"), f.get("bbox_x2"), f.get("bbox_y2")],
-                "tag": "named" if f.get("person_id") else ("group" if f.get("cluster_id") else "unassigned"),
+                "tag": tag,
                 "color": "#2e8b57",
             }
         )
@@ -92,12 +135,16 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
             continue
         if it.get("bbox_x1") is None:
             continue
+        lane = lane_by_item.get(it.get("item_id"))
+        tag = it.get("provider")
+        if lane:
+            tag = f"{tag} lane={lane}"
         boxes.append(
             {
                 "kind": it.get("kind"),
                 "id": it.get("item_id"),
                 "bbox": [it.get("bbox_x1"), it.get("bbox_y1"), it.get("bbox_x2"), it.get("bbox_y2")],
-                "tag": it.get("provider"),
+                "tag": tag,
                 "color": "#c47a1a",
             }
         )
@@ -170,7 +217,8 @@ def run_canvas(store: Path | None = None, run_id: str | None = None, *, parent=N
         root._photo = photo
         preview.create_image(0, 0, anchor=tk.NW, image=photo)
         preview.config(scrollregion=(0, 0, nw, nh))
-        for box in overlay_boxes(board, m["media_id"]):
+        boxes = overlay_boxes(board, m["media_id"])
+        for box in boxes:
             x1, y1, x2, y2 = box["bbox"]
             if None in (x1, y1, x2, y2):
                 continue
@@ -189,7 +237,7 @@ def run_canvas(store: Path | None = None, run_id: str | None = None, *, parent=N
                 fill=box["color"],
                 text=f"{box['kind']} {box['tag']}",
             )
-        status.set(f"{path}  boxes={len(overlay_boxes(board, m['media_id']))}  group ≠ person")
+        status.set(f"{path}  boxes={len(boxes)}  group ≠ person")
 
     def on_select(_evt=None) -> None:
         sel = lb.curselection()

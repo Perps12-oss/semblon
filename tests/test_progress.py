@@ -18,6 +18,7 @@ from semblon.progress import (
     KIND_COMPLETED,
     KIND_FAILED,
     KIND_PROGRESS,
+    KIND_QUEUED,
     KIND_STARTED,
     STAGE_CLUSTER,
     STAGE_DISCOVER,
@@ -184,7 +185,8 @@ def test_process_events_stage_order(tmp_path):
 
     assert rec["run_id"] == "RUN-SMOKE"
     pairs = _pairs(events)
-    assert pairs[0] == (STAGE_PROCESS, KIND_STARTED)
+    assert pairs[0] == (STAGE_PROCESS, KIND_QUEUED)
+    assert pairs[1] == (STAGE_PROCESS, KIND_STARTED)
     assert (STAGE_DISCOVER, KIND_STARTED) in pairs
     assert (STAGE_DISCOVER, KIND_COMPLETED) in pairs
     assert (STAGE_INGEST, KIND_STARTED) in pairs
@@ -201,6 +203,7 @@ def test_process_events_stage_order(tmp_path):
             continue
         compact.append(p)
     assert compact == [
+        (STAGE_PROCESS, KIND_QUEUED),
         (STAGE_PROCESS, KIND_STARTED),
         (STAGE_DISCOVER, KIND_STARTED),
         (STAGE_DISCOVER, KIND_COMPLETED),
@@ -275,6 +278,32 @@ def test_discover_and_ingest_counters_are_truthful(tmp_path):
     assert ingest_done.faces_found == 3
 
 
+def test_process_emits_queued_first(tmp_path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    events: list[ProgressEvent] = []
+
+    with (
+        patch(
+            "semblon.process.ingest",
+            return_value={"run_id": "RUN-Q", "new_media": 0, "faces": 0, "ok": 0, "skipped_seen": 0, "files": 0},
+        ),
+        patch("semblon.process.cluster_run", side_effect=ClusterError("no ok faces")),
+    ):
+        with pytest.raises(ProcessError):
+            process_folder(
+                folder,
+                store=tmp_path / "s.sqlite",
+                out=tmp_path / "r.html",
+                open_review=False,
+                progress=lambda *_: None,
+                on_event=events.append,
+            )
+    assert events
+    assert events[0].kind == KIND_QUEUED
+    assert events[0].stage == STAGE_PROCESS
+
+
 def test_process_failed_is_emitted(tmp_path):
     folder = tmp_path / "photos"
     folder.mkdir()
@@ -298,7 +327,8 @@ def test_process_failed_is_emitted(tmp_path):
             )
 
     pairs = _pairs(events)
-    assert pairs[0] == (STAGE_PROCESS, KIND_STARTED)
+    assert pairs[0] == (STAGE_PROCESS, KIND_QUEUED)
+    assert pairs[1] == (STAGE_PROCESS, KIND_STARTED)
     assert (STAGE_CLUSTER, KIND_STARTED) in pairs
     assert pairs[-1] == (STAGE_PROCESS, KIND_FAILED)
     assert events[-1].error == "no ok faces"
@@ -399,7 +429,8 @@ def test_process_cancel_is_not_success(tmp_path):
             )
 
     pairs = _pairs(events)
-    assert pairs[0] == (STAGE_PROCESS, KIND_STARTED)
+    assert pairs[0] == (STAGE_PROCESS, KIND_QUEUED)
+    assert pairs[1] == (STAGE_PROCESS, KIND_STARTED)
     assert pairs[-1] == (STAGE_PROCESS, KIND_CANCELLED)
     assert (STAGE_PROCESS, KIND_COMPLETED) not in pairs
     assert (STAGE_PROCESS, KIND_FAILED) not in pairs

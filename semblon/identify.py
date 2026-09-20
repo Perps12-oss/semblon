@@ -23,9 +23,19 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _open(store: Path):
-    conn = connect(Path(store))
-    init_db(conn)
+def _open(store: Path, *, writable: bool = True):
+    p = Path(store)
+    if writable:
+        conn = connect(p)
+        init_db(conn)
+        return conn
+    import sqlite3
+
+    if not p.is_file():
+        raise IdentifyError(f"store not found: {p}")
+    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -37,26 +47,22 @@ def _require_run(conn, run_id: str):
 
 
 def _gallery(conn, pack_id: str, exclude_face: str | None = None):
-    """Active persons' ok faces, any run, this pack. Not clusters."""
-    rows = conn.execute(
-        """
+    """Active persons' ok faces in this pack, across the store. Not clusters."""
+    sql = """
         SELECT f.face_id, f.embedding, f.embedding_pack, f.embedding_dim,
                f.person_id, p.display_name
         FROM faces f
         JOIN persons p ON p.person_id = f.person_id
         WHERE f.status='ok' AND f.embedding IS NOT NULL
           AND p.status='active' AND f.person_id IS NOT NULL
-        ORDER BY f.face_id
-        """,
-    ).fetchall()
-    out = []
-    for r in rows:
-        if exclude_face and r["face_id"] == exclude_face:
-            continue
-        if r["embedding_pack"] != pack_id:
-            continue
-        out.append(r)
-    return out
+          AND f.embedding_pack=?
+    """
+    args: list = [pack_id]
+    if exclude_face:
+        sql += " AND f.face_id != ?"
+        args.append(exclude_face)
+    sql += " ORDER BY f.face_id"
+    return conn.execute(sql, args).fetchall()
 
 
 def _person_scores(probe, gallery, pack_id: str) -> list[dict]:
@@ -86,7 +92,7 @@ def _person_scores(probe, gallery, pack_id: str) -> list[dict]:
     return ranked
 
 
-def _decide(ranked: list[dict], threshold: float) -> dict:
+def _decide(ranked: list[dict], threshold: float, *, include_ranked: bool = False) -> dict:
     """ACCEPT only if exactly one person is at/above the identity threshold."""
     top1 = ranked[0] if ranked else None
     top2 = ranked[1] if len(ranked) > 1 else None
@@ -109,7 +115,7 @@ def _decide(ranked: list[dict], threshold: float) -> dict:
         person_id = top1["person_id"]
         display_name = top1["display_name"]
 
-    return {
+    out = {
         "decision": decision,
         "person_id": person_id,
         "display_name": display_name,
@@ -117,11 +123,24 @@ def _decide(ranked: list[dict], threshold: float) -> dict:
         "score_top2": score_top2,
         "margin": margin,
         "gallery_size": len(ranked),
-        "ranked": ranked,
     }
+    if include_ranked:
+        out["ranked"] = ranked
+    return out
 
 
-def _write_decision(conn, *, run_id, pack_id, face_id, verdict: dict, threshold: float, source: str) -> str:
+def _write_decision(
+    conn,
+    *,
+    run_id,
+    pack_id,
+    face_id,
+    verdict: dict,
+    threshold: float,
+    source: str,
+    cluster_id=None,
+    extra_policy: dict | None = None,
+) -> str:
     did = uuid.uuid4().hex
     policy = {
         "decision": verdict["decision"],
@@ -131,6 +150,8 @@ def _write_decision(conn, *, run_id, pack_id, face_id, verdict: dict, threshold:
         "source": source,
         "against": "persons",
     }
+    if extra_policy:
+        policy.update(extra_policy)
     conn.execute(
         """INSERT INTO decisions(
              decision_id, kind, face_id, person_id, cluster_id,
@@ -141,7 +162,7 @@ def _write_decision(conn, *, run_id, pack_id, face_id, verdict: dict, threshold:
             "identify",
             face_id,
             verdict["person_id"],
-            None,
+            cluster_id,
             pack_id,
             verdict["score_top1"],
             verdict["score_top2"],
@@ -160,9 +181,13 @@ def identify_face(
     face_id: str,
     *,
     threshold: float = DEFAULT_THRESHOLD,
+    record: bool = True,
 ) -> dict:
-    """1:N a stored ok face against reviewed persons on this run."""
-    conn = _open(store)
+    """1:N a stored ok face against reviewed persons on this run.
+
+    record=False: score only (search). Opens read-only; does not write a decision.
+    """
+    conn = _open(store, writable=record)
     try:
         run = _require_run(conn, run_id)
         pack_id = run["pack_id"]
@@ -180,21 +205,24 @@ def identify_face(
         gallery = _gallery(conn, pack_id, exclude_face=face_id)
         ranked = _person_scores(face, gallery, pack_id)
         verdict = _decide(ranked, threshold)
-        decision_id = _write_decision(
-            conn,
-            run_id=run_id,
-            pack_id=pack_id,
-            face_id=face_id,
-            verdict=verdict,
-            threshold=threshold,
-            source="face",
-        )
-        conn.commit()
+        decision_id = None
+        if record:
+            decision_id = _write_decision(
+                conn,
+                run_id=run_id,
+                pack_id=pack_id,
+                face_id=face_id,
+                verdict=verdict,
+                threshold=threshold,
+                source="face",
+            )
+            conn.commit()
         return {
             "run_id": run_id,
             "face_id": face_id,
             "decision_id": decision_id,
             "threshold": threshold,
+            "recorded": bool(record),
             "note": "identify vs persons; cluster is not a person; person_id not auto-assigned",
             **{k: verdict[k] for k in (
                 "decision", "person_id", "display_name",
@@ -211,6 +239,7 @@ def identify_image(
     image: Path,
     *,
     threshold: float = DEFAULT_THRESHOLD,
+    app=None,
 ) -> dict:
     """Detect+embed a still and 1:N each ok face vs reviewed persons.
 
@@ -230,7 +259,8 @@ def identify_image(
         pack_id = run["pack_id"]
         dim = int(run["embedding_dim"])
         gallery = _gallery(conn, pack_id)
-        app = load_app()
+        if app is None:
+            app = load_app()
         faces = embed_image(app, image)
         probes = []
         for f in faces:
@@ -260,6 +290,7 @@ def identify_image(
                 verdict=verdict,
                 threshold=threshold,
                 source="image",
+                extra_policy={"image": str(image), "bbox": list(f["bbox"])},
             )
             probes.append({
                 "status": "ok",
@@ -294,22 +325,56 @@ def identify_run(
     """1:N every unnamed ok face on this run against the person gallery."""
     conn = _open(store)
     try:
-        _require_run(conn, run_id)
+        run = _require_run(conn, run_id)
+        pack_id = run["pack_id"]
+        gallery = _gallery(conn, pack_id)
         rows = conn.execute(
             """
-            SELECT face_id FROM faces
+            SELECT * FROM faces
             WHERE run_id=? AND status='ok' AND embedding IS NOT NULL
               AND person_id IS NULL
             ORDER BY face_id
             """,
             (run_id,),
         ).fetchall()
-        ids = [r["face_id"] for r in rows]
+        results = []
+        for face in rows:
+            ranked = _person_scores(face, gallery, pack_id)
+            verdict = _decide(ranked, threshold)
+            decision_id = _write_decision(
+                conn,
+                run_id=run_id,
+                pack_id=pack_id,
+                face_id=face["face_id"],
+                verdict=verdict,
+                threshold=threshold,
+                source="face",
+                cluster_id=face["cluster_id"],
+            )
+            results.append(
+                {
+                    "run_id": run_id,
+                    "face_id": face["face_id"],
+                    "decision_id": decision_id,
+                    "threshold": threshold,
+                    "note": "identify vs persons; cluster is not a person; person_id not auto-assigned",
+                    **{
+                        k: verdict[k]
+                        for k in (
+                            "decision",
+                            "person_id",
+                            "display_name",
+                            "score_top1",
+                            "score_top2",
+                            "margin",
+                            "gallery_size",
+                        )
+                    },
+                }
+            )
+        conn.commit()
     finally:
         conn.close()
-    results = [
-        identify_face(store, run_id, fid, threshold=threshold) for fid in ids
-    ]
     n_accept = sum(1 for r in results if r["decision"] == "ACCEPT")
     return {
         "run_id": run_id,

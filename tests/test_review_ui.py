@@ -243,8 +243,38 @@ def test_ignore_persists_after_reload(tmp_path):
     board2 = load_board(store, "r1")
     kinds = {d["kind"] for d in board2["decisions"]}
     assert "reject" in kinds
-    # Cluster remains listable; ignore is a decision, not auto-enrol.
-    assert any(it.get("cluster_id") == cid for it in board2["items"] if it["kind"] == "cluster")
+    # Ignored clusters are hidden from the actionable board.
+    assert not any(it.get("cluster_id") == cid for it in board2["items"] if it["kind"] == "cluster")
+    assert board2["counts"].get("ignored_clusters", 0) >= 1
+
+
+def test_face_ignore_defaults_needs_review(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _clustered(store)
+    board = load_board(store, "r1")
+    item = next(it for it in board["items"] if it["kind"] == "unassigned")
+    rec = apply_ignore(store, "r1", item)
+    assert rec["disposition"] == "needs-review"
+    board2 = load_board(store, "r1")
+    assert not any(
+        it["kind"] == "unassigned" and it.get("face_id") == item["face_id"]
+        for it in board2["items"]
+    )
+
+
+def test_note_kind_on_board(tmp_path):
+    from semblon.review_ui import apply_note
+
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    cid = assigned["f1"]
+    board = load_board(store, "r1")
+    item = next(it for it in board["items"] if it.get("cluster_id") == cid)
+    apply_note(store, "r1", item, "check lighting")
+    board2 = load_board(store, "r1")
+    assert any(d["kind"] == "note" for d in board2["decisions"])
+    hit = next(it for it in board2["items"] if it.get("cluster_id") == cid)
+    assert hit.get("has_note") is True
 
 
 def test_cli_review_ui_help_lists_command():

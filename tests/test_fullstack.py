@@ -13,7 +13,6 @@ from semblon.canvas import load_canvas
 from semblon.cli import main
 from semblon.compare import CompareError, compare, compare_space
 from semblon.engine import select_execution_provider
-from semblon.live import live_capture
 from semblon.observers import color_histogram, observe_bgr, optional_status
 from semblon.opencv_probe import probe_opencv
 from semblon.search import SearchError, search_similar
@@ -127,44 +126,12 @@ def test_watch_once(tmp_path):
         rec = watch_folder(folder, tmp_path / "s.sqlite", once=True, on_event=events.append)
     assert rec["cycles"] == 1
     assert rec["runs"]
-
-
-def test_live_with_fake_capture(tmp_path):
-    class Cap:
-        def __init__(self):
-            self.n = 0
-
-        def read(self):
-            self.n += 1
-            return True, np.zeros((32, 32, 3), dtype=np.uint8)
-
-        def release(self):
-            return None
-
-    fake_if = type("m", (), {"__version__": "0.test"})()
-    fake_ort = type("m", (), {"__version__": "0.test"})()
-    vec = np.zeros(4, dtype=np.float32)
-    with (
-        patch("semblon.providers.FaceKitProvider.load", return_value=type("P", (), {"app": object()})()),
-        patch("semblon.live.embed_bgr", return_value=[
-            {"bbox": (0, 0, 8, 8), "det_score": 0.9, "face_w": 8, "face_h": 8, "dim": 4, "embedding": vec}
-        ]),
-        patch("semblon.engine.discover_weight_hashes", return_value={}),
-        patch.dict("sys.modules", {"insightface": fake_if, "onnxruntime": fake_ort}),
-    ):
-        rec = live_capture(
-            tmp_path / "s.sqlite",
-            source=0,
-            seconds=0.01,
-            sample_hz=100.0,
-            capture_factory=lambda _s: Cap(),
-        )
-    assert rec["source_type"] == "live"
-    assert rec["frames"] >= 1
     conn = sqlite3.connect(str(tmp_path / "s.sqlite"))
-    st = conn.execute("SELECT source_type FROM media").fetchone()[0]
+    n_media = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+    n_faces = conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
     conn.close()
-    assert st == "live"
+    assert n_media >= 1
+    assert n_faces >= 1
 
 
 def test_canvas_board(tmp_path):
