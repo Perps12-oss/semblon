@@ -109,13 +109,25 @@ def test_name_creates_person_and_decision(tmp_path):
     conn.close()
 
 
-def test_name_same_display_reuses_person(tmp_path):
+def test_name_same_display_creates_distinct_persons(tmp_path):
     store = tmp_path / "s.sqlite"
     assigned = _clustered(store)
     c1 = assigned["f1"]
     c2 = assigned["f3"]
     a = name_cluster(store, "r1", c1, "Bob")
     b = name_cluster(store, "r1", c2, "Bob")
+    assert a["person_id"] != b["person_id"]
+    assert a["created_person"] is True
+    assert b["created_person"] is True
+
+
+def test_name_attach_to_reuses_person(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    c1 = assigned["f1"]
+    c2 = assigned["f3"]
+    a = name_cluster(store, "r1", c1, "Bob")
+    b = name_cluster(store, "r1", c2, "Bob", attach_to_person_id=a["person_id"])
     assert a["person_id"] == b["person_id"]
     assert b["created_person"] is False
 
@@ -267,7 +279,9 @@ def test_cli_merge_then_cluster_then_export_keeps_review_identity(tmp_path):
     assert faces["f1"] == faces["f2"] == faces["f3"] == faces["f4"] == c1
     assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM decisions WHERE kind='merge'").fetchone()[0] == 1
-    assert conn.execute("SELECT status FROM clusters WHERE cluster_id=?", (c1,)).fetchone()[0] == "merged"
+    # Survivor status is not clobbered to 'merged'; merge is locked via decisions.
+    st = conn.execute("SELECT status FROM clusters WHERE cluster_id=?", (c1,)).fetchone()[0]
+    assert st != "ignored"
     conn.close()
 
     out = tmp_path / "review.html"
@@ -306,10 +320,6 @@ def test_merge_is_not_a_person_and_survives_recluster(tmp_path):
     assert faces["f5"] is None
     after = conn.execute("SELECT COUNT(*) FROM decisions WHERE kind='merge'").fetchone()[0]
     assert after == before == 1
-    status = conn.execute(
-        "SELECT status FROM clusters WHERE cluster_id=?", (c1,)
-    ).fetchone()[0]
-    assert status == "merged"
     n_person = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
     assert n_person == 0
     conn.close()
@@ -350,6 +360,10 @@ def test_ignore_and_note_export_without_person(tmp_path):
     assert conn.execute("SELECT cluster_id FROM faces WHERE face_id='f1'").fetchone()[0] == c1
     assert conn.execute("SELECT cluster_id FROM faces WHERE face_id='f5'").fetchone()[0] is None
     assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+    note_kind = conn.execute(
+        "SELECT kind FROM decisions WHERE decision_id=?", (note["decision_id"],)
+    ).fetchone()[0]
+    assert note_kind == "note"
     conn.close()
 
     out = tmp_path / "review.html"
@@ -359,6 +373,28 @@ def test_ignore_and_note_export_without_person(tmp_path):
     assert "not_a_person" in text
     assert "singleton" in text
     assert "same person split across groups" in text
+
+
+def test_name_refuses_ignored_cluster(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    c1 = assigned["f1"]
+    ignore_subject(store, "r1", cluster_id=c1)
+    with pytest.raises(ReviewError, match="ignored"):
+        name_cluster(store, "r1", c1, "Nope")
+
+
+def test_split_strategy_is_plain(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    c1 = assigned["f1"]
+    rec = split_cluster(store, "r1", c1, ["f2"])
+    conn = sqlite3.connect(str(store))
+    strat = conn.execute(
+        "SELECT strategy FROM clusters WHERE cluster_id=?", (rec["new_cluster"],)
+    ).fetchone()[0]
+    conn.close()
+    assert strat == "split"
 
 
 def test_cli_review_merge_ignore(tmp_path):
