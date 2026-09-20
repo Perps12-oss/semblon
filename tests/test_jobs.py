@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -75,6 +76,9 @@ def test_engine_rejects_second_ingest(tmp_path, monkeypatch):
 
 def test_engine_cancel_maps_to_cancelled(tmp_path, monkeypatch):
     def fake_process(*_a, **kw):
+        cancel = kw.get("cancel")
+        if cancel is not None:
+            pass
         raise ProcessCancelled("process cancelled", run_id="r-c")
 
     monkeypatch.setattr("semblon.jobs.process_folder", fake_process)
@@ -115,3 +119,15 @@ def test_application_facade_exports_board_ops():
     assert app.load_board is not None
     assert app.apply_name is not None
     assert app.JobEngine is JobEngine
+    assert app.search_people is not None
+    assert app.inbox is not None
+    assert callable(app.board)
+
+
+def test_review_ui_accepts_parent_without_owning_the_loop():
+    import inspect
+
+    from semblon.review_ui import ReviewApp, run_review_ui
+
+    assert "parent" in inspect.signature(ReviewApp.__init__).parameters
+    assert "parent" in inspect.signature(run_review_ui).parameters

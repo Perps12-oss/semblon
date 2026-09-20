@@ -92,6 +92,7 @@ class JobSnapshot:
         return self.state in _ACTIVE
 
 
+# Read/navigation vs job-control surfaces. Used by Home; any future shell.
 READ_SURFACES = (
     "review",
     "html",
@@ -102,6 +103,10 @@ READ_SURFACES = (
     "canvas",
     "search",
 )
+
+# Review mutations (Name/Merge/Split) during ingest serialize on SQLite
+# busy_timeout. They are not a second ingest. Naming the in-flight run is
+# allowed but faces may still be arriving — documented, not faked-safe.
 
 
 def home_control_states(*, job_active: bool, resume_ready: bool) -> dict[str, str]:
@@ -119,6 +124,8 @@ def snapshot_from_event(job: JobSnapshot, ev: ProgressEvent) -> JobSnapshot:
     if job.state == STATE_CANCELLING and state in {STATE_QUEUED, STATE_STARTING, STATE_RUNNING}:
         state = STATE_CANCELLING
     skipped = job.skipped
+    if ev.outcome in {"skipped_seen", "skipped_same_run"} and ev.files_processed is not None:
+        skipped = ev.files_processed
     rate = None
     if ev.elapsed_s and ev.elapsed_s > 0 and ev.files_processed:
         rate = round(float(ev.files_processed) / float(ev.elapsed_s), 4)

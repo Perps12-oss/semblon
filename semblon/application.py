@@ -2,12 +2,15 @@
 
 A future native UI talks to these names, not to Home widgets or FaceKit.
 Mutations stay in review.py via review_ui.apply_*. Reads are RO SQLite.
+Job ownership lives in semblon.jobs. Home is a client.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from semblon.canvas import load_canvas
+from semblon.inbox import inbox
 from semblon.jobs import (
     JOB_TYPE_INGEST,
     JobBusy,
@@ -25,6 +28,7 @@ from semblon.review_ui import (
     load_board,
     resolve_run_id,
 )
+from semblon.search import search_people, search_person
 
 __all__ = [
     "JOB_TYPE_INGEST",
@@ -36,11 +40,16 @@ __all__ = [
     "apply_name",
     "apply_note",
     "apply_split",
+    "board",
     "default_store_path",
     "home_control_states",
+    "inbox",
     "latest_run_id",
     "load_board",
+    "load_canvas",
     "resolve_run_id",
+    "search_people",
+    "search_person",
 ]
 
 
