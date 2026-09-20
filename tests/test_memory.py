@@ -26,8 +26,10 @@ def _conn(store: Path):
 
 def _prepare(store: Path):
     assigned = _clustered(store)
-    name_cluster(store, "r1", assigned["f1"], "Alice")
-    name_cluster(store, "r1", assigned["f3"], "Alice")
+    a = name_cluster(store, "r1", assigned["f1"], "Alice")
+    name_cluster(
+        store, "r1", assigned["f3"], "Alice", attach_to_person_id=a["person_id"]
+    )
     name_face(store, "r1", "f5", "Bob")
     conn = sqlite3.connect(str(store))
     conn.execute(
@@ -95,6 +97,12 @@ def _prepare_named_video(store: Path):
     """Stills Alice/Bob plus named video faces on one lake clip."""
     _prepare(store)
     conn = sqlite3.connect(str(store))
+    alice = conn.execute(
+        "SELECT person_id FROM persons WHERE display_name='Alice' ORDER BY person_id LIMIT 1"
+    ).fetchone()[0]
+    bob = conn.execute(
+        "SELECT person_id FROM persons WHERE display_name='Bob' ORDER BY person_id LIMIT 1"
+    ).fetchone()[0]
     conn.execute(
         "INSERT INTO media VALUES ('mv','video',?,?,320,240,?,1)",
         (r"D:\photos\lake\20260509_140700.mp4", "vid1", 1_746_000_056_000_000_000),
@@ -115,8 +123,10 @@ def _prepare_named_video(store: Path):
         )
     conn.commit()
     conn.close()
-    name_faces(store, "r1", ["fv1", "fv3"], "Alice")
-    name_face(store, "r1", "fv2", "Bob")
+    name_faces(
+        store, "r1", ["fv1", "fv3"], "Alice", attach_to_person_id=alice
+    )
+    name_face(store, "r1", "fv2", "Bob", attach_to_person_id=bob)
 
 
 def test_history_includes_named_video_presence(tmp_path):

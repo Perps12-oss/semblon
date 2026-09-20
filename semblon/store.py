@@ -6,7 +6,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 DDL = """
 PRAGMA journal_mode=WAL;
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS cluster_person (
 
 CREATE TABLE IF NOT EXISTS decisions (
   decision_id     TEXT PRIMARY KEY,
-  kind            TEXT NOT NULL CHECK (kind IN ('identify','merge','split','name','reject')),
+  kind            TEXT NOT NULL CHECK (kind IN ('identify','merge','split','name','reject','note')),
   face_id         TEXT REFERENCES faces(face_id),
   person_id       TEXT REFERENCES persons(person_id),
   cluster_id      TEXT REFERENCES clusters(cluster_id),
@@ -238,7 +238,35 @@ CREATE TABLE IF NOT EXISTS events (
 );
 """
 
-MIGRATIONS = ((2, MIGRATION_2),)
+# Recreate decisions so CHECK allows kind='note' (SQLite cannot ALTER CHECK).
+MIGRATION_3 = """
+CREATE TABLE decisions_v3 (
+  decision_id     TEXT PRIMARY KEY,
+  kind            TEXT NOT NULL CHECK (kind IN ('identify','merge','split','name','reject','note')),
+  face_id         TEXT REFERENCES faces(face_id),
+  person_id       TEXT REFERENCES persons(person_id),
+  cluster_id      TEXT REFERENCES clusters(cluster_id),
+  pack_id         TEXT NOT NULL,
+  score_top1      REAL,
+  score_top2      REAL,
+  margin          REAL,
+  policy_json     TEXT NOT NULL,
+  run_id          TEXT NOT NULL REFERENCES runs(run_id),
+  created_at      TEXT NOT NULL
+);
+INSERT INTO decisions_v3(
+  decision_id, kind, face_id, person_id, cluster_id, pack_id,
+  score_top1, score_top2, margin, policy_json, run_id, created_at
+)
+SELECT
+  decision_id, kind, face_id, person_id, cluster_id, pack_id,
+  score_top1, score_top2, margin, policy_json, run_id, created_at
+FROM decisions;
+DROP TABLE decisions;
+ALTER TABLE decisions_v3 RENAME TO decisions;
+"""
+
+MIGRATIONS = ((2, MIGRATION_2), (3, MIGRATION_3))
 
 
 def schema_version_int(conn: sqlite3.Connection) -> int:

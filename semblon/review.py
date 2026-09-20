@@ -1,4 +1,4 @@
-"""0.4 review ops: name / merge / split. Clusters are not persons.
+"""0.4 review ops: name / merge / split / ignore / note. Clusters are not persons.
 
 Invariant: cluster → review → person → name.
 Human corrections are decisions (evidence), not training.
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +18,9 @@ import numpy as np
 from semblon.compare import CompareError, compare
 from semblon.store import connect, init_db
 
+_ENTERED_S3_LOCK = threading.Lock()
 _ENTERED_S3: set[str] = set()
+_SQL_IN_CHUNK = 500
 
 
 class ReviewError(ValueError):
@@ -29,7 +32,8 @@ def _memory_snapshot(store: Path, run_id: str) -> dict:
         from semblon.observers import snapshot_memory_graph
 
         return snapshot_memory_graph(store, run_id)
-    except Exception:
+    except Exception as e:  # noqa: BLE001 — snapshot must not block review
+        print(f"memory_snapshot failed: {e}", file=sys.stderr)
         return {}
 
 
@@ -40,9 +44,10 @@ def _now() -> str:
 def _warn_enter_s3(store: Path, run_id: str) -> dict | None:
     """Observatory auto-evoke when starting S3 work. Warn only — never refuse."""
     key = f"{Path(store).resolve()}|{run_id}"
-    if key in _ENTERED_S3:
-        return None
-    _ENTERED_S3.add(key)
+    with _ENTERED_S3_LOCK:
+        if key in _ENTERED_S3:
+            return None
+        _ENTERED_S3.add(key)
     try:
         from semblon.observatory import enter_stage
 
@@ -106,6 +111,14 @@ def _person_links(conn, cluster_id: str) -> list[str]:
     return [r[0] for r in rows]
 
 
+def _exec_in_chunks(conn, sql_prefix: str, ids: list[str], params_prefix: tuple = ()) -> None:
+    """Run UPDATE/DELETE … IN (…) in chunks (SQLite parameter limits)."""
+    for i in range(0, len(ids), _SQL_IN_CHUNK):
+        chunk = ids[i : i + _SQL_IN_CHUNK]
+        placeholders = ",".join("?" * len(chunk))
+        conn.execute(f"{sql_prefix} ({placeholders})", (*params_prefix, *chunk))
+
+
 def _pairwise_min(faces, pack_id: str) -> float | None:
     best = None
     n = len(faces)
@@ -133,18 +146,51 @@ def _pairwise_min(faces, pack_id: str) -> float | None:
     return best
 
 
+def _cross_min(faces_a, faces_b, pack_id: str) -> float | None:
+    best = None
+    for a in faces_a:
+        if a["embedding"] is None or a["embedding_pack"] != pack_id:
+            continue
+        for b in faces_b:
+            if b["embedding"] is None or b["embedding_pack"] != pack_id:
+                continue
+            try:
+                s = compare(
+                    pack_id,
+                    a["embedding_dim"],
+                    a["embedding"],
+                    pack_id,
+                    b["embedding_dim"],
+                    b["embedding"],
+                )
+            except CompareError:
+                continue
+            if best is None or s < best:
+                best = float(s)
+    return best
+
+
+def _unit_vec(blob, dim: int) -> np.ndarray | None:
+    if blob is None or dim is None:
+        return None
+    if len(blob) != 4 * int(dim):
+        return None
+    vec = np.frombuffer(blob, dtype=np.float32)
+    if vec.size != int(dim):
+        return None
+    out = vec.copy()
+    nrm = float(np.linalg.norm(out))
+    if nrm > 0:
+        out = out / nrm
+    return out
+
+
 def _centroid(faces) -> bytes | None:
     mats = []
     for f in faces:
-        if f["embedding"] is None or f["embedding_dim"] is None:
-            continue
-        dim = int(f["embedding_dim"])
-        if len(f["embedding"]) != 4 * dim:
-            continue
-        vec = np.frombuffer(f["embedding"], dtype=np.float32)
-        if vec.size != dim:
-            continue
-        mats.append(vec.copy())
+        v = _unit_vec(f["embedding"], f["embedding_dim"])
+        if v is not None:
+            mats.append(v)
     if not mats:
         return None
     c = np.mean(np.stack(mats, axis=0), axis=0)
@@ -154,14 +200,53 @@ def _centroid(faces) -> bytes | None:
     return c.astype(np.float32).tobytes()
 
 
-def _refresh_cluster(conn, cluster_id: str, pack_id: str) -> int:
+def _centroid_merge(faces_groups: list) -> bytes | None:
+    """Weighted mean of per-group unit centroids (by face count with embeddings)."""
+    parts = []
+    weights = []
+    for faces in faces_groups:
+        mats = []
+        for f in faces:
+            v = _unit_vec(f["embedding"], f["embedding_dim"])
+            if v is not None:
+                mats.append(v)
+        if not mats:
+            continue
+        c = np.mean(np.stack(mats, axis=0), axis=0)
+        nrm = float(np.linalg.norm(c))
+        if nrm > 0:
+            c = c / nrm
+        parts.append(c)
+        weights.append(float(len(mats)))
+    if not parts:
+        return None
+    w = np.asarray(weights, dtype=np.float64)
+    stacked = np.stack(parts, axis=0)
+    c = np.average(stacked, axis=0, weights=w)
+    nrm = float(np.linalg.norm(c))
+    if nrm > 0:
+        c = c / nrm
+    return c.astype(np.float32).tobytes()
+
+
+def _refresh_cluster(
+    conn,
+    cluster_id: str,
+    pack_id: str,
+    *,
+    pairwise: bool = True,
+    keep_min_intra: float | None = None,
+) -> int:
     faces = _faces_in_cluster(conn, cluster_id)
     n = len(faces)
     if n == 0:
         conn.execute("DELETE FROM cluster_person WHERE cluster_id=?", (cluster_id,))
         conn.execute("DELETE FROM clusters WHERE cluster_id=?", (cluster_id,))
         return 0
-    min_intra = _pairwise_min(faces, pack_id)
+    if pairwise:
+        min_intra = _pairwise_min(faces, pack_id)
+    else:
+        min_intra = keep_min_intra
     centroid = _centroid(faces)
     conn.execute(
         "UPDATE clusters SET face_count=?, centroid=?, min_intra=? WHERE cluster_id=?",
@@ -205,13 +290,52 @@ def _record_decision(
     return did
 
 
+def _resolve_person(
+    conn,
+    *,
+    display_name: str,
+    run_id: str,
+    attach_to_person_id: str | None,
+    create_new: bool,
+) -> tuple[str, bool]:
+    """Return (person_id, created). Default create_new=True; no silent name reuse."""
+    if attach_to_person_id and create_new:
+        raise ReviewError("pass attach_to_person_id or create_new=True, not both as conflicting intents")
+    if attach_to_person_id:
+        row = conn.execute(
+            "SELECT person_id, display_name, status FROM persons WHERE person_id=?",
+            (attach_to_person_id,),
+        ).fetchone()
+        if row is None:
+            raise ReviewError(f"unknown person: {attach_to_person_id}")
+        if row["status"] != "active":
+            raise ReviewError(f"person is not active: {attach_to_person_id}")
+        conn.execute(
+            "UPDATE persons SET display_name=? WHERE person_id=?",
+            (display_name, attach_to_person_id),
+        )
+        return attach_to_person_id, False
+    if not create_new:
+        raise ReviewError("create_new=False requires attach_to_person_id")
+    person_id = uuid.uuid4().hex
+    conn.execute(
+        """INSERT INTO persons(person_id, display_name, status, created_run)
+           VALUES (?,?,?,?)""",
+        (person_id, display_name, "active", run_id),
+    )
+    return person_id, True
+
+
 def name_cluster(
     store: Path,
     run_id: str,
     cluster_id: str,
     display_name: str,
+    *,
+    attach_to_person_id: str | None = None,
+    create_new: bool = True,
 ) -> dict:
-    """Create (or attach) a person for a reviewed cluster. Does not equate cluster=person."""
+    """Create (or explicitly attach) a person for a reviewed cluster. Does not equate cluster=person."""
     display_name = (display_name or "").strip()
     if not display_name:
         raise ReviewError("display name must be non-empty")
@@ -219,70 +343,66 @@ def name_cluster(
     _warn_enter_s3(store, run_id)
     conn = connect(store)
     init_db(conn)
-    run = _require_run(conn, run_id)
-    pack_id = run["pack_id"]
-    cluster = _require_cluster(conn, run_id, cluster_id)
-    faces = _faces_in_cluster(conn, cluster_id)
-    if not faces:
-        conn.close()
-        raise ReviewError(f"cluster has no faces: {cluster_id}")
+    try:
+        run = _require_run(conn, run_id)
+        pack_id = run["pack_id"]
+        cluster = _require_cluster(conn, run_id, cluster_id)
+        if cluster["status"] == "ignored":
+            raise ReviewError("cluster is ignored; cannot name until un-ignored")
+        faces = _faces_in_cluster(conn, cluster_id)
+        if not faces:
+            raise ReviewError(f"cluster has no faces: {cluster_id}")
 
-    existing = _person_links(conn, cluster_id)
-    created = False
-    if existing:
-        if len(existing) > 1:
-            conn.close()
-            raise ReviewError(
-                f"cluster linked to multiple persons ({len(existing)}); resolve before rename"
-            )
-        person_id = existing[0]
-        conn.execute(
-            "UPDATE persons SET display_name=? WHERE person_id=?",
-            (display_name, person_id),
-        )
-    else:
-        # Reuse active person with the same display_name if the user assigns another cluster.
-        row = conn.execute(
-            """SELECT person_id FROM persons
-               WHERE status='active' AND display_name=?
-               ORDER BY person_id LIMIT 1""",
-            (display_name,),
-        ).fetchone()
-        if row:
-            person_id = row[0]
-        else:
-            person_id = uuid.uuid4().hex
+        existing = _person_links(conn, cluster_id)
+        created = False
+        if existing:
+            if len(existing) > 1:
+                raise ReviewError(
+                    f"cluster linked to multiple persons ({len(existing)}); resolve before rename"
+                )
+            person_id = existing[0]
             conn.execute(
-                """INSERT INTO persons(person_id, display_name, status, created_run)
-                   VALUES (?,?,?,?)""",
-                (person_id, display_name, "active", run_id),
+                "UPDATE persons SET display_name=? WHERE person_id=?",
+                (display_name, person_id),
             )
-            created = True
-        conn.execute(
-            "INSERT INTO cluster_person(cluster_id, person_id) VALUES (?,?)",
-            (cluster_id, person_id),
-        )
+        else:
+            person_id, created = _resolve_person(
+                conn,
+                display_name=display_name,
+                run_id=run_id,
+                attach_to_person_id=attach_to_person_id,
+                create_new=False if attach_to_person_id else create_new,
+            )
+            conn.execute(
+                "INSERT INTO cluster_person(cluster_id, person_id) VALUES (?,?)",
+                (cluster_id, person_id),
+            )
 
-    conn.execute(
-        "UPDATE faces SET person_id=? WHERE cluster_id=?",
-        (person_id, cluster_id),
-    )
-    decision_id = _record_decision(
-        conn,
-        kind="name",
-        run_id=run_id,
-        pack_id=pack_id,
-        cluster_id=cluster_id,
-        person_id=person_id,
-        policy={
-            "display_name": display_name,
-            "face_count": len(faces),
-            "created_person": created,
-            "cluster_status": cluster["status"],
-        },
-    )
-    conn.commit()
-    conn.close()
+        conn.execute(
+            "UPDATE faces SET person_id=? WHERE cluster_id=?",
+            (person_id, cluster_id),
+        )
+        decision_id = _record_decision(
+            conn,
+            kind="name",
+            run_id=run_id,
+            pack_id=pack_id,
+            cluster_id=cluster_id,
+            person_id=person_id,
+            policy={
+                "display_name": display_name,
+                "face_count": len(faces),
+                "created_person": created,
+                "cluster_status": cluster["status"],
+                "attach_to_person_id": attach_to_person_id,
+            },
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     snap = _memory_snapshot(store, run_id)
     return {
         "run_id": run_id,
@@ -302,6 +422,9 @@ def name_face(
     run_id: str,
     face_id: str,
     display_name: str,
+    *,
+    attach_to_person_id: str | None = None,
+    create_new: bool = True,
 ) -> dict:
     """Enrol an unassigned inbox face as a person. Does not create a cluster."""
     display_name = (display_name or "").strip()
@@ -311,58 +434,50 @@ def name_face(
     _warn_enter_s3(store, run_id)
     conn = connect(store)
     init_db(conn)
-    run = _require_run(conn, run_id)
-    pack_id = run["pack_id"]
-    face = conn.execute(
-        "SELECT * FROM faces WHERE face_id=? AND run_id=?",
-        (face_id, run_id),
-    ).fetchone()
-    if face is None:
-        conn.close()
-        raise ReviewError(f"unknown face for run: {face_id}")
-    if face["status"] != "ok":
-        conn.close()
-        raise ReviewError(f"face is not nameable (status={face['status']})")
-    if face["cluster_id"]:
-        conn.close()
-        raise ReviewError("face is in a cluster; name the cluster, not the face")
-    if face["person_id"]:
-        conn.close()
-        raise ReviewError("face already has a person")
+    try:
+        run = _require_run(conn, run_id)
+        pack_id = run["pack_id"]
+        face = conn.execute(
+            "SELECT * FROM faces WHERE face_id=? AND run_id=?",
+            (face_id, run_id),
+        ).fetchone()
+        if face is None:
+            raise ReviewError(f"unknown face for run: {face_id}")
+        if face["status"] != "ok":
+            raise ReviewError(f"face is not nameable (status={face['status']})")
+        if face["cluster_id"]:
+            raise ReviewError("face is in a cluster; name the cluster, not the face")
+        if face["person_id"]:
+            raise ReviewError("face already has a person")
 
-    row = conn.execute(
-        """SELECT person_id FROM persons
-           WHERE status='active' AND display_name=?
-           ORDER BY person_id LIMIT 1""",
-        (display_name,),
-    ).fetchone()
-    created = False
-    if row:
-        person_id = row[0]
-    else:
-        person_id = uuid.uuid4().hex
-        conn.execute(
-            """INSERT INTO persons(person_id, display_name, status, created_run)
-               VALUES (?,?,?,?)""",
-            (person_id, display_name, "active", run_id),
+        person_id, created = _resolve_person(
+            conn,
+            display_name=display_name,
+            run_id=run_id,
+            attach_to_person_id=attach_to_person_id,
+            create_new=False if attach_to_person_id else create_new,
         )
-        created = True
-    conn.execute("UPDATE faces SET person_id=? WHERE face_id=?", (person_id, face_id))
-    decision_id = _record_decision(
-        conn,
-        kind="name",
-        run_id=run_id,
-        pack_id=pack_id,
-        face_id=face_id,
-        person_id=person_id,
-        policy={
-            "display_name": display_name,
-            "created_person": created,
-            "source": "inbox_face",
-        },
-    )
-    conn.commit()
-    conn.close()
+        conn.execute("UPDATE faces SET person_id=? WHERE face_id=?", (person_id, face_id))
+        decision_id = _record_decision(
+            conn,
+            kind="name",
+            run_id=run_id,
+            pack_id=pack_id,
+            face_id=face_id,
+            person_id=person_id,
+            policy={
+                "display_name": display_name,
+                "created_person": created,
+                "source": "inbox_face",
+                "attach_to_person_id": attach_to_person_id,
+            },
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     snap = _memory_snapshot(store, run_id)
     return {
         "run_id": run_id,
@@ -385,6 +500,8 @@ def name_faces(
     *,
     source: str = "faces",
     track_id: str | None = None,
+    attach_to_person_id: str | None = None,
+    create_new: bool = True,
 ) -> dict:
     """Enrol unassigned ok faces as one person. Does not create a cluster.
 
@@ -401,95 +518,95 @@ def name_faces(
     if not ids:
         raise ReviewError("name faces requires at least one face id")
     if len(ids) == 1 and source != "track":
-        return name_face(store, run_id, ids[0], display_name)
+        return name_face(
+            store,
+            run_id,
+            ids[0],
+            display_name,
+            attach_to_person_id=attach_to_person_id,
+            create_new=create_new,
+        )
 
     _warn_enter_s3(store, run_id)
     conn = connect(store)
     init_db(conn)
-    run = _require_run(conn, run_id)
-    pack_id = run["pack_id"]
-    rows = []
-    for fid in ids:
-        face = conn.execute(
-            "SELECT * FROM faces WHERE face_id=? AND run_id=?",
-            (fid, run_id),
-        ).fetchone()
-        if face is None:
-            conn.close()
-            raise ReviewError(f"unknown face for run: {fid}")
-        if face["status"] != "ok":
-            conn.close()
-            raise ReviewError(f"face is not nameable (status={face['status']}): {fid}")
-        if face["cluster_id"]:
-            conn.close()
-            raise ReviewError("face is in a cluster; name the cluster, not the track")
-        rows.append(face)
+    try:
+        run = _require_run(conn, run_id)
+        pack_id = run["pack_id"]
+        rows = []
+        for fid in ids:
+            face = conn.execute(
+                "SELECT * FROM faces WHERE face_id=? AND run_id=?",
+                (fid, run_id),
+            ).fetchone()
+            if face is None:
+                raise ReviewError(f"unknown face for run: {fid}")
+            if face["status"] != "ok":
+                raise ReviewError(f"face is not nameable (status={face['status']}): {fid}")
+            if face["cluster_id"]:
+                raise ReviewError("face is in a cluster; name the cluster, not the track")
+            rows.append(face)
 
-    existing_persons = {r["person_id"] for r in rows if r["person_id"]}
-    if len(existing_persons) > 1:
-        conn.close()
-        raise ReviewError("faces already linked to different persons")
+        existing_persons = {r["person_id"] for r in rows if r["person_id"]}
+        if len(existing_persons) > 1:
+            raise ReviewError("faces already linked to different persons")
 
-    created = False
-    if existing_persons:
-        person_id = next(iter(existing_persons))
-        named = conn.execute(
-            "SELECT display_name FROM persons WHERE person_id=?",
-            (person_id,),
-        ).fetchone()
-        if named and named["display_name"] and named["display_name"] != display_name:
-            conn.close()
-            raise ReviewError(
-                f"faces already named {named['display_name']!r}; will not attach {display_name!r}"
-            )
-        conn.execute(
-            "UPDATE persons SET display_name=? WHERE person_id=?",
-            (display_name, person_id),
-        )
-    else:
-        row = conn.execute(
-            """SELECT person_id FROM persons
-               WHERE status='active' AND display_name=?
-               ORDER BY person_id LIMIT 1""",
-            (display_name,),
-        ).fetchone()
-        if row:
-            person_id = row[0]
-        else:
-            person_id = uuid.uuid4().hex
+        created = False
+        if existing_persons:
+            person_id = next(iter(existing_persons))
+            named = conn.execute(
+                "SELECT display_name FROM persons WHERE person_id=?",
+                (person_id,),
+            ).fetchone()
+            if named and named["display_name"] and named["display_name"] != display_name:
+                raise ReviewError(
+                    f"faces already named {named['display_name']!r}; will not attach {display_name!r}"
+                )
             conn.execute(
-                """INSERT INTO persons(person_id, display_name, status, created_run)
-                   VALUES (?,?,?,?)""",
-                (person_id, display_name, "active", run_id),
+                "UPDATE persons SET display_name=? WHERE person_id=?",
+                (display_name, person_id),
             )
-            created = True
+        else:
+            person_id, created = _resolve_person(
+                conn,
+                display_name=display_name,
+                run_id=run_id,
+                attach_to_person_id=attach_to_person_id,
+                create_new=False if attach_to_person_id else create_new,
+            )
 
-    if track_id and track_id == person_id:
+        if track_id and track_id == person_id:
+            raise ReviewError("track id must not equal person id")
+
+        _exec_in_chunks(
+            conn,
+            "UPDATE faces SET person_id=? WHERE face_id IN",
+            ids,
+            params_prefix=(person_id,),
+        )
+        decision_id = _record_decision(
+            conn,
+            kind="name",
+            run_id=run_id,
+            pack_id=pack_id,
+            face_id=ids[0],
+            person_id=person_id,
+            policy={
+                "display_name": display_name,
+                "created_person": created,
+                "source": source,
+                "track_id": track_id,
+                "face_ids": ids,
+                "face_count": len(ids),
+                "attach_to_person_id": attach_to_person_id,
+            },
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
         conn.close()
-        raise ReviewError("track id must not equal person id")
-
-    conn.execute(
-        f"UPDATE faces SET person_id=? WHERE face_id IN ({','.join('?' * len(ids))})",
-        (person_id, *ids),
-    )
-    decision_id = _record_decision(
-        conn,
-        kind="name",
-        run_id=run_id,
-        pack_id=pack_id,
-        face_id=ids[0],
-        person_id=person_id,
-        policy={
-            "display_name": display_name,
-            "created_person": created,
-            "source": source,
-            "track_id": track_id,
-            "face_ids": ids,
-            "face_count": len(ids),
-        },
-    )
-    conn.commit()
-    conn.close()
     snap = _memory_snapshot(store, run_id)
     return {
         "run_id": run_id,
@@ -510,6 +627,9 @@ def name_track(
     run_id: str,
     track_id: str,
     display_name: str,
+    *,
+    attach_to_person_id: str | None = None,
+    create_new: bool = True,
 ) -> dict:
     """Name current members of a derived track. Re-derives; does not persist a track row."""
     track_id = (track_id or "").strip()
@@ -531,6 +651,8 @@ def name_track(
         display_name,
         source="track",
         track_id=track_id,
+        attach_to_person_id=attach_to_person_id,
+        create_new=create_new,
     )
 
 
@@ -551,72 +673,94 @@ def merge_clusters(
     _warn_enter_s3(store, run_id)
     conn = connect(store)
     init_db(conn)
-    run = _require_run(conn, run_id)
-    pack_id = run["pack_id"]
+    try:
+        run = _require_run(conn, run_id)
+        pack_id = run["pack_id"]
 
-    clusters = [_require_cluster(conn, run_id, cid) for cid in ids]
-    survivor = ids[0]
-    donors = ids[1:]
+        clusters = [_require_cluster(conn, run_id, cid) for cid in ids]
+        survivor = ids[0]
+        donors = ids[1:]
 
-    # Person links: all unnamed, or all the same single person.
-    person_sets = []
-    for cid in ids:
-        links = _person_links(conn, cid)
-        person_sets.append(set(links))
-    non_empty = [s for s in person_sets if s]
-    if any(len(s) > 1 for s in person_sets):
+        person_sets = []
+        for cid in ids:
+            links = _person_links(conn, cid)
+            person_sets.append(set(links))
+        non_empty = [s for s in person_sets if s]
+        if any(len(s) > 1 for s in person_sets):
+            raise ReviewError("a cluster is linked to multiple persons; resolve before merge")
+        if non_empty:
+            common = set.intersection(*non_empty) if len(non_empty) > 1 else non_empty[0]
+            if len(non_empty) > 1 and not common:
+                raise ReviewError("cannot merge clusters linked to different persons")
+            person_id = next(iter(non_empty[0]))
+        else:
+            person_id = None
+
+        face_groups = [_faces_in_cluster(conn, cid) for cid in ids]
+        survivor_faces = face_groups[0]
+        donor_faces: list = []
+        for g in face_groups[1:]:
+            donor_faces.extend(g)
+
+        mins: list[float] = []
+        for c in clusters:
+            if c["min_intra"] is not None:
+                mins.append(float(c["min_intra"]))
+        cross = _cross_min(survivor_faces, donor_faces, pack_id)
+        if cross is not None:
+            mins.append(cross)
+        new_min = min(mins) if mins else None
+        new_centroid = _centroid_merge(face_groups)
+
+        moved = 0
+        for cid in donors:
+            n = conn.execute(
+                "UPDATE faces SET cluster_id=? WHERE cluster_id=?",
+                (survivor, cid),
+            ).rowcount
+            moved += n
+            conn.execute("DELETE FROM cluster_person WHERE cluster_id=?", (cid,))
+            conn.execute("DELETE FROM clusters WHERE cluster_id=?", (cid,))
+
+        if person_id is not None:
+            conn.execute(
+                "INSERT OR IGNORE INTO cluster_person(cluster_id, person_id) VALUES (?,?)",
+                (survivor, person_id),
+            )
+            conn.execute(
+                "UPDATE faces SET person_id=? WHERE cluster_id=?",
+                (person_id, survivor),
+            )
+
+        face_count = conn.execute(
+            "SELECT COUNT(*) FROM faces WHERE cluster_id=?", (survivor,)
+        ).fetchone()[0]
+        # Do not clobber status (e.g. ignored). Merge is recorded as a decision;
+        # cluster_run locks via decision policy survivor/merged.
+        conn.execute(
+            "UPDATE clusters SET face_count=?, centroid=?, min_intra=? WHERE cluster_id=?",
+            (face_count, new_centroid, new_min, survivor),
+        )
+        decision_id = _record_decision(
+            conn,
+            kind="merge",
+            run_id=run_id,
+            pack_id=pack_id,
+            cluster_id=survivor,
+            person_id=person_id,
+            policy={
+                "survivor": survivor,
+                "merged": donors,
+                "moved_faces": moved,
+                "strategies": [c["strategy"] for c in clusters],
+            },
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
         conn.close()
-        raise ReviewError("a cluster is linked to multiple persons; resolve before merge")
-    if non_empty:
-        common = set.intersection(*non_empty) if len(non_empty) > 1 else non_empty[0]
-        if len(non_empty) > 1 and not common:
-            conn.close()
-            raise ReviewError("cannot merge clusters linked to different persons")
-        person_id = next(iter(non_empty[0]))
-    else:
-        person_id = None
-
-    moved = 0
-    for cid in donors:
-        n = conn.execute(
-            "UPDATE faces SET cluster_id=? WHERE cluster_id=?",
-            (survivor, cid),
-        ).rowcount
-        moved += n
-        conn.execute("DELETE FROM cluster_person WHERE cluster_id=?", (cid,))
-        conn.execute("DELETE FROM clusters WHERE cluster_id=?", (cid,))
-
-    if person_id is not None:
-        conn.execute(
-            "INSERT OR IGNORE INTO cluster_person(cluster_id, person_id) VALUES (?,?)",
-            (survivor, person_id),
-        )
-        conn.execute(
-            "UPDATE faces SET person_id=? WHERE cluster_id=?",
-            (person_id, survivor),
-        )
-
-    face_count = _refresh_cluster(conn, survivor, pack_id)
-    conn.execute(
-        "UPDATE clusters SET status=? WHERE cluster_id=?",
-        ("merged", survivor),
-    )
-    decision_id = _record_decision(
-        conn,
-        kind="merge",
-        run_id=run_id,
-        pack_id=pack_id,
-        cluster_id=survivor,
-        person_id=person_id,
-        policy={
-            "survivor": survivor,
-            "merged": donors,
-            "moved_faces": moved,
-            "strategies": [c["strategy"] for c in clusters],
-        },
-    )
-    conn.commit()
-    conn.close()
     return {
         "run_id": run_id,
         "survivor": survivor,
@@ -647,60 +791,75 @@ def split_cluster(
     _warn_enter_s3(store, run_id)
     conn = connect(store)
     init_db(conn)
-    run = _require_run(conn, run_id)
-    pack_id = run["pack_id"]
-    old = _require_cluster(conn, run_id, cluster_id)
-    members = _faces_in_cluster(conn, cluster_id)
-    member_ids = {m["face_id"] for m in members}
-    missing = [f for f in want if f not in member_ids]
-    if missing:
-        conn.close()
-        raise ReviewError(f"faces not in cluster: {', '.join(missing)}")
-    if len(want) >= len(members):
-        conn.close()
-        raise ReviewError("split must leave at least one face in the original cluster")
+    try:
+        run = _require_run(conn, run_id)
+        pack_id = run["pack_id"]
+        old = _require_cluster(conn, run_id, cluster_id)
+        members = _faces_in_cluster(conn, cluster_id)
+        member_ids = {m["face_id"] for m in members}
+        missing = [f for f in want if f not in member_ids]
+        if missing:
+            raise ReviewError(f"faces not in cluster: {', '.join(missing)}")
+        if len(want) >= len(members):
+            raise ReviewError("split must leave at least one face in the original cluster")
 
-    new_id = uuid.uuid4().hex
-    strategy = f"split:from={cluster_id}:faces={len(want)}"
-    conn.execute(
-        """INSERT INTO clusters(cluster_id, run_id, strategy, face_count,
-           centroid, min_intra, status)
-           VALUES (?,?,?,?,?,?,?)""",
-        (new_id, run_id, strategy, len(want), None, None, "split"),
-    )
-    q = ",".join("?" * len(want))
-    conn.execute(
-        f"UPDATE faces SET cluster_id=?, person_id=NULL WHERE face_id IN ({q})",
-        [new_id, *want],
-    )
-
-    left = _refresh_cluster(conn, cluster_id, pack_id)
-    right = _refresh_cluster(conn, new_id, pack_id)
-    # Original cluster keeps any person link; split cluster is not auto-named.
-    links = _person_links(conn, cluster_id)
-    if links:
+        new_id = uuid.uuid4().hex
         conn.execute(
-            "UPDATE faces SET person_id=? WHERE cluster_id=?",
-            (links[0], cluster_id),
+            """INSERT INTO clusters(cluster_id, run_id, strategy, face_count,
+               centroid, min_intra, status)
+               VALUES (?,?,?,?,?,?,?)""",
+            (new_id, run_id, "split", len(want), None, None, "split"),
+        )
+        _exec_in_chunks(
+            conn,
+            "UPDATE faces SET cluster_id=?, person_id=NULL WHERE face_id IN",
+            want,
+            params_prefix=(new_id,),
         )
 
-    decision_id = _record_decision(
-        conn,
-        kind="split",
-        run_id=run_id,
-        pack_id=pack_id,
-        cluster_id=cluster_id,
-        person_id=links[0] if links else None,
-        policy={
-            "from_cluster": cluster_id,
-            "new_cluster": new_id,
-            "moved_faces": want,
-            "from_strategy": old["strategy"],
-            "faces_remaining": left,
-        },
-    )
-    conn.commit()
-    conn.close()
+        remaining_n = len(members) - len(want)
+        # Full pairwise on the smaller side; larger keeps prior min_intra (conservative).
+        if len(want) <= remaining_n:
+            right = _refresh_cluster(conn, new_id, pack_id, pairwise=True)
+            left = _refresh_cluster(
+                conn,
+                cluster_id,
+                pack_id,
+                pairwise=False,
+                keep_min_intra=old["min_intra"],
+            )
+        else:
+            left = _refresh_cluster(conn, cluster_id, pack_id, pairwise=True)
+            right = _refresh_cluster(conn, new_id, pack_id, pairwise=True)
+
+        links = _person_links(conn, cluster_id)
+        if links:
+            conn.execute(
+                "UPDATE faces SET person_id=? WHERE cluster_id=?",
+                (links[0], cluster_id),
+            )
+
+        decision_id = _record_decision(
+            conn,
+            kind="split",
+            run_id=run_id,
+            pack_id=pack_id,
+            cluster_id=cluster_id,
+            person_id=links[0] if links else None,
+            policy={
+                "from_cluster": cluster_id,
+                "new_cluster": new_id,
+                "moved_faces": want,
+                "from_strategy": old["strategy"],
+                "faces_remaining": left,
+            },
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     return {
         "run_id": run_id,
         "from_cluster": cluster_id,
@@ -741,77 +900,76 @@ def ignore_subject(
     _warn_enter_s3(store, run_id)
     conn = connect(store)
     init_db(conn)
-    run = _require_run(conn, run_id)
-    pack_id = run["pack_id"]
-    if cluster_id:
-        disp = disposition or "not_a_person"
-        if disp not in CLUSTER_DISPOSITIONS:
-            conn.close()
-            raise ReviewError("cluster ignore disposition must be not_a_person")
-        cluster = _require_cluster(conn, run_id, cluster_id)
-        if _person_links(conn, cluster_id):
-            conn.close()
-            raise ReviewError("cluster is already linked to a person")
-        conn.execute(
-            "UPDATE clusters SET status=? WHERE cluster_id=?",
-            ("ignored", cluster_id),
-        )
+    try:
+        run = _require_run(conn, run_id)
+        pack_id = run["pack_id"]
+        if cluster_id:
+            disp = disposition or "not_a_person"
+            if disp not in CLUSTER_DISPOSITIONS:
+                raise ReviewError("cluster ignore disposition must be not_a_person")
+            cluster = _require_cluster(conn, run_id, cluster_id)
+            if _person_links(conn, cluster_id):
+                raise ReviewError("cluster is already linked to a person")
+            conn.execute(
+                "UPDATE clusters SET status=? WHERE cluster_id=?",
+                ("ignored", cluster_id),
+            )
+            decision_id = _record_decision(
+                conn,
+                kind="reject",
+                run_id=run_id,
+                pack_id=pack_id,
+                cluster_id=cluster_id,
+                policy={
+                    "action": "ignore",
+                    "disposition": disp,
+                    "face_count": cluster["face_count"],
+                },
+            )
+            conn.commit()
+            return {
+                "run_id": run_id,
+                "cluster_id": cluster_id,
+                "disposition": disp,
+                "decision_id": decision_id,
+                "person_id": None,
+                "note": "cluster is not a person",
+            }
+
+        disp = disposition or "needs-review"
+        if disp not in FACE_DISPOSITIONS:
+            raise ReviewError("face ignore disposition must be singleton, junk, or needs-review")
+        face = _require_face(conn, run_id, face_id)
         decision_id = _record_decision(
             conn,
             kind="reject",
             run_id=run_id,
             pack_id=pack_id,
-            cluster_id=cluster_id,
+            face_id=face_id,
+            cluster_id=face["cluster_id"],
             policy={
                 "action": "ignore",
                 "disposition": disp,
-                "face_count": cluster["face_count"],
+                "face_status": face["status"],
+                "held_out": face["status"] != "ok",
+                "hidden": True,
             },
         )
         conn.commit()
-        conn.close()
         return {
             "run_id": run_id,
-            "cluster_id": cluster_id,
-            "disposition": disp,
-            "decision_id": decision_id,
-            "person_id": None,
-            "note": "cluster is not a person",
-        }
-
-    disp = disposition or "needs-review"
-    if disp not in FACE_DISPOSITIONS:
-        conn.close()
-        raise ReviewError("face ignore disposition must be singleton, junk, or needs-review")
-    face = _require_face(conn, run_id, face_id)
-    if face["status"] in ("rejected", "low_quality"):
-        # Held-out observations stay held-out. Record the note only.
-        pass
-    decision_id = _record_decision(
-        conn,
-        kind="reject",
-        run_id=run_id,
-        pack_id=pack_id,
-        face_id=face_id,
-        cluster_id=face["cluster_id"],
-        policy={
-            "action": "ignore",
+            "face_id": face_id,
             "disposition": disp,
             "face_status": face["status"],
-            "held_out": face["status"] != "ok",
-        },
-    )
-    conn.commit()
-    conn.close()
-    return {
-        "run_id": run_id,
-        "face_id": face_id,
-        "disposition": disp,
-        "face_status": face["status"],
-        "decision_id": decision_id,
-        "person_id": None,
-        "note": "unassigned mark; rejected/low_quality stay held-out",
-    }
+            "decision_id": decision_id,
+            "person_id": None,
+            "note": "unassigned mark; rejected/low_quality stay held-out",
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def note_subject(
@@ -822,7 +980,7 @@ def note_subject(
     cluster_id: str | None = None,
     face_id: str | None = None,
 ) -> dict:
-    """Durable review note. Stored as decisions.kind=reject (schema has no note kind)."""
+    """Durable review note. Stored as decisions.kind=note."""
     text = (text or "").strip()
     if not text:
         raise ReviewError("note text must be non-empty")
@@ -831,25 +989,30 @@ def note_subject(
     _warn_enter_s3(store, run_id)
     conn = connect(store)
     init_db(conn)
-    run = _require_run(conn, run_id)
-    if cluster_id:
-        _require_cluster(conn, run_id, cluster_id)
-        subject_face = None
-    else:
-        row = _require_face(conn, run_id, face_id)
-        subject_face = face_id
-        cluster_id = row["cluster_id"]
-    decision_id = _record_decision(
-        conn,
-        kind="reject",
-        run_id=run_id,
-        pack_id=run["pack_id"],
-        cluster_id=cluster_id,
-        face_id=subject_face,
-        policy={"action": "note", "text": text},
-    )
-    conn.commit()
-    conn.close()
+    try:
+        run = _require_run(conn, run_id)
+        if cluster_id:
+            _require_cluster(conn, run_id, cluster_id)
+            subject_face = None
+        else:
+            row = _require_face(conn, run_id, face_id)
+            subject_face = face_id
+            cluster_id = row["cluster_id"]
+        decision_id = _record_decision(
+            conn,
+            kind="note",
+            run_id=run_id,
+            pack_id=run["pack_id"],
+            cluster_id=cluster_id,
+            face_id=subject_face,
+            policy={"action": "note", "text": text},
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     return {
         "run_id": run_id,
         "cluster_id": cluster_id,

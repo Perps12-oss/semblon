@@ -215,6 +215,12 @@ def main(argv: list[str] | None = None) -> int:
     nam.add_argument("--track", default=None, help="derived S7 track id (not a person id)")
     nam.add_argument("--faces", nargs="+", default=None, help="unassigned face ids (one person)")
     nam.add_argument("--as", dest="display_name", required=True, help="display name")
+    nam.add_argument(
+        "--attach-to",
+        default=None,
+        dest="attach_to",
+        help="existing person_id to attach (default: create a new person; no silent name reuse)",
+    )
     nam.add_argument("--run", required=True)
     nam.add_argument("--store", required=True, type=Path)
 
@@ -624,14 +630,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         try:
+            attach = getattr(args, "attach_to", None)
+            kw = {"attach_to_person_id": attach, "create_new": attach is None}
             if args.cluster:
-                rec = name_cluster(args.store, args.run, args.cluster, args.display_name)
+                rec = name_cluster(args.store, args.run, args.cluster, args.display_name, **kw)
             elif args.face:
-                rec = name_face(args.store, args.run, args.face, args.display_name)
+                rec = name_face(args.store, args.run, args.face, args.display_name, **kw)
             elif args.track:
-                rec = name_track(args.store, args.run, args.track, args.display_name)
+                rec = name_track(args.store, args.run, args.track, args.display_name, **kw)
             else:
-                rec = name_faces(args.store, args.run, args.faces, args.display_name)
+                rec = name_faces(args.store, args.run, args.faces, args.display_name, **kw)
         except ReviewError as e:
             print(str(e), file=sys.stderr)
             return 2
