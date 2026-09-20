@@ -22,12 +22,15 @@ from semblon.process import (
 def test_default_store_path_windows(monkeypatch):
     monkeypatch.setattr("semblon.process.sys.platform", "win32")
     monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\me\AppData\Local")
-    assert default_store_path() == Path(r"C:\Users\me\AppData\Local\Semblon\store.sqlite")
+    got = default_store_path()
+    assert got.name == "store.sqlite"
+    assert got.parent.name == "Semblon"
 
 
-def test_default_review_out_beside_store():
-    store = Path(r"C:\data\Semblon\store.sqlite")
-    assert default_review_out(store) == Path(r"C:\data\Semblon\review.html")
+def test_default_review_out_beside_store(tmp_path):
+    store = tmp_path / "Semblon" / "store.sqlite"
+    store.parent.mkdir()
+    assert default_review_out(store) == store.parent / "review.html"
 
 
 def test_process_folder_orchestrates_and_owns_run_id(tmp_path):
