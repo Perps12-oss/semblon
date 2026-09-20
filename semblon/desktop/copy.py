@@ -59,6 +59,11 @@ COUNT_LABELS = {
     "tracks": "tracks",
     "skipped": "skipped",
     "failed": "failed",
+    "new_media": "new media",
+    "skipped_same_run": "already in this run",
+    "ok": "ok faces",
+    "low_quality": "low-quality",
+    "rejected": "rejected",
     "skipped_seen": "already seen",
 }
 
@@ -107,7 +112,9 @@ def _looks_internal(message: str) -> bool:
     lowered = message.strip().lower()
     if ":" in lowered and lowered.split(":", 1)[0] in STAGE_LABELS:
         return True
-    return lowered in KIND_LABELS or lowered in STAGE_LABELS
+    if lowered in KIND_LABELS or lowered in STAGE_LABELS:
+        return True
+    return lowered in {v.lower() for v in KIND_LABELS.values()}
 
 
 def counts_line(ev: ProgressEvent) -> str | None:
@@ -177,12 +184,16 @@ def status_text(ev: ProgressEvent) -> str:
 
 
 def _is_cancel(exc: BaseException) -> bool:
+    if isinstance(exc, KeyboardInterrupt):
+        return True
     name = type(exc).__name__.lower()
     return "cancel" in name or "cancel" in str(exc).lower()
 
 
 def _is_store_damage(exc: BaseException) -> bool:
-    if isinstance(exc, sqlite3.DatabaseError):
+    if isinstance(exc, sqlite3.IntegrityError):
+        return True
+    if type(exc) is sqlite3.DatabaseError:
         return True
     name = type(exc).__name__.lower()
     blob = f"{name} {exc}".lower()
@@ -197,6 +208,12 @@ def friendly_exception(exc: BaseException) -> tuple[str, str]:
     detail = f"{type(exc).__name__}: {exc}"
     if _is_cancel(exc):
         return ("Cancelled. Any partial results have been retained.", detail)
+    if isinstance(exc, FileNotFoundError):
+        return ("A required file could not be found.", detail)
+    if isinstance(exc, PermissionError):
+        return ("Semblon does not have permission to access a required file.", detail)
+    if isinstance(exc, MemoryError):
+        return ("Semblon ran out of memory while processing this operation.", detail)
     if _is_store_damage(exc):
         return (
             "Semblon couldn't complete this operation.\n"

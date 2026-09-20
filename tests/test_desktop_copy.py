@@ -7,6 +7,7 @@ import sqlite3
 from semblon.desktop.copy import (
     COUNT_LABELS,
     KIND_LABELS,
+    _looks_internal,
     basename,
     counts_line,
     current_item_line,
@@ -76,6 +77,21 @@ def test_generic_exception_does_not_claim_results_are_safe():
     assert "Semblon couldn't complete this operation." in user
 
 
+def test_operational_error_is_not_reported_as_store_damage():
+    user, detail = friendly_exception(sqlite3.OperationalError("database is locked"))
+    assert "integrity check" not in user.lower()
+    assert "OperationalError" in detail
+
+
+def test_friendly_exception_file_and_permission_and_memory():
+    user_f, _ = friendly_exception(FileNotFoundError("missing.jpg"))
+    assert "could not be found" in user_f
+    user_p, _ = friendly_exception(PermissionError("denied"))
+    assert "permission" in user_p.lower()
+    user_m, _ = friendly_exception(MemoryError("oom"))
+    assert "out of memory" in user_m.lower()
+
+
 def test_unknown_stage_falls_back_to_processing():
     ev = make_event("mystery", KIND_STARTED, clock="12:00:00")
     assert user_state(ev) == "Processing"
@@ -94,6 +110,27 @@ def test_unknown_count_keys_are_ignored_by_design():
     assert "2 groups" in line
     assert "secret_internal" not in line
     assert "secret_internal" not in COUNT_LABELS
+
+
+def test_ingest_count_keys_are_user_visible():
+    ev = make_event(
+        STAGE_INGEST,
+        KIND_PROGRESS,
+        counts={
+            "new_media": 3,
+            "skipped_same_run": 2,
+            "ok": 5,
+            "low_quality": 1,
+            "rejected": 1,
+        },
+        clock="12:00:00",
+    )
+    line = counts_line(ev) or ""
+    assert "3 new media" in line
+    assert "2 already in this run" in line
+    assert "5 ok faces" in line
+    assert "1 low-quality" in line
+    assert "1 rejected" in line
 
 
 def test_kind_labels_are_wired():
@@ -156,3 +193,9 @@ def test_completed_has_no_ellipsis():
     ev = make_event(STAGE_INGEST, KIND_COMPLETED, files_processed=2, files_total=2, clock="12:00:00")
     assert "…" not in headline(ev)
     assert headline(ev).endswith("done")
+
+
+def test_internal_message_filter_and_friendly_values():
+    assert _looks_internal("ingest:progress")
+    assert _looks_internal("working")
+    assert not _looks_internal("reading photos in D:/pics")

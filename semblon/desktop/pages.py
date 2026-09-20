@@ -21,13 +21,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from semblon.desktop.service import PHOTO_SORTS, LibraryService
+from semblon.desktop.service import PHOTO_SORTS, PHOTO_SORT_LABELS, LibraryService
 from semblon.desktop.widgets import EmptyState, ThumbGrid, folder_empty_state
 
 
 class HomePage(QWidget):
     add_folder = Signal()
     open_unknown = Signal()
+    open_recent = Signal(object)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -40,6 +41,7 @@ class HomePage(QWidget):
         self.stats.setAccessibleName("Library stats")
         self.recent = QListWidget()
         self.recent.setAccessibleName("Recent activity")
+        self.recent.itemActivated.connect(self._open_recent_item)
         self.empty = folder_empty_state(
             self,
             "No photos yet",
@@ -60,11 +62,18 @@ class HomePage(QWidget):
     def refresh(self, service: LibraryService) -> None:
         self._service = service
         rec = service.home_summary()
+        if not bool(rec.get("available", True)):
+            self.stats.setText("Store unavailable. Pick or create a Semblon store to continue.")
+            self.recent.clear()
+            self.empty.setVisible(True)
+            self.btn_unknown.setEnabled(False)
+            return
         n_photos = int(rec.get("photos") or 0)
+        n_videos = int(rec.get("videos") or 0)
         n_people = int(rec.get("people") or 0)
         n_unknown = int(rec.get("unknown") or 0)
         self.stats.setText(
-            f"{n_photos} photos · {rec.get('videos') or 0} videos · "
+            f"{n_photos} photos · {n_videos} videos · "
             f"{n_people} named people · {n_unknown} unknown groups"
         )
         self.recent.clear()
@@ -72,9 +81,14 @@ class HomePage(QWidget):
             item = QListWidgetItem(str(row.get("label") or row.get("run_id") or ""))
             item.setData(Qt.ItemDataRole.UserRole, row)
             self.recent.addItem(item)
-        has_media = n_photos > 0 or int(rec.get("videos") or 0) > 0
+        has_media = n_photos > 0 or n_videos > 0
         self.empty.setVisible(not has_media)
         self.btn_unknown.setEnabled(n_unknown > 0)
+
+    def _open_recent_item(self, item: QListWidgetItem) -> None:
+        row = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(row, dict):
+            self.open_recent.emit(row)
 
 
 class _MediaPage(QWidget):
@@ -95,10 +109,18 @@ class _MediaPage(QWidget):
         self.stack.addWidget(self.grid)
         lay.addWidget(self.heading)
         lay.addWidget(self.stack)
+        self._layout = lay
 
     def _show_rows(self, rows: list[dict[str, Any]]) -> None:
         self.grid.set_items(rows)
         self.stack.setCurrentWidget(self.grid if rows else self.empty)
+
+    def _insert_above_stack(self, widget: QWidget) -> None:
+        idx = self._layout.indexOf(self.stack)
+        if idx < 0:
+            self._layout.addWidget(widget)
+            return
+        self._layout.insertWidget(idx, widget)
 
 
 class PhotosPage(_MediaPage):
@@ -111,14 +133,16 @@ class PhotosPage(_MediaPage):
         )
         self.sort = QComboBox()
         self.sort.setAccessibleName("Photos sort")
-        for key, label in (("newest", "Newest"), ("oldest", "Oldest"), ("name", "Name")):
+        for key, label in PHOTO_SORT_LABELS.items():
             self.sort.addItem(label, key)
         self.sort.currentIndexChanged.connect(self._on_sort_changed)
-        bar = QHBoxLayout()
+        sort_row = QWidget(self)
+        bar = QHBoxLayout(sort_row)
+        bar.setContentsMargins(0, 0, 0, 0)
         bar.addWidget(QLabel("Sort"))
         bar.addWidget(self.sort)
         bar.addStretch(1)
-        self.layout().insertLayout(1, bar)
+        self._insert_above_stack(sort_row)
 
     def sort_key(self) -> str:
         data = self.sort.currentData()
@@ -150,6 +174,7 @@ class VideosPage(_MediaPage):
 class PeoplePage(QWidget):
     inspect = Signal(object)
     rename = Signal(object)
+    open_unknown = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -160,7 +185,9 @@ class PeoplePage(QWidget):
         self.empty = EmptyState(
             "No named people",
             "Open Unknown and Name a group. A cluster is not a person until Name.",
+            action_label="Open unknown",
         )
+        self.empty.action.connect(self.open_unknown.emit)
         self.grid = ThumbGrid()
         self.grid.set_context_actions([("inspect", "Inspect"), ("rename", "Rename")])
         self.grid.inspect.connect(self.inspect.emit)
@@ -210,6 +237,9 @@ class UnknownPage(QWidget):
         self.btn_ignore.setAccessibleName("Ignore unknown group")
         self.btn_name.clicked.connect(self._emit_name)
         self.btn_ignore.clicked.connect(self._emit_ignore)
+        self.grid.currentItemChanged.connect(self._sync_buttons)
+        self.btn_name.setEnabled(False)
+        self.btn_ignore.setEnabled(False)
         bar.addWidget(self.btn_name)
         bar.addWidget(self.btn_ignore)
         bar.addStretch(1)
@@ -239,9 +269,14 @@ class UnknownPage(QWidget):
     def refresh(self, service: LibraryService) -> None:
         self._service = service
         rows = service.list_unknown()
+        if not isinstance(rows, list):
+            raise TypeError("list_unknown must return list[dict]")
         self.grid.set_items(rows)
         self.stack.setCurrentWidget(self.grid if rows else self.empty)
-        enabled = bool(rows)
+        self._sync_buttons()
+
+    def _sync_buttons(self, *_args) -> None:
+        enabled = self.grid.current_payload() is not None
         self.btn_name.setEnabled(enabled)
         self.btn_ignore.setEnabled(enabled)
 
@@ -280,6 +315,9 @@ class SettingsPage(QWidget):
         self.heading.setAccessibleName("Settings")
         self.body = QLabel("")
         self.body.setWordWrap(True)
+        self.body.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self.body.setAccessibleName("Settings status")
         lay.addWidget(self.heading)
         lay.addWidget(self.body)
@@ -288,4 +326,4 @@ class SettingsPage(QWidget):
     def refresh(self, service: LibraryService) -> None:
         self._service = service
         lines = service.settings_lines()
-        self.body.setText("\n".join(ln for ln in lines if ln))
+        self.body.setText("\n".join(lines))

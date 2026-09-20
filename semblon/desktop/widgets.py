@@ -79,7 +79,6 @@ class ThumbGrid(QListWidget):
         self.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.itemActivated.connect(self._activate)
-        self.itemDoubleClicked.connect(self._activate)
         self.customContextMenuRequested.connect(self._menu)
         self.setAccessibleName("Thumbnail grid")
         self._actions: list[tuple[str, str]] = [("inspect", "Inspect")]

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from semblon.desktop.service import StoreLibraryService
+from semblon.desktop.service import PHOTO_SORT_LABELS, StoreLibraryService
 from semblon.store import connect, init_db
 
 
@@ -26,6 +26,7 @@ class FakeService:
 
     def home_summary(self) -> dict:
         return {
+            "available": True,
             "photos": 1,
             "videos": 0,
             "people": 0,
@@ -44,14 +45,14 @@ class FakeService:
     def list_people(self) -> list[dict]:
         return []
 
-    def list_unknown(self) -> list[dict]:
+    def list_unknown(self, *, limit: int = 200) -> list[dict]:
         return list(self.unknown)
 
-    def list_activity(self) -> list[dict]:
-        return [{"label": "run-1  finished", "run_id": "run-1"}]
+    def list_activity(self, *, limit: int = 40) -> list[dict]:
+        return [{"label": "run-1  finished", "run_id": "run-1"}][:limit]
 
-    def settings_lines(self) -> list[str | None]:
-        return ["Store: /tmp/store.sqlite", None, "", "cluster ≠ person"]
+    def settings_lines(self) -> list[str]:
+        return ["Store: /tmp/store.sqlite", "cluster ≠ person"]
 
 
 def test_pages_source_wires_sort_and_unknown_actions():
@@ -63,6 +64,14 @@ def test_pages_source_wires_sort_and_unknown_actions():
     assert "self.ignore.emit" in src
     assert "self.recent = QListWidget()" in src
     assert "folder_empty_state" in src
+
+
+def test_thumbgrid_avoids_double_emit_wiring():
+    src = (Path(__file__).resolve().parents[1] / "semblon" / "desktop" / "widgets.py").read_text(
+        encoding="utf-8"
+    )
+    assert "itemActivated.connect(self._activate)" in src
+    assert "itemDoubleClicked.connect(self._activate)" not in src
 
 
 @pytest.fixture(scope="module")
@@ -100,9 +109,31 @@ def test_store_service_lists_photos_sorted(tmp_path):
     assert svc.list_photos(sort="bogus")[0]["label"] == "z.jpg"
 
 
+def test_home_summary_counts_are_uncapped(tmp_path):
+    store = tmp_path / "store.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES ('r1','t0','t1','0','p',2,'l2','{}','{}','x64','native')"""
+    )
+    for i in range(205):
+        conn.execute(
+            "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+            (f"m{i}", "folder", f"/p{i}.jpg", f"h{i}", 1, 1, i, 1),
+        )
+    conn.commit()
+    conn.close()
+    svc = StoreLibraryService(store)
+    rec = svc.home_summary()
+    assert rec["photos"] == 205
+    assert len(svc.list_photos()) == 200
+
+
 def test_settings_lines_drop_falsey():
     lines = FakeService().settings_lines()
-    text = "\n".join(ln for ln in lines if ln)
+    text = "\n".join(lines)
     assert "Store:" in text
     assert "cluster ≠ person" in text
     assert "None" not in text
@@ -113,6 +144,7 @@ def test_photos_sort_change_refreshes(qapp):
 
     page = PhotosPage()
     svc = FakeService()
+    assert page.sort.count() == len(PHOTO_SORT_LABELS)
     page.refresh(svc)
     assert svc.photo_sorts == ["newest"]
     page.sort.setCurrentIndex(2)
@@ -130,11 +162,27 @@ def test_unknown_name_and_ignore_emit(qapp):
     page.name.connect(named.append)
     page.ignore.connect(ignored.append)
     page.refresh(svc)
+    assert page.btn_name.isEnabled() is False
+    assert page.btn_ignore.isEnabled() is False
     page.grid.setCurrentRow(0)
+    assert page.btn_name.isEnabled() is True
+    assert page.btn_ignore.isEnabled() is True
     page.btn_name.click()
     page.btn_ignore.click()
     assert named and named[0]["cluster_id"] == "c1"
     assert ignored and ignored[0]["kind"] == "cluster"
+
+
+def test_people_empty_action_emits_open_unknown(qapp):
+    from semblon.desktop.pages import PeoplePage
+
+    page = PeoplePage()
+    opened = {"n": 0}
+    page.open_unknown.connect(lambda: opened.__setitem__("n", opened["n"] + 1))
+    page.refresh(FakeService())
+    assert page.empty._button is not None
+    page.empty._button.click()
+    assert opened["n"] == 1
 
 
 def test_home_recent_is_list_and_empty_add_folder(qapp):
@@ -148,6 +196,7 @@ def test_home_recent_is_list_and_empty_add_folder(qapp):
     page.add_folder.connect(lambda: fired.__setitem__("n", fired["n"] + 1))
     empty_svc = FakeService()
     empty_svc.home_summary = lambda: {  # type: ignore[method-assign]
+        "available": True,
         "photos": 0,
         "videos": 0,
         "people": 0,
@@ -161,3 +210,47 @@ def test_home_recent_is_list_and_empty_add_folder(qapp):
     assert fired["n"] == 1
     page.refresh(FakeService())
     assert page.recent.count() == 1
+
+
+def test_home_recent_item_emits_payload(qapp):
+    from semblon.desktop.pages import HomePage
+
+    page = HomePage()
+    opened: list[dict] = []
+    page.open_recent.connect(opened.append)
+    page.refresh(FakeService())
+    page.recent.setCurrentRow(0)
+    page._open_recent_item(page.recent.currentItem())
+    assert opened
+    assert opened[0]["run_id"] == "run-1"
+
+
+def test_home_unavailable_store_message(qapp):
+    from semblon.desktop.pages import HomePage
+
+    page = HomePage()
+    svc = FakeService()
+    svc.home_summary = lambda: {  # type: ignore[method-assign]
+        "available": False,
+        "photos": 0,
+        "videos": 0,
+        "people": 0,
+        "unknown": 0,
+        "recent": [],
+        "store": "x",
+    }
+    page.refresh(svc)
+    assert "unavailable" in page.stats.text().lower()
+    assert page.empty.isVisible()
+    assert page.btn_unknown.isEnabled() is False
+
+
+def test_settings_text_is_selectable(qapp):
+    from PySide6.QtCore import Qt
+
+    from semblon.desktop.pages import SettingsPage
+
+    page = SettingsPage()
+    page.refresh(FakeService())
+    flags = page.body.textInteractionFlags()
+    assert bool(flags & Qt.TextInteractionFlag.TextSelectableByMouse)

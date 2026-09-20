@@ -45,13 +45,13 @@ class ReviewListModel(SemblonListModel):
             return None
         row = self._rows[index.row()]
         if role in (Qt.ItemDataRole.DisplayRole, self.LabelRole):
-            return row.get("label") or ""
+            return row.get("label") or row.get("id") or ""
         if role == self.KindRole:
-            return row.get("kind") or ""
+            return row.get("kind")
         if role == self.ClusterIdRole:
-            return row.get("cluster_id") or row.get("clusterId") or ""
+            return row.get("cluster_id")
         if role == self.FaceIdRole:
-            return row.get("face_id") or row.get("faceId") or ""
+            return row.get("face_id")
         return None
 
     def roleNames(self) -> dict[int, bytes]:  # type: ignore[override]
