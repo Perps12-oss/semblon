@@ -43,6 +43,7 @@ class LibraryService(Protocol):
     def list_unknown(self, *, limit: int = PHOTO_WINDOW) -> list[dict]: ...
     def list_activity(self, *, limit: int = 40) -> list[dict]: ...
     def settings_lines(self) -> list[str]: ...
+    def search_retrieval(self, *, image: Path | None = None, text: str | None = None, limit: int = 20) -> dict: ...
 
 
 def _connect(store: Path) -> sqlite3.Connection:
@@ -364,6 +365,29 @@ class StoreLibraryService:
                         "kind": "run",
                     }
                 )
+            try:
+                from semblon.episodes import derive_episodes
+
+                rid = latest_run_id(self.store, with_faces=True) or latest_run_id(self.store)
+                if rid:
+                    eps = derive_episodes(self.store, run_id=rid)
+                    budget = max(0, int(limit) - len(items))
+                    for ep in (eps.get("episodes") or [])[:budget]:
+                        items.append(
+                            {
+                                "id": f"episode:{rid}:{ep.get('episode_id')}",
+                                "run_id": rid,
+                                "label": (
+                                    f"episode {ep.get('episode_id')}  "
+                                    f"tracks={ep.get('track_count', 0)}  "
+                                    f"people={ep.get('people', 0)}"
+                                ),
+                                "kind": "episode",
+                            }
+                        )
+            except Exception:
+                # Activity remains best-effort; episodes are additive context.
+                pass
             return items
 
         rows = self._cached(("activity", int(limit)), _load_activity)
@@ -394,3 +418,16 @@ class StoreLibraryService:
     def prefetch_home_async(self) -> None:
         """Best-effort cache warmup for shell navigation. Never touches Qt."""
         threading.Thread(target=self.home_summary, daemon=True).start()
+
+    def search_retrieval(self, *, image: Path | None = None, text: str | None = None, limit: int = 20) -> dict:
+        """Desktop shell hook for non-identity retrieval."""
+        if image is None and not (text or "").strip():
+            return {"kind": "empty", "count": 0, "items": [], "note": "query required"}
+        from semblon.search import SearchError, search_image, search_text
+
+        try:
+            if image is not None:
+                return search_image(self.store, image, limit=limit)
+            return search_text(self.store, text or "", limit=limit)
+        except SearchError as e:
+            return {"kind": "error", "count": 0, "items": [], "error": str(e)}

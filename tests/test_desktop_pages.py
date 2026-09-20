@@ -171,6 +171,25 @@ def test_home_summary_counts_are_uncapped(tmp_path):
     assert len(svc.list_photos()) == 200
 
 
+def test_store_service_activity_includes_episode_rows(tmp_path):
+    from semblon.observers import persist_derived_tracks
+    from tests.test_tracks import _seed as _seed_tracks
+
+    store = tmp_path / "store.sqlite"
+    _seed_tracks(store)
+    persist_derived_tracks(store, "rt")
+    svc = StoreLibraryService(store, cache_ttl_s=0.0)
+    rows = svc.list_activity(limit=20)
+    assert any(r.get("kind") == "run" for r in rows)
+    assert any(r.get("kind") == "episode" for r in rows)
+
+
+def test_store_service_search_retrieval_empty_query(tmp_path):
+    svc = StoreLibraryService(tmp_path / "missing.sqlite")
+    rec = svc.search_retrieval()
+    assert rec["kind"] == "empty"
+
+
 def test_settings_lines_drop_falsey():
     lines = FakeService().settings_lines()
     text = "\n".join(lines)

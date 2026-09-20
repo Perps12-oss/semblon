@@ -37,6 +37,7 @@ def test_python_m_semblon_help():
         "home",
         "review-ui",
         "tracks",
+        "episodes",
         "memory",
         "identify",
         "inbox",
@@ -59,6 +60,7 @@ def test_python_m_semblon_help():
     assert "integrity" in lab
     assert "models" in lab
     assert "backup" in lab
+    assert "hardening" in lab
 
 
 def test_main_py_present():

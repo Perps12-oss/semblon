@@ -9,9 +9,9 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from semblon.compare import CompareError, compare_space
 from semblon.identify import IdentifyError, identify_face
 from semblon.memory import MemoryError, history
+from semblon.retrieval import RetrievalError, query_by_image, query_text, similar_from_item
 
 
 class SearchError(ValueError):
@@ -130,58 +130,38 @@ def search_people(store: Path) -> dict:
 
 
 def search_similar(store: Path, item_id: str, *, limit: int = 10) -> dict:
-    """Modality-scoped nearest items. Face identity is forbidden here."""
-    conn = _open_ro(store)
     try:
-        row = conn.execute(
-            """SELECT e.embedding, e.embedding_dim, e.pack_id, e.modality, i.kind, i.provider
-               FROM embeddings e JOIN observation_items i ON i.item_id=e.item_id
-               WHERE e.item_id=?""",
-            (item_id,),
-        ).fetchone()
-        if row is None:
-            raise SearchError(f"no non-identity embedding for item {item_id}")
-        if row["modality"] == "face":
-            raise SearchError("face identity must use search --face / identify, not --similar")
-        others = conn.execute(
-            """SELECT e.item_id, e.embedding, e.embedding_dim, e.pack_id, e.modality, i.kind, i.provider
-               FROM embeddings e JOIN observation_items i ON i.item_id=e.item_id
-               WHERE e.item_id != ? AND e.modality != 'face'""",
-            (item_id,),
-        ).fetchall()
-        scored = []
-        for o in others:
-            try:
-                s = compare_space(
-                    row["modality"],
-                    row["pack_id"],
-                    int(row["embedding_dim"]),
-                    row["embedding"],
-                    o["modality"],
-                    o["pack_id"],
-                    int(o["embedding_dim"]),
-                    o["embedding"],
-                )
-            except CompareError:
-                continue
-            scored.append(
-                {
-                    "item_id": o["item_id"],
-                    "kind": o["kind"],
-                    "provider": o["provider"],
-                    "score": s,
-                    "why": "same modality+pack only; not a person",
-                }
-            )
-    finally:
-        conn.close()
-    scored.sort(key=lambda x: -x["score"])
-    return {
-        "kind": "similar",
-        "query": item_id,
-        "modality": row["modality"],
-        "pack_id": row["pack_id"],
-        "count": min(limit, len(scored)),
-        "items": scored[:limit],
-        "note": "Lens-like lookup in owned memory. Similarity is not identity.",
-    }
+        return similar_from_item(store, item_id, limit=limit)
+    except RetrievalError as e:
+        raise SearchError(str(e)) from e
+
+
+def search_image(
+    store: Path,
+    image: Path,
+    *,
+    limit: int = 20,
+    modality: str | None = None,
+    provider: str | None = None,
+    pack_id: str | None = None,
+) -> dict:
+    """Query-by-image retrieval over non-identity spaces."""
+    try:
+        return query_by_image(
+            store,
+            image,
+            limit=limit,
+            modality=modality,
+            provider=provider,
+            pack_id=pack_id,
+        )
+    except RetrievalError as e:
+        raise SearchError(str(e)) from e
+
+
+def search_text(store: Path, text: str, *, limit: int = 20) -> dict:
+    """OCR/text retrieval over non-identity observations."""
+    try:
+        return query_text(store, text, limit=limit)
+    except RetrievalError as e:
+        raise SearchError(str(e)) from e

@@ -79,6 +79,22 @@ def main(argv: list[str] | None = None) -> int:
     lab_sub.add_parser("providers", help="list observation providers and availability")
     oc = lab_sub.add_parser("opencv", help="timed OpenCV import probe (does not hang the suite)")
     oc.add_argument("--timeout", type=float, default=8.0)
+    lab_sub.add_parser("hardening", help="hardware/runtime + product lifecycle hardening snapshot")
+
+    contract = lab_sub.add_parser(
+        "contract",
+        help="A+B no-regression semantic contract (snapshot/compare)",
+    )
+    contract_sub = contract.add_subparsers(dest="contractcmd", required=True)
+    c_snap = contract_sub.add_parser("snapshot", help="write semantic snapshot for one run")
+    c_snap.add_argument("--store", required=True, type=Path)
+    c_snap.add_argument("--run", required=True)
+    c_snap.add_argument("--out", required=True, type=Path)
+    c_snap.add_argument("--embedding-tol", type=float, default=1e-6)
+    c_cmp = contract_sub.add_parser("compare", help="compare two snapshot JSON files")
+    c_cmp.add_argument("--before", required=True, type=Path)
+    c_cmp.add_argument("--after", required=True, type=Path)
+    c_cmp.add_argument("--score-tol", type=float, default=1e-6)
 
     ev = lab_sub.add_parser("eval", help="FACE-002 confirmatory eval harness")
     ev_sub = ev.add_subparsers(dest="evalcmd", required=True)
@@ -281,6 +297,14 @@ def main(argv: list[str] | None = None) -> int:
     trk.add_argument("--iou-min", type=float, default=None)
     trk.add_argument("--max-t-ms-gap", type=int, default=None)
 
+    eps = sub.add_parser(
+        "episodes",
+        help="derived track episodes (hypotheses; track/person separation preserved)",
+    )
+    eps.add_argument("--store", required=True, type=Path)
+    eps.add_argument("--run", default=None)
+    eps.add_argument("--max-gap-ms", type=int, default=None)
+
     rev = sub.add_parser("review", help="0.4 persist review decisions (does not rewrite DBSCAN)")
     rev.add_argument("--run", required=True)
     rev.add_argument("--store", required=True, type=Path)
@@ -336,6 +360,12 @@ def main(argv: list[str] | None = None) -> int:
     srch.add_argument("--run", default=None, help="required with --face")
     srch.add_argument("--people", action="store_true", help="list active named persons")
     srch.add_argument("--similar", default=None, help="observation_item_id in a non-identity space")
+    srch.add_argument("--image", default=None, type=Path, help="query-by-image over non-identity spaces")
+    srch.add_argument("--text", default=None, help="OCR/text retrieval over stored observations")
+    srch.add_argument("--modality", default=None, help="retrieval filter for non-identity modality")
+    srch.add_argument("--provider", default=None, help="retrieval filter for non-identity provider")
+    srch.add_argument("--pack", default=None, help="retrieval filter for non-identity pack_id")
+    srch.add_argument("--limit", type=int, default=20, help="max retrieval rows")
 
     wat = sub.add_parser("watch", help="poll a folder and ingest incrementally (cancellable)")
     wat.add_argument("folder", type=Path)
@@ -474,6 +504,43 @@ def main(argv: list[str] | None = None) -> int:
         rec = probe_opencv(timeout_s=args.timeout)
         print(json.dumps(rec, indent=2))
         return 0 if rec.get("ok") else 2
+
+    if args.cmd == "lab" and args.labcmd == "hardening":
+        from semblon.hardening import hardening_snapshot
+
+        rec = hardening_snapshot()
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "contract":
+        from semblon.perf_contract import (
+            ContractError,
+            build_semantic_snapshot,
+            compare_semantic_snapshots,
+            read_snapshot,
+            write_snapshot,
+        )
+
+        try:
+            if args.contractcmd == "snapshot":
+                rec = build_semantic_snapshot(
+                    args.store,
+                    args.run,
+                    embedding_tol=args.embedding_tol,
+                )
+                write_rec = write_snapshot(args.out, rec)
+                out = {"snapshot": rec, "write": write_rec}
+                code = 0
+            else:
+                before = read_snapshot(args.before)
+                after = read_snapshot(args.after)
+                out = compare_semantic_snapshots(before, after, score_tol=args.score_tol)
+                code = 0 if out.get("ok") else 3
+        except ContractError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(out, indent=2, default=str))
+        return code
 
     if args.cmd == "lab" and args.labcmd == "eval":
         from semblon.eval import (
@@ -795,7 +862,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "search":
-        from semblon.search import SearchError, search_face, search_people, search_person, search_similar
+        from semblon.search import (
+            SearchError,
+            search_face,
+            search_image,
+            search_people,
+            search_person,
+            search_similar,
+            search_text,
+        )
 
         try:
             if args.people:
@@ -808,9 +883,23 @@ def main(argv: list[str] | None = None) -> int:
                     return 2
                 rec = search_face(args.store, args.run, args.face)
             elif args.similar:
-                rec = search_similar(args.store, args.similar)
+                rec = search_similar(args.store, args.similar, limit=args.limit)
+            elif args.image:
+                rec = search_image(
+                    args.store,
+                    args.image,
+                    limit=args.limit,
+                    modality=args.modality,
+                    provider=args.provider,
+                    pack_id=args.pack,
+                )
+            elif args.text:
+                rec = search_text(args.store, args.text, limit=args.limit)
             else:
-                print("search requires --people, --person, --face, or --similar", file=sys.stderr)
+                print(
+                    "search requires --people, --person, --face, --similar, --image, or --text",
+                    file=sys.stderr,
+                )
                 return 2
         except SearchError as e:
             print(str(e), file=sys.stderr)
@@ -845,6 +934,20 @@ def main(argv: list[str] | None = None) -> int:
         try:
             rec = derive_tracks(args.store, args.run, **kwargs)
         except TracksError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2, default=str))
+        return 0
+
+    if args.cmd == "episodes":
+        from semblon.episodes import EpisodeError, derive_episodes
+
+        kwargs = {}
+        if args.max_gap_ms is not None:
+            kwargs["max_gap_ms"] = args.max_gap_ms
+        try:
+            rec = derive_episodes(args.store, run_id=args.run, **kwargs)
+        except EpisodeError as e:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2, default=str))

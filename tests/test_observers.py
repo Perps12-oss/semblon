@@ -148,6 +148,22 @@ def test_overlay_boxes_skip_dual_write_faces():
     assert "object" in kinds
 
 
+def test_observer_payload_normalized(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    conn = connect(store)
+    init_db(conn)
+    img = np.zeros((10, 10, 3), dtype=np.uint8)
+    observe_bgr(conn, observation_id="o1", run_id="r1", img=img, observers=("color",))
+    conn.commit()
+    payload = conn.execute(
+        "SELECT payload_json FROM observation_items WHERE kind='appearance' ORDER BY item_id LIMIT 1"
+    ).fetchone()[0]
+    conn.close()
+    assert '"_schema": "observation-item/v1"' in payload
+    assert '"provider": "color-hist"' in payload
+
+
 def test_home_list_formatters():
     people = format_people_lines({"items": [{"display_name": "Alice", "faces": 3}]})
     assert "Alice" in people[0]

@@ -28,6 +28,17 @@ class ProviderUnavailable(RuntimeError):
     pass
 
 
+def _normalize_payload(kind: str, provider: str, payload: dict | None) -> dict:
+    rec = dict(payload or {})
+    rec.setdefault("_schema", "observation-item/v1")
+    rec.setdefault("kind", kind)
+    rec.setdefault("provider", provider)
+    if kind != "face":
+        rec.setdefault("identity", "not facekit")
+    rec.setdefault("status", "ok")
+    return rec
+
+
 def color_histogram(img) -> bytes:
     """8-bin RGB histogram, L2-normalised. Appearance space, not identity."""
     arr = np.asarray(img)
@@ -201,6 +212,7 @@ def persist_item(
 ) -> str:
     item_id = uuid.uuid4().hex
     x1 = y1 = x2 = y2 = None
+    payload_norm = _normalize_payload(kind, provider, payload)
     if bbox is not None:
         x1, y1, x2, y2 = bbox
     conn.execute(
@@ -218,7 +230,7 @@ def persist_item(
             x2,
             y2,
             score,
-            json.dumps(payload),
+            json.dumps(payload_norm),
             face_id,
         ),
     )
@@ -480,6 +492,8 @@ def snapshot_memory_graph(store: Path, run_id: str | None = None) -> dict:
                 ids[0],
                 json.dumps(
                     {
+                        "source": "memory-snapshot-v1",
+                        "run_id": rid,
                         "person_ids": ids,
                         "names": item.get("names"),
                         "media_id": item.get("media_id"),
@@ -501,7 +515,7 @@ def snapshot_memory_graph(store: Path, run_id: str | None = None) -> dict:
                 burst.get("when"),
                 burst.get("until"),
                 burst.get("folder"),
-                json.dumps(burst),
+                json.dumps({"source": "memory-snapshot-v1", "run_id": rid, **burst}),
             ),
         )
         n_ev += 1

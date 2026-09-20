@@ -150,6 +150,32 @@ def format_search_lines(rec: dict) -> list[str]:
         if rec.get("count") == 0:
             lines.append("No same-space neighbours.")
         return lines
+    if kind == "query_image":
+        lines = [
+            f"image query: {rec.get('query')}",
+            f"spaces={','.join(rec.get('spaces_used') or [])}",
+            rec.get("note") or "non-identity retrieval",
+        ]
+        for i in rec.get("items") or []:
+            score = i.get("score")
+            s = "n/a"
+            if score is not None:
+                try:
+                    s = f"{float(score):.4f}"
+                except (TypeError, ValueError):
+                    s = "n/a"
+            src = ",".join(i.get("sources") or [])
+            lines.append(f"{s}  {i.get('kind')}  {i.get('item_id')}  src={src}")
+        if rec.get("count") == 0:
+            lines.append("No visual neighbours.")
+        return lines
+    if kind == "query_text":
+        lines = [f"text query: {rec.get('query')}", rec.get("note") or "text retrieval"]
+        for i in rec.get("items") or []:
+            lines.append(f"{i.get('item_id')}  {i.get('provider')}  {i.get('snippet','')}")
+        if rec.get("count") == 0:
+            lines.append("No text matches.")
+        return lines
     return [json_fallback(rec)]
 
 

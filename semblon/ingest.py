@@ -1,8 +1,8 @@
 """0.2 ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster.
 
-Pipeline: one-pass discover → bounded hash → skip → decode/embed (one FaceAnalysis) →
+Pipeline: one-pass discover → bounded hash → skip → bounded decode/embed workers →
 batched SQLite writer. Video frames stream; never materialize all samples.
-Experimental --workers > 1 parallelizes hashing only. No --batch until batched inference exists.
+No --batch CLI knob until explicit batch inference exists.
 Does not change detection/quality thresholds or pack/provider.
 """
 
@@ -12,6 +12,7 @@ import hashlib
 import json
 import platform
 import signal
+import threading
 import sys
 import time
 import uuid
@@ -293,6 +294,33 @@ def _iter_hash_results(
                     pass
 
 
+_thread_ctx = threading.local()
+
+
+def _thread_app(*, det_size, prefer_gpu: bool):
+    app = getattr(_thread_ctx, "app", None)
+    if app is None:
+        app = load_app(det_size, prefer_gpu=prefer_gpu)
+        _thread_ctx.app = app
+    return app
+
+
+def _infer_still(
+    *,
+    path: Path,
+    data: bytes | None,
+    det_size,
+    prefer_gpu: bool,
+) -> dict:
+    """Decode + embed in a worker. Never writes SQLite."""
+    img0 = _decode_bgr(data, path)
+    if img0 is None:
+        return {"ok": False, "reason": "decode"}
+    app = _thread_app(det_size=det_size, prefer_gpu=prefer_gpu)
+    faces = embed_bgr(app, img0)
+    return {"ok": True, "img": img0, "faces": faces}
+
+
 def ingest(
     folder: Path,
     store: Path,
@@ -349,9 +377,13 @@ def ingest(
         "execution_provider": ep["chosen"],
         "gpu": ep["gpu"],
         "onnx_providers": ep["available"],
+        "fallback_providers": ["CPUExecutionProvider"] if ep["chosen"] != "CPUExecutionProvider" else [],
+        "provider_note": ep.get("note"),
         "provider": FaceKitProvider.info.name,
         "modality": FaceKitProvider.info.modality,
         "workers": int(workers),
+        "hash_workers": int(workers),
+        "inference_workers": int(workers),
         "observers": list(observer_list),
         "model_load_s": round(load_s, 3),
         "software_version": __version__,
@@ -510,19 +542,19 @@ def ingest(
                 ),
             )
 
-    def persist_still(
+    def persist_still_record(
         *,
         path: Path,
         digest: str,
         media_id: str | None,
         mtime_ns: int,
         byte_size: int,
-        data: bytes | None,
+        img0,
+        faces: list,
     ) -> None:
         nonlocal n_media, n_faces, n_ok, n_lq, n_rej, n_fail, dirty
         if want_cancel():
             return
-        img0 = _decode_bgr(data, path)
         if img0 is None:
             n_fail += 1
             tick(path, "failed", force=True)
@@ -575,7 +607,7 @@ def ingest(
         maybe_commit()
         tick(path, "processed")
 
-    # --- stills: hash → skip → decode/embed ---
+    # --- stills: hash → skip → bounded decode/embed workers ---
     if workers == 1:
         for index, path in enumerate(files, start=1):
             if want_cancel():
@@ -596,48 +628,122 @@ def ingest(
                 n_skip_same += 1
                 tick(path, "skipped_same_run")
                 continue
-            persist_still(
+            img0 = _decode_bgr(data, path)
+            if img0 is None:
+                n_fail += 1
+                tick(path, "failed", force=True)
+                continue
+            try:
+                if want_cancel():
+                    cancelled = True
+                    break
+                faces = embed_bgr(app, img0)
+            except Exception:
+                n_fail += 1
+                dirty += 1
+                maybe_commit(force=True)
+                tick(path, "failed", force=True)
+                continue
+            persist_still_record(
                 path=path,
                 digest=digest,
                 media_id=media_id,
                 mtime_ns=mtime_ns,
                 byte_size=byte_size,
-                data=data,
+                img0=img0,
+                faces=faces,
             )
             if want_cancel():
                 cancelled = True
                 break
     else:
-        for rec in _iter_hash_results(files, workers=workers, want_cancel=want_cancel):
-            if want_cancel():
-                cancelled = True
-                break
-            path = Path(rec["path"])
-            if rec.get("outcome") == "failed":
-                n_fail += 1
-                tick(path, "failed", force=True)
-                continue
-            digest = rec["digest"]
-            reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
-            if reason == "seen":
-                n_skip_seen += 1
-                tick(path, "skipped_seen")
-                continue
-            if reason == "same_run":
-                n_skip_same += 1
-                tick(path, "skipped_same_run")
-                continue
-            persist_still(
-                path=path,
-                digest=digest,
-                media_id=media_id,
-                mtime_ns=rec["mtime_ns"],
-                byte_size=rec["byte_size"],
-                data=None,
-            )
-            if want_cancel():
-                cancelled = True
-                break
+        infer_limit = max(workers * 2, workers)
+        pending_infer: set = set()
+        infer_meta: dict = {}
+
+        def _drain_infer_once() -> None:
+            nonlocal pending_infer, cancelled, n_fail
+            if not pending_infer:
+                return
+            done, pending_infer = wait(pending_infer, return_when=FIRST_COMPLETED)
+            for fut in done:
+                meta = infer_meta.pop(fut, None)
+                if meta is None:
+                    continue
+                path = meta["path"]
+                if want_cancel():
+                    cancelled = True
+                    continue
+                try:
+                    rec = fut.result()
+                except Exception:
+                    n_fail += 1
+                    tick(path, "failed", force=True)
+                    continue
+                if not rec.get("ok"):
+                    n_fail += 1
+                    tick(path, "failed", force=True)
+                    continue
+                persist_still_record(
+                    path=path,
+                    digest=meta["digest"],
+                    media_id=meta["media_id"],
+                    mtime_ns=meta["mtime_ns"],
+                    byte_size=meta["byte_size"],
+                    img0=rec.get("img"),
+                    faces=rec.get("faces") or [],
+                )
+
+        with ThreadPoolExecutor(max_workers=workers) as infer_pool:
+            for rec in _iter_hash_results(files, workers=workers, want_cancel=want_cancel):
+                if want_cancel():
+                    cancelled = True
+                    break
+                path = Path(rec["path"])
+                if rec.get("outcome") == "failed":
+                    n_fail += 1
+                    tick(path, "failed", force=True)
+                    continue
+                digest = rec["digest"]
+                reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
+                if reason == "seen":
+                    n_skip_seen += 1
+                    tick(path, "skipped_seen")
+                    continue
+                if reason == "same_run":
+                    n_skip_same += 1
+                    tick(path, "skipped_same_run")
+                    continue
+                fut = infer_pool.submit(
+                    _infer_still,
+                    path=path,
+                    data=None,
+                    det_size=DET_SIZE,
+                    prefer_gpu=prefer_gpu,
+                )
+                pending_infer.add(fut)
+                infer_meta[fut] = {
+                    "path": path,
+                    "digest": digest,
+                    "media_id": media_id,
+                    "mtime_ns": rec["mtime_ns"],
+                    "byte_size": rec["byte_size"],
+                }
+                while len(pending_infer) >= infer_limit:
+                    _drain_infer_once()
+                    if cancelled:
+                        break
+                if cancelled:
+                    break
+
+            while pending_infer and not cancelled:
+                _drain_infer_once()
+
+            if cancelled and pending_infer:
+                for fut in pending_infer:
+                    fut.cancel()
+                pending_infer.clear()
+                infer_meta.clear()
 
     # --- videos: hash → skip → stream frames (never list()) ---
     for offset, path in enumerate(videos, start=1):
@@ -763,13 +869,27 @@ def ingest(
         "failed": n_fail,
         "incremental": not reprocess,
         "workers": int(workers),
+        "hash_workers": int(workers),
+        "inference_workers": int(workers),
         "observers": list(observer_list),
         "gpu": ep["gpu"],
+        "execution_provider": ep["chosen"],
         "cancelled": bool(cancelled),
     }
     if n_files and timings["ingest_s"] > 0:
-        timings["images_per_second"] = round(n_files / timings["ingest_s"], 4)
-        timings["faces_per_second"] = round(n_faces / timings["ingest_s"], 4)
+        images_per_s = n_files / timings["ingest_s"]
+        timings["images_per_second"] = round(images_per_s, 4)
+        timings["seconds_per_image"] = round(1.0 / images_per_s, 6) if images_per_s > 0 else None
+    if timings["ingest_s"] > 0:
+        if n_faces <= 0:
+            timings["faces_per_second"] = 0.0
+            timings["seconds_per_face"] = None
+            # keep key presence stable for reporting pipelines
+            faces_per_s = None
+        else:
+            faces_per_s = n_faces / timings["ingest_s"]
+            timings["faces_per_second"] = round(faces_per_s, 4)
+            timings["seconds_per_face"] = round(1.0 / faces_per_s, 6) if faces_per_s > 0 else None
     notes = "cancelled" if cancelled else None
     conn.execute(
         "UPDATE runs SET finished_at=?, timings_json=?, notes=? WHERE run_id=?",
