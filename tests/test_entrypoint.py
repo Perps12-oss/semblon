@@ -35,6 +35,7 @@ def test_python_m_semblon_help():
         "merge",
         "split",
         "home",
+        "desktop",
         "review-ui",
         "tracks",
         "episodes",
@@ -66,3 +67,34 @@ def test_python_m_semblon_help():
 def test_main_py_present():
     root = Path(__import__("semblon").__file__).resolve().parent
     assert (root / "__main__.py").is_file()
+
+
+def test_packaging_hygiene():
+    import tomllib
+
+    from semblon import __version__
+
+    root = Path(__file__).resolve().parents[1]
+    data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    extras = data["project"].get("optional-dependencies", {})
+    assert "cluster" not in extras
+    assert "gui" in extras
+    scripts = data["project"]["scripts"]
+    assert scripts["semblon"] == "semblon.cli:main"
+    assert scripts["semblon-desktop"] == "semblon.desktop.app:main"
+    req = data["project"]["requires-python"]
+    assert req.startswith(">=3.11")
+    assert "<3.14" in req
+    assert "version" in data["project"]["dynamic"]
+    assert __version__
+    qss = root / "semblon" / "desktop" / "theme.qss"
+    text = qss.read_text(encoding="utf-8")
+    for name in ("#emptyState", "#emptyTitle", "#emptyBody", "#title", "#subtitle"):
+        assert name in text, name
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    assert "shipping UI is the PySide6 window" in readme
+    assert "semblon-desktop" in readme
+    assert "s8_toolkit_spike" in readme and "research spike" in readme
+    assert not (root / "tools" / "s8_toolkit_spike" / "__init__.py").exists()
+    installer = (root / "tools" / "install-windows.ps1").read_text(encoding="utf-8")
+    assert ".[gui]" in installer

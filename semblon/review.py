@@ -1,4 +1,4 @@
-"""0.4 review ops: name / merge / split / ignore / note. Clusters are not persons.
+"""Review ops: name / merge / split / ignore / note. Clusters are not persons.
 
 Invariant: cluster → review → person → name.
 Human corrections are decisions (evidence), not training.

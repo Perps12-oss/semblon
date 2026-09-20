@@ -183,6 +183,22 @@ def status_text(ev: ProgressEvent) -> str:
     return "  ".join(status_lines(ev))
 
 
+def process_event_snapshot(ev: ProgressEvent) -> dict:
+    """Dict the Qt banner can consume. No invented percent."""
+    return {
+        "state": user_state(ev),
+        "headline": headline(ev),
+        "lines": status_lines(ev),
+        "counts": counts_line(ev),
+        "percent": percent_text(ev),
+        "stage": ev.stage,
+        "kind": ev.kind,
+        "run_id": ev.run_id,
+        "path": ev.path,
+        "error": ev.error,
+    }
+
+
 def _is_cancel(exc: BaseException) -> bool:
     if isinstance(exc, KeyboardInterrupt):
         return True

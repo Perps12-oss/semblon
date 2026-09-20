@@ -29,7 +29,7 @@ if (-not (Test-Path $VenvPy)) {
 
 & $VenvPy -m pip install -U pip
 & $VenvPy -m pip install -r (Join-Path $Root "requirements.txt")
-& $VenvPy -m pip install -e $Root
+& $VenvPy -m pip install -e ".[gui]"
 
 Write-Host ""
 Write-Host "Install complete. Double-click semblon.cmd or run:"
