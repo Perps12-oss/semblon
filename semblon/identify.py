@@ -176,17 +176,7 @@ def identify_face(
 
     record=False: score only (search). Opens read-only; does not write a decision.
     """
-    import sqlite3
-
-    store_p = Path(store)
-    if not store_p.is_file():
-        raise IdentifyError(f"store not found: {store_p}")
-    if record:
-        conn = _open(store_p)
-    else:
-        conn = sqlite3.connect(f"file:{store_p.resolve()}?mode=ro", uri=True)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout=5000")
+    conn = _open(store, writable=record)
     try:
         run = _require_run(conn, run_id)
         pack_id = run["pack_id"]
