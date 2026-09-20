@@ -20,6 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover - depends on host Python build
     tk = None
     filedialog = messagebox = ttk = None
 
+from semblon.desktop.copy import friendly_exception, status_text
 from semblon.process import ProcessCancelled, ProcessError, default_store_path, process_folder
 from semblon.progress import (
     KIND_QUEUED,
@@ -390,7 +391,7 @@ class HomeApp:
         self.clock.set("")
         self._set_busy(True)
         queued = make_event(STAGE_PROCESS, KIND_QUEUED, path=str(path), outcome="resumed" if resume else None)
-        self.status.set(format_progress_line(queued))
+        self.status.set(status_text(queued))
         threading.Thread(target=self._run_process, args=(path, resume), daemon=True).start()
 
     def _choose_folder(self) -> None:
@@ -427,9 +428,9 @@ class HomeApp:
             rid = e.run_id or ""
             self._q.put(("cancelled", rid))
         except ProcessError as e:
-            self._q.put(("error", str(e)))
+            self._q.put(("error", e))
         except Exception as e:  # noqa: BLE001 — surface unexpected failures in home UI
-            self._q.put(("error", f"{type(e).__name__}: {e}"))
+            self._q.put(("error", e))
 
     def _drain_queue(self) -> None:
         try:
@@ -438,7 +439,7 @@ class HomeApp:
                 if kind == "status":
                     self.status.set(payload)
                 elif kind == "event":
-                    self.status.set(format_progress_line(payload))
+                    self.status.set(status_text(payload))
                     self.bar.set_from_event(payload)
                     bits = []
                     if payload.clock:
@@ -473,7 +474,7 @@ class HomeApp:
                     self._set_busy(False)
                     extra = f" run_id={payload}" if payload else ""
                     self.status.set(
-                        f"Cancelled.{extra} Partial results remain. Resume continues from the next unfinished stage."
+                        f"Cancelled.{extra} Any partial results have been retained. Resume continues from the next unfinished stage."
                     )
                     if self._exit_after_cancel and self.root.winfo_exists():
                         self.root.destroy()
@@ -481,8 +482,13 @@ class HomeApp:
                 elif kind == "error":
                     self._resume_ready = self._last_folder is not None
                     self._set_busy(False)
-                    self.status.set(f"Failed: {payload}")
-                    messagebox.showerror("Semblon", payload)
+                    if isinstance(payload, BaseException):
+                        user, detail = friendly_exception(payload)
+                        self.status.set(user.replace("\n", " "))
+                        messagebox.showerror("Semblon", f"{user}\n\n{detail}" if detail else user)
+                    else:
+                        self.status.set(f"Couldn't finish. {payload}")
+                        messagebox.showerror("Semblon", str(payload))
                     if self._exit_after_cancel and self.root.winfo_exists():
                         self.root.destroy()
                         return
@@ -491,7 +497,7 @@ class HomeApp:
         if self._busy:
             stalled = self._wd.check()
             if stalled is not None and stalled.kind == KIND_STALLED:
-                self.status.set(format_progress_line(stalled) + "  (slow vs stalled — job not killed)")
+                self.status.set(status_text(stalled))
         if self.root.winfo_exists():
             self.root.after(100, self._drain_queue)
 

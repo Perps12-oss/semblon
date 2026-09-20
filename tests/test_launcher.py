@@ -96,4 +96,5 @@ def test_home_wires_watchdog_and_optional_observers():
     assert "btn_resume" in src
     assert 'text="Resume"' in src
     assert "StillProgressBar" in src
+    assert "status_text" in src
     assert format_people_lines({"items": []})[0].startswith("No named people")
