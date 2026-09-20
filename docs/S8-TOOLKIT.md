@@ -65,6 +65,7 @@ Owner dump-gate: open the shell on Windows 11, confirm Mica-or-fallback, Name on
 - Backdrop: Win11 build ≥ 22621 → `DWMWA_SYSTEMBACKDROP_TYPE` Mica; ≥ 22000 Mica effect; else solid. QML never calls DWM.
 - Some PySide6 `ItemFlag` enums omit `ItemIsKeyboardFocusable`. `semblon.desktop.qtcompat.list_item_flags()` ORs that flag only when present. Do not attribute-lookup the name in `QAbstractListModel.flags()`.
 - Workspace pages (`semblon.desktop.pages`) are a QWidget layer: `refresh(service)` only. The shell owns navigation. They do **not** replace `review-ui`. Name/Ignore on Unknown emit signals; the shell must call `review_ui.apply_*`.
+- Progress copy (`semblon.desktop.copy`) is the user-facing truthfulness layer: no invented percent, no `stage:kind` headlines, no “results are safe” on store damage.
 
 ## License
 
