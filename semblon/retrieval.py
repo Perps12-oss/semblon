@@ -33,9 +33,15 @@ def _open_ro(store: Path) -> sqlite3.Connection:
 def _load_item_embedding(conn: sqlite3.Connection, item_id: str) -> sqlite3.Row:
     row = conn.execute(
         """
-        SELECT e.item_id, e.embedding, e.embedding_dim, e.pack_id, e.modality, i.kind, i.provider
+        SELECT
+          e.item_id, e.embedding, e.embedding_dim, e.pack_id, e.modality,
+          i.kind, i.provider, i.observation_id,
+          o.media_id, o.frame_id, o.t_ms,
+          m.path, m.source_type
         FROM embeddings e
         JOIN observation_items i ON i.item_id = e.item_id
+        JOIN observations o ON o.observation_id = i.observation_id
+        JOIN media m ON m.media_id = o.media_id
         WHERE e.item_id=?
         """,
         (item_id,),
@@ -72,11 +78,17 @@ def _candidate_rows(
     where = " AND ".join(clauses)
     return conn.execute(
         f"""
-        SELECT e.item_id, e.embedding, e.embedding_dim, e.pack_id, e.modality, i.kind, i.provider
+        SELECT
+          e.item_id, e.embedding, e.embedding_dim, e.pack_id, e.modality,
+          i.kind, i.provider, i.observation_id,
+          o.media_id, o.frame_id, o.t_ms,
+          m.path, m.source_type
         FROM embeddings e
         JOIN observation_items i ON i.item_id = e.item_id
+        JOIN observations o ON o.observation_id = i.observation_id
+        JOIN media m ON m.media_id = o.media_id
         WHERE {where}
-        ORDER BY e.item_id
+        ORDER BY m.path, e.item_id
         """,
         args,
     ).fetchall()
@@ -104,6 +116,12 @@ def _score_candidates(
         scored.append(
             {
                 "item_id": o["item_id"],
+                "observation_id": o["observation_id"],
+                "media_id": o["media_id"],
+                "source_type": o["source_type"],
+                "path": o["path"],
+                "frame_id": o["frame_id"],
+                "t_ms": o["t_ms"],
                 "kind": o["kind"],
                 "provider": o["provider"],
                 "modality": o["modality"],

@@ -176,6 +176,21 @@ def format_search_lines(rec: dict) -> list[str]:
         if rec.get("count") == 0:
             lines.append("No text matches.")
         return lines
+    if kind == "lens_workflow":
+        sections = rec.get("sections") or {}
+        lines = [
+            f"lens query: {rec.get('query')}",
+            rec.get("note") or "local lens workflow",
+            f"people={len(sections.get('people') or [])}  "
+            f"similar={len(sections.get('similar_images') or [])}  "
+            f"objects={len(sections.get('objects') or [])}  "
+            f"text_matches={len((sections.get('text') or {}).get('matches') or [])}  "
+            f"concepts={len(sections.get('visual_concepts') or [])}  "
+            f"videos={len(sections.get('related_videos') or [])}",
+        ]
+        for p in sections.get("people") or []:
+            lines.append(f"person {p.get('display_name') or p.get('person_id')}  hits={p.get('hits',0)}")
+        return lines
     return [json_fallback(rec)]
 
 

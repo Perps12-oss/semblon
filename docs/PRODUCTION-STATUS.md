@@ -27,6 +27,7 @@ Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical freeze at `8403292`). Adden
 - DBSCAN clusters snapshot to `observation_groups` (group ≠ person)
 - S6 together/events snapshot to `relationships`/`events` with `confirmed=0`
 - `search --person/--people/--face/--similar` (similar is same-modality only; face refused)
+- `search --lens IMAGE` coherent local workflow sections (people/similar/objects/text/concepts/memory/video presence); identity path remains separate
 - `lab contract snapshot/compare` semantic drift guard (A+B no-regression gate)
 - `watch`; `live` detect→track→selective embed→identify vs named persons (`--seconds 0` unbounded, `--retain-s` optional); `canvas` observation overlay
 - Color-hist + OpenCV contour observers; OCR/CLIP/pose run when libraries exist, otherwise an unavailable/error item

@@ -361,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
     srch.add_argument("--people", action="store_true", help="list active named persons")
     srch.add_argument("--similar", default=None, help="observation_item_id in a non-identity space")
     srch.add_argument("--image", default=None, type=Path, help="query-by-image over non-identity spaces")
+    srch.add_argument("--lens", default=None, type=Path, help="coherent Lens-style local workflow from one image")
     srch.add_argument("--text", default=None, help="OCR/text retrieval over stored observations")
     srch.add_argument("--modality", default=None, help="retrieval filter for non-identity modality")
     srch.add_argument("--provider", default=None, help="retrieval filter for non-identity provider")
@@ -866,6 +867,7 @@ def main(argv: list[str] | None = None) -> int:
             SearchError,
             search_face,
             search_image,
+            search_lens_workflow,
             search_people,
             search_person,
             search_similar,
@@ -884,6 +886,15 @@ def main(argv: list[str] | None = None) -> int:
                 rec = search_face(args.store, args.run, args.face)
             elif args.similar:
                 rec = search_similar(args.store, args.similar, limit=args.limit)
+            elif args.lens:
+                rec = search_lens_workflow(
+                    args.store,
+                    args.lens,
+                    limit=args.limit,
+                    modality=args.modality,
+                    provider=args.provider,
+                    pack_id=args.pack,
+                )
             elif args.image:
                 rec = search_image(
                     args.store,
@@ -897,7 +908,7 @@ def main(argv: list[str] | None = None) -> int:
                 rec = search_text(args.store, args.text, limit=args.limit)
             else:
                 print(
-                    "search requires --people, --person, --face, --similar, --image, or --text",
+                    "search requires --people, --person, --face, --similar, --lens, --image, or --text",
                     file=sys.stderr,
                 )
                 return 2
