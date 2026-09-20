@@ -123,42 +123,56 @@ class StoreLibraryService:
         return items
 
     def list_unknown(self) -> list[dict]:
-        """Unnamed face groups. Cluster id is never a person id."""
+        """Unnamed review-board groups. Cluster id is never a person id.
+
+        Rows carry path/bbox/frame_id so the shell can show the same face
+        crops as review.html — without opening a second GUI.
+        """
         if not self._available():
             return []
-        from semblon.inbox import InboxError, inbox
-        from semblon.process import latest_run_id as _latest
+        from semblon.review_ui import ReviewUiError, load_board, resolve_run_id
 
-        rid = _latest(self.store, with_faces=True)
-        if rid is None:
-            return []
         try:
-            rec = inbox(self.store, rid)
-        except InboxError:
+            rid = resolve_run_id(self.store, None)
+            board = load_board(self.store, rid)
+        except ReviewUiError:
             return []
-        groups: dict[str, dict] = {}
-        for it in rec.get("items") or []:
-            if it.get("bucket") not in ("UNKNOWN", "REVIEW_REQUIRED"):
+        out: list[dict] = []
+        for it in board.get("items") or []:
+            if it.get("named"):
                 continue
+            members = list(it.get("members") or [])
+            member = members[0] if members else {}
+            kind = it.get("kind") or "cluster"
             cid = it.get("cluster_id")
-            key = f"cluster:{cid}" if cid else f"face:{it.get('face_id')}"
-            g = groups.get(key)
-            if g is None:
-                g = {
-                    "id": key,
-                    "kind": "cluster" if cid else "face",
+            fid = it.get("face_id") or member.get("face_id")
+            if kind == "cluster":
+                label = f"group {str(cid or '')[:8]}"
+            elif kind == "track":
+                label = f"track {str(it.get('track_id') or '')[:8]}"
+            else:
+                label = f"face {fid}"
+            out.append(
+                {
+                    "id": cid or fid,
+                    "kind": kind,
                     "cluster_id": cid,
-                    "face_id": None if cid else it.get("face_id"),
-                    "label": (f"group {cid[:8]}" if cid else f"face {it.get('face_id')}"),
+                    "face_id": fid,
+                    "track_id": it.get("track_id"),
+                    "label": label,
                     "run_id": rid,
-                    "faces": 0,
+                    "faces": int(it.get("face_count") or len(members) or 0),
                     "note": "not a person until Name",
+                    "members": members,
+                    "path": member.get("path"),
+                    "bbox": member.get("bbox"),
+                    "frame_id": member.get("frame_id"),
+                    "source_type": member.get("source_type"),
                 }
-                groups[key] = g
-            g["faces"] = int(g["faces"]) + 1
-            if cid:
-                g["face_id"] = g.get("face_id") or it.get("face_id")
-        return list(groups.values())
+            )
+            if len(out) >= PHOTO_WINDOW:
+                break
+        return out
 
     def list_activity(self) -> list[dict]:
         if not self._available():

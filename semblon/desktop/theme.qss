@@ -1,11 +1,20 @@
-QMainWindow, QDialog, QWidget {
-  background: #1C1C1C;
+QMainWindow {
+  background: transparent;
   color: #F3F3F3;
   font-family: "Segoe UI";
   font-size: 13px;
 }
+QDialog, QWidget {
+  background: rgba(28, 28, 28, 210);
+  color: #F3F3F3;
+  font-family: "Segoe UI";
+  font-size: 13px;
+}
+QWidget#chrome {
+  background: rgba(32, 32, 32, 200);
+}
 QListWidget#nav {
-  background: #202020;
+  background: rgba(32, 32, 32, 200);
   border: none;
   padding: 8px 0;
   outline: none;

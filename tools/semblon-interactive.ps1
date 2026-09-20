@@ -1,4 +1,4 @@
-# Double-click entry: Semblon home (Choose folder / Open Review). Not full S8 shell.
+# Double-click entry: Semblon home (PySide6 window: ingest + review).
 param(
     [Parameter(Mandatory = $true)]
     [string]$Root,

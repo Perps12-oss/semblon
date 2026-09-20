@@ -90,7 +90,9 @@ def test_packaging_hygiene():
     for name in ("#emptyState", "#emptyTitle", "#emptyBody", "#title", "#subtitle"):
         assert name in text, name
     readme = (root / "README.md").read_text(encoding="utf-8")
-    assert "shipping UI is tkinter" in readme
+    assert "shipping UI is the PySide6 window" in readme
     assert "semblon-desktop" in readme
     assert "s8_toolkit_spike" in readme and "research spike" in readme
     assert not (root / "tools" / "s8_toolkit_spike" / "__init__.py").exists()
+    installer = (root / "tools" / "install-windows.ps1").read_text(encoding="utf-8")
+    assert ".[gui]" in installer

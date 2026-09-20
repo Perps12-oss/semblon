@@ -6,6 +6,7 @@ Does not claim a live Windows dump-gate. Skips when PySide6 is missing.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -113,6 +114,41 @@ def test_stylesheet_styles_empty_state(qapp, tmp_path):
     win = MainWindow(store=tmp_path / "missing.sqlite")
     assert win.home.empty.objectName() == "emptyState"
     win.close()
+
+
+def test_import_success_opens_review_in_same_window(qapp, tmp_path):
+    win = MainWindow(store=tmp_path / "missing.sqlite")
+    win.show()
+    win._on_success({"ingest": {"files": 4}})
+    assert win.current_page() == "Unknown"
+    assert win.unknown.heading.text() == "Review"
+    src = Path(__file__).resolve().parents[1] / "semblon" / "desktop" / "window.py"
+    text = src.read_text(encoding="utf-8")
+    assert "run_review_ui" not in text
+    win.close()
+
+
+def test_home_cli_prefers_pyside_shell():
+    from semblon.cli import main
+    import inspect
+    from semblon import cli as cli_mod
+
+    src = inspect.getsource(cli_mod)
+    assert "desktop.app" in src
+    assert "--legacy" in src
+    assert "run_home_ui" in src
+    import io
+    from unittest.mock import patch
+
+    buf = io.StringIO()
+    with patch("sys.stdout", buf):
+        try:
+            main(["home", "--help"])
+        except SystemExit as e:
+            assert e.code == 0
+    out = buf.getvalue().lower()
+    assert "--legacy" in out
+    assert "pyside6" in out or "shell" in out
 
 
 def test_cli_desktop_help_names_optional_extra():

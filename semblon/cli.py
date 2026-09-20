@@ -6,9 +6,9 @@ FACE-004: identify vs persons, never clusters. Unknown is valid.
 FACE-005: incremental ingest + inbox. No watcher.
 S6: memory history / together / events. Time/place are not identity.
 process: happy-path ingest -> cluster -> export review.html.
-home: double-click Choose folder / Open Review (tkinter; not the Widgets shell).
-review-ui: S8 Interactive Review slice (tkinter over review APIs).
-desktop: optional PySide6 workspace (pip install -e ".[gui]"; not default Home).
+home: double-click opens the PySide6 window (ingest + review in one shell).
+review-ui: tkinter review vertical kept as --legacy / CLI.
+desktop: alias for the same PySide6 window.
 S7a: video files in the ingest folder are sampled (not every frame).
 S7b: tracks --run is derived IoU+time association (not identity, not written).
 """
@@ -318,13 +318,18 @@ def main(argv: list[str] | None = None) -> int:
 
     home = sub.add_parser(
         "home",
-        help="Double-click home: Choose folder / Open Review (tkinter; not the Widgets shell)",
+        help="Semblon window: add a folder and review in the same PySide6 shell",
     )
     home.add_argument(
         "--store",
         default=None,
         type=Path,
         help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
+    )
+    home.add_argument(
+        "--legacy",
+        action="store_true",
+        help="tkinter Home (separate Review window). Default is the PySide6 shell.",
     )
 
     desk = sub.add_parser(
@@ -781,6 +786,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "home":
+        if not args.legacy:
+            try:
+                from semblon.desktop.app import main as desktop_main
+
+                argv = ["--store", str(args.store)] if args.store is not None else []
+                return desktop_main(argv)
+            except ImportError:
+                pass
         from semblon.home_ui import run_home_ui
 
         return run_home_ui(store=args.store)

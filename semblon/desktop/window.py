@@ -149,6 +149,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Semblon")
         self.setMinimumSize(QSize(900, 600))
         self.resize(1280, 800)
+        if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._build()
         self._shortcuts()
         self.refresh_all()
@@ -167,6 +169,7 @@ class MainWindow(QMainWindow):
 
     def _build(self) -> None:
         chrome = QWidget()
+        chrome.setObjectName("chrome")
         chrome_l = QHBoxLayout(chrome)
         chrome_l.setContentsMargins(16, 10, 16, 10)
         brand = QLabel("Semblon")
@@ -225,6 +228,8 @@ class MainWindow(QMainWindow):
         self.unknown.inspect.connect(self._inspect_unknown)
         self.unknown.name.connect(self._name_unknown)
         self.unknown.ignore.connect(self._ignore_unknown)
+        self.unknown.merge.connect(self._merge_unknown)
+        self.unknown.note.connect(self._note_unknown)
 
         self.banner = ProgressBanner()
         self.banner.cancel_requested.connect(self._cancel_import)
@@ -388,6 +393,7 @@ class MainWindow(QMainWindow):
             summary += f" · {skipped} skipped"
         self.banner.show_complete(summary)
         self.refresh_all()
+        self.navigate("Unknown")
 
     def _on_cancelled(self, rec: dict) -> None:
         self._busy = False
@@ -511,6 +517,44 @@ class MainWindow(QMainWindow):
             return
         self.refresh_all()
         self.navigate("People")
+
+    def _merge_unknown(self, cluster_ids: object) -> None:
+        ids = [str(c) for c in (cluster_ids or []) if c]
+        if len(ids) < 2:
+            self.notify("Select two or more unnamed groups to merge. This corrects clustering, not people.")
+            return
+        from semblon.review import ReviewError
+        from semblon.review_ui import ReviewUiError, apply_merge
+
+        run_id = self._review_run()
+        if run_id is None:
+            return
+        try:
+            apply_merge(self.service.store, run_id, ids)
+        except (ReviewError, ReviewUiError) as e:
+            self.warn(str(e))
+            return
+        self.refresh_all()
+
+    def _note_unknown(self, item: dict | None = None) -> None:
+        item = item or self._pending_unknown
+        if not item:
+            return
+        text = self._ask_text("Note", "Note for this group:")
+        if not text:
+            return
+        from semblon.review import ReviewError
+        from semblon.review_ui import ReviewUiError, apply_note
+
+        run_id = self._review_run(item)
+        if run_id is None:
+            return
+        try:
+            apply_note(self.service.store, run_id, item, text)
+        except (ReviewError, ReviewUiError) as e:
+            self.warn(str(e))
+            return
+        self.refresh_all()
 
     def _ignore_unknown(self, item: dict | None = None) -> None:
         item = item or self._pending_unknown

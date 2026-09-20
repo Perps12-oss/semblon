@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QAction, QDesktopServices, QImage, QPixmap
+from PySide6.QtCore import QSize, Qt, QUrl, Signal
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -79,6 +79,7 @@ class ThumbGrid(QListWidget):
         self.setMovement(QListWidget.Movement.Static)
         self.setSpacing(8)
         self.setUniformItemSizes(True)
+        self.setIconSize(QSize(96, 96))
         self.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.itemActivated.connect(self._activate)
@@ -98,6 +99,9 @@ class ThumbGrid(QListWidget):
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, row)
             item.setToolTip(str(row.get("path") or label))
+            pix = pixmap_for_row(row)
+            if not pix.isNull():
+                item.setIcon(QIcon(pix))
             self.addItem(item)
 
     def current_payload(self) -> dict[str, Any] | None:
@@ -106,6 +110,14 @@ class ThumbGrid(QListWidget):
             return None
         data = item.data(Qt.ItemDataRole.UserRole)
         return data if isinstance(data, dict) else None
+
+    def selected_payloads(self) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for item in self.selectedItems():
+            data = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(data, dict):
+                out.append(data)
+        return out
 
     def _activate(self, item: QListWidgetItem | None = None) -> None:
         if item is None:
@@ -371,6 +383,39 @@ class InspectorPanel(QWidget):
 
     def path(self) -> str | None:
         return self._path
+
+
+def pixmap_for_row(row: dict[str, Any], max_side: int = 96) -> QPixmap:
+    """Face crop when bbox exists; otherwise a still thumb. Never invent pixels."""
+    data = row.get("thumb_bytes")
+    if data:
+        pix = QPixmap()
+        if pix.loadFromData(data) and not pix.isNull():
+            return pix.scaled(
+                max_side,
+                max_side,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+    path = row.get("path")
+    bbox = row.get("bbox")
+    if path and bbox:
+        from semblon.review_ui import crop_jpeg_bytes
+
+        raw = crop_jpeg_bytes(
+            str(path),
+            bbox,
+            max_side=max_side,
+            frame_id=row.get("frame_id"),
+            source_type=row.get("source_type"),
+        )
+        if raw:
+            pix = QPixmap()
+            if pix.loadFromData(raw) and not pix.isNull():
+                return pix
+    if path:
+        return load_still_thumb(str(path), max_side)
+    return QPixmap()
 
 
 def load_still_thumb(path: str, max_side: int = 160) -> QPixmap:

@@ -27,16 +27,13 @@ py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .
 ```
 
-Then **double-click `semblon.cmd`** to open **Home**: Choose folder to process, or Open Review to name people.
+Then **double-click `semblon.cmd`** to open the **Semblon window**: add a folder, watch progress, and review/name groups in the same Mica shell. Review is the Unknown page of that window — not a second app. Face crops show in the grid (the same path+bbox seek used by `review.html`).
 
-**Status:** the shipping UI is tkinter (`semblon home`, `semblon review-ui`). The PySide6 Widgets workspace is optional and not default Home — install `pip install -e ".[gui]"` then run `semblon-desktop` or `semblon desktop`. The QML tree under `tools/s8_toolkit_spike/` is a research spike, not a product UI.
-
-Home has People / Unknown / Activity / Settings list windows, person search, and Canvas (image + observation boxes). Extra observers never become people. Static `review.html` remains a read-only export.
+**Status:** the shipping UI is the PySide6 window (`semblon home` / `semblon-desktop`). tkinter Home/Review remains `--legacy` / `semblon review-ui`. The QML tree under `tools/s8_toolkit_spike/` is a research spike, not a product UI.
 
 ```text
 semblon.cmd home
-semblon.cmd review-ui
-semblon.cmd review-ui --store "%LOCALAPPDATA%\Semblon\store.sqlite"
+semblon.cmd home --legacy
 semblon.cmd desktop
 ```
 

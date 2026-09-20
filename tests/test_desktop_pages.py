@@ -100,6 +100,38 @@ def test_store_service_lists_photos_sorted(tmp_path):
     assert svc.list_photos(sort="bogus")[0]["label"] == "z.jpg"
 
 
+def test_unknown_rows_carry_crop_fields(tmp_path):
+    from tests.test_review import _clustered
+
+    store = tmp_path / "store.sqlite"
+    _clustered(store)
+    rows = StoreLibraryService(store).list_unknown()
+    assert rows
+    row = rows[0]
+    assert row.get("path")
+    assert row.get("bbox")
+    assert row.get("kind") in {"cluster", "track", "unassigned", "face"}
+    assert "person" not in (row.get("kind") or "")
+
+
+def test_thumbgrid_sets_icon_from_bytes(qapp, tmp_path):
+    from PySide6.QtGui import QImage
+
+    from semblon.desktop.widgets import ThumbGrid, pixmap_for_row
+
+    img = QImage(24, 24, QImage.Format.Format_RGB32)
+    img.fill(0xFF336699)
+    png = Path(tmp_path / "t.png")
+    img.save(str(png), "PNG")
+    data = png.read_bytes()
+    pix2 = pixmap_for_row({"thumb_bytes": data})
+    assert not pix2.isNull()
+    grid = ThumbGrid()
+    grid.set_items([{"label": "group a", "thumb_bytes": data, "kind": "cluster"}])
+    assert grid.count() == 1
+    assert not grid.item(0).icon().isNull()
+
+
 def test_settings_lines_drop_falsey():
     lines = FakeService().settings_lines()
     text = "\n".join(ln for ln in lines if ln)
