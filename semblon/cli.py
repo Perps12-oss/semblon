@@ -108,6 +108,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     ipc.add_argument("--host", default="127.0.0.1", help="loopback only")
     ipc.add_argument("--port", type=int, default=0, help="0 = ephemeral")
+    bake = lab_sub.add_parser(
+        "r3-bakeoff",
+        help="R3 §8.5 toolkit bake-off harness (never invents PASS; human ticks checklist)",
+    )
+    bake.add_argument(
+        "--toolkit",
+        default="dry-run",
+        help="candidate label (WinUI3|Qt|dry-run|…); rejected: Electron/Tauri/Tk AppShell/CustomTkinter",
+    )
+    bake.add_argument("--operator", default="", help="operator name recorded in results JSON")
+    bake.add_argument("--frametimes", type=Path, default=None, help="optional C3 ms log")
+    bake.add_argument("--wcag-pairs", type=Path, default=None, help="optional C4 pairs JSON")
+    bake.add_argument("--out", type=Path, default=None, help="optional results JSON path")
 
     ev = lab_sub.add_parser("eval", help="FACE-002 confirmatory eval harness")
     ev_sub = ev.add_subparsers(dest="evalcmd", required=True)
@@ -597,6 +610,60 @@ def main(argv: list[str] | None = None) -> int:
             pass
         finally:
             server.stop()
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "r3-bakeoff":
+        import runpy
+
+        rejected = {
+            "electron",
+            "tauri",
+            "customtkinter",
+            "tk appshell",
+            "permanent tk appshell",
+        }
+        label = str(args.toolkit or "").strip().lower().replace("_", " ").replace("-", " ")
+        if label in rejected:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"rejected toolkit for production shell bake-off: {args.toolkit}",
+                        "rejected": [
+                            "Electron",
+                            "Tauri",
+                            "permanent Tk AppShell",
+                            "CustomTkinter",
+                        ],
+                    },
+                    indent=2,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        bake_root = Path(__file__).resolve().parents[1] / "tools" / "r3-bakeoff"
+        script = bake_root / "run_bakeoff.py"
+        if not script.is_file():
+            print(f"bake-off harness missing: {script}", file=sys.stderr)
+            return 2
+        argv = ["run_bakeoff.py", "--toolkit", str(args.toolkit)]
+        if args.operator:
+            argv.extend(["--operator", str(args.operator)])
+        if args.frametimes is not None:
+            argv.extend(["--frametimes", str(args.frametimes)])
+        if args.wcag_pairs is not None:
+            argv.extend(["--wcag-pairs", str(args.wcag_pairs)])
+        if args.out is not None:
+            argv.extend(["--out", str(args.out)])
+        old_argv = sys.argv
+        try:
+            sys.argv = argv
+            runpy.run_path(str(script), run_name="__main__")
+        except SystemExit as e:
+            code = e.code
+            return int(code) if isinstance(code, int) else (0 if code is None else 2)
+        finally:
+            sys.argv = old_argv
         return 0
 
     if args.cmd == "lab" and args.labcmd == "eval":

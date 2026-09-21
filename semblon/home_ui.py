@@ -460,6 +460,8 @@ class HomeApp:
         # Canvas stays first-class; button focuses Home workspace canvas.
         self.btn_canvas = ttk.Button(jobs, text="Canvas", command=lambda: self._navigate("canvas"))
         self.btn_canvas.pack(side=tk.LEFT, padx=(8, 0))
+        self.btn_live = ttk.Button(row2, text="Live…", command=self._open_live_overlay)
+        self.btn_live.pack(side=tk.LEFT, padx=(8, 0))
 
         # Aliases kept for control-state map (People/Unknown/Activity are sidebar).
         self.btn_people = self.btn_canvas  # placeholder; rebound after sidebar build

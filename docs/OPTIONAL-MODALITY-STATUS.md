@@ -1,10 +1,8 @@
-# Optional modality status — PRODUCTIZED (optional)
+# Optional modality status (honesty)
 
-Optional OCR / CLIP / pose observers are **productized as optional extras**. They never vote on identity (`faces.person_id`, `embeddings.modality='face'`, `compare()`, DBSCAN). FaceKit remains the only identity engine.
+Optional OCR / CLIP / pose observers are **experimental**. They never vote on identity (`faces.person_id`, `embeddings.modality='face'`, `compare()`, DBSCAN). FaceKit remains the only identity engine.
 
-**Gate:** `SEMBLON_MODALITY_PRODUCT` (default **ON** after human verify). Opt out with `=0`.
-
-`optional_status()` (CLI: `lab providers`; Home Settings) must match what the call path needs — not a bare `import`.
+`optional_status()` (CLI: `lab providers`; Home Settings line) must match what the call path needs — not a bare `import`.
 
 | Flag | Ready only when | Probe |
 |---|---|---|
@@ -12,34 +10,36 @@ Optional OCR / CLIP / pose observers are **productized as optional extras**. The
 | `clip` | `open_clip` + `torch` import **and** local `ViT-B-32` / `openai` weights exist | `probe_clip_status` / `find_local_clip_weights` (no download) |
 | `pose` | `mediapipe.solutions.pose` exists (API used by `pose_landmarks`) | `probe_pose_status` |
 
-Missing pieces → `False` plus a `notes[<key>]` string starting with `unavailable:`.
+Missing pieces → `False` plus a `notes[<key>]` string starting with `unavailable:`. Do not claim production-ready. Do not change product defaults until a human verifies the binaries/weights on the target machine.
 
-## Product wiring (when gate ON)
+## Human verify (before Settings copy / product defaults)
 
-| Surface | Behaviour |
-|---|---|
-| Home Settings | Rich status via `modality_product_settings_lines()` — ready/unavailable + effective observers |
-| Home ingest | `resolve_home_observers()` → `resolve_product_observers()` appends `text` / `clip` / `pose` only when probes are true |
-| CLI `ingest` / `process` / `watch` | Default observers = `face` + ready optionals (explicit `--observers` wins) |
-| Search | `search --text` (OCR payload substring, RO); `search --similar ITEM` (CLIP/appearance; refuses face); Home Search falls back to OCR text when no person hit |
-| Clean install | No OCR/CLIP/pose packages in product `requirements.txt` / `install-windows.ps1`; probes false → base observers only |
-
-Probe key `ocr` maps to observer token `text` (CONTRACTS `--observers` list).
-
-## Human verify (machine-local)
+Run on the machine that will run Semblon (quote paths; use the project venv):
 
 ```text
 .\.venv\Scripts\python.exe -m semblon lab providers
 ```
 
-1. **OCR** — `observers.ocr` is `true` only if `tesseract` is on PATH (`where.exe tesseract`).
-2. **CLIP** — `observers.clip` is `true` only if open_clip + torch import **and** weights are already on disk (status never downloads).
-3. **Pose** — `observers.pose` is `true` only if `mediapipe.solutions.pose` exists.
+Check the JSON:
 
-## Identity firewall
+1. **OCR** — `observers.ocr` is `true` only if `tesseract` is on PATH.
+   - Install OS Tesseract OCR; confirm: `where.exe tesseract` (Windows) or `command -v tesseract`.
+   - `pip install pytesseract` is not enough by itself.
+2. **CLIP** — `observers.clip` is `true` only if open_clip + torch are importable **and** weights are already on disk.
+   - Status never downloads. Expected URL cache file: `%USERPROFILE%\.cache\clip\ViT-B-32.pt` (or `OPENCLIP_CACHE_DIR`).
+   - HF hub cache under `%USERPROFILE%\.cache\huggingface\hub\models--timm--vit_base_patch32_clip_224.openai\` also counts.
+   - Deliberate first download (human only, not CI): a one-off `clip_embed` / open_clip `create_model_and_transforms("ViT-B-32", pretrained="openai")` after accepting the licence story in `docs/licenses.md`.
+3. **Pose** — `observers.pose` is `true` only if `import mediapipe` exposes `mediapipe.solutions.pose`.
+   - A mediapipe package without `solutions` (e.g. some 1.0 builds) must stay `false` with note `mediapipe.solutions.pose missing`.
 
-Geometry / appearance / objects / OCR / CLIP / pose must not silently change identity scores or cluster membership. Product defaults include ready optionals for **observation and retrieval only**.
+## After verify — wiring (human / follow-up slice)
+
+Once the three flags match reality on the owner machine:
+
+- Home Settings may print `notes` when a flag is false (today it prints booleans only).
+- Product docs / defaults may list OCR/CLIP/pose as optional extras **for that machine**, still Level 3 experimental, still non-identity.
+- Do not flip defaults on for clean `install-windows.ps1` installs that lack the binary/weights.
 
 ## Out of scope here
 
-Bake-off artifacts, Ruled-out lists, live overlay UI, new schema columns.
+Bake-off artifacts, Ruled-out lists, live overlay UI. Identity firewall unchanged.

@@ -34,9 +34,9 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | Derived tracks / S7b | **SHIPPED slice** |
 | Watch | **EXISTS** |
 | Live | **EXISTS / hardware proof pending** |
-| Canvas | **EXISTS — Home-integrated Tk production overlay** (renderer still provisional vs native shell) |
+| Canvas | **EXISTS, prototype implementation** |
 | Search | **EXISTS** |
-| Home | **SHIPPED — sidebar shell (Library \| Workspace/Canvas \| Inspector)**; R3 native shell still open |
+| Home | **SHIPPED but architecturally constrained** |
 | Review UI | **SHIPPED, legacy Tk surface** |
 | Native application shell | **NOT decided/implemented** |
 | APP-1 JobEngine boundary | **MERGED** (`main`) |
@@ -44,7 +44,7 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | IPC boundary | **PROBE** (`semblon/ipc_probe.py` loopback JSON-lines; not product IPC) |
 | Native ARM64 performance | **BLOCKED** |
 | Multi-worker ingest | **EXPERIMENTAL / not default** |
-| GPU | **PRODUCTIZED** — prefer when ORT lists CUDA/DirectML/TensorRT; else honest CPU; Azure ≠ GPU; listed ≠ smoke-tested |
+| GPU | **NOT productized** |
 | Rust | **DEFERRED until measurements justify it** |
 
 ---
@@ -112,12 +112,14 @@ V1 paused semantics:
 
 Windows live proof of pause/unpause remains part of the C.3 gate (not satisfied by unit tests alone).
 
-## C.3 APP-1 acceptance is a hard Windows gate
+## C.3 APP-1 Windows live gate (human) — **DEFERRED TO LAST**
 
-Passing tests alone is insufficient.  
-APP-1 must be validated on real Windows with live ingest.
+Passing tests alone is insufficient for a **ship claim**.  
+APP-1 JobEngine is already on `main`; the live Windows ingest gate remains required evidence before calling APP-1 “production proven.”
 
-Required proof:
+**Owner policy (2026-09-21):** this human gate is **DEFERRED TO LAST**. It does **not** stop-work development, R3 artifact/shell work, or code merges. See §I.5.
+
+Required proof (when run, last):
 
 - UI remains responsive while ingest runs.
 - ingest/progress continue.
@@ -135,7 +137,7 @@ Required proof:
 - process termination does not corrupt the store.
 - timings are recorded.
 
-Only merge APP-1 after this gate passes.
+Do not invent a PASS from unit tests alone. Do not block the development sequence on this gate.
 
 ---
 
@@ -174,12 +176,14 @@ R3 question:
 Candidates can include WinUI 3, Qt/PySide, or another justified native approach.  
 Previously rejected/deferred paths stay rejected/deferred (Electron, Tauri, permanent Tk shell, CustomTkinter).
 
-**Visual / interaction contract (approved):** `docs/R3-BRIEF.md` (v2 / v2.1).  
+**Visual / interaction contract (approved):** `docs/R3-BRIEF.md` (v2.4).  
 Two-axis identity language (evidence × decision), five display states including **Ruled out**, state matrix + processing grammar, Library vs observation layer, toolkit bake-off against six measured criteria.  
-**§8.1–§8.4 artifact pack:** `docs/r3-artifacts/README.md` (DONE). Next human step: toolkit bake-off per `docs/r3-artifacts/05-bake-off-checklist.md` (§6 criteria; no fake PASS).  
-R3 does **not** start by polishing Tk Home. Frames and bake-off follow APP-1 Windows live gate + R2 IPC probe; order inside the brief §8.
+**Artifacts 1–4 (canonical):** `docs/r3-artifacts/README.md` — fuller pack landed (`01-state-matrix.md`, `02-state-triple.md`, `03-collision-ledger.md`, `05-bake-off-checklist.md` criteria). Abbreviated §3 seed in the brief is **superseded**. Related cross-product + HTML frames + hierarchy TEST + decision packet indexed there.  
+**Artifact 4 / toolkit bake-off (human measure):** `docs/r3-artifacts/05-bake-off-checklist.md` + `semblon lab r3-bakeoff` — **DEFERRED TO LAST** (§I.5). No fake PASS.  
+**§8.7 shell decision / named winner:** OPEN at `docs/r3-artifacts/07-shell-decision.md` — **DEFERRED TO LAST** (no winner until six-of-six PASS).  
+R3 does **not** start by polishing Tk Home. Development on shell chrome, frames, and Application-API clients **continues** while human bake-off / winner naming wait until last.
 
-Contract gap called out by the brief: durable **Ruled out** vs today’s Ignore/`reject` policy needs a named `docs/CONTRACTS.md` slice before the shell ships that state. Do not invent columns from the brief alone.
+Contract gap: durable **Ruled out** vs today’s Ignore/`reject` — named slice `docs/CONTRACTS-RULED-OUT.md`. **Product wire of that verb as a ship claim is DEFERRED TO LAST** (§I.5). Scaffold/code may proceed; do not invent columns from the brief alone.
 
 ---
 
@@ -224,8 +228,6 @@ Current truth:
 ## F.3 Optional modalities
 
 OCR / CLIP / pose / objects are observation modalities and retrieval evidence, not identity replacements.
-
-**Status:** PRODUCTIZED (optional) — honesty probes + `MODALITY_PRODUCT` gate; Home/CLI defaults append ready extras; `search --text` / `--similar`. See `docs/OPTIONAL-MODALITY-STATUS.md`.
 
 Identity firewall remains:
 
@@ -292,22 +294,20 @@ Track at each size:
 
 ## I) Deferred / blocked / parked disposition
 
-## I.1 Do now
+## I.1 Do now (development continues)
 
-1. APP-1 boundary from current `main`
-2. selective salvage from prior APP-1 drafts
-3. concrete `paused` semantics
-4. Review usability during ingest
-5. real Windows live-ingest gate
-6. merge only after gate pass
-7. single authoritative architecture documentation (this file)
+1. APP-1 boundary already on `main` — keep strengthening Application API / JobEngine clients
+2. formalize app boundary contract (docs + tests)
+3. R3 visual artifacts / shell chrome against `docs/R3-BRIEF.md` (Artifacts 1–4 canonical; abbreviated seed superseded)
+4. unified Home/Review/Canvas toward the future shell **without** expanding Tk Home into permanent AppShell (§E)
+5. single authoritative architecture documentation (this file)
+6. **Must continue** code and artifact work while §I.5 human gates wait
 
-## I.2 Immediately after APP-1
+## I.2 Immediately after APP-1 (code track)
 
 - ~~R2 IPC probe~~ **DONE** (loopback probe in `semblon/ipc_probe.py`; not product IPC)
-- formalize app boundary contract
-- native frontend architecture evaluation
-- R3 shell decision from architecture + evidence
+- native frontend architecture evaluation (scaffolds + evidence packets)
+- R3 shell **implementation toward** decision — winner naming stays §I.5
 
 ## I.3 Parallel experimental track
 
@@ -330,6 +330,21 @@ Track at each size:
 - identity threshold reopening
 - buffalo_l rebundling
 
+## I.5 Human verification — **DEFERRED TO LAST** (canonical)
+
+Owner policy 2026-09-21: the following are **ship / claim gates**, not stop-work orders.  
+**Development should and must continue** without waiting on them. Do not invent PASS. Do not treat absence of human proof as authorization to skip identity firewall, invent DDL, or pick Electron/Tauri/permanent Tk AppShell.
+
+| Human gate | Where named | Role when deferred |
+|---|---|---|
+| APP-1 C.3 Windows live ingest gate | §C.3 | Required before “APP-1 production proven” |
+| Toolkit bake-off §8.5 measurements (C1–C6) | §D.2 · `05-bake-off-checklist.md` | Required before naming a shell toolkit |
+| Named shell winner §8.7 | `07-shell-decision.md` | Required before “native shell toolkit = …” claim |
+| CONTRACTS durable **Ruled out** product wire | `CONTRACTS-RULED-OUT.md` | Required before shipping Ruled out as a default product verb |
+| Any other owner-machine / human-verify steps | `HUMAN-VERIFY-THEN-WIRE.md` remaining rows | Same: last, not blocking |
+
+Run these **last**, after development of the shell and related surfaces is otherwise ready to claim.
+
 ---
 
 ## J) Reconciled sequence
@@ -337,19 +352,19 @@ Track at each size:
 ```text
 CURRENT MAIN
   -> FACE-001..005 CLOSED
-  -> APP-1 / R1 JobEngine boundary
-       -> Windows live gate + contract tests
-       -> merge gate
-  -> R2 IPC probe (loopback) — include `semblon/ipc_probe.py` when merged
-  -> R3 brief artifacts §8.1–§8.4 DONE (`docs/r3-artifacts/`)
+  -> APP-1 / R1 JobEngine boundary on main
+  -> R2 IPC probe (loopback) DONE — `semblon lab ipc-probe`
+  -> R3 Artifacts 1–4 CANONICAL (`docs/r3-artifacts/`; abbreviated brief §3 seed superseded; bake-off measures still §I.5 last)
   -> Feature gates WIRED 2026-09-21 (`docs/GATES.md`)
-  -> Toolkit bake-off checklist — human names winner; then R3 shell decision
-  -> R3 shell decision
-  -> Native production shell
+  -> CONTINUE: native shell chrome / IA / Application-API clients (R3-BRIEF look-and-feel)
   -> unified Home/Review/Canvas experiences
   -> video/live UX expansion
   -> multimodal retrieval expansion
   -> scale/performance hardening
+  -> LAST (human): APP-1 C.3 live gate
+  -> LAST (human): toolkit bake-off §8.5 measures
+  -> LAST (human): name §8.7 shell winner (six-of-six)
+  -> LAST (human): Ruled out product-wire claim + remaining human verifies
 ```
 
 Parallel evidence track:
@@ -376,8 +391,9 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
-| V1.4.4 | 2026-09-21 | Optional OCR/CLIP/pose PRODUCTIZED (optional): probe-gated defaults, Settings rich status, `search --text`; identity firewall unchanged. |
-| V1.4.3 | 2026-09-21 | GPU productized: `select_execution_provider` + Home Settings EP/arch honesty; Azure ≠ GPU; FaceKit unchanged. |
+| V1.4.5 | 2026-09-21 | Fuller R3 Artifact 1–4 pack landed (`01-state-matrix`, `02-state-triple`, `03-collision-ledger`, `05-bake-off-checklist` criteria); abbreviated brief §3 seed superseded. Bake-off measures / §8.7 winner still §I.5 last. |
+| V1.4.4 | 2026-09-21 | Human verification (APP-1 C.3, bake-off, §8.7 winner, Ruled-out ship wire, other human gates) **DEFERRED TO LAST**; development must continue (§I.5). |
+| V1.4.3 | 2026-09-21 | R3 §8.7 shell decision packet OPEN; `lab r3-bakeoff` wires harness; R2 already on main. |
 | V1.4.2 | 2026-09-21 | R2 IPC probe: loopback JSON-lines `semblon/ipc_probe.py` + `lab ipc-probe`. Boundary proof only; not product IPC. |
 | V1.4 | 2026-09-21 | Reconciled roadmap authority: FACE closed; APP-1 first; Windows live gate; IPC as boundary test; measurement-first performance track; single planning source. |
 | V1.4.1 | 2026-09-21 | Point R3 at approved `docs/R3-BRIEF.md` v2; frames before toolkit bake-off; Ruled out flagged as CONTRACTS gap. |

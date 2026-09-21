@@ -2,8 +2,8 @@
 
 **Status:** APPROVED (owner review 2026-09-21)  
 **Authority:** visual / interaction language for the future native shell. Does **not** replace `docs/SEM-ARCH-V1.4.md` as roadmap.  
-**Sequencing:** APP-1 Windows live gate → R2 IPC probe → this brief drives R3 toolkit bake-off → native shell.  
-**Not yet:** schema columns, toolkit choice, Tk Home redesign, second product Home.
+**Sequencing:** R2 IPC probe DONE → this brief drives R3 artifacts + shell chrome development **now**; human toolkit bake-off + named winner + APP-1 C.3 live proof are **DEFERRED TO LAST** (`SEM-ARCH-V1.4` §I.5). Development must continue.  
+**Not yet (ship claims):** schema columns from this brief alone; toolkit winner; permanent Tk AppShell; second product Home.
 
 Governing constraints:
 
@@ -87,27 +87,39 @@ Survives grayscale. `Paused` and `Unknown` share no visual property.
 
 ---
 
-## 3) State matrix (abbreviated — contract seed)
+## 3) State matrix (canonical — Artifact 1)
 
-Component × interaction states. `·` = N/A. Any shipped component state absent from the completed matrix is a bug.
+Component × interaction states. Full treatments live in **`docs/r3-artifacts/01-state-matrix.md`** (owner paste; **supersedes** the abbreviated seed formerly in this section). `·` = N/A. Any shipped component state absent from that matrix is a bug.
 
-| | Default | Hover | Press | Focus | Selected | Disabled | Loading | Error | Destructive |
-|---|---|---|---|---|---|---|---|---|---|
-| **Sidebar item** | text-2, no fill | `W:0A` fill | `W:14` fill | 2px ring, 2px offset | `W:1F` + 2px left rule | 40% opacity | inline 12px ring | red dot, right | · |
-| **Media card** | S2, hairline | lift 1px, hairline 2× | settle, `B:12` | ring **around card** | 2px inset + notch | · | skeleton shimmer | broken-image + reason on hover | · |
-| **Face box** | per evidence axis | stroke +0.5px | · | ring on box | halo, not fill | · | · | · | · |
-| **Candidate row** | text-2 | `W:0A` | `W:14` | ring | `W:1F` + check | 40% + *reason string* | inline spinner | warning + retry | · |
-| **Primary action** | inverted pill | lighten 6% | darken 8% | ring, 2px offset | · | 40%, **no ring, no hover** | label → spinner, width locked | · | · |
-| **Secondary action** | hairline, text-1 | `W:0A` | `W:14` | ring | · | 40% | inline spinner | · | · |
-| **Destructive** | text-2 (**not red**) | text-1 | text-1 | ring | · | 40% | · | · | **armed:** text `#E5484D`, target outlined red |
-| **Compare cell** | S2 | lift | · | ring | included 100% / excluded 25%, toggle visible | 40% | · | · | · |
-| **Progress** | processing grammar | · | · | ring | · | · | · | · | · |
+### Component inventory (17)
+
+| # | Component | Role |
+|---|---|---|
+| 1 | Sidebar item | Library / People / Work nav row |
+| 2 | Person card | Named / hypothesized person tile |
+| 3 | Face card | Face observation tile |
+| 4 | Media card | Library still/video tile |
+| 5 | Face box | Canvas overlay observation |
+| 6 | Candidate row | Person/link candidate in Inspector |
+| 7 | Primary action | Dominant confirm / submit |
+| 8 | Secondary action | Non-dominant action |
+| 9 | Merge | Inspector verb |
+| 10 | Split | Inspector verb |
+| 11 | Name | Inspector verb (inline field, not modal) |
+| 12 | Ignore | Inspector verb (deferral) |
+| 13 | Compare cell | Compare mode tile |
+| 14 | Inspector (panel) | Container; children carry interactive state |
+| 15 | Progress | Status strip + Activity surface (shape grammar) |
+| 16 | Toast | Undo / transactional / warning feedback |
+| 17 | Dialog / confirmation | Only outside undo horizon |
+
+Interaction columns (9): Default · Hover · Press · Focus · Selected · Disabled · Loading · Error · Destructive.
 
 Notes:
 
 1. Face box has **no** disabled/loading/error — it is an observation, not a control.
 2. Destructive is never red until **armed** (long-press or second click). Red on the **object**, not chrome.
-3. Complete this matrix for all **17 components** before shipping chrome.
+3. Treatments for all **17 components** are locked in Artifact 1; do not invent chrome states outside that matrix.
 
 **State matrix = spec. Clickable frames = test.** Hierarchy is mostly what the matrix cannot express.
 
@@ -206,20 +218,21 @@ Rejected still: Electron, Tauri, permanent Tk AppShell, CustomTkinter.
 
 ## 7) State triple + collision ledger (test assets)
 
-**State triple (asset model):** every rendered asset exposes three channels — ingest status × analysis status × identity display notch. UI that collapses channels is wrong.
+**State triple (Artifact 2):** every rendered asset exposes three channels — ingest × analysis × identity. Spec: `docs/r3-artifacts/02-state-triple.md`. Rendered test: `docs/r3-artifacts/04-state-triple-grid.html` (30 cards). UI that collapses channels is wrong.
 
-**Collision ledger:** pairs that must remain distinguishable (at minimum: Disabled vs Unknown vs Processing; Possible vs Confirmed; Ruled out vs Ignored; Paused vs Unknown; Failed vs Cancelled; …). Each pair → one side-by-side comparison frame. Reviewer hesitation = rule or rendering fails.
+**Collision ledger (Artifact 3):** pairs that must remain distinguishable. Spec: `docs/r3-artifacts/03-collision-ledger.md`. Frames: `docs/r3-artifacts/03-collision-frames.html` (15 pairs). Reviewer hesitation = rule or rendering fails.
 
 ---
 
-## 8) Next artifacts (due after APP-1 C.3 + R2; order locked)
+## 8) Artifacts (Artifacts 1–4 canonical; order locked)
 
-1. ~~**Complete state matrix** for all 17 components.~~ **DONE** — `docs/r3-artifacts/01-state-matrix.md`
-2. ~~**Interaction spec** — five identity display states × seven processing states (full cross-product).~~ **DONE** — `docs/r3-artifacts/02-interaction-cross-product.md`
-3. ~~**Collision ledger as 15 comparison frames** — falsify rules fastest.~~ **DONE** — `docs/r3-artifacts/03-collision-frames.html`
-4. ~~**State-triple grid** — 5 ingest × 6 analysis cards × identity notch stepped through 5 values (30 cards). Confusable pair = wrong channel assignment.~~ **DONE** — `docs/r3-artifacts/04-state-triple-grid.html`
-5. **Toolkit bake-off** against §6 — **after** frames (wrong spec + passing toolkit = wrong product). ← **next** — human checklist: `docs/r3-artifacts/05-bake-off-checklist.md` (no PASS until measured)
-6. ~~**Clickable hierarchy frames** — last; test, not spec.~~ **DONE (TEST)** — `docs/r3-artifacts/06-hierarchy-frames.html` (Library / Workspace / Inspector IA from §4; not a product shell)
+1. ~~**Complete state matrix** for all 17 components.~~ **DONE / CANONICAL** — `docs/r3-artifacts/01-state-matrix.md` (Person card · Face card · Dialog / confirmation among 17; §3 abbreviated seed superseded)
+2. ~~**State triple** — ingest × analysis × identity channels.~~ **DONE / CANONICAL** — `docs/r3-artifacts/02-state-triple.md` (+ grid `docs/r3-artifacts/04-state-triple-grid.html`)
+3. ~~**Collision ledger** — distinguishable pairs + rules.~~ **DONE / CANONICAL** — `docs/r3-artifacts/03-collision-ledger.md` (+ frames `docs/r3-artifacts/03-collision-frames.html`)
+4. **Toolkit bake-off** against §6 — criteria **CANONICAL** at `docs/r3-artifacts/05-bake-off-checklist.md`; human **measurements DEFERRED TO LAST** (`SEM-ARCH-V1.4` §I.5). No PASS until measured. Shell chrome development continues.
+5. **Related (kept):** identity × processing cross-product — `docs/r3-artifacts/02-interaction-cross-product.md` (not deleted; not Artifact 2)
+6. ~~**Clickable hierarchy frames** — test, not spec.~~ **DONE (TEST)** — `docs/r3-artifacts/06-hierarchy-frames.html` (Library / Workspace / Inspector IA from §4; not a product shell)
+7. **Shell decision packet** — OPEN — `docs/r3-artifacts/07-shell-decision.md` (no winner until six-of-six PASS; naming **DEFERRED TO LAST**)
 
 Index: `docs/r3-artifacts/README.md`. Human verify → wire (all gates): `docs/HUMAN-VERIFY-THEN-WIRE.md`.
 
@@ -242,6 +255,8 @@ Index: `docs/r3-artifacts/README.md`. Human verify → wire (all gates): `docs/H
 
 | Version | Date | Summary |
 |---|---|---|
+| v2.4 | 2026-09-21 | Artifacts 1–4 canonical: `01-state-matrix.md` (17 incl. Person/Face/Dialog), `02-state-triple.md`, `03-collision-ledger.md`, `05-bake-off-checklist.md` (criteria; measures still §I.5 last). §3 inventory matches Artifact 1; abbreviated seed superseded. `02-interaction-cross-product.md` kept as related. |
+| v2.3 | 2026-09-21 | Human bake-off / winner / live gates deferred to last per SEM-ARCH §I.5; development continues. |
 | v2.2 | 2026-09-21 | §8.6 hierarchy test frames at `docs/r3-artifacts/06-hierarchy-frames.html` (TEST not SPEC). Master human-verify playbook: `docs/HUMAN-VERIFY-THEN-WIRE.md`. |
 | v2.1 | 2026-09-21 | §8.1–§8.4 artifacts landed under `docs/r3-artifacts/` (matrix, cross-product, 15 collision frames, 30-card state-triple grid). Human bake-off checklist at `05-bake-off-checklist.md` (no measurements). Next = toolkit bake-off runs. |
 | v2 | 2026-09-21 | Owner-approved after critique. Two-axis identity; Ruled out; state matrix seed; processing grammar; adaptive overlays; evidence-ack Enter; Compare progressive entry; Group Inspector split; transactional undo; Library/observation split; toolkit bake-off criteria. |
