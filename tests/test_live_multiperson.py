@@ -39,23 +39,25 @@ class _MultiDetModel:
 
 def test_build_frame_overlays_unknown_and_named():
     dets = [
-        {"det_id": "det-aaaa-0", "bbox": (1, 2, 3, 4)},
-        {"det_id": "det-bbbb-1", "bbox": (10, 20, 30, 40)},
+        {"det_id": "det-aaaa1111-0", "bbox": (1, 2, 3, 4)},
+        {"det_id": "det-aaaa1111-1", "bbox": (10, 20, 30, 40)},
     ]
-    mapping = {"det-aaaa-0": "det-aaaa-0", "det-bbbb-1": "det-bbbb-1"}
+    mapping = {"det-aaaa1111-0": "det-aaaa1111-0", "det-aaaa1111-1": "det-aaaa1111-1"}
     state = {
-        "det-aaaa-0": {
+        "det-aaaa1111-0": {
             "decision": "ACCEPT",
             "display_name": "Alice",
             "evidence_person_id": "p1",
         },
-        "det-bbbb-1": {"decision": "UNKNOWN", "display_name": None, "evidence_person_id": None},
+        "det-aaaa1111-1": {"decision": "UNKNOWN", "display_name": None, "evidence_person_id": None},
     }
     rows = build_frame_overlays(dets, mapping, state)
     assert len(rows) == 2
     assert rows[0]["label"] == "Alice"
     assert rows[1]["label"] == "UNKNOWN"
-    assert rows[0]["track_id"]
+    assert rows[0]["track_id"] != rows[1]["track_id"]
+    assert rows[0]["track_id"].endswith("-0")
+    assert rows[1]["track_id"].endswith("-1")
     assert rows[0]["track_id"] != rows[0].get("evidence_person_id")
 
 

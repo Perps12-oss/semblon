@@ -236,10 +236,19 @@ def _track_mapping(all_detections: list[dict]) -> tuple[dict[str, str], int]:
 
 
 def _short_track_id(track_key: str) -> str:
-    """Stable short label for overlays. Track ≠ person."""
+    """Stable short label for overlays. Track ≠ person.
+
+    Keys look like ``det-{obs8}-{j}``. Keep the index so same-frame faces
+    never share a display id.
+    """
     raw = str(track_key or "")
     if raw.startswith("det-"):
-        return raw[4:12] if len(raw) > 4 else raw
+        rest = raw[4:]
+        # Prefer "91f6e27d-0" over truncating to colliding "91f6e27d".
+        if "-" in rest:
+            head, _, tail = rest.partition("-")
+            return f"{head[:8]}-{tail}" if tail else head[:8]
+        return rest[:8] if rest else "?"
     return raw[:8] if raw else "?"
 
 
