@@ -4,7 +4,7 @@
 **Date:** 2026-09-21  
 **Authority parent:** `docs/CONTRACTS.md`  
 **Brief driver:** `docs/R3-BRIEF.md` §1 (two-axis identity; Ruled out vs Ignored)  
-**Flag:** `SEMBLON_RULED_OUT=1` (default **OFF**; canonical name `semblon.gates.RULED_OUT`)
+**Flag:** `SEMBLON_RULED_OUT` (default **ON** after human wire 2026-09-21; opt out `=0`; canonical name `semblon.gates.RULED_OUT`)
 
 This slice closes the contract gap called out in R3: Ignore alone cannot represent a durable negative identity decision.
 
