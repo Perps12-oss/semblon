@@ -1,10 +1,9 @@
 @echo off
 setlocal
-rem Repo-root launcher: double-click = PySide6 Semblon window; args = power-user CLI.
+rem Repo-root launcher: double-click = tk Home; args = power-user CLI.
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "VENV_PY=%ROOT%\.venv\Scripts\python.exe"
-set "VENV_SEMBLON=%ROOT%\.venv\Scripts\semblon.exe"
 set "INTERACTIVE=%ROOT%\tools\semblon-interactive.ps1"
 
 if "%~1"=="" (
@@ -24,23 +23,49 @@ if "%~1"=="" (
   exit /b 0
 )
 
-if exist "%VENV_SEMBLON%" (
-  "%VENV_SEMBLON%" %*
-  exit /b %ERRORLEVEL%
-)
-
+rem Prefer python -m. Never run stale semblon.exe when import fails.
 if exist "%VENV_PY%" (
+  "%VENV_PY%" -c "import semblon" >nul 2>&1
+  if not errorlevel 1 (
+    "%VENV_PY%" -m semblon %*
+    exit /b %ERRORLEVEL%
+  )
+  echo Semblon package missing in .venv. Reinstalling editable install...
+  "%VENV_PY%" -m pip install -e "%ROOT%"
+  if errorlevel 1 (
+    echo Reinstall failed. Run:
+    echo   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
+    exit /b 1
+  )
+  "%VENV_PY%" -c "import semblon" >nul 2>&1
+  if errorlevel 1 (
+    echo Semblon still not importable after reinstall. Run:
+    echo   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
+    exit /b 1
+  )
   "%VENV_PY%" -m semblon %*
   exit /b %ERRORLEVEL%
 )
 
-set "ALT_SEMBLON=%ROOT%\semblon\.venv\Scripts\semblon.exe"
-set "ALT_PY=%ROOT%\semblon\.venv\Scripts\python.exe"
-if exist "%ALT_SEMBLON%" (
-  "%ALT_SEMBLON%" %*
-  exit /b %ERRORLEVEL%
-)
+set "ALT_ROOT=%ROOT%\semblon"
+set "ALT_PY=%ALT_ROOT%\.venv\Scripts\python.exe"
 if exist "%ALT_PY%" (
+  "%ALT_PY%" -c "import semblon" >nul 2>&1
+  if not errorlevel 1 (
+    "%ALT_PY%" -m semblon %*
+    exit /b %ERRORLEVEL%
+  )
+  echo Semblon package missing in nested .venv. Reinstalling editable install...
+  "%ALT_PY%" -m pip install -e "%ALT_ROOT%"
+  if errorlevel 1 (
+    echo Reinstall failed. Run tools\install-windows.ps1 from the checkout root.
+    exit /b 1
+  )
+  "%ALT_PY%" -c "import semblon" >nul 2>&1
+  if errorlevel 1 (
+    echo Semblon still not importable after reinstall.
+    exit /b 1
+  )
   "%ALT_PY%" -m semblon %*
   exit /b %ERRORLEVEL%
 )

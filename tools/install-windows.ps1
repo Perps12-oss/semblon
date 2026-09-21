@@ -32,6 +32,11 @@ if (-not (Test-Path $VenvPy)) {
 & $VenvPy -m pip install -e .
 # Optional research only: pip install -e ".[gui]"  (S8 toolkit spike; not product Home)
 
+& $VenvPy -c "import semblon; print('import ok', semblon.__version__)"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Install finished but 'import semblon' failed. Delete .venv and re-run this script."
+}
+
 Write-Host ""
 Write-Host "Install complete. Double-click semblon.cmd or run:"
 Write-Host "  .\semblon.cmd home"
