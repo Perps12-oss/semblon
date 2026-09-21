@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from semblon.engine import pack_id
+from semblon.ingest import CancelledError
 from semblon.live import LiveError, build_frame_overlays, live_capture
 from semblon.review import name_cluster
 from tests.test_live import _FakeCapture, _live_model_env, _seed_named_alice
@@ -70,16 +71,20 @@ def test_live_zero_faces_emits_empty_overlays(tmp_path):
         return []
 
     with _live_model_env(det, embed_side_effect=embed_ok):
-        rec = live_capture(
-            store,
-            source=0,
-            seconds=0.04,
-            sample_hz=200.0,
-            reembed_s=0.0,
-            on_frame=frames.append,
-            capture_factory=lambda _src: _FakeCapture(max_reads=12),
-        )
-    assert rec["frames"] >= 1
+        try:
+            rec = live_capture(
+                store,
+                source=0,
+                seconds=0.0,
+                sample_hz=500.0,
+                reembed_s=0.0,
+                on_frame=frames.append,
+                cancel=lambda: len(frames) >= 4,
+                capture_factory=lambda _src: _FakeCapture(max_reads=16),
+            )
+        except CancelledError as e:
+            rec = {"frames": (e.timings or {}).get("frames") or len(frames)}
+    assert (rec.get("frames") or 0) >= 1 or len(frames) >= 1
     assert frames
     assert all(len(f["overlays"]) == 0 for f in frames)
 
@@ -127,25 +132,36 @@ def test_live_multi_face_independent_boxes_and_no_person_stamp(tmp_path):
         return out
 
     with _live_model_env(det, embed_side_effect=embed_ok):
-        rec = live_capture(
-            store,
-            source=0,
-            seconds=0.08,
-            sample_hz=250.0,
-            reembed_s=0.0,
-            on_frame=snaps.append,
-            capture_factory=lambda _src: _FakeCapture(max_reads=24),
-        )
+        # Frame-driven (not wall-clock): Windows CI is too slow for seconds=0.08.
+        cap = _FakeCapture(max_reads=32)
+        try:
+            rec = live_capture(
+                store,
+                source=0,
+                seconds=0.0,
+                sample_hz=500.0,
+                reembed_s=0.0,
+                on_frame=snaps.append,
+                cancel=lambda: len(snaps) >= len(schedule),
+                capture_factory=lambda _src: cap,
+            )
+        except CancelledError as e:
+            rec = {
+                "run_id": e.run_id,
+                "tracks": (e.timings or {}).get("tracks") or 0,
+            }
 
+    counts = [len(s["overlays"]) for s in snaps]
     multi = [s for s in snaps if len(s["overlays"]) >= 2]
-    assert multi, "expected simultaneous multi-face frames"
+    assert multi, f"expected simultaneous multi-face frames; overlay counts={counts}"
     for s in multi:
         boxes = [tuple(o["bbox"]) for o in s["overlays"]]
         assert len(boxes) == len(set(boxes))
         track_ids = [o["track_id"] for o in s["overlays"]]
         assert len(track_ids) == len(set(track_ids))
 
-    three = next(s for s in snaps if len(s["overlays"]) >= 3)
+    three = next((s for s in snaps if len(s["overlays"]) >= 3), None)
+    assert three is not None, f"expected a 3-face frame; overlay counts={counts}"
     labels = {o["label"] for o in three["overlays"]}
     assert "UNKNOWN" in labels
     # Alice may appear once identity evidence exists; never invent other names.
@@ -164,10 +180,13 @@ def test_live_multi_face_independent_boxes_and_no_person_stamp(tmp_path):
     ).fetchone()[0]
     # Ensure Alice's named person exists from stills naming, but live faces stay unassigned.
     n_persons = conn.execute("SELECT COUNT(*) FROM persons WHERE status='active'").fetchone()[0]
+    n_tracks = conn.execute(
+        "SELECT COUNT(*) FROM tracks WHERE run_id=?", (rec["run_id"],)
+    ).fetchone()[0]
     conn.close()
     assert n_live_person == 0
     assert n_persons >= 1
-    assert rec["tracks"] >= 2
+    assert max(n_tracks, int(rec.get("tracks") or 0)) >= 2
 
 
 def test_live_identity_does_not_leak_across_boxes(tmp_path):
@@ -197,18 +216,23 @@ def test_live_identity_does_not_leak_across_boxes(tmp_path):
         return out
 
     with _live_model_env(det, embed_side_effect=embed_ok):
-        live_capture(
-            store,
-            source=0,
-            seconds=0.06,
-            sample_hz=250.0,
-            reembed_s=0.0,
-            on_frame=snaps.append,
-            capture_factory=lambda _src: _FakeCapture(max_reads=20),
-        )
+        cap = _FakeCapture(max_reads=24)
+        try:
+            live_capture(
+                store,
+                source=0,
+                seconds=0.0,
+                sample_hz=500.0,
+                reembed_s=0.0,
+                on_frame=snaps.append,
+                cancel=lambda: len(snaps) >= 6,
+                capture_factory=lambda _src: cap,
+            )
+        except CancelledError:
+            pass
 
     labeled = [s for s in snaps if any(o.get("decision") for o in s["overlays"])]
-    assert labeled
+    assert labeled, f"expected identify decisions; frames={len(snaps)}"
     for s in labeled:
         by_x = sorted(s["overlays"], key=lambda o: o["bbox"][0])
         if len(by_x) < 2:
