@@ -1,0 +1,35 @@
+{
+  "detections": 90,
+  "detector": "provided",
+  "false_associations_heuristic": 0,
+  "fps": 15.0,
+  "fragmentation_index": 0.0222,
+  "frames_decoded": 90,
+  "frames_with_detections": 45,
+  "iou_min": 0.3,
+  "max_simultaneous_faces": 2,
+  "max_t_ms_gap": 2500,
+  "missed_associations_heuristic": 0,
+  "multi_face_frames": 45,
+  "obs_per_track": [
+    45,
+    45
+  ],
+  "obs_per_track_mean": 45,
+  "obs_per_track_median": 45.0,
+  "people_enter_events": 0,
+  "people_leave_events": 0,
+  "sample_hz": 10.0,
+  "samples": 45,
+  "short_lived_tracks": 0,
+  "singles": 0,
+  "track_duration_ms": [
+    5867,
+    5867
+  ],
+  "track_duration_ms_mean": 5867,
+  "track_duration_ms_median": 5867.0,
+  "tracks": 2,
+  "video": "artifacts/sem-exec-2026-09-21/multi_person_synthetic.mp4",
+  "zero_face_listed_frames": 0
+}

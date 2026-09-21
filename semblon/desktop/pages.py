@@ -9,10 +9,12 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QImage, QPainter, QPen, QColor, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
@@ -332,3 +334,130 @@ class SettingsPage(QWidget):
         self._service = service
         lines = service.settings_lines()
         self.body.setText("\n".join(ln for ln in lines if ln))
+
+
+class LivePage(QWidget):
+    """Webcam/RTSP product surface. Shows per-face overlays. Track ≠ Person."""
+
+    start_requested = Signal(str)
+    stop_requested = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._last_overlays: list[dict] = []
+        lay = QVBoxLayout(self)
+        self.heading = QLabel("Live")
+        self.heading.setObjectName("title")
+        self.heading.setAccessibleName("Live")
+        blurb = QLabel(
+            "Camera or RTSP → detect → track → identify evidence. "
+            "Track ≠ Person. UNKNOWN is valid. Live never creates a Person."
+        )
+        blurb.setObjectName("subtitle")
+        blurb.setWordWrap(True)
+        row = QHBoxLayout()
+        self.source = QLineEdit("0")
+        self.source.setPlaceholderText("Camera index or RTSP URL")
+        self.source.setAccessibleName("Live source")
+        self.btn_start = QPushButton("Start")
+        self.btn_start.setObjectName("primary")
+        self.btn_start.setAccessibleName("Start live")
+        self.btn_stop = QPushButton("Stop")
+        self.btn_stop.setAccessibleName("Stop live")
+        self.btn_stop.setEnabled(False)
+        self.btn_start.clicked.connect(self._emit_start)
+        self.btn_stop.clicked.connect(self.stop_requested.emit)
+        row.addWidget(QLabel("Source"))
+        row.addWidget(self.source, 1)
+        row.addWidget(self.btn_start)
+        row.addWidget(self.btn_stop)
+        self.viewport = QLabel()
+        self.viewport.setObjectName("liveViewport")
+        self.viewport.setMinimumHeight(320)
+        self.viewport.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.viewport.setText("Live is idle.")
+        self.viewport.setAccessibleName("Live viewport")
+        self.status = QLabel("Idle · track ≠ person")
+        self.status.setObjectName("muted")
+        self.status.setWordWrap(True)
+        self.status.setAccessibleName("Live status")
+        lay.addWidget(self.heading)
+        lay.addWidget(blurb)
+        lay.addLayout(row)
+        lay.addWidget(self.viewport, 1)
+        lay.addWidget(self.status)
+
+    def _emit_start(self) -> None:
+        self.start_requested.emit(self.source.text().strip() or "0")
+
+    def set_running(self, running: bool) -> None:
+        self.btn_start.setEnabled(not running)
+        self.btn_stop.setEnabled(running)
+        self.source.setEnabled(not running)
+        if not running and not self._last_overlays:
+            self.viewport.setText("Live is idle.")
+
+    def clear_overlays(self) -> None:
+        self._last_overlays = []
+        self.viewport.setPixmap(QPixmap())
+        self.viewport.setText("Live is idle.")
+        self.status.setText("Idle · track ≠ person")
+
+    def apply_frame(self, snapshot: dict) -> None:
+        """Paint preview (if any) and independent boxes from runtime overlays."""
+        overlays = list(snapshot.get("overlays") or [])
+        self._last_overlays = overlays
+        counts = snapshot.get("counts") or {}
+        parts = [
+            f"frame {snapshot.get('frame_index') or 0}",
+            f"faces {counts.get('detected', len(overlays))}",
+            f"tracks {counts.get('tracks', 0)}",
+            "UNKNOWN valid",
+            "track ≠ person",
+        ]
+        self.status.setText(" · ".join(str(p) for p in parts))
+        preview = snapshot.get("preview_bgr")
+        pix = None
+        if preview is not None:
+            try:
+                import numpy as np
+
+                arr = np.asarray(preview)
+                if arr.ndim == 3 and arr.shape[2] == 3:
+                    h, w, _ = arr.shape
+                    rgb = arr[:, :, ::-1].copy()
+                    qimg = QImage(rgb.data, w, h, 3 * w, QImage.Format.Format_RGB888).copy()
+                    pix = QPixmap.fromImage(qimg)
+            except Exception:
+                pix = None
+        if pix is None or pix.isNull():
+            # Synthetic canvas so overlays remain visible without a camera frame.
+            w = h = 480
+            pix = QPixmap(w, h)
+            pix.fill(QColor("#1a1d21"))
+        else:
+            w = pix.width()
+            h = pix.height()
+        painter = QPainter(pix)
+        try:
+            for ov in overlays:
+                bbox = ov.get("bbox") or (0, 0, 0, 0)
+                x1, y1, x2, y2 = [int(round(float(v))) for v in bbox]
+                label = str(ov.get("label") or "UNKNOWN")
+                track = str(ov.get("track_id") or "?")
+                pen = QPen(QColor("#7dd3a0" if label != "UNKNOWN" else "#e2b15c"))
+                pen.setWidth(2)
+                painter.setPen(pen)
+                painter.drawRect(x1, y1, max(1, x2 - x1), max(1, y2 - y1))
+                painter.drawText(x1 + 4, max(14, y1 - 6), f"{label}  Track {track}")
+        finally:
+            painter.end()
+        scaled = pix.scaled(
+            self.viewport.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.viewport.setPixmap(scaled)
+
+    def refresh(self, service: LibraryService) -> None:  # noqa: ARG002 — shell contract
+        return

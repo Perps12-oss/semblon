@@ -31,6 +31,7 @@ from semblon.desktop.copy import process_event_snapshot
 from semblon.desktop.pages import (
     ActivityPage,
     HomePage,
+    LivePage,
     PeoplePage,
     PhotosPage,
     SettingsPage,
@@ -39,10 +40,10 @@ from semblon.desktop.pages import (
 )
 from semblon.desktop.service import StoreLibraryService
 from semblon.desktop.widgets import InspectorPanel, ProgressBanner, load_still_thumb, open_containing_folder
-from semblon.desktop.workers import ImportWorker
+from semblon.desktop.workers import ImportWorker, LiveWorker
 from semblon.progress import KIND_QUEUED, STAGE_PROCESS, make_event
 
-NAV = ("Home", "Photos", "Videos", "People", "Unknown", "Activity", "Settings")
+NAV = ("Home", "Photos", "Videos", "Live", "People", "Unknown", "Activity", "Settings")
 
 
 class ImportDialog(QDialog):
@@ -140,7 +141,10 @@ class MainWindow(QMainWindow):
         self.service = service or StoreLibraryService(store)
         self._thread: QThread | None = None
         self._worker: ImportWorker | None = None
+        self._live_thread: QThread | None = None
+        self._live_worker: LiveWorker | None = None
         self._busy = False
+        self._live_busy = False
         self._last_counts = ""
         self._pending_unknown: dict | None = None
         self._pending_person: dict | None = None
@@ -202,6 +206,7 @@ class MainWindow(QMainWindow):
         self.home = HomePage()
         self.photos = PhotosPage()
         self.videos = VideosPage()
+        self.live = LivePage()
         self.people = PeoplePage()
         self.unknown = UnknownPage()
         self.activity = ActivityPage()
@@ -210,6 +215,7 @@ class MainWindow(QMainWindow):
             self.home,
             self.photos,
             self.videos,
+            self.live,
             self.people,
             self.unknown,
             self.activity,
@@ -221,6 +227,8 @@ class MainWindow(QMainWindow):
         self.photos.add_folder.connect(self.open_import)
         self.videos.add_folder.connect(self.open_import)
         self.home.open_unknown.connect(lambda: self.navigate("Unknown"))
+        self.live.start_requested.connect(self.start_live)
+        self.live.stop_requested.connect(self.stop_live)
         self.photos.inspect.connect(self._inspect_media)
         self.videos.inspect.connect(self._inspect_media)
         self.people.inspect.connect(self._inspect_person)
@@ -312,6 +320,7 @@ class MainWindow(QMainWindow):
         self.home.refresh(self.service)
         self.photos.refresh(self.service)
         self.videos.refresh(self.service)
+        self.live.refresh(self.service)
         self.people.refresh(self.service)
         self.unknown.refresh(self.service)
         self.activity.refresh(self.service)
@@ -328,6 +337,7 @@ class MainWindow(QMainWindow):
             "Home": self.home,
             "Photos": self.photos,
             "Videos": self.videos,
+            "Live": self.live,
             "People": self.people,
             "Unknown": self.unknown,
             "Activity": self.activity,
@@ -337,7 +347,85 @@ class MainWindow(QMainWindow):
         if page is not None:
             page.refresh(self.service)
 
+    def start_live(self, source: str) -> None:
+        if self._live_busy:
+            self.notify("Live is already running. Stop it before starting again.")
+            return
+        if self._busy:
+            self.notify("Import is running. Stop or wait before starting Live.")
+            return
+        self._live_busy = True
+        self.live.set_running(True)
+        self.live.clear_overlays()
+        self.statusBar().showMessage(f"Live starting · source {source}")
+        thread = QThread(self)
+        worker = LiveWorker(self.service.store, source=source, seconds=0.0, sample_hz=2.0)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.framed.connect(self._on_live_frame)
+        worker.progressed.connect(self._on_live_progress)
+        worker.succeeded.connect(self._on_live_done)
+        worker.cancelled.connect(self._on_live_cancelled)
+        worker.failed.connect(self._on_live_failed)
+        worker.succeeded.connect(thread.quit)
+        worker.cancelled.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._live_thread_finished)
+        self._live_thread = thread
+        self._live_worker = worker
+        thread.start()
+
+    def stop_live(self) -> None:
+        if self._live_worker is not None:
+            self._live_worker.request_cancel()
+            self.statusBar().showMessage("Stopping live…")
+
+    def _on_live_frame(self, snap: dict) -> None:
+        self.live.apply_frame(snap)
+
+    def _on_live_progress(self, snap: dict) -> None:
+        counts = snap.get("counts") or {}
+        self.statusBar().showMessage(
+            f"Live · frames {snap.get('current') or 0} · "
+            f"faces {counts.get('detected', 0)} · tracks {counts.get('tracks', 0)}"
+        )
+
+    def _on_live_done(self, rec: dict) -> None:
+        self._live_busy = False
+        self.live.set_running(False)
+        self.statusBar().showMessage(
+            f"Live finished · frames {rec.get('frames') or 0} · "
+            f"tracks {rec.get('tracks') or 0} · track ≠ person"
+        )
+        self.refresh_all()
+
+    def _on_live_cancelled(self, payload: dict) -> None:
+        self._live_busy = False
+        self.live.set_running(False)
+        self.live.clear_overlays()
+        self.statusBar().showMessage(payload.get("headline") or "Live stopped")
+        self.refresh_all()
+
+    def _on_live_failed(self, user: str, detail: str) -> None:
+        self._live_busy = False
+        self.live.set_running(False)
+        self.live.clear_overlays()
+        self.warn(f"{user}\n{detail}" if detail else user)
+        self.statusBar().showMessage(user)
+
+    def _live_thread_finished(self) -> None:
+        self._live_thread = None
+        self._live_worker = None
+        if self._live_busy:
+            self._live_busy = False
+            self.live.set_running(False)
+
     def open_import(self) -> None:
+        if self._live_busy:
+            self.notify("Live is running. Stop Live before starting an import.")
+            return
         if self._busy:
             self.notify(
                 "An import is already running. You can browse the library or cancel that import."
@@ -621,6 +709,15 @@ class MainWindow(QMainWindow):
             open_containing_folder(path)
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        if self._live_busy:
+            if self._live_worker is not None:
+                self._live_worker.request_cancel()
+            if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+                event.accept()
+                return
+            # Cooperative stop; accept close so shell does not hang on camera teardown.
+            event.accept()
+            return
         if self._busy:
             if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
                 if self._worker is not None:

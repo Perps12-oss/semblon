@@ -6,9 +6,9 @@ FACE-004: identify vs persons, never clusters. Unknown is valid.
 FACE-005: incremental ingest + inbox. No watcher.
 S6: memory history / together / events. Time/place are not identity.
 process: happy-path ingest -> cluster -> export review.html.
-home: double-click opens the PySide6 window (ingest + review in one shell).
+home: double-click opens the accepted PySide6 shell (ingest + Live + review).
 review-ui: tkinter review vertical kept as --legacy / CLI.
-desktop: alias for the same PySide6 window.
+desktop: alias for the accepted PySide6 shell.
 S7a: video files in the ingest folder are sampled (not every frame).
 S7b: tracks --run is derived IoU+time association (not identity, not written).
 """
@@ -282,6 +282,34 @@ def main(argv: list[str] | None = None) -> int:
     trk.add_argument("--iou-min", type=float, default=None)
     trk.add_argument("--max-t-ms-gap", type=int, default=None)
 
+    tm = sub.add_parser(
+        "track-measure",
+        help="measure greedy IoU track fragmentation on a video (evidence; does not replace tracker)",
+    )
+    tm.add_argument("video", type=Path, help="video file path")
+    tm.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="optional JSON report path",
+    )
+    tm.add_argument("--hz", type=float, default=5.0)
+    tm.add_argument("--max-frames", type=int, default=300)
+    tm.add_argument(
+        "--synthetic-boxes",
+        action="store_true",
+        help="use deterministic moving boxes instead of FaceKit (portable measurement)",
+    )
+
+    bw = sub.add_parser(
+        "bench-hash-workers",
+        help="measure hash-phase workers=1/2/4 on a folder (not inference parallelism)",
+    )
+    bw.add_argument("folder", type=Path)
+    bw.add_argument("--store-dir", type=Path, required=True)
+    bw.add_argument("--workers", nargs="+", type=int, default=[1, 2, 4])
+    bw.add_argument("--out", type=Path, default=None)
+
     rev = sub.add_parser("review", help="persist review decisions (does not rewrite DBSCAN)")
     rev.add_argument("--run", required=True)
     rev.add_argument("--store", required=True, type=Path)
@@ -318,7 +346,8 @@ def main(argv: list[str] | None = None) -> int:
 
     home = sub.add_parser(
         "home",
-        help="Semblon window: add a folder and review in the same PySide6 shell",
+        help="accepted Semblon desktop shell (PySide6): library + Live + review",
+        description="Accepted Semblon desktop shell (PySide6). Use --legacy for tkinter Home.",
     )
     home.add_argument(
         "--store",
@@ -329,13 +358,13 @@ def main(argv: list[str] | None = None) -> int:
     home.add_argument(
         "--legacy",
         action="store_true",
-        help="tkinter Home (separate Review window). Default is the PySide6 shell.",
+        help="tkinter Home (separate Review window). Compatibility only.",
     )
 
     desk = sub.add_parser(
         "desktop",
-        help="PySide6 workspace (optional extra; not the default Home)",
-        description="PySide6 workspace. Optional extra; not the default Home.",
+        help="alias for the accepted PySide6 Home shell",
+        description="Accepted Semblon desktop shell (same as `semblon home`).",
     )
     desk.add_argument(
         "--store",
@@ -885,6 +914,53 @@ def main(argv: list[str] | None = None) -> int:
         except TracksError as e:
             print(str(e), file=sys.stderr)
             return 2
+        print(json.dumps(rec, indent=2, default=str))
+        return 0
+
+    if args.cmd == "track-measure":
+        from semblon.track_measure import TrackMeasureError, measure_video_fragmentation, write_report
+
+        detect = None
+        if args.synthetic_boxes:
+
+            def detect(frame, frame_index):  # noqa: ARG001
+                # Two separated moving boxes — portable multi-person fixture.
+                h, w = frame.shape[:2]
+                dx = (frame_index * 3) % max(1, w // 4)
+                return [
+                    {"bbox": (20.0 + dx, 30.0, 80.0 + dx, 100.0)},
+                    {"bbox": (w - 120.0 - dx, 40.0, w - 40.0 - dx, 120.0)},
+                ]
+
+        try:
+            rec = measure_video_fragmentation(
+                args.video,
+                detect=detect,
+                sample_hz=args.hz,
+                max_frames=args.max_frames,
+            )
+        except TrackMeasureError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        if args.out is not None:
+            write_report(rec, args.out)
+        print(json.dumps(rec, indent=2, default=str))
+        return 0
+
+    if args.cmd == "bench-hash-workers":
+        from semblon.bench_workers import BenchError, bench_hash_workers, write_bench_report
+
+        try:
+            rec = bench_hash_workers(
+                args.folder,
+                args.store_dir,
+                workers_list=list(args.workers),
+            )
+        except BenchError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        if args.out is not None:
+            write_bench_report(rec, args.out)
         print(json.dumps(rec, indent=2, default=str))
         return 0
 

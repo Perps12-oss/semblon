@@ -12,14 +12,15 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 ## Hierarchy
 
 1. **Identity contract** — immutable. Unknown valid; cluster ≠ person; no silent auto-ID; native/emulated honesty. FaceKit is the only identity engine.
-2. **Production capabilities** — Home/review-ui, cancel, backup, integrity, person search, Canvas overlay, schema v2 write-through, stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks.
-3. **Experimental / unavailable** — product-default `workers>1`, GPU when no EP, MSI+weights, 10k run, OCR/CLIP/pose unless those libraries are installed.
+2. **Production capabilities** — accepted PySide6 Home shell (Photos/Videos/Live/People/Unknown/Activity/Settings), review mutations, cancel, backup, integrity, person search, Canvas overlay, schema v2 write-through, stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks. `review-ui` remains a KEEP/evidence vertical; `review.html` is QA/forensic only.
+3. **Experimental / unavailable** — product-default `workers>1`, GPU when no EP, MSI+weights, 10k run, OCR/CLIP/pose unless those libraries **and** runnable APIs are installed (import ≠ capability).
 
 ## COMPLETE (verified in portable pytest)
 
 - Identity loop, FACE-002→005 evidence, S1 golden frozen
 - Incremental ingest, inbox (RO), identify vs persons
-- Home + review-ui; empty states; file missing; People/Unknown/Activity/Settings list windows; person search field
+- Home + review-ui; empty states; file missing; People/Unknown/Activity/Settings pages; person search field
+- **Accepted desktop shell:** `semblon home` / `semblon desktop` → PySide6 (`semblon.desktop`). Live page overlays faces/tracks. `--legacy` keeps tkinter Home. No second GUI framework.
 - ARCH-011 / APP-1: `JobEngine` is the ingest door; second submit is `JobBusy`; Home job-control (folder/Resume off, Cancel on) does not lock Review / People / Search; Review is a Toplevel on Home’s root; Review reads use `busy_timeout=5000`
 - Cancel (GUI + SIGINT at file boundaries); cancelled ≠ completed; partial then cancelled
 - Backup/restore; integrity report; unfinished runs stamped interrupted (not completed)
@@ -31,16 +32,19 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 - S6 together/events snapshot to `relationships`/`events` with `confirmed=0`
 - `search --person/--people/--face/--similar` (similar is same-modality only; face refused)
 - `watch`; `live` detect→track→selective embed→identify vs named persons (`--seconds 0` unbounded, `--retain-s` optional); `canvas` observation overlay
-- Color-hist + OpenCV contour observers; OCR/CLIP/pose run when libraries exist, otherwise an unavailable/error item
+- Color-hist + OpenCV **contour regions** (not a trained object detector); OCR/CLIP/pose only when libraries **and** runnable APIs exist — see capability matrix in `docs/SEM-EXECUTION-2026-09-21.md`
 - S7a/S7b; S6 memory
 - Process callback emits `KIND_QUEUED` before `KIND_STARTED`
 - Portable CI workflow (no weight download)
 
 ## PARTIAL
 
-- Home People/Unknown/Activity/Settings are list windows, not a full sidebar shell
-- OCR/CLIP/pose: implemented behind optional imports; not in `requirements.txt`; CLIP/pose may fail without local weights (recorded as error items, not crashes)
-- Canvas overlay is tk PhotoImage, not a pixel compositor
+- Home People/Unknown/Activity/Settings are functional pages inside the accepted PySide shell (not a separate WinUI app)
+- OCR/CLIP/pose: implemented behind optional imports; not in `requirements.txt`; **capability ≠ import** (see observer matrix in `docs/SEM-EXECUTION-2026-09-21.md`)
+- Canvas overlay is tk PhotoImage / Qt paint path, not a pixel compositor
+- Object observer = OpenCV contour regions, **not** a trained detector
+- Live overlays are product-wired; real webcam/RTSP hardware proof still pending
+
 ## COMPLETE — ENVIRONMENT-LIMITED
 
 - ARM64 native OpenCV ingest (binary exists; load hang)
@@ -54,7 +58,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 ## DEFERRED
 
-Identify/inbox as dedicated full pages; default GPU/workers; vector DB; PySide6 shell as the default Home.
+Identify/inbox as dedicated full pages; default GPU/workers; vector DB. PySide6 shell promotion is **resolved** (accepted as default Home; tk `--legacy` retained).
 
 ## UNAVAILABLE
 

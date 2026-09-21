@@ -235,6 +235,50 @@ def _track_mapping(all_detections: list[dict]) -> tuple[dict[str, str], int]:
     return mapping, len(set(mapping.values()))
 
 
+def _short_track_id(track_key: str) -> str:
+    """Stable short label for overlays. Track ≠ person."""
+    raw = str(track_key or "")
+    if raw.startswith("det-"):
+        return raw[4:12] if len(raw) > 4 else raw
+    return raw[:8] if raw else "?"
+
+
+def build_frame_overlays(
+    frame_detections: list[dict],
+    det_to_track: dict[str, str],
+    track_state: dict[str, dict],
+) -> list[dict]:
+    """Per-detection overlay rows for UI. Never invents a Person.
+
+    Label is a named person's display_name only when identify evidence is ACCEPT.
+    Otherwise UNKNOWN. Track id is association state, not identity.
+    """
+    overlays: list[dict] = []
+    for det in frame_detections:
+        det_id = det["det_id"]
+        track_key = det_to_track.get(det_id, det_id)
+        state = track_state.get(track_key) or {}
+        decision = state.get("decision")
+        display_name = state.get("display_name")
+        if decision == "ACCEPT" and display_name:
+            label = str(display_name)
+        else:
+            label = "UNKNOWN"
+        overlays.append(
+            {
+                "det_id": det_id,
+                "track_key": track_key,
+                "track_id": _short_track_id(track_key),
+                "bbox": tuple(det["bbox"]),
+                "label": label,
+                "decision": decision,
+                # Evidence pointer only — live never writes faces.person_id.
+                "evidence_person_id": state.get("evidence_person_id"),
+            }
+        )
+    return overlays
+
+
 def live_capture(
     store: Path,
     *,
@@ -246,10 +290,17 @@ def live_capture(
     strict: bool = False,
     cancel=None,
     on_event=None,
+    on_frame=None,
     prefer_gpu: bool = False,
     capture_factory=None,
+    include_frame_preview: bool = False,
 ) -> dict:
-    """Capture webcam/RTSP: detect -> track -> selective embed -> identify."""
+    """Capture webcam/RTSP: detect -> track -> selective embed -> identify.
+
+    ``on_frame`` receives a per-sample snapshot for product overlays:
+    ``{t_ms, frame_index, overlays, counts, preview_bgr?}``.
+    Overlay labels use identify evidence only. Track ≠ Person.
+    """
     store = Path(store)
     if sample_hz <= 0:
         raise LiveError("hz must be > 0")
@@ -448,6 +499,9 @@ def live_capture(
                         "last_seen_t_ms": None,
                         "last_embed_t_ms": None,
                         "has_decision": False,
+                        "decision": None,
+                        "display_name": None,
+                        "evidence_person_id": None,
                     },
                 )
                 is_new_track = state["last_seen_t_ms"] is None
@@ -507,7 +561,14 @@ def live_capture(
                         track_key = selected_track_keys[i]
                         state = track_state.setdefault(
                             track_key,
-                            {"last_seen_t_ms": t_ms, "last_embed_t_ms": None, "has_decision": False},
+                            {
+                                "last_seen_t_ms": t_ms,
+                                "last_embed_t_ms": None,
+                                "has_decision": False,
+                                "decision": None,
+                                "display_name": None,
+                                "evidence_person_id": None,
+                            },
                         )
                         if row["status"] != "ok":
                             continue
@@ -519,6 +580,10 @@ def live_capture(
                             face_id=row["face_id"],
                         )
                         state["has_decision"] = True
+                        state["decision"] = ident["decision"]
+                        state["display_name"] = ident["display_name"]
+                        # Evidence only — never stamp faces.person_id from live.
+                        state["evidence_person_id"] = ident["person_id"]
                         if ident["decision"] == "ACCEPT":
                             identified_accept += 1
                         else:
@@ -544,6 +609,29 @@ def live_capture(
             persist_derived_tracks(store, run_id, conn=conn)
             n_frames += 1
             idx += 1
+            frame_counts = {
+                "detected": len(frame_detections),
+                "embedded": embedded,
+                "tracks": track_count,
+                "accept": identified_accept,
+                "unknown": identified_unknown,
+                "failed_embeds": failed_embeds,
+            }
+            overlays = build_frame_overlays(frame_detections, det_to_track, track_state)
+            if on_frame is not None:
+                snap = {
+                    "t_ms": t_ms,
+                    "frame_index": n_frames,
+                    "overlays": overlays,
+                    "counts": dict(frame_counts),
+                    "run_id": run_id,
+                }
+                if include_frame_preview:
+                    snap["preview_bgr"] = frame
+                try:
+                    on_frame(snap)
+                except Exception:
+                    pass
             emit(
                 on_event,
                 make_event(
@@ -552,14 +640,7 @@ def live_capture(
                     run_id=run_id,
                     current=n_frames,
                     faces_found=embedded,
-                    counts={
-                        "detected": len(frame_detections),
-                        "embedded": embedded,
-                        "tracks": track_count,
-                        "accept": identified_accept,
-                        "unknown": identified_unknown,
-                        "failed_embeds": failed_embeds,
-                    },
+                    counts=frame_counts,
                 ),
             )
             time.sleep(interval)

@@ -75,9 +75,15 @@ def contour_objects(img, *, min_area: int = 400, max_regions: int = 8) -> list[d
 
 
 def optional_status() -> dict:
-    """Honest availability of extra providers. Missing extras are not a crash."""
+    """Honest availability of extra providers. Missing extras are not a crash.
+
+    Importable package ≠ runnable capability. Pose requires MediaPipe ``solutions``.
+    Object here means contour regions, not a trained detector.
+    """
     ocr = clip = pose = False
-    notes = {}
+    notes = {
+        "object": "opencv contour regions (not a trained object detector)",
+    }
     try:
         import pytesseract  # noqa: F401
 
@@ -88,18 +94,27 @@ def optional_status() -> dict:
         import open_clip  # noqa: F401
 
         clip = True
+        notes["clip"] = "image embeddings when weights load; no text-query CLI"
     except Exception as e:
         notes["clip"] = f"unavailable: {type(e).__name__}"
     try:
-        import mediapipe  # noqa: F401
+        import mediapipe as mp
 
-        pose = True
+        if hasattr(mp, "solutions") and hasattr(getattr(mp, "solutions", None), "pose"):
+            pose = True
+            notes["pose"] = f"mediapipe {getattr(mp, '__version__', '?')} solutions.pose"
+        else:
+            notes["pose"] = (
+                f"mediapipe {getattr(mp, '__version__', '?')} installed but "
+                "solutions.pose API not exposed (not runnable for Semblon pose)"
+            )
     except Exception as e:
         notes["pose"] = f"unavailable: {type(e).__name__}"
     return {
         "facekit": True,
         "appearance": True,
         "object": True,
+        "object_kind": "contour_regions",
         "ocr": ocr,
         "clip": clip,
         "pose": pose,
@@ -160,6 +175,14 @@ def pose_landmarks(img) -> dict | None:
         import mediapipe as mp
     except Exception:
         return None
+    if not (hasattr(mp, "solutions") and hasattr(getattr(mp, "solutions", None), "pose")):
+        return {
+            "error": "UnsupportedAPI",
+            "note": (
+                f"mediapipe {getattr(mp, '__version__', '?')} has no solutions.pose; "
+                "Semblon cannot run pose with this install"
+            ),
+        }
     try:
         arr = np.asarray(img)
         if arr.ndim != 3:

@@ -1,7 +1,7 @@
 # S8 toolkit investigation
 
-**Status:** dump-gate vertical wired (`tools/s8_toolkit_spike/`). Presentation + Name/Merge/Split/Ignore/Note via `review_ui` → `review.py`. **Not** full AppShell / Intelligence Canvas. Does **not** replace tkinter `review-ui`.  
-**Planned work:** `docs/SEM-ARCH.md`. This spike is not the plan.
+**Status:** historical presentation spike. Accepted product Home is now `semblon.desktop` (PySide6) via `semblon home` — see `docs/SEM-EXECUTION-2026-09-21.md`.  
+**Planned work:** `docs/SEM-ARCH-V1.4.md`. This spike is not the plan.
 
 ## Recon (what already exists)
 

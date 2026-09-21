@@ -1,0 +1,11 @@
+{
+  "note": "mocked FaceKit + synthetic frames; not Windows webcam hardware",
+  "frames": 8,
+  "wall_s": 0.2425,
+  "effective_fps": 32.98,
+  "inter_frame_ms_mean": 29.05,
+  "inter_frame_ms_p95": 29.45,
+  "faces_per_frame": 2,
+  "tracks": 2,
+  "embedded": 16
+}

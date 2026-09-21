@@ -36,16 +36,17 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | Live | **EXISTS / hardware proof pending** |
 | Canvas | **EXISTS, prototype implementation** |
 | Search | **EXISTS** |
-| Home | **SHIPPED but architecturally constrained** |
-| Review UI | **SHIPPED, legacy Tk surface** |
-| Native application shell | **NOT decided/implemented** |
+| Home | **SHIPPED — accepted PySide6 shell** (`semblon home`; tk `--legacy`) |
+| Review UI | **SHIPPED, KEEP/evidence Tk surface** |
+| Native application shell | **DECIDED: PySide6** (existing `semblon.desktop`; no competing shell) |
 | APP-1 JobEngine boundary | **MERGED** (`main`) |
 | APP-1 C.2 paused / unpause | **IMPLEMENTED** (code+unit tests; Windows live gate still required) |
 | IPC boundary | **NOT implemented** |
 | Native ARM64 performance | **BLOCKED** |
-| Multi-worker ingest | **EXPERIMENTAL / not default** |
+| Multi-worker ingest | **EXPERIMENTAL / hash-only; not default** |
 | GPU | **NOT productized** |
 | Rust | **DEFERRED until measurements justify it** |
+| Live product surface | **WIRED** in PySide Live page (hardware proof pending) |
 
 ---
 
@@ -177,10 +178,10 @@ Previously rejected/deferred paths stay rejected/deferred (Electron, Tauri, perm
 ## E) Frontend migration constraints
 
 1. Do not build the future shell by continuously expanding Tk Home into the final architecture.  
-2. Keep Tk Home as a temporary compatibility frontend while the boundary is extracted.  
-3. Keep `review-ui` as the production/evidence surface during migration.  
+2. Keep Tk Home as `--legacy` compatibility only.  
+3. Keep `review-ui` as the production/evidence surface for review mutations during migration.  
 4. Keep `review.html` as an engineering/forensic artifact, not the end-user shell.  
-5. Keep PySide6 spike as reference only; do not auto-promote to production.
+5. **R3 shell decision (2026-09-21 execution):** the existing PySide6 `semblon.desktop` shell is the accepted product Home. Do not introduce a competing GUI framework. WinUI remains a future option only if measured evidence requires it.
 
 ---
 
@@ -363,3 +364,4 @@ PERF: ARM64 + workers + provider + scale
 | Version | Date | Summary |
 |---|---|---|
 | V1.4 | 2026-09-21 | Reconciled roadmap authority: FACE closed; APP-1 first; Windows live gate; IPC as boundary test; measurement-first performance track; single planning source. |
+| V1.4.1 | 2026-09-21 | Execution update: PySide6 accepted as Home shell; Live page wired; track-measure + hash-worker bench added; observer capability honesty. |

@@ -45,7 +45,12 @@ UUIDs differ by design (per-row `uuid4`).
 
 On **x64-emulated** SKY with CPU EP, the old multi-session worker design **did not** reduce ingest time; 2 and 4 workers were **slower** than 1.
 
-Do **not** make `workers>1` the product default from that evidence. Re-measure after the hash-only / single-session pipeline on native hosts.
+## Current hash-only remeasure (2026-09-21)
+
+Portable Linux fixture (48 tiny JPEGs) via `semblon bench-hash-workers`. Digests equivalent across workers=1/2/4. Wall times: **1 fastest**; 2/4 slower.  
+Default remains **workers=1**. This is **hash parallelism only** — not inference. See `docs/SEM-EXECUTION-2026-09-21.md` and `artifacts/sem-exec-2026-09-21/hash_workers.json`.
+
+Do not reuse the historical multi-session ORT table below as evidence for the current implementation.
 
 ## Commands used
 

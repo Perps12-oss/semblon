@@ -1,0 +1,40 @@
+{
+  "files": 48,
+  "folder": "artifacts/sem-exec-2026-09-21/hash_lib",
+  "inference_parallel": false,
+  "phase": "hash_only",
+  "recommendation": "keep default workers=1; higher worker counts were not faster on this folder",
+  "runs": [
+    {
+      "elapsed_s": 0.0007,
+      "files": 48,
+      "hash_files_per_s": 70927.435,
+      "hashed_failed": 0,
+      "hashed_ok": 48,
+      "note": "hash phase only; decode/embed remain single-session",
+      "rss_mb": 59.6,
+      "workers": 1
+    },
+    {
+      "elapsed_s": 0.0015,
+      "files": 48,
+      "hash_files_per_s": 30981.834,
+      "hashed_failed": 0,
+      "hashed_ok": 48,
+      "note": "hash phase only; decode/embed remain single-session",
+      "rss_mb": 59.8,
+      "workers": 2
+    },
+    {
+      "elapsed_s": 0.0178,
+      "files": 48,
+      "hash_files_per_s": 2693.678,
+      "hashed_failed": 0,
+      "hashed_ok": 48,
+      "note": "hash phase only; decode/embed remain single-session",
+      "rss_mb": 59.8,
+      "workers": 4
+    }
+  ],
+  "semantic_digest_equivalence": true
+}

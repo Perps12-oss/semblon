@@ -31,8 +31,8 @@ def test_window_launches_and_navigates(qapp, tmp_path):
     win = MainWindow(store=tmp_path / "missing.sqlite")
     win.show()
     assert "Semblon" in win.windowTitle()
-    assert win.stack.count() == 7
-    for name in ("Home", "Photos", "Videos", "People", "Unknown", "Activity", "Settings"):
+    assert win.stack.count() == 8
+    for name in ("Home", "Photos", "Videos", "Live", "People", "Unknown", "Activity", "Settings"):
         win.navigate(name)
         assert win.current_page() == name
     win.close()
@@ -148,10 +148,10 @@ def test_home_cli_prefers_pyside_shell():
             assert e.code == 0
     out = buf.getvalue().lower()
     assert "--legacy" in out
-    assert "pyside6" in out or "shell" in out
+    assert "pyside" in out or "desktop" in out or "accepted" in out
 
 
-def test_cli_desktop_help_names_optional_extra():
+def test_cli_desktop_help_names_accepted_shell():
     from semblon.cli import main
     import io
     from unittest.mock import patch
@@ -163,5 +163,7 @@ def test_cli_desktop_help_names_optional_extra():
         except SystemExit as e:
             assert e.code == 0
     out = buf.getvalue().lower()
-    assert "optional extra" in out or "pyside6" in out
+    assert "accepted" in out or "pyside" in out or "home" in out
+    from semblon.desktop.app import main as desktop_main
+
     assert desktop_main is not None

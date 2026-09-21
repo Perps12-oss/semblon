@@ -168,3 +168,16 @@ def test_home_list_formatters():
     )
     assert "appearance" in sim[0]
     assert "not a person" in sim[2]
+
+
+def test_optional_status_distinguishes_import_from_capability():
+    from semblon.observers import optional_status
+
+    st = optional_status()
+    assert st["identity"] == "facekit only"
+    assert st["object"] is True
+    assert st.get("object_kind") == "contour_regions"
+    assert "contour" in (st.get("notes") or {}).get("object", "").lower()
+    # pose may be False even if mediapipe imports, when solutions API is absent
+    assert "pose" in st
+    assert isinstance(st["pose"], bool)
