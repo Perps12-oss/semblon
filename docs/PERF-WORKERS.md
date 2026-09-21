@@ -1,7 +1,9 @@
-# PERF — bounded ingest workers (experimental)
+# PERF — bounded ingest workers (historical evidence)
 
 **Not an S1 correctness change.** Thresholds, pack, det_size, CPU EP, and clustering unchanged.  
 Default product path remains `workers=1`. Flag: `semblon ingest FOLDER --store PATH --workers N`.
+
+**Superseded for re-measurement.** Current hash-only workers sweep: [`docs/PERF-WORKERS-HARNESS.md`](PERF-WORKERS-HARNESS.md) (`tools/perf_workers_harness.py`). Do not cite the tables below as evidence for today’s pipeline.
 
 Current implementation: `--workers` parallelizes the **hash** phase only (bounded in-flight futures). Decode + FaceKit embed + SQLite write use **one** `FaceAnalysis` session on the writer/main path. Skip decisions run before embed.
 

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "semblon-r3-bakeoff-results-v1",
+  "title": "R3 toolkit bake-off results",
+  "description": "Machine-writable results for docs/R3-BRIEF.md §6 / docs/r3-artifacts/05-bake-off-checklist.md. Do not invent PASS. overall.pass stays null until a human records all six.",
+  "type": "object",
+  "required": ["schema_version", "brief_ref", "checklist_ref", "run", "criteria", "overall"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "brief_ref": { "type": "string" },
+    "checklist_ref": { "type": "string" },
+    "run": {
+      "type": "object",
+      "required": ["toolkit", "machine", "started_at"],
+      "additionalProperties": false,
+      "properties": {
+        "toolkit": {
+          "type": "string",
+          "description": "Candidate under test, e.g. WinUI3, Qt/PySide6. Empty until human fills."
+        },
+        "toolkit_version": { "type": "string" },
+        "machine": { "type": "string" },
+        "os": { "type": "string" },
+        "operator": { "type": "string" },
+        "started_at": { "type": "string" },
+        "finished_at": { "type": ["string", "null"] },
+        "notes": { "type": "string" }
+      }
+    },
+    "criteria": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "required": ["id", "key", "title", "status", "pass", "human_steps"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "integer", "minimum": 1, "maximum": 6 },
+          "key": {
+            "type": "string",
+            "enum": [
+              "os_accent_suppress",
+              "opaque_achromatic_over_mica",
+              "scrub_frametime_4k60",
+              "wcag_aa_custom_controls",
+              "virtualized_grid_10k",
+              "a11y_tree_custom_drawn"
+            ]
+          },
+          "title": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending_human", "measured", "incomplete", "error"],
+            "description": "Harness never writes pass/fail product verdicts; only measurement status."
+          },
+          "pass": {
+            "type": ["boolean", "null"],
+            "description": "null until human sets true/false after verification. Harness leaves null."
+          },
+          "threshold": { "type": ["object", "null"] },
+          "measurements": { "type": "object" },
+          "evidence_path": { "type": ["string", "null"] },
+          "notes": { "type": "string" },
+          "human_steps": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "probe": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "attempted": { "type": "boolean" },
+              "auto_capable": { "type": "boolean" },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "overall": {
+      "type": "object",
+      "required": ["pass", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "pass": {
+          "type": ["boolean", "null"],
+          "description": "PASS only if all six criteria.pass === true. Harness always leaves null."
+        },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}

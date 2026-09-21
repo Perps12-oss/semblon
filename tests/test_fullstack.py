@@ -181,6 +181,13 @@ def test_optional_providers_are_honest():
     assert "ocr" in st
     assert "clip" in st
     assert "pose" in st
+    # False means a real probe failed; notes must explain why (not silent True-on-import).
+    for key in ("ocr", "clip", "pose"):
+        if st[key] is False:
+            assert key in st["notes"]
+            assert "unavailable" in st["notes"][key]
+        else:
+            assert key not in st["notes"]
 
 
 def test_cluster_writes_groups_not_persons(tmp_path):

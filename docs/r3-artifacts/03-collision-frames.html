@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>R3 §8.3 — Collision ledger (15 frames)</title>
+  <style>
+    :root {
+      --bg: #121214;
+      --s2: #1c1c1f;
+      --text: #e8e8ea;
+      --text2: #a0a0a6;
+      --halo: #f2f2f4;
+      --sem: #9aa0a6;
+      --danger: #e5484d;
+      --frame: #2a2a2e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.4 system-ui, Segoe UI, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+    }
+    h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+    .meta { color: var(--text2); margin-bottom: 24px; max-width: 72ch; }
+    .pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      border: 1px solid var(--frame);
+      background: var(--s2);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .pair h2 {
+      grid-column: 1 / -1;
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0 0 4px;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .pair .fail {
+      grid-column: 1 / -1;
+      font-size: 12px;
+      color: var(--text2);
+      margin: 0 0 8px;
+    }
+    .cell {
+      background: #0e0e10;
+      border-radius: 6px;
+      padding: 16px;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .label { font-size: 12px; color: var(--text2); }
+    /* Face / identity notches */
+    .face {
+      width: 56px;
+      height: 56px;
+      border-radius: 4px;
+      background: #3a4540;
+      position: relative;
+      box-shadow: 0 0 0 1.5px var(--halo);
+    }
+    .face::after {
+      content: "";
+      position: absolute;
+      inset: -1.5px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+    .notch {
+      position: absolute;
+      top: -6px; right: -6px;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #0e0e10;
+      box-shadow: 0 0 0 1.5px var(--halo);
+    }
+    .id-unknown::after { border: 1.5px dashed var(--sem); border-spacing: 6px 4px; stroke-dasharray: 6 4; }
+    .id-unknown { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
+    .id-unknown .notch { border: 1.5px solid var(--sem); background: transparent; }
+    .id-possible { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
+    .id-possible .notch {
+      background: conic-gradient(var(--sem) 0 180deg, transparent 180deg 360deg);
+      border: 1.5px solid var(--sem);
+    }
+    .id-confirmed { outline: 2px solid var(--sem); outline-offset: 1px; }
+    .id-confirmed .notch { background: var(--sem); border: none; }
+    .id-ruled { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
+    .id-ruled .notch {
+      border: 1.5px solid var(--sem);
+      background: transparent;
+    }
+    .id-ruled .neq {
+      position: absolute; top: -10px; right: -18px;
+      font-size: 14px; color: var(--sem); font-weight: 700;
+    }
+    .id-ruled .notch::after {
+      content: "";
+      position: absolute; left: 2px; top: 5px;
+      width: 10px; height: 1.5px; background: var(--sem);
+      transform: rotate(-45deg);
+    }
+    .id-ignored { opacity: 0.35; }
+    .id-ignored .notch { display: none; }
+
+    /* Controls */
+    .ctrl {
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: #2a2a2e;
+      color: var(--text);
+      font-size: 13px;
+    }
+    .ctrl-disabled { opacity: 0.4; }
+    .ctrl-primary { background: #e8e8ea; color: #121214; }
+
+    /* Processing rings */
+    .ring {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: 2px solid var(--sem);
+      position: relative;
+    }
+    .ring-hollow { background: transparent; }
+    .ring-partial {
+      border-color: transparent;
+      background:
+        conic-gradient(var(--sem) 0 110deg, transparent 110deg 360deg);
+      mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+    }
+    .ring-partial.static { /* paused: same arc, no anim */ }
+    .ring-solid { background: var(--sem); border: none; }
+    .ring-solid::after {
+      content: "";
+      position: absolute; inset: 4px;
+      border-radius: 50%;
+      background: #0e0e10;
+    }
+    .ring-failed {
+      border: 2px solid var(--sem);
+      border-right-color: transparent;
+    }
+    .ring-failed::after {
+      content: "!";
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; color: var(--sem);
+    }
+    .ring-cancel {
+      border: 2px solid var(--sem);
+    }
+    .ring-cancel::after {
+      content: "";
+      position: absolute; left: 6px; top: 16px;
+      width: 22px; height: 2px; background: var(--sem);
+      transform: rotate(-45deg);
+    }
+    .ring-dotted {
+      border: 2px dotted var(--sem);
+    }
+    .pause-bar {
+      position: absolute; left: 12px; top: 10px;
+      width: 3px; height: 14px; background: var(--sem);
+      box-shadow: 6px 0 0 var(--sem);
+    }
+    .anim-note { font-size: 10px; color: var(--text2); }
+    #count { margin-top: 8px; color: var(--text2); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>R3 §8.3 — Collision ledger (15 comparison frames)</h1>
+  <p class="meta">
+    Side-by-side pairs that must remain distinguishable. Reviewer hesitation = rule or rendering fails.
+    Identity = notch + stroke texture. Processing = ring shape. Disabled = opacity, no border.
+    Spec: <code>docs/R3-BRIEF.md</code> §7 · Index: <code>docs/r3-artifacts/README.md</code>
+  </p>
+  <p id="count"></p>
+
+  <!-- 1 -->
+  <section class="pair">
+    <h2>01 · Disabled vs Unknown</h2>
+    <p class="fail">Fail if both look like inert grey with no asking signal.</p>
+    <div class="cell">
+      <div class="ctrl ctrl-disabled">Merge</div>
+      <span class="label">Disabled — 40%, no border, no affordance</span>
+    </div>
+    <div class="cell">
+      <div class="face id-unknown"><span class="notch"></span></div>
+      <span class="label">Unknown — dashed border + empty notch</span>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="pair">
+    <h2>02 · Disabled vs Processing</h2>
+    <p class="fail">Fail if Processing is only opacity without a ring.</p>
+    <div class="cell">
+      <div class="ctrl ctrl-disabled">Name</div>
+      <span class="label">Disabled</span>
+    </div>
+    <div class="cell">
+      <div class="ring ring-partial" title="animated sweep"></div>
+      <span class="label">Processing — partial ring <span class="anim-note">(anim)</span></span>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="pair">
+    <h2>03 · Unknown vs Processing</h2>
+    <p class="fail">Fail if Unknown loses border/notch or Processing gains a face outline.</p>
+    <div class="cell">
+      <div class="face id-unknown"><span class="notch"></span></div>
+      <span class="label">Unknown</span>
+    </div>
+    <div class="cell">
+      <div class="ring ring-partial"></div>
+      <span class="label">Processing</span>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="pair">
+    <h2>04 · Possible vs Confirmed</h2>
+    <p class="fail">Fail if dashed vs solid is ambiguous at this size.</p>
+    <div class="cell">
+      <div class="face id-possible"><span class="notch"></span></div>
+      <span class="label">Possible — dashed 3/2 + half notch · Possible: Maya R. (0.71)</span>
+    </div>
+    <div class="cell">
+      <div class="face id-confirmed"><span class="notch"></span></div>
+      <span class="label">Confirmed — solid + solid notch</span>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="pair">
+    <h2>05 · Ruled out vs Ignored</h2>
+    <p class="fail">Fail if dismissed and never-considered look identical.</p>
+    <div class="cell">
+      <div class="face id-ruled"><span class="notch"></span><span class="neq">≠</span></div>
+      <span class="label">Ruled out — durable negative</span>
+    </div>
+    <div class="cell">
+      <div class="face id-ignored"></div>
+      <span class="label">Ignored — no border, 35% opacity</span>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="pair">
+    <h2>06 · Paused vs Unknown</h2>
+    <p class="fail">Fail if they share any visual property (brief: must share none).</p>
+    <div class="cell">
+      <div class="ring ring-partial static"><span class="pause-bar"></span></div>
+      <span class="label">Paused — static arc + pause bar · Paused · 37%</span>
+    </div>
+    <div class="cell">
+      <div class="face id-unknown"><span class="notch"></span></div>
+      <span class="label">Unknown</span>
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section class="pair">
+    <h2>07 · Failed vs Cancelled</h2>
+    <p class="fail">Fail if both read as “stopped hollow ring.”</p>
+    <div class="cell">
+      <div class="ring ring-failed"></div>
+      <span class="label">Failed — gap + !</span>
+    </div>
+    <div class="cell">
+      <div class="ring ring-cancel"></div>
+      <span class="label">Cancelled — hollow + slash</span>
+    </div>
+  </section>
+
+  <!-- 8 -->
+  <section class="pair">
+    <h2>08 · Queued vs Cancelled</h2>
+    <p class="fail">Fail if slash is missing or hollow rings are identical.</p>
+    <div class="cell">
+      <div class="ring ring-hollow"></div>
+      <span class="label">Queued — hollow ring</span>
+    </div>
+    <div class="cell">
+      <div class="ring ring-cancel"></div>
+      <span class="label">Cancelled — hollow + slash</span>
+    </div>
+  </section>
+
+  <!-- 9 -->
+  <section class="pair">
+    <h2>09 · Completed (processing) vs Confirmed (identity)</h2>
+    <p class="fail">Fail if solid ring and solid face border are interchangeable.</p>
+    <div class="cell">
+      <div class="ring ring-solid"></div>
+      <span class="label">Completed — solid ring (job channel)</span>
+    </div>
+    <div class="cell">
+      <div class="face id-confirmed"><span class="notch"></span></div>
+      <span class="label">Confirmed — solid face + solid notch</span>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section class="pair">
+    <h2>10 · Stale vs Ignored</h2>
+    <p class="fail">Fail if freshness and human-defer collapse.</p>
+    <div class="cell">
+      <div class="ring ring-dotted"></div>
+      <span class="label">Stale — dotted ring (analysis)</span>
+    </div>
+    <div class="cell">
+      <div class="face id-ignored"></div>
+      <span class="label">Ignored — 35% face, no notch</span>
+    </div>
+  </section>
+
+  <!-- 11 -->
+  <section class="pair">
+    <h2>11 · Possible vs Ruled out</h2>
+    <p class="fail">Fail if ≠ / slash is not readable at this size.</p>
+    <div class="cell">
+      <div class="face id-possible"><span class="notch"></span></div>
+      <span class="label">Possible</span>
+    </div>
+    <div class="cell">
+      <div class="face id-ruled"><span class="notch"></span><span class="neq">≠</span></div>
+      <span class="label">Ruled out</span>
+    </div>
+  </section>
+
+  <!-- 12 -->
+  <section class="pair">
+    <h2>12 · Confirmed vs Ruled out</h2>
+    <p class="fail">Fail if yes/no are not equally clear.</p>
+    <div class="cell">
+      <div class="face id-confirmed"><span class="notch"></span></div>
+      <span class="label">Confirmed</span>
+    </div>
+    <div class="cell">
+      <div class="face id-ruled"><span class="notch"></span><span class="neq">≠</span></div>
+      <span class="label">Ruled out</span>
+    </div>
+  </section>
+
+  <!-- 13 -->
+  <section class="pair">
+    <h2>13 · Processing vs Paused</h2>
+    <p class="fail">Fail if pause bar / static vs anim is unclear.</p>
+    <div class="cell">
+      <div class="ring ring-partial"></div>
+      <span class="label">Processing <span class="anim-note">(anim)</span></span>
+    </div>
+    <div class="cell">
+      <div class="ring ring-partial static"><span class="pause-bar"></span></div>
+      <span class="label">Paused — static + bars</span>
+    </div>
+  </section>
+
+  <!-- 14 -->
+  <section class="pair">
+    <h2>14 · Primary disabled vs Primary loading</h2>
+    <p class="fail">Fail if loading looks like disabled (width must stay locked; spinner replaces label).</p>
+    <div class="cell">
+      <div class="ctrl ctrl-primary ctrl-disabled" style="min-width: 88px; text-align: center;">Name</div>
+      <span class="label">Disabled primary — no ring, no hover</span>
+    </div>
+    <div class="cell">
+      <div class="ctrl ctrl-primary" style="min-width: 88px; text-align: center; opacity: 1;">
+        <span class="ring ring-partial" style="width:16px;height:16px;display:inline-block;vertical-align:middle;border-width:2px;"></span>
+      </div>
+      <span class="label">Loading — spinner, width locked</span>
+    </div>
+  </section>
+
+  <!-- 15 -->
+  <section class="pair">
+    <h2>15 · Selected media card vs Confirmed face</h2>
+    <p class="fail">Fail if card selection reads as identity Confirmed.</p>
+    <div class="cell">
+      <div style="width:72px;height:72px;background:#2a3540;border:2px solid var(--text);box-shadow:inset 0 0 0 2px var(--halo);border-radius:4px;position:relative;">
+        <span style="position:absolute;top:4px;left:4px;width:10px;height:10px;border-radius:50%;background:var(--sem);"></span>
+      </div>
+      <span class="label">Selected media — inset + card notch (selection)</span>
+    </div>
+    <div class="cell">
+      <div class="face id-confirmed"><span class="notch"></span></div>
+      <span class="label">Confirmed face — identity channel</span>
+    </div>
+  </section>
+  <script>
+    const n = document.querySelectorAll("section.pair").length;
+    const el = document.getElementById("count");
+    const ok = n === 15;
+    el.textContent = `Pair count: ${n} (expected 15)${ok ? "" : " — COUNT MISMATCH"}`;
+    if (!ok) el.style.color = "#e5484d";
+  </script>
+</body>
+</html>

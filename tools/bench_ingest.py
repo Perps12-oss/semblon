@@ -1,5 +1,9 @@
 """Benchmark harness for ingest throughput. Does not retune identity.
 
+Single --workers value only. For the workers=1,2,4 sweep (face-count equality,
+images/sec, faces/sec, RSS), use tools/perf_workers_harness.py — see
+docs/PERF-WORKERS-HARNESS.md.
+
 Usage (after install):
   python tools/bench_ingest.py --folder PATH --store PATH --out bench.json
 

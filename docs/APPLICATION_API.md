@@ -27,7 +27,7 @@ Home button  →  Home-owned worker  →  Tk callback chain  →  ingest
 | Pause | Cooperative; same job stays claimed; not consuming ingest work | `JobEngine.pause` / `unpause` |
 | Application state | store path, latest run with faces | `default_store_path`, `latest_run_id` |
 | Review state | board items (cluster / track / unassigned) | `load_board` |
-| Person operations | Name / Merge / Split / Ignore / Note | `apply_*` → `review.py` |
+| Person operations | Name / Merge / Split / Ignore / Note (+ experimental Rule out) | `apply_*` → `review.py` |
 | Search / read snapshots | people, unknown, activity, person query, canvas overlay | `search_*`, `inbox`, Home `read_activity_snapshot`, `load_canvas` |
 | Observation overlay | `path` + `frame_id` + `bbox` + optional track lane | `load_canvas` / `overlay_boxes` |
 
@@ -60,8 +60,11 @@ Mutations (one writer: Python domain ops):
 | `apply_split` | `apply_split` | Faces leave the cluster |
 | `apply_ignore` | `apply_ignore` | Hide from board |
 | `apply_note` | `apply_note` | `decisions.kind=note` |
+| `apply_rule_out` | `apply_rule_out` | **Experimental / UNWIRED** — durable reject (`action=rule_out`); requires `SEMBLON_RULED_OUT=1`; not a default Home/review button. See `docs/CONTRACTS-RULED-OUT.md` |
 
 Named later, not implemented as Job types in this slice: `watch`, `live`. The API must not assume stills-only.
+
+**Ruled out wire gate:** code path exists behind the flag; do not treat it as product chrome until human verify (checklist in `docs/CONTRACTS-RULED-OUT.md`).
 
 ## Job states (V1.4 C.2)
 

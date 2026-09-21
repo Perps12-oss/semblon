@@ -1,0 +1,25 @@
+[
+  {
+    "name": "primary_label_on_surface",
+    "theme": "dark",
+    "fg": "#F2F2F2",
+    "bg": "#1A1A1A",
+    "large_text": false,
+    "ui_component": false
+  },
+  {
+    "name": "secondary_label_on_surface",
+    "theme": "dark",
+    "fg": "#B3B3B3",
+    "bg": "#1A1A1A",
+    "large_text": false,
+    "ui_component": false
+  },
+  {
+    "name": "focus_ring_example",
+    "theme": "light",
+    "fg": "#111111",
+    "bg": "#F5F5F5",
+    "ui_component": true
+  }
+]

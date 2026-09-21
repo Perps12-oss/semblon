@@ -7,8 +7,11 @@ compare(), DBSCAN, or identify.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 import numpy as np
 
@@ -18,6 +21,8 @@ APPEARANCE_PACK = "appearance/rgb8@1"
 APPEARANCE_DIM = 24
 OBJECT_PROVIDER = "opencv-contour"
 CLIP_PACK = "clip/openclip-vitb32@1"
+CLIP_MODEL = "ViT-B-32"
+CLIP_PRETRAINED = "openai"
 OCR_PROVIDER = "tesseract"
 POSE_PROVIDER = "mediapipe-pose"
 _CLIP_CACHE = None
@@ -26,6 +31,127 @@ _POSE_CACHE = None
 
 class ProviderUnavailable(RuntimeError):
     pass
+
+
+def _clip_cache_dir() -> Path:
+    override = os.environ.get("OPENCLIP_CACHE_DIR") or os.environ.get("CLIP_CACHE_DIR")
+    if override:
+        return Path(override)
+    return Path.home() / ".cache" / "clip"
+
+
+def _hf_hub_cache_dir() -> Path:
+    override = os.environ.get("HF_HUB_CACHE") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+    if override:
+        return Path(override)
+    hf_home = os.environ.get("HF_HOME")
+    if hf_home:
+        return Path(hf_home) / "hub"
+    return Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def _nonempty_file(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    try:
+        if path.is_file() and path.stat().st_size > 0:
+            return path
+    except OSError:
+        return None
+    return None
+
+
+def find_local_clip_weights() -> Path | None:
+    """Locate ViT-B-32/openai weights on disk. Never downloads."""
+    try:
+        from open_clip.pretrained import get_pretrained_cfg
+    except Exception:
+        return None
+    try:
+        cfg = get_pretrained_cfg(CLIP_MODEL, CLIP_PRETRAINED) or {}
+    except Exception:
+        return None
+    if not isinstance(cfg, dict) or not cfg:
+        return None
+
+    explicit = cfg.get("file")
+    if explicit:
+        found = _nonempty_file(Path(explicit))
+        if found is not None:
+            return found
+
+    url = cfg.get("url") or ""
+    if url:
+        name = Path(urlparse(url).path).name
+        if name:
+            found = _nonempty_file(_clip_cache_dir() / name)
+            if found is not None:
+                return found
+
+    hub = (cfg.get("hf_hub") or "").strip()
+    if hub:
+        if hub.endswith("/"):
+            model_id = hub.rstrip("/")
+            names = ["open_clip_pytorch_model.bin", "open_clip_model.safetensors", "pytorch_model.bin"]
+        elif "/" in hub:
+            model_id, filename = hub.rsplit("/", 1)
+            names = [filename] if filename else ["open_clip_pytorch_model.bin", "open_clip_model.safetensors"]
+        else:
+            model_id, names = hub, ["open_clip_pytorch_model.bin", "open_clip_model.safetensors"]
+        if model_id:
+            root = _hf_hub_cache_dir() / f"models--{model_id.replace('/', '--')}"
+            if root.is_dir():
+                for name in names:
+                    for hit in root.rglob(name):
+                        found = _nonempty_file(hit)
+                        if found is not None:
+                            return found
+    return None
+
+
+def probe_ocr_status() -> tuple[bool, str | None]:
+    """True only when pytesseract imports and tesseract is on PATH."""
+    if shutil.which("tesseract") is None:
+        return False, "unavailable: tesseract binary not on PATH"
+    try:
+        import pytesseract  # noqa: F401
+    except Exception as e:
+        return False, f"unavailable: {type(e).__name__}"
+    return True, None
+
+
+def probe_clip_status() -> tuple[bool, str | None]:
+    """True only when open_clip+torch import and local ViT-B-32/openai weights exist.
+
+    Does not call create_model_and_transforms and does not download weights.
+    """
+    try:
+        import open_clip  # noqa: F401
+        import torch  # noqa: F401
+    except Exception as e:
+        return False, f"unavailable: {type(e).__name__}"
+    weights = find_local_clip_weights()
+    if weights is None:
+        cache = _clip_cache_dir()
+        return (
+            False,
+            f"unavailable: open_clip+torch present but ViT-B-32/{CLIP_PRETRAINED} weights missing "
+            f"(checked {cache}; no download)",
+        )
+    return True, None
+
+
+def probe_pose_status() -> tuple[bool, str | None]:
+    """True only when mediapipe.solutions.pose exists (the API pose_landmarks uses)."""
+    try:
+        import mediapipe as mp
+    except Exception as e:
+        return False, f"unavailable: {type(e).__name__}"
+    solutions = getattr(mp, "solutions", None)
+    pose_api = getattr(solutions, "pose", None) if solutions is not None else None
+    if pose_api is None:
+        return False, "unavailable: mediapipe.solutions.pose missing"
+    return True, None
 
 
 def color_histogram(img) -> bytes:
@@ -75,27 +201,22 @@ def contour_objects(img, *, min_area: int = 400, max_regions: int = 8) -> list[d
 
 
 def optional_status() -> dict:
-    """Honest availability of extra providers. Missing extras are not a crash."""
-    ocr = clip = pose = False
-    notes = {}
-    try:
-        import pytesseract  # noqa: F401
+    """Honest availability of extra providers. Missing extras are not a crash.
 
-        ocr = True
-    except Exception as e:
-        notes["ocr"] = f"unavailable: {type(e).__name__}"
-    try:
-        import open_clip  # noqa: F401
-
-        clip = True
-    except Exception as e:
-        notes["clip"] = f"unavailable: {type(e).__name__}"
-    try:
-        import mediapipe  # noqa: F401
-
-        pose = True
-    except Exception as e:
-        notes["pose"] = f"unavailable: {type(e).__name__}"
+    Status matches what the call path needs, not a bare import:
+    OCR needs the tesseract binary; CLIP needs open_clip+torch+local weights;
+    pose needs mediapipe.solutions.pose. Never downloads CLIP weights.
+    """
+    notes: dict[str, str] = {}
+    ocr, ocr_note = probe_ocr_status()
+    if ocr_note:
+        notes["ocr"] = ocr_note
+    clip, clip_note = probe_clip_status()
+    if clip_note:
+        notes["clip"] = clip_note
+    pose, pose_note = probe_pose_status()
+    if pose_note:
+        notes["pose"] = pose_note
     return {
         "facekit": True,
         "appearance": True,

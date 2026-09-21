@@ -33,7 +33,7 @@ v1 collapsed identity into `UNKNOWN → POSSIBLE → CONFIRMED`. That smuggles a
 - Keep adjectival **Possible** (not noun “Candidate”). Label the **link**: e.g. `Possible: Maya R. (0.71)`.
 - **Ruled out** is first-class: durable negative decision. Without it, dismissed and never-considered are the same bit.
 - **Ignored** is deferred / leave observation layer; media stays in Library.
-- Today’s store: `decisions` + Ignore as `reject`+policy (`docs/CONTRACTS.md`). **Ruled out as a distinct durable verb is a contract gap** — requires a named CONTRACTS slice before shell ships that state. Do not invent columns from this brief alone.
+- Today’s store: `decisions` + Ignore as `reject`+policy (`docs/CONTRACTS.md`). **Ruled out** named CONTRACTS slice: `docs/CONTRACTS-RULED-OUT.md` (`kind=reject` + `action=rule_out`; flag `SEMBLON_RULED_OUT`; **UNWIRED** as product default pending human verify). Do not invent columns from this brief alone.
 
 ### Visual grammar (identity display)
 
@@ -214,12 +214,14 @@ Rejected still: Electron, Tauri, permanent Tk AppShell, CustomTkinter.
 
 ## 8) Next artifacts (due after APP-1 C.3 + R2; order locked)
 
-1. **Complete state matrix** for all 17 components.
-2. **Interaction spec** — five identity display states × seven processing states (full cross-product).
-3. **Collision ledger as 15 comparison frames** — falsify rules fastest.
-4. **State-triple grid** — 5 ingest × 6 analysis cards × identity notch stepped through 5 values (30 cards). Confusable pair = wrong channel assignment.
-5. **Toolkit bake-off** against §6 — **after** frames (wrong spec + passing toolkit = wrong product).
-6. **Clickable hierarchy frames** — last; test, not spec.
+1. ~~**Complete state matrix** for all 17 components.~~ **DONE** — `docs/r3-artifacts/01-state-matrix.md`
+2. ~~**Interaction spec** — five identity display states × seven processing states (full cross-product).~~ **DONE** — `docs/r3-artifacts/02-interaction-cross-product.md`
+3. ~~**Collision ledger as 15 comparison frames** — falsify rules fastest.~~ **DONE** — `docs/r3-artifacts/03-collision-frames.html`
+4. ~~**State-triple grid** — 5 ingest × 6 analysis cards × identity notch stepped through 5 values (30 cards). Confusable pair = wrong channel assignment.~~ **DONE** — `docs/r3-artifacts/04-state-triple-grid.html`
+5. **Toolkit bake-off** against §6 — **after** frames (wrong spec + passing toolkit = wrong product). ← **next** — human checklist: `docs/r3-artifacts/05-bake-off-checklist.md` (no PASS until measured)
+6. ~~**Clickable hierarchy frames** — last; test, not spec.~~ **DONE (TEST)** — `docs/r3-artifacts/06-hierarchy-frames.html` (Library / Workspace / Inspector IA from §4; not a product shell)
+
+Index: `docs/r3-artifacts/README.md`. Human verify → wire (all gates): `docs/HUMAN-VERIFY-THEN-WIRE.md`.
 
 ---
 
@@ -240,4 +242,6 @@ Rejected still: Electron, Tauri, permanent Tk AppShell, CustomTkinter.
 
 | Version | Date | Summary |
 |---|---|---|
+| v2.2 | 2026-09-21 | §8.6 hierarchy test frames at `docs/r3-artifacts/06-hierarchy-frames.html` (TEST not SPEC). Master human-verify playbook: `docs/HUMAN-VERIFY-THEN-WIRE.md`. |
+| v2.1 | 2026-09-21 | §8.1–§8.4 artifacts landed under `docs/r3-artifacts/` (matrix, cross-product, 15 collision frames, 30-card state-triple grid). Human bake-off checklist at `05-bake-off-checklist.md` (no measurements). Next = toolkit bake-off runs. |
 | v2 | 2026-09-21 | Owner-approved after critique. Two-axis identity; Ruled out; state matrix seed; processing grammar; adaptive overlays; evidence-ack Enter; Compare progressive entry; Group Inspector split; transactional undo; Library/observation split; toolkit bake-off criteria. |
