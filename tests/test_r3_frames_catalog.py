@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from tools.r3_frames.catalog import FRAME_SETS, generate_catalog
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.r3_frames.catalog import FRAME_SETS, generate_catalog  # noqa: E402
 
 
 def test_catalog_non_empty():
