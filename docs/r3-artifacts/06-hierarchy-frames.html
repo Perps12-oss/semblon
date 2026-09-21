@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>R3 §8.6 — Hierarchy frames (TEST)</title>
+  <style>
+    :root {
+      --bg: #121214;
+      --s0: #0e0e10;
+      --s2: #1c1c1f;
+      --text: #e8e8ea;
+      --text2: #a0a0a6;
+      --sem: #9aa0a6;
+      --halo: #f2f2f4;
+      --frame: #2a2a2e;
+      --w0a: rgba(255,255,255,0.04);
+      --w1f: rgba(255,255,255,0.12);
+      --danger: #e5484d;
+      --accent-test: #6b8f71;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 13px/1.4 system-ui, Segoe UI, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .banner {
+      background: #3a2a14;
+      color: #f0d9a8;
+      padding: 10px 20px;
+      font-size: 12px;
+      border-bottom: 1px solid #5a4420;
+      flex-shrink: 0;
+    }
+    .banner strong { color: #ffd78a; }
+    .banner code { font-size: 11px; background: rgba(0,0,0,0.25); padding: 1px 5px; border-radius: 3px; }
+    header.page {
+      padding: 16px 20px 8px;
+      flex-shrink: 0;
+    }
+    h1 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+    .meta { color: var(--text2); max-width: 88ch; margin: 0 0 8px; }
+    .checks {
+      display: flex; flex-wrap: wrap; gap: 8px 16px;
+      margin: 8px 0 0; font-size: 12px; color: var(--text2);
+    }
+    .checks label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .shell-wrap {
+      flex: 1;
+      padding: 8px 20px 20px;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .shell {
+      flex: 1;
+      display: grid;
+      grid-template-rows: 40px 1fr;
+      grid-template-columns: 200px 1fr;
+      border: 1px solid var(--frame);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--s0);
+      min-height: 480px;
+    }
+    .titlebar {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 12px;
+      background: var(--s2);
+      border-bottom: 1px solid var(--frame);
+    }
+    .brand {
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      font-size: 12px;
+      color: var(--halo);
+    }
+    .search {
+      flex: 1;
+      max-width: 280px;
+      margin-left: auto;
+      background: var(--s0);
+      border: 1px solid var(--frame);
+      border-radius: 4px;
+      padding: 4px 10px;
+      color: var(--text2);
+      font-size: 12px;
+    }
+    .gear {
+      width: 28px; height: 28px;
+      border: 1px solid var(--frame);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text2);
+      cursor: pointer;
+    }
+    .gear:focus-visible { outline: 2px solid var(--halo); outline-offset: 2px; }
+    .gear.active { background: var(--w1f); color: var(--text); }
+    nav.library {
+      border-right: 1px solid var(--frame);
+      background: var(--s2);
+      padding: 10px 0;
+      overflow-y: auto;
+    }
+    .nav-section {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text2);
+      padding: 10px 14px 4px;
+    }
+    .nav-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: transparent;
+      color: var(--text2);
+      padding: 7px 14px;
+      font: inherit;
+      cursor: pointer;
+      border-left: 2px solid transparent;
+    }
+    .nav-item:hover { background: var(--w0a); color: var(--text); }
+    .nav-item:focus-visible { outline: 2px solid var(--halo); outline-offset: -2px; }
+    .nav-item.selected {
+      background: var(--w1f);
+      color: var(--text);
+      border-left-color: var(--halo);
+    }
+    .nav-item.disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .main {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      min-width: 0;
+      min-height: 0;
+    }
+    .workspace {
+      padding: 14px;
+      overflow: auto;
+      min-height: 0;
+    }
+    .workspace h2 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .workspace .hint { color: var(--text2); font-size: 12px; margin: 0 0 12px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 10px;
+    }
+    .card {
+      background: var(--s2);
+      border: 1px solid var(--frame);
+      border-radius: 4px;
+      padding: 8px;
+      cursor: pointer;
+      min-height: 88px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .card:hover { border-color: var(--sem); transform: translateY(-1px); }
+    .card:focus-visible { outline: 2px solid var(--halo); outline-offset: 2px; }
+    .card.selected {
+      box-shadow: inset 0 0 0 2px var(--halo);
+    }
+    .thumb {
+      height: 48px;
+      border-radius: 3px;
+      background: #3a4540;
+      position: relative;
+    }
+    .thumb::after {
+      content: "";
+      position: absolute;
+      inset: -1.5px;
+      border-radius: 3px;
+      box-shadow: 0 0 0 1.5px var(--halo);
+      pointer-events: none;
+      opacity: 0.35;
+    }
+    .card .name { font-size: 11px; color: var(--text2); }
+    .person-row, .activity-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--frame);
+      border-radius: 4px;
+      background: var(--s2);
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .person-row:hover, .activity-row:hover { background: var(--w0a); }
+    .person-row.selected, .activity-row.selected {
+      box-shadow: inset 0 0 0 2px var(--halo);
+    }
+    .face-mini {
+      width: 36px; height: 36px;
+      border-radius: 3px;
+      background: #3a4540;
+      position: relative;
+      flex-shrink: 0;
+      outline: 1.5px dashed var(--sem);
+      outline-offset: 1px;
+    }
+    .face-mini .notch {
+      position: absolute;
+      top: -4px; right: -4px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      border: 1.5px solid var(--sem);
+      background: transparent;
+    }
+    .face-mini.confirmed { outline-style: solid; outline-width: 2px; }
+    .face-mini.confirmed .notch { background: var(--sem); border: none; }
+    .face-mini.possible .notch {
+      background: conic-gradient(var(--sem) 0 180deg, transparent 180deg 360deg);
+    }
+    .inspector {
+      border-top: 1px solid var(--frame);
+      background: var(--s2);
+      padding: 12px 14px;
+      min-height: 132px;
+      display: none;
+    }
+    .inspector.open { display: block; }
+    .inspector h3 {
+      margin: 0 0 4px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text2);
+      font-weight: 600;
+    }
+    .inspector .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 8px;
+    }
+    .inspector .block-title {
+      font-size: 11px;
+      color: var(--text2);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .inspector ul {
+      margin: 0; padding-left: 16px; color: var(--text); font-size: 12px;
+    }
+    .actions {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+    }
+    .btn {
+      border: 1px solid var(--frame);
+      background: transparent;
+      color: var(--text);
+      padding: 5px 10px;
+      border-radius: 999px;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .btn.primary {
+      background: var(--halo);
+      color: #121214;
+      border-color: var(--halo);
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn:focus-visible { outline: 2px solid var(--halo); outline-offset: 2px; }
+    .toast {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: var(--s2);
+      border: 1px solid var(--frame);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text2);
+      max-width: 360px;
+      display: none;
+      z-index: 20;
+    }
+    .toast.show { display: block; }
+    .crumb {
+      font-size: 11px;
+      color: var(--text2);
+      margin-bottom: 8px;
+    }
+    .crumb span { color: var(--text); }
+    .empty {
+      color: var(--text2);
+      padding: 24px;
+      text-align: center;
+      border: 1px dashed var(--frame);
+      border-radius: 6px;
+    }
+    footer#count {
+      padding: 8px 20px 16px;
+      color: var(--text2);
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .settings-panel {
+      display: none;
+      padding: 14px;
+    }
+    .settings-panel.open { display: block; }
+  </style>
+</head>
+<body>
+  <div class="banner">
+    <strong>TEST — not SPEC.</strong>
+    R3-BRIEF §8.6 clickable hierarchy frames for Library / Workspace / Inspector IA (§4).
+    Static HTML only. Failures = wrong nav ownership, merged person↔cluster in Inspector, or Library conflated with observation layer.
+    Spec lives in <code>docs/R3-BRIEF.md</code> §3–§4 and <code>01-state-matrix.md</code>.
+  </div>
+
+  <header class="page">
+    <h1>R3 §8.6 — Hierarchy frames</h1>
+    <p class="meta">
+      Click Library destinations; select an asset to open Inspector.
+      Evidence (machine) and Proposed action (human) must stay split.
+      <code>Merge observations</code> ≠ <code>Assign to person</code>.
+      Failed ingest belongs in Activity, not as a Library row. Ignored media stays in Library.
+    </p>
+    <div class="checks" id="reviewer-checks">
+      <label><input type="checkbox" data-check="lib-obs" /> Library ≠ People/Unknown observation layer</label>
+      <label><input type="checkbox" data-check="insp-split" /> Inspector keeps evidence vs actions separate</label>
+      <label><input type="checkbox" data-check="no-modal" /> No identity modal; triage stays nested in shell</label>
+      <label><input type="checkbox" data-check="activity-fail" /> Failed ingest only under Activity</label>
+    </div>
+  </header>
+
+  <div class="shell-wrap">
+    <div class="shell" role="application" aria-label="Semblon hierarchy test frame">
+      <div class="titlebar">
+        <div class="brand">SEMBLON</div>
+        <div class="search" role="search" aria-label="Search (inert in this test)">Search</div>
+        <button type="button" class="gear" id="btn-settings" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+
+      <nav class="library" aria-label="Library">
+        <div class="nav-section">Library</div>
+        <button type="button" class="nav-item selected" data-nav="home">Home</button>
+        <button type="button" class="nav-item" data-nav="photos">Photos</button>
+        <button type="button" class="nav-item" data-nav="videos">Videos</button>
+        <div class="nav-section">People</div>
+        <button type="button" class="nav-item" data-nav="people">People</button>
+        <button type="button" class="nav-item" data-nav="unknown">Unknown</button>
+        <div class="nav-section">Work</div>
+        <button type="button" class="nav-item" data-nav="activity">Activity</button>
+      </nav>
+
+      <div class="main">
+        <div class="workspace" id="workspace"></div>
+        <aside class="inspector" id="inspector" aria-label="Group Inspector"></aside>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+  <footer id="count">Frames exercised: <span id="nav-count">0</span> nav · <span id="sel-count">0</span> selections · reviewer checks <span id="check-count">0</span>/4</footer>
+
+  <script>
+    /**
+     * TEST harness — not a product shell.
+     * IA from R3-BRIEF §4. Hierarchy that the state matrix cannot express.
+     */
+    const MEDIA = [
+      { id: "m1", kind: "photo", name: "beach-01.jpg", faces: 2, zeroFace: false, ignored: false },
+      { id: "m2", kind: "photo", name: "desk-02.jpg", faces: 0, zeroFace: true, ignored: false },
+      { id: "m3", kind: "photo", name: "party-03.jpg", faces: 3, zeroFace: false, ignored: true },
+      { id: "m4", kind: "video", name: "walk.mp4", faces: 4, zeroFace: false, ignored: false, frames: 12 },
+      { id: "m5", kind: "video", name: "door.mp4", faces: 1, zeroFace: false, ignored: false, frames: 8 },
+    ];
+    const PEOPLE = [
+      { id: "p1", name: "Maya R.", evidence: "clustered", decision: "confirmed" },
+      { id: "p2", name: "Alex K.", evidence: "similar", decision: "possible" },
+    ];
+    const UNKNOWN = [
+      { id: "u1", label: "group g-14", members: 6, evidence: "clustered" },
+      { id: "u2", label: "track t-3", members: 4, evidence: "detected" },
+      { id: "u3", label: "face f-882", members: 1, evidence: "similar" },
+    ];
+    const ACTIVITY = [
+      { id: "a1", kind: "failed", text: "Failed ingest — corrupt.jpg (not a Library row)" },
+      { id: "a2", kind: "ok", text: "Run 20260921T… completed · 41 faces" },
+      { id: "a3", kind: "paused", text: "Paused · 37% · between files" },
+    ];
+
+    const state = {
+      nav: "home",
+      selection: null,
+      settings: false,
+      navHits: new Set(),
+      selHits: 0,
+    };
+
+    const ws = document.getElementById("workspace");
+    const insp = document.getElementById("inspector");
+    const toast = document.getElementById("toast");
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add("show");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toast.classList.remove("show"), 2800);
+    }
+
+    function updateCounts() {
+      document.getElementById("nav-count").textContent = String(state.navHits.size);
+      document.getElementById("sel-count").textContent = String(state.selHits);
+      const n = document.querySelectorAll("#reviewer-checks input:checked").length;
+      document.getElementById("check-count").textContent = String(n);
+    }
+
+    document.querySelectorAll("#reviewer-checks input").forEach((el) => {
+      el.addEventListener("change", updateCounts);
+    });
+
+    function crumb(parts) {
+      return `<div class="crumb">${parts.map((p, i) =>
+        i === parts.length - 1 ? `<span>${p}</span>` : p
+      ).join(" · ")}</div>`;
+    }
+
+    function mediaCards(list) {
+      if (!list.length) return `<div class="empty">No media in this filter.</div>`;
+      return `<div class="grid">${list.map((m) => `
+        <button type="button" class="card${state.selection && state.selection.id === m.id ? " selected" : ""}"
+          data-select="media" data-id="${m.id}">
+          <div class="thumb"></div>
+          <div class="name">${m.name}${m.ignored ? " · ignored" : ""}${m.zeroFace ? " · 0 faces" : ""}</div>
+        </button>
+      `).join("")}</div>`;
+    }
+
+    function renderWorkspace() {
+      const nav = state.nav;
+      state.navHits.add(nav);
+      if (state.settings) {
+        ws.innerHTML = `
+          ${crumb(["SEMBLON", "Settings"])}
+          <div class="settings-panel open">
+            <h2>Settings</h2>
+            <p class="hint">Test frame only — achromatic chrome, no second Home.</p>
+            <ul>
+              <li>Store path (read-only stub)</li>
+              <li>Providers / optional observers (honesty elsewhere)</li>
+              <li>No identity threshold retune from Settings</li>
+            </ul>
+          </div>`;
+        insp.classList.remove("open");
+        insp.innerHTML = "";
+        updateCounts();
+        return;
+      }
+
+      let html = "";
+      if (nav === "home") {
+        html = `
+          ${crumb(["Library", "Home"])}
+          <h2>Home</h2>
+          <p class="hint">Entry surface. Folder / job controls live here in product; this frame only tests nav ownership.</p>
+          <div class="actions">
+            <button type="button" class="btn primary" data-goto="photos">Open Photos</button>
+            <button type="button" class="btn" data-goto="unknown">Open Unknown triage</button>
+            <button type="button" class="btn" data-goto="activity">Open Activity</button>
+          </div>
+          <p class="hint" style="margin-top:16px">All media (including zero-face) remains Library. People/Unknown is derived observation.</p>
+          ${mediaCards(MEDIA.slice(0, 3))}`;
+      } else if (nav === "photos") {
+        html = `
+          ${crumb(["Library", "Photos"])}
+          <h2>Photos</h2>
+          <p class="hint">Source-media layer. Zero-face files stay here. Ignored stays in Library.</p>
+          ${mediaCards(MEDIA.filter((m) => m.kind === "photo"))}`;
+      } else if (nav === "videos") {
+        html = `
+          ${crumb(["Library", "Videos"])}
+          <h2>Videos</h2>
+          <p class="hint">One asset, many observations. Frame change is explicit in Compare (not tested here).</p>
+          ${mediaCards(MEDIA.filter((m) => m.kind === "video"))}`;
+      } else if (nav === "people") {
+        html = `
+          ${crumb(["People", "People"])}
+          <h2>People</h2>
+          <p class="hint">Identity-observation layer — not Library. Named persons only after human Name.</p>
+          ${PEOPLE.map((p) => `
+            <button type="button" class="person-row${state.selection && state.selection.id === p.id ? " selected" : ""}"
+              data-select="person" data-id="${p.id}">
+              <div class="face-mini ${p.decision}"><span class="notch"></span></div>
+              <div>
+                <div>${p.name}</div>
+                <div class="name" style="color:var(--text2);font-size:11px">${p.decision} · evidence ${p.evidence}</div>
+              </div>
+            </button>
+          `).join("")}`;
+      } else if (nav === "unknown") {
+        html = `
+          ${crumb(["People", "Unknown"])}
+          <h2>Unknown</h2>
+          <p class="hint">Nested triage destination. Cluster / track / face are hypotheses — never person ids.</p>
+          ${UNKNOWN.map((u) => `
+            <button type="button" class="person-row${state.selection && state.selection.id === u.id ? " selected" : ""}"
+              data-select="unknown" data-id="${u.id}">
+              <div class="face-mini possible"><span class="notch"></span></div>
+              <div>
+                <div>${u.label}</div>
+                <div class="name" style="color:var(--text2);font-size:11px">${u.members} members · ${u.evidence}</div>
+              </div>
+            </button>
+          `).join("")}`;
+      } else if (nav === "activity") {
+        html = `
+          ${crumb(["Work", "Activity"])}
+          <h2>Activity</h2>
+          <p class="hint">Failed ingest lives here — not as a Library media card.</p>
+          ${ACTIVITY.map((a) => `
+            <button type="button" class="activity-row${state.selection && state.selection.id === a.id ? " selected" : ""}"
+              data-select="activity" data-id="${a.id}">
+              <div style="flex:1">${a.text}</div>
+              <div class="name" style="color:${a.kind === "failed" ? "var(--danger)" : "var(--text2)"}">${a.kind}</div>
+            </button>
+          `).join("")}`;
+      }
+      ws.innerHTML = html;
+      renderInspector();
+      updateCounts();
+    }
+
+    function renderInspector() {
+      const sel = state.selection;
+      if (!sel || state.settings) {
+        insp.classList.remove("open");
+        insp.innerHTML = "";
+        return;
+      }
+      insp.classList.add("open");
+      let evidence = [];
+      let actions = [];
+      let title = "Inspector";
+
+      if (sel.type === "media") {
+        const m = MEDIA.find((x) => x.id === sel.id);
+        title = `Inspector · ${m.name}`;
+        evidence = [
+          `Asset kind: ${m.kind}`,
+          m.kind === "video" ? `One video asset · ~${m.frames} sampled observations` : `Still asset`,
+          m.zeroFace ? "Zero faces — still Library" : `Face observations: ${m.faces}`,
+          m.ignored ? "Ignored: left observation layer; media remains in Library" : "In observation layer if faces present",
+        ];
+        actions = m.ignored
+          ? ["Restore to observation (stub)", "Open in Compare (stub)"]
+          : ["Open in Compare (stub)", "Ignore (defer)", "Rule out (requires CONTRACTS wire)"];
+      } else if (sel.type === "person") {
+        const p = PEOPLE.find((x) => x.id === sel.id);
+        title = `Inspector · ${p.name}`;
+        evidence = [
+          `Evidence: ${p.evidence}`,
+          `Decision: ${p.decision}`,
+          "Similarity / cluster membership / candidate person (machine)",
+          "Existing human decision retained",
+        ];
+        actions = ["Merge observations", "Assign to person", "Split", "Rule out", "Ignore"];
+      } else if (sel.type === "unknown") {
+        const u = UNKNOWN.find((x) => x.id === sel.id);
+        title = `Inspector · ${u.label}`;
+        evidence = [
+          `Hypothesis: ${u.label} (≠ person)`,
+          `Members: ${u.members}`,
+          `Evidence axis: ${u.evidence}`,
+          "No automatic person_id from this panel",
+        ];
+        actions = ["Merge observations", "Assign to person", "Create person", "Split", "Rule out", "Ignore"];
+      } else if (sel.type === "activity") {
+        const a = ACTIVITY.find((x) => x.id === sel.id);
+        title = `Inspector · Activity`;
+        evidence = [a.text, a.kind === "failed" ? "Must not appear as Library row" : "Run / job event"];
+        actions = a.kind === "failed" ? ["Retry ingest (stub)", "Dismiss"] : ["Open run (stub)"];
+      }
+
+      const mergeNote = sel.type === "unknown" || sel.type === "person"
+        ? `<p class="hint" style="margin:8px 0 0">Separate buttons: <strong>Merge observations</strong> ≠ <strong>Assign to person</strong>. Never imply “Semblon knows this is the same person.”</p>`
+        : "";
+
+      insp.innerHTML = `
+        <h3>${title}</h3>
+        <div class="split">
+          <div>
+            <div class="block-title">Evidence relationship (machine)</div>
+            <ul>${evidence.map((e) => `<li>${e}</li>`).join("")}</ul>
+          </div>
+          <div>
+            <div class="block-title">Proposed action (human)</div>
+            <div class="actions">
+              ${actions.map((a, i) =>
+                `<button type="button" class="btn${i === 0 ? " primary" : ""}" data-action="${a}">${a}</button>`
+              ).join("")}
+            </div>
+            ${mergeNote}
+          </div>
+        </div>`;
+    }
+
+    function setNav(nav) {
+      state.nav = nav;
+      state.settings = false;
+      state.selection = null;
+      document.getElementById("btn-settings").classList.remove("active");
+      document.querySelectorAll(".nav-item").forEach((el) => {
+        el.classList.toggle("selected", el.dataset.nav === nav);
+      });
+      renderWorkspace();
+    }
+
+    document.querySelectorAll(".nav-item").forEach((el) => {
+      el.addEventListener("click", () => setNav(el.dataset.nav));
+    });
+
+    document.getElementById("btn-settings").addEventListener("click", () => {
+      state.settings = !state.settings;
+      document.getElementById("btn-settings").classList.toggle("active", state.settings);
+      if (state.settings) {
+        document.querySelectorAll(".nav-item").forEach((el) => el.classList.remove("selected"));
+        state.selection = null;
+      } else {
+        document.querySelectorAll(".nav-item").forEach((el) => {
+          el.classList.toggle("selected", el.dataset.nav === state.nav);
+        });
+      }
+      renderWorkspace();
+    });
+
+    ws.addEventListener("click", (ev) => {
+      const goto = ev.target.closest("[data-goto]");
+      if (goto) {
+        setNav(goto.dataset.goto);
+        return;
+      }
+      const sel = ev.target.closest("[data-select]");
+      if (!sel) return;
+      state.selection = { type: sel.dataset.select, id: sel.dataset.id };
+      state.selHits += 1;
+      renderWorkspace();
+    });
+
+    insp.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-action]");
+      if (!btn) return;
+      showToast(`TEST action only (not wired): ${btn.dataset.action}`);
+    });
+
+    // Initial paint
+    renderWorkspace();
+  </script>
+</body>
+</html>
