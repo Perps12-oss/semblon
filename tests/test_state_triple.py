@@ -159,13 +159,31 @@ def test_ingest_glyph_channel(ingest, style, mark):
 
 
 def test_channels_do_not_collide_across_layers():
-    """Identity uses notch styles; analysis uses ring styles; ingest uses glyph."""
-    notch_styles = {notch_for(i).style for i in IDENTITY_VALUES}
-    ring_styles = {ring_for(a).style for a in ANALYSIS_VALUES}
-    glyph_styles = {glyph_for(g).style for g in INGEST_VALUES}
-    assert notch_styles.isdisjoint(ring_styles)
-    assert notch_styles.isdisjoint(glyph_styles)
-    assert ring_styles.isdisjoint(glyph_styles)
+    """Spatial channels stay distinct even when style tokens share a word.
+
+    Confirmed notch and done ring can both be "solid" — they live in different
+    slots (corner vs border). Collision is sharing a *channel*, not a token.
+    """
+    t = build_triple(
+        ingest=INGEST_FAILED, analysis=ANALYSIS_PAUSED, identity=IDENTITY_UNKNOWN
+    )
+    # Three distinct presentation objects / marks
+    assert t.notch.style == NOTCH_DASHED_6_4
+    assert t.ring.style == RING_PARTIAL_PAUSED
+    assert t.glyph.style == GLYPH_WARN
+    marks = channel_markers(t)
+    # Identity dashed mark ≠ analysis pause ring ≠ ingest warn glyph
+    assert marks.startswith("⬚")
+    assert "◑" in marks
+    assert "⚠" in marks
+    # Ingest failed glyph must not be reused as analysis bang
+    t2 = build_triple(
+        ingest=INGEST_OK, analysis=ANALYSIS_FAILED, identity=IDENTITY_NONE
+    )
+    assert t2.glyph.mark == ""
+    assert t2.ring.bang is True
+    assert "○!" in channel_markers(t2)
+    assert "⚠" not in channel_markers(t2)
 
 
 def test_face_identity_from_evidence_and_decisions():
