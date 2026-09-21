@@ -79,8 +79,9 @@ def test_overlay_boxes_omit_person_id():
     boxes = overlay_boxes(board, "m1")
     assert len(boxes) == 1
     assert "person_id" not in boxes[0]
-    assert boxes[0]["tag"] == "clustered"
-    assert face_evidence_tag({"cluster_id": None}) == "unassigned"
+        assert boxes[0]["tag"] == "clustered"
+        assert face_evidence_tag({"face_id": "f0", "cluster_id": None, "bbox_x1": 0}) == "detected"
+        assert face_evidence_tag({"cluster_id": "c1", "face_id": "f1"}) == "clustered"
 
 
 def test_canvas_load_note_firewall(tmp_path):

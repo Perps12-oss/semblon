@@ -33,7 +33,7 @@ v1 collapsed identity into `UNKNOWN → POSSIBLE → CONFIRMED`. That smuggles a
 - Keep adjectival **Possible** (not noun “Candidate”). Label the **link**: e.g. `Possible: Maya R. (0.71)`.
 - **Ruled out** is first-class: durable negative decision. Without it, dismissed and never-considered are the same bit.
 - **Ignored** is deferred / leave observation layer; media stays in Library.
-- Today’s store: `decisions` + Ignore as `reject`+policy (`docs/CONTRACTS.md`). **Ruled out** named CONTRACTS slice: `docs/CONTRACTS-RULED-OUT.md` (`kind=reject` + `action=rule_out`; flag `SEMBLON_RULED_OUT`; **UNWIRED** as product default pending human verify). Do not invent columns from this brief alone.
+- Today’s store: `decisions` + Ignore as `reject`+policy (`docs/CONTRACTS.md`). **Ruled out** named CONTRACTS slice: `docs/CONTRACTS-RULED-OUT.md` (`kind=reject` + `action=rule_out`; gate default ON via `semblon.gates`; **ship claim DEFERRED TO LAST** — `SEM-ARCH-V1.4` §I.5). Do not invent columns from this brief alone.
 
 ### Visual grammar (identity display)
 
