@@ -27,8 +27,8 @@ Home button  →  Home-owned worker  →  Tk callback chain  →  ingest
 | Pause | Cooperative; same job stays claimed; not consuming ingest work | `JobEngine.pause` / `unpause` |
 | Application state | store path, latest run with faces | `default_store_path`, `latest_run_id` |
 | Review state | board items (cluster / track / unassigned) | `load_board` |
-| Person operations | Name / Merge / Split / Ignore / Note (+ experimental Rule out) | `apply_*` → `review.py` |
-| Search / read snapshots | people, unknown, activity, person query, canvas overlay | `search_*`, `inbox`, Home `read_activity_snapshot`, `load_canvas` |
+| Person operations | Name / Merge / Split / Ignore / Note / Rule out (gate default ON; ship claim §I.5) | `apply_*` → `review.py` |
+| Search / read snapshots | people, unknown, activity, person query, canvas overlay | `search_*`, `inbox`, `activity` / Home `read_activity_snapshot`, `load_canvas` |
 | Observation overlay | `path` + `frame_id` + `bbox` + optional track lane | `load_canvas` / `overlay_boxes` |
 
 CONTRACTS family this maps onto: Media, Observation, Face, Embedding, Track, Episode (not a first-class UI command yet), Person, Decision, SearchResult, Job, Progress, Cancellation.
@@ -43,7 +43,7 @@ Reads:
 | `people(store)` | `search_people` | Named persons only |
 | `search_person(store, query)` | `search_person` | Lookup, not identity |
 | `inbox(store, run_id)` | `inbox` | UNKNOWN is valid |
-| `activity(store, run_id)` | Home `read_activity_snapshot` | groups / relationships / events; track ≠ person |
+| `activity(store, run_id?)` | `application.activity` → Home `read_activity_snapshot` | groups / relationships / events; track ≠ person |
 | `canvas(store, run_id?)` | `load_canvas` | Overlay payload. Cluster ≠ person |
 | `job_current()` | `JobEngine.current` / `busy` / `state` / `paused` | Handle while running; None when idle |
 
@@ -137,6 +137,8 @@ Cancel: always available while a job is claimed.
 | Resume after cancel | idle only | new submit with `resume=True` |
 
 Review opens as a `Toplevel` on Home's root so Home keeps pumping job events. Standalone `run_review_ui()` still owns its own loop when there is no parent.
+
+`JobEngine` is the only ingest door for Home / Review / IPC probe. Headless CLI `semblon process` / `ingest` may call `process_folder` directly — that is not a second Tk application door. Home and Review must never import or call `process_folder`.
 
 ## Identity firewall
 
