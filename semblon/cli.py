@@ -575,13 +575,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "lab" and args.labcmd == "r3-frames":
-        import sys
-        from pathlib import Path as _Path
-
         from semblon.gates import require_enabled
 
         require_enabled("hierarchy_frames")
-        root = _Path(__file__).resolve().parents[1]
+        root = Path(__file__).resolve().parents[1]
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
         from tools.r3_frames.catalog import generate_catalog
