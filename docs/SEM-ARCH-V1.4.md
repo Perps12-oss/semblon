@@ -176,10 +176,10 @@ R3 question:
 Candidates can include WinUI 3, Qt/PySide, or another justified native approach.  
 Previously rejected/deferred paths stay rejected/deferred (Electron, Tauri, permanent Tk shell, CustomTkinter).
 
-**Visual / interaction contract (approved):** `docs/R3-BRIEF.md` (v2 / v2.1).  
+**Visual / interaction contract (approved):** `docs/R3-BRIEF.md` (v2.4).  
 Two-axis identity language (evidence × decision), five display states including **Ruled out**, state matrix + processing grammar, Library vs observation layer, toolkit bake-off against six measured criteria.  
-**§8.1–§8.6 artifact pack:** `docs/r3-artifacts/README.md` (DONE; fuller Artifact 1 may supersede abbreviated matrix when owner pastes).  
-**§8.5 toolkit bake-off (human measure):** `docs/r3-artifacts/05-bake-off-checklist.md` + `semblon lab r3-bakeoff` — **DEFERRED TO LAST** (§I.5). No fake PASS.  
+**Artifacts 1–4 (canonical):** `docs/r3-artifacts/README.md` — fuller pack landed (`01-state-matrix.md`, `02-state-triple.md`, `03-collision-ledger.md`, `05-bake-off-checklist.md` criteria). Abbreviated §3 seed in the brief is **superseded**. Related cross-product + HTML frames + hierarchy TEST + decision packet indexed there.  
+**Artifact 4 / toolkit bake-off (human measure):** `docs/r3-artifacts/05-bake-off-checklist.md` + `semblon lab r3-bakeoff` — **DEFERRED TO LAST** (§I.5). No fake PASS.  
 **§8.7 shell decision / named winner:** OPEN at `docs/r3-artifacts/07-shell-decision.md` — **DEFERRED TO LAST** (no winner until six-of-six PASS).  
 R3 does **not** start by polishing Tk Home. Development on shell chrome, frames, and Application-API clients **continues** while human bake-off / winner naming wait until last.
 
@@ -298,7 +298,7 @@ Track at each size:
 
 1. APP-1 boundary already on `main` — keep strengthening Application API / JobEngine clients
 2. formalize app boundary contract (docs + tests)
-3. R3 visual artifacts / shell chrome against `docs/R3-BRIEF.md` (owner may paste fuller 17-component Artifact 1)
+3. R3 visual artifacts / shell chrome against `docs/R3-BRIEF.md` (Artifacts 1–4 canonical; abbreviated seed superseded)
 4. unified Home/Review/Canvas toward the future shell **without** expanding Tk Home into permanent AppShell (§E)
 5. single authoritative architecture documentation (this file)
 6. **Must continue** code and artifact work while §I.5 human gates wait
@@ -354,7 +354,7 @@ CURRENT MAIN
   -> FACE-001..005 CLOSED
   -> APP-1 / R1 JobEngine boundary on main
   -> R2 IPC probe (loopback) DONE — `semblon lab ipc-probe`
-  -> R3 brief artifacts §8.1–§8.6 DONE (`docs/r3-artifacts/`; fuller Artifact 1 when owner pastes)
+  -> R3 Artifacts 1–4 CANONICAL (`docs/r3-artifacts/`; abbreviated brief §3 seed superseded; bake-off measures still §I.5 last)
   -> Feature gates WIRED 2026-09-21 (`docs/GATES.md`)
   -> CONTINUE: native shell chrome / IA / Application-API clients (R3-BRIEF look-and-feel)
   -> unified Home/Review/Canvas experiences
@@ -391,6 +391,7 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.5 | 2026-09-21 | Fuller R3 Artifact 1–4 pack landed (`01-state-matrix`, `02-state-triple`, `03-collision-ledger`, `05-bake-off-checklist` criteria); abbreviated brief §3 seed superseded. Bake-off measures / §8.7 winner still §I.5 last. |
 | V1.4.4 | 2026-09-21 | Human verification (APP-1 C.3, bake-off, §8.7 winner, Ruled-out ship wire, other human gates) **DEFERRED TO LAST**; development must continue (§I.5). |
 | V1.4.3 | 2026-09-21 | R3 §8.7 shell decision packet OPEN; `lab r3-bakeoff` wires harness; R2 already on main. |
 | V1.4.2 | 2026-09-21 | R2 IPC probe: loopback JSON-lines `semblon/ipc_probe.py` + `lab ipc-probe`. Boundary proof only; not product IPC. |

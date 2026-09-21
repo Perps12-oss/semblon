@@ -3,15 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <title>R3 §8.4 — State-triple grid (30 cards)</title>
+  <meta name="description" content="Artifact 2 rendered test: Asset state = (Ingest, Analysis, Identity). Channels: identity=corner notch; analysis=border/ring; ingest=center glyph. Silent background complete = status-strip pulse + sidebar badge only — no toast, no cascade." />
   <style>
     :root {
       --bg: #121214;
       --s2: #1c1c1f;
+      --s3: #242428;
       --text: #e8e8ea;
       --text2: #a0a0a6;
+      --text3: #6e6e74;
       --halo: #f2f2f4;
       --sem: #9aa0a6;
       --frame: #2a2a2e;
+      --thumb: #3a4540;
     }
     * { box-sizing: border-box; }
     body {
@@ -22,21 +26,69 @@
       padding: 24px;
     }
     h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
-    .meta { color: var(--text2); margin-bottom: 20px; max-width: 80ch; }
+    .meta { color: var(--text2); margin-bottom: 16px; max-width: 84ch; }
+    .meta code { font-size: 12px; }
     .legend {
       display: flex; flex-wrap: wrap; gap: 12px 20px;
-      margin-bottom: 20px; color: var(--text2); font-size: 12px;
+      margin-bottom: 16px; color: var(--text2); font-size: 12px;
     }
+    .legend strong { color: var(--text); font-weight: 600; }
+
+    /* Silent-complete chrome (Artifact 2 transition rule) — strip + badge only */
+    .chrome {
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 20px;
+      padding: 8px 12px;
+      background: var(--s2);
+      border: 1px solid var(--frame);
+      border-radius: 6px;
+      max-width: 520px;
+    }
+    .status-strip {
+      flex: 1;
+      font-size: 12px;
+      color: var(--text2);
+      opacity: 1;
+    }
+    .status-strip.pulse {
+      animation: strip-pulse 200ms ease-out;
+    }
+    @keyframes strip-pulse {
+      from { opacity: 0.6; }
+      to { opacity: 1.0; }
+    }
+    .badge {
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 4px;
+      background: var(--s3);
+      color: var(--text);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .badge.swap {
+      animation: badge-swap 120ms ease-out;
+    }
+    @keyframes badge-swap {
+      from { opacity: 0.4; transform: translateY(2px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .status-strip.pulse,
+      .badge.swap,
+      .card.ana-running::before {
+        animation: none !important;
+      }
+    }
+
     .grid {
       display: grid;
-      /* rowhead + 6 analysis columns */
       grid-template-columns: minmax(100px, 0.7fr) repeat(6, minmax(140px, 1fr));
       gap: 10px;
-    }
-    #count {
-      margin-top: 16px;
-      color: var(--text2);
-      font-size: 12px;
     }
     .colhead, .rowhead {
       color: var(--text2);
@@ -46,156 +98,279 @@
       padding: 4px;
     }
     .rowhead { display: flex; align-items: center; }
+    #count {
+      margin-top: 16px;
+      color: var(--text2);
+      font-size: 12px;
+    }
+
+    /* ——— Card: three channels ———
+       identity → corner notch
+       analysis → border / ring
+       ingest   → center glyph
+    */
     .card {
       background: var(--s2);
-      border: 1px solid var(--frame);
+      border: 2px solid var(--frame);
       border-radius: 6px;
       padding: 10px;
-      min-height: 132px;
+      min-height: 140px;
       display: flex;
       flex-direction: column;
       gap: 8px;
-    }
-    .card .channels {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 6px;
-    }
-    .face {
-      width: 48px; height: 48px;
-      border-radius: 3px;
-      background: #3a4540;
       position: relative;
-      flex-shrink: 0;
+      overflow: hidden;
     }
+    .card .idx {
+      font-size: 10px;
+      color: var(--text3);
+    }
+
+    /* Identity: corner notch (6px), shape-encoded — NOT the border */
     .notch {
       position: absolute;
-      top: -5px; right: -5px;
-      width: 12px; height: 12px;
-      border-radius: 50%;
-      background: #0e0e10;
-      box-shadow: 0 0 0 1.5px var(--halo);
+      top: 6px;
+      left: 6px;
+      width: 6px;
+      height: 6px;
+      border-radius: 1px;
+      pointer-events: none;
+      z-index: 2;
     }
-    .id-unknown { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
-    .id-unknown .notch { border: 1.5px solid var(--sem); background: transparent; }
-    .id-possible { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
+    .notch .neq {
+      position: absolute;
+      left: 8px;
+      top: -4px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--sem);
+      line-height: 1;
+    }
+    /* none — empty outline, dim */
+    .id-none .notch {
+      border: 1px solid var(--text3);
+      background: transparent;
+      opacity: 0.45;
+    }
+    /* unknown — dashed 6/4 */
+    .id-unknown .notch {
+      border: 1px dashed var(--sem);
+      background: transparent;
+      border-radius: 0;
+      width: 7px; height: 7px;
+      /* approximate 6/4 dash feel on a tiny mark */
+      box-shadow: 0 0 0 0 transparent;
+    }
+    /* possible — dashed 3/2, half-fill */
     .id-possible .notch {
-      background: conic-gradient(var(--sem) 0 180deg, transparent 180deg 360deg);
-      border: 1.5px solid var(--sem);
+      border: 1px solid var(--sem);
+      background: linear-gradient(90deg, var(--sem) 0 50%, transparent 50% 100%);
+      opacity: 0.95;
     }
-    .id-confirmed { outline: 2px solid var(--sem); outline-offset: 1px; }
-    .id-confirmed .notch { background: var(--sem); border: none; }
-    .id-ruled { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
-    .id-ruled .notch { border: 1.5px solid var(--sem); background: transparent; }
-    .id-ruled .neq {
-      position: absolute; top: -9px; right: -16px;
-      font-size: 12px; color: var(--sem); font-weight: 700;
+    /* confirmed — solid */
+    .id-confirmed .notch {
+      border: none;
+      background: var(--sem);
     }
-    .id-ruled .notch::after {
-      content: "";
-      position: absolute; left: 1px; top: 4px;
-      width: 9px; height: 1.5px; background: var(--sem);
-      transform: rotate(-45deg);
+    /* mixed — solid + ≠ sub-mark */
+    .id-mixed .notch {
+      border: none;
+      background: var(--sem);
     }
-    .id-ignored { opacity: 0.35; }
-    .id-ignored .notch { display: none; }
 
-    .ring {
-      width: 22px; height: 22px;
-      border-radius: 50%;
-      border: 2px solid var(--sem);
-      position: relative;
-      flex-shrink: 0;
+    /* Analysis: border / ring around the card (sole analysis channel) */
+    .card.ana-queued {
+      border-color: var(--sem);
+      border-style: solid;
+      border-width: 2px;
+      background-clip: padding-box;
     }
-    .ring-hollow { background: transparent; }
-    .ring-partial {
+    .card.ana-queued::before {
+      content: "";
+      position: absolute;
+      inset: 4px;
+      border: 2px solid transparent;
+      border-radius: 4px;
+      pointer-events: none;
+      /* hollow ring cue: inner hairline */
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sem) 35%, transparent);
+    }
+    .card.ana-running {
       border-color: transparent;
-      background: conic-gradient(var(--sem) 0 110deg, transparent 110deg 360deg);
-      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
-      mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+      background:
+        linear-gradient(var(--s2), var(--s2)) padding-box,
+        conic-gradient(var(--sem) 0 110deg, var(--frame) 110deg 360deg) border-box;
+      border: 2px solid transparent;
     }
-    .ring-solid { background: var(--sem); border: none; }
-    .ring-solid::after {
+    .card.ana-running::before {
       content: "";
-      position: absolute; inset: 3px;
-      border-radius: 50%;
-      background: var(--s2);
+      position: absolute;
+      inset: -2px;
+      border-radius: 8px;
+      background: conic-gradient(from 0deg, var(--sem) 0 40%, transparent 40% 100%);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      padding: 2px;
+      animation: ring-sweep 1.2s linear infinite;
+      pointer-events: none;
+      opacity: 0.85;
     }
-    .ring-failed { border-right-color: transparent; }
-    .ring-failed::after {
-      content: "!"; position: absolute; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; color: var(--sem);
+    @keyframes ring-sweep {
+      to { transform: rotate(360deg); }
     }
-    .ring-cancel::after {
-      content: "";
-      position: absolute; left: 3px; top: 9px;
-      width: 14px; height: 2px; background: var(--sem);
-      transform: rotate(-45deg);
+    .card.ana-paused {
+      border-color: transparent;
+      background:
+        linear-gradient(var(--s2), var(--s2)) padding-box,
+        conic-gradient(var(--sem) 0 110deg, var(--frame) 110deg 360deg) border-box;
+      border: 2px solid transparent;
     }
-    .ring-dotted { border-style: dotted; }
-    .pause-bar {
-      position: absolute; left: 6px; top: 5px;
-      width: 2px; height: 10px; background: var(--sem);
+    .card.ana-paused .pause-mark {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      width: 2px;
+      height: 10px;
+      background: var(--sem);
       box-shadow: 4px 0 0 var(--sem);
+      z-index: 2;
     }
-    .meta-line { font-size: 10px; color: var(--text2); }
-    .id-name { font-size: 11px; color: var(--text); }
-    .corner { font-size: 10px; color: var(--text2); margin-bottom: 4px; }
+    .card.ana-done {
+      border: 2px solid var(--sem);
+    }
+    .card.ana-failed {
+      border: 2px solid var(--sem);
+      border-right-color: transparent;
+    }
+    .card.ana-failed .ana-bang {
+      position: absolute;
+      top: 4px;
+      right: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--sem);
+      z-index: 2;
+    }
+    .card.ana-stale {
+      border: 2px dotted var(--sem);
+    }
+
+    /* Ingest: center glyph only (ok = none) */
+    .thumb {
+      flex: 1;
+      min-height: 64px;
+      background: var(--thumb);
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--halo) 20%, transparent);
+    }
+    .ingest-glyph {
+      font-size: 22px;
+      line-height: 1;
+      color: var(--sem);
+      font-weight: 600;
+      user-select: none;
+    }
+    /* missing — broken frame (≠ analysis ! and ≠ failed ⚠) */
+    .ingest-glyph.missing {
+      display: block;
+      width: 28px;
+      height: 22px;
+      border: 2px solid var(--sem);
+      border-right-style: dashed;
+      border-bottom-style: dashed;
+      border-radius: 2px;
+      position: relative;
+      font-size: 0;
+    }
+    .ingest-glyph.missing::after {
+      content: "";
+      position: absolute;
+      left: 4px; top: 9px;
+      width: 18px; height: 2px;
+      background: var(--sem);
+      transform: rotate(-28deg);
+    }
+    .meta-line {
+      font-size: 10px;
+      color: var(--text2);
+    }
+    .id-label {
+      font-size: 11px;
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
   <h1>R3 §8.4 — State-triple grid (30 cards)</h1>
   <p class="meta">
-    Every card exposes three channels: <strong>ingest</strong> (row) × <strong>analysis</strong> (column) × <strong>identity notch</strong> (cycles Unknown → Possible → Confirmed → Ruled out → Ignored across the 30 cells).
-    Confusable pair = wrong channel assignment. Spec: <code>docs/R3-BRIEF.md</code> §7–§8.4.
+    Canonical Artifact 2 (<code>02-state-triple.md</code>):
+    <strong>Asset state = (Ingest, Analysis, Identity)</strong>.
+    Three channels only — <strong>identity = corner notch</strong>;
+    <strong>analysis = border / ring</strong>;
+    <strong>ingest = center glyph</strong>.
+    No channel carries two layers. Confusable pair = wrong channel assignment.
+    Silent background complete → status-strip pulse (200ms) + badge numeral swap (120ms) only;
+    <strong>no toast, no animation cascade</strong>.
   </p>
   <div class="legend">
-    <span>Ingest (5): queued · running · paused · completed · cancelled</span>
-    <span>Analysis (6): none · queued · detecting · embedding · clustered · failed</span>
-    <span>Identity (cycles): U · P · C · R · I</span>
+    <span><strong>Ingest</strong> (5 rows · values ok · failed · missing): center glyph</span>
+    <span><strong>Analysis</strong> (6): queued · running · paused · done · failed · stale → border/ring</span>
+    <span><strong>Identity</strong> (stepped): none · unknown · possible · confirmed · mixed → notch</span>
   </div>
+
+  <div class="chrome" aria-label="Silent complete demo chrome">
+    <div id="status-strip" class="status-strip">Analysis · background · idle</div>
+    <span title="Sidebar count badge">Library <span id="badge" class="badge">30</span></span>
+    <button type="button" id="silent-demo" style="font:inherit;font-size:11px;background:var(--s3);color:var(--text);border:1px solid var(--frame);border-radius:4px;padding:4px 8px;cursor:pointer;">
+      Demo silent complete
+    </button>
+  </div>
+
   <div id="grid" class="grid"></div>
   <p id="count"></p>
+
   <script>
-    const INGEST = ["queued", "running", "paused", "completed", "cancelled"];
-    const ANALYSIS = ["none", "queued", "detecting", "embedding", "clustered", "failed"];
-    const IDENTITY = ["unknown", "possible", "confirmed", "ruled", "ignored"];
+    // Artifact 2 axes. Ingest has three canonical values; five rows keep the
+    // specified 5×6 = 30 card grid (ok/failed/missing cycle across rows).
+    const INGEST = ["ok", "failed", "missing", "ok", "failed"];
+    const ANALYSIS = ["queued", "running", "paused", "done", "failed", "stale"];
+    const IDENTITY = ["none", "unknown", "possible", "confirmed", "mixed"];
     const ID_LABEL = {
-      unknown: "Unknown",
-      possible: "Possible: Maya R. (0.71)",
-      confirmed: "Confirmed",
-      ruled: "Ruled out",
-      ignored: "Ignored",
+      none: "none (no faces / all ignored)",
+      unknown: "unknown",
+      possible: "possible",
+      confirmed: "confirmed",
+      mixed: "mixed (confirmed + ruled-out)",
     };
 
-    function ringHTML(kind) {
-      if (kind === "none") return '<span class="meta-line">—</span>';
-      if (kind === "queued") return '<div class="ring ring-hollow" title="queued"></div>';
-      if (kind === "running" || kind === "detecting" || kind === "embedding")
-        return '<div class="ring ring-partial" title="processing"></div>';
-      if (kind === "paused")
-        return '<div class="ring ring-partial"><span class="pause-bar"></span></div>';
-      if (kind === "completed" || kind === "clustered")
-        return '<div class="ring ring-solid" title="completed"></div>';
-      if (kind === "cancelled")
-        return '<div class="ring ring-hollow ring-cancel" title="cancelled"></div>';
-      if (kind === "failed")
-        return '<div class="ring ring-failed" title="failed"></div>';
-      if (kind === "stale")
-        return '<div class="ring ring-dotted" title="stale"></div>';
-      return '';
+    function ingestGlyph(ing) {
+      if (ing === "failed") {
+        return '<span class="ingest-glyph" title="ingest=failed" aria-label="ingest failed">⚠</span>';
+      }
+      if (ing === "missing") {
+        return '<span class="ingest-glyph missing" title="ingest=missing" aria-label="ingest missing"></span>';
+      }
+      // ok — no center glyph
+      return "";
     }
 
-    function faceHTML(id) {
-      const neq = id === "ruled" ? '<span class="neq">≠</span>' : '';
-      const notch = id === "ignored" ? '' : '<span class="notch"></span>';
-      return `<div class="face id-${id}">${notch}${neq}</div>`;
+    function analysisExtras(ana) {
+      if (ana === "paused") return '<span class="pause-mark" title="paused"></span>';
+      if (ana === "failed") return '<span class="ana-bang" title="analysis failed">!</span>';
+      return "";
+    }
+
+    function notchHTML(id) {
+      const neq = id === "mixed" ? '<span class="neq">≠</span>' : "";
+      return `<span class="notch" title="identity=${id}" aria-label="identity ${id}">${neq}</span>`;
     }
 
     const root = document.getElementById("grid");
-    // header row
     root.innerHTML += '<div class="colhead"></div>';
     for (const a of ANALYSIS) {
       root.innerHTML += `<div class="colhead">analysis · ${a}</div>`;
@@ -205,29 +380,49 @@
     for (const ing of INGEST) {
       root.innerHTML += `<div class="rowhead">ingest · ${ing}</div>`;
       for (const ana of ANALYSIS) {
-        const id = IDENTITY[n % 5];
+        const id = IDENTITY[n % IDENTITY.length];
         n += 1;
         const card = document.createElement("div");
-        card.className = "card";
+        card.className = `card ana-${ana} id-${id}`;
         card.dataset.card = String(n);
+        card.dataset.ingest = ing;
+        card.dataset.analysis = ana;
+        card.dataset.identity = id;
         card.innerHTML = `
-          <div class="corner">#${String(n).padStart(2, "0")}</div>
-          <div class="channels">
-            <div title="ingest">${ringHTML(ing === "running" ? "running" : ing)}</div>
-            <div title="analysis">${ringHTML(ana === "detecting" || ana === "embedding" ? "running" : ana === "clustered" ? "completed" : ana === "none" ? "none" : ana)}</div>
-            ${faceHTML(id)}
-          </div>
+          ${notchHTML(id)}
+          ${analysisExtras(ana)}
+          <div class="idx">#${String(n).padStart(2, "0")}</div>
+          <div class="thumb">${ingestGlyph(ing)}</div>
           <div class="meta-line">ingest=${ing} · analysis=${ana}</div>
-          <div class="id-name">${ID_LABEL[id]}</div>
+          <div class="id-label">${ID_LABEL[id]}</div>
         `;
         root.appendChild(card);
       }
     }
+
     const expected = INGEST.length * ANALYSIS.length;
     const countEl = document.getElementById("count");
     const ok = n === expected && expected === 30;
-    countEl.textContent = `Card count: ${n} (expected 30 = ${INGEST.length} ingest × ${ANALYSIS.length} analysis)${ok ? "" : " — COUNT MISMATCH"}`;
+    countEl.textContent =
+      `Card count: ${n} (expected 30 = ${INGEST.length} ingest × ${ANALYSIS.length} analysis)` +
+      (ok ? "" : " — COUNT MISMATCH");
     if (!ok) countEl.style.color = "#e5484d";
+
+    // Silent background complete: strip pulse + badge only (Artifact 2).
+    const strip = document.getElementById("status-strip");
+    const badge = document.getElementById("badge");
+    let badgeVal = 30;
+    document.getElementById("silent-demo").addEventListener("click", () => {
+      strip.textContent = "Analysis · background · done";
+      strip.classList.remove("pulse");
+      void strip.offsetWidth;
+      strip.classList.add("pulse");
+      badgeVal += 1;
+      badge.textContent = String(badgeVal);
+      badge.classList.remove("swap");
+      void badge.offsetWidth;
+      badge.classList.add("swap");
+    });
   </script>
 </body>
 </html>

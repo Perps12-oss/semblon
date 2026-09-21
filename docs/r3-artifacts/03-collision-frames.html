@@ -13,6 +13,7 @@
       --sem: #9aa0a6;
       --danger: #e5484d;
       --frame: #2a2a2e;
+      --cell: #0e0e10;
     }
     * { box-sizing: border-box; }
     body {
@@ -43,14 +44,14 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-    .pair .fail {
+    .pair .rule {
       grid-column: 1 / -1;
       font-size: 12px;
       color: var(--text2);
       margin: 0 0 8px;
     }
     .cell {
-      background: #0e0e10;
+      background: var(--cell);
       border-radius: 6px;
       padding: 16px;
       min-height: 120px;
@@ -60,8 +61,17 @@
       justify-content: center;
       gap: 10px;
     }
-    .label { font-size: 12px; color: var(--text2); }
-    /* Face / identity notches */
+    .cell.surface-grid {
+      background: #161618;
+      border: 1px dashed var(--frame);
+    }
+    .cell.surface-controls {
+      background: #141416;
+      border: 1px solid var(--frame);
+    }
+    .label { font-size: 12px; color: var(--text2); text-align: center; max-width: 28ch; }
+
+    /* Face / identity notches — shape + stroke texture carry meaning */
     .face {
       width: 56px;
       height: 56px;
@@ -70,39 +80,55 @@
       position: relative;
       box-shadow: 0 0 0 1.5px var(--halo);
     }
-    .face::after {
-      content: "";
-      position: absolute;
-      inset: -1.5px;
-      border-radius: 4px;
-      pointer-events: none;
+    .face-wrap {
+      position: relative;
+      width: 56px;
+      height: 56px;
     }
+    .dash-svg {
+      position: absolute;
+      inset: -4px;
+      width: calc(100% + 8px);
+      height: calc(100% + 8px);
+      pointer-events: none;
+      overflow: visible;
+    }
+    .dash-svg rect {
+      fill: none;
+      stroke: var(--sem);
+      stroke-width: 1.5;
+      rx: 5;
+      ry: 5;
+    }
+    .dash-6-4 rect { stroke-dasharray: 6 4; }
+    .dash-3-2 rect { stroke-dasharray: 3 2; }
+    .dash-solid rect { stroke-dasharray: none; stroke-width: 2; }
     .notch {
       position: absolute;
       top: -6px; right: -6px;
       width: 14px; height: 14px;
       border-radius: 50%;
-      background: #0e0e10;
+      background: var(--cell);
       box-shadow: 0 0 0 1.5px var(--halo);
+      z-index: 2;
     }
-    .id-unknown::after { border: 1.5px dashed var(--sem); border-spacing: 6px 4px; stroke-dasharray: 6 4; }
-    .id-unknown { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
-    .id-unknown .notch { border: 1.5px solid var(--sem); background: transparent; }
-    .id-possible { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
+    .id-unknown .notch {
+      border: 1.5px solid var(--sem);
+      background: transparent;
+    }
     .id-possible .notch {
       background: conic-gradient(var(--sem) 0 180deg, transparent 180deg 360deg);
       border: 1.5px solid var(--sem);
     }
-    .id-confirmed { outline: 2px solid var(--sem); outline-offset: 1px; }
-    .id-confirmed .notch { background: var(--sem); border: none; }
-    .id-ruled { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
+    .id-confirmed .notch,
+    .id-mixed .notch {
+      background: var(--sem);
+      border: none;
+      box-shadow: none;
+    }
     .id-ruled .notch {
       border: 1.5px solid var(--sem);
       background: transparent;
-    }
-    .id-ruled .neq {
-      position: absolute; top: -10px; right: -18px;
-      font-size: 14px; color: var(--sem); font-weight: 700;
     }
     .id-ruled .notch::after {
       content: "";
@@ -110,8 +136,67 @@
       width: 10px; height: 1.5px; background: var(--sem);
       transform: rotate(-45deg);
     }
-    .id-ignored { opacity: 0.35; }
+    .neq {
+      position: absolute; top: -10px; right: -18px;
+      font-size: 14px; color: var(--sem); font-weight: 700;
+      z-index: 3;
+      line-height: 1;
+    }
+    .id-ignored {
+      opacity: 0.35;
+      box-shadow: none;
+    }
     .id-ignored .notch { display: none; }
+
+    /* Media / person card shells */
+    .card-shell {
+      width: 88px;
+      height: 72px;
+      border-radius: 4px;
+      background: #2a3540;
+      position: relative;
+      border: 1px solid var(--frame);
+    }
+    .card-selected {
+      background: rgba(255, 255, 255, 0.12);
+      box-shadow: inset 0 0 0 2px var(--halo);
+      border-color: transparent;
+    }
+    .card-selected::after {
+      content: "";
+      position: absolute;
+      left: 0; top: 8px; bottom: 8px;
+      width: 2px;
+      background: var(--halo);
+    }
+    .card-destructive {
+      border: 2px solid var(--danger);
+      background: #2a3540;
+    }
+    .card-missing {
+      background: #1a1a1e;
+      border: 1px solid var(--frame);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .glyph-missing {
+      font-size: 22px;
+      color: var(--sem);
+      line-height: 1;
+    }
+    .glyph-error {
+      font-size: 22px;
+      color: var(--danger);
+      line-height: 1;
+    }
+    .err-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text2);
+      font-size: 12px;
+    }
 
     /* Controls */
     .ctrl {
@@ -120,32 +205,51 @@
       background: #2a2a2e;
       color: var(--text);
       font-size: 13px;
+      border: none;
     }
     .ctrl-disabled { opacity: 0.4; }
-    .ctrl-primary { background: #e8e8ea; color: #121214; }
+    .ctrl-primary {
+      background: #e8e8ea;
+      color: #121214;
+      border-radius: 999px;
+    }
 
-    /* Processing rings */
+    /* Selected sidebar-style row (fill + rule = container) */
+    .nav-selected {
+      width: 140px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px 0 12px;
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--text);
+      font-size: 13px;
+      border-radius: 0;
+      position: relative;
+      border-left: 2px solid var(--halo);
+    }
+
+    /* Processing rings — analysis / border channel */
     .ring {
       width: 36px; height: 36px;
       border-radius: 50%;
       border: 2px solid var(--sem);
       position: relative;
     }
-    .ring-hollow { background: transparent; }
     .ring-partial {
       border-color: transparent;
-      background:
-        conic-gradient(var(--sem) 0 110deg, transparent 110deg 360deg);
+      background: conic-gradient(var(--sem) 0 110deg, transparent 110deg 360deg);
       mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
       -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
     }
-    .ring-partial.static { /* paused: same arc, no anim */ }
-    .ring-solid { background: var(--sem); border: none; }
-    .ring-solid::after {
-      content: "";
-      position: absolute; inset: 4px;
-      border-radius: 50%;
-      background: #0e0e10;
+    .ring-partial.anim {
+      animation: spin 1.2s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .ring-partial.anim { animation: none; }
     }
     .ring-failed {
       border: 2px solid var(--sem);
@@ -157,15 +261,6 @@
       display: flex; align-items: center; justify-content: center;
       font-weight: 700; color: var(--sem);
     }
-    .ring-cancel {
-      border: 2px solid var(--sem);
-    }
-    .ring-cancel::after {
-      content: "";
-      position: absolute; left: 6px; top: 16px;
-      width: 22px; height: 2px; background: var(--sem);
-      transform: rotate(-45deg);
-    }
     .ring-dotted {
       border: 2px dotted var(--sem);
     }
@@ -175,231 +270,295 @@
       box-shadow: 6px 0 0 var(--sem);
     }
     .anim-note { font-size: 10px; color: var(--text2); }
-    #count { margin-top: 8px; color: var(--text2); font-size: 12px; }
+    #count {
+      margin-top: 8px;
+      padding-top: 16px;
+      border-top: 1px solid var(--frame);
+      color: var(--text2);
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
   <h1>R3 §8.3 — Collision ledger (15 comparison frames)</h1>
   <p class="meta">
-    Side-by-side pairs that must remain distinguishable. Reviewer hesitation = rule or rendering fails.
-    Identity = notch + stroke texture. Processing = ring shape. Disabled = opacity, no border.
-    Spec: <code>docs/R3-BRIEF.md</code> §7 · Index: <code>docs/r3-artifacts/README.md</code>
+    Side-by-side pairs from the canonical ledger. Reviewer hesitation = rule or rendering fails.
+    Channels stay separate: identity = notch + stroke texture; analysis = border/ring; ingest = center glyph.
+    Spec: <code>docs/r3-artifacts/03-collision-ledger.md</code>
   </p>
-  <p id="count"></p>
 
   <!-- 1 -->
   <section class="pair">
     <h2>01 · Disabled vs Unknown</h2>
-    <p class="fail">Fail if both look like inert grey with no asking signal.</p>
+    <p class="rule">Both inert/desaturated. Separating rule: Disabled has <strong>no border</strong>. Unknown has a <strong>border</strong>. Silhouette, not color.</p>
     <div class="cell">
       <div class="ctrl ctrl-disabled">Merge</div>
-      <span class="label">Disabled — 40%, no border, no affordance</span>
+      <span class="label">Disabled — 40% opacity, no border</span>
     </div>
     <div class="cell">
-      <div class="face id-unknown"><span class="notch"></span></div>
-      <span class="label">Unknown — dashed border + empty notch</span>
+      <div class="face-wrap id-unknown">
+        <div class="face"></div>
+        <svg class="dash-svg dash-6-4" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+      </div>
+      <span class="label">Unknown — dashed 6/4 border + empty notch</span>
     </div>
   </section>
 
   <!-- 2 -->
   <section class="pair">
-    <h2>02 · Disabled vs Processing</h2>
-    <p class="fail">Fail if Processing is only opacity without a ring.</p>
+    <h2>02 · Unknown vs Processing</h2>
+    <p class="rule">Both unresolved. Separating rule: Unknown is <strong>static</strong>. Processing <strong>animates</strong> (or is explicitly paused, with a pause bar).</p>
     <div class="cell">
-      <div class="ctrl ctrl-disabled">Name</div>
-      <span class="label">Disabled</span>
+      <div class="face-wrap id-unknown">
+        <div class="face"></div>
+        <svg class="dash-svg dash-6-4" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+      </div>
+      <span class="label">Unknown — static</span>
     </div>
     <div class="cell">
-      <div class="ring ring-partial" title="animated sweep"></div>
+      <div class="ring ring-partial anim" title="animated sweep"></div>
       <span class="label">Processing — partial ring <span class="anim-note">(anim)</span></span>
     </div>
   </section>
 
   <!-- 3 -->
   <section class="pair">
-    <h2>03 · Unknown vs Processing</h2>
-    <p class="fail">Fail if Unknown loses border/notch or Processing gains a face outline.</p>
+    <h2>03 · Processing vs Possible</h2>
+    <p class="rule">Both carry partial information. Separating rule: Processing is a <strong>border</strong> state. Possible is a <strong>notch</strong> state. Different channel.</p>
     <div class="cell">
-      <div class="face id-unknown"><span class="notch"></span></div>
-      <span class="label">Unknown</span>
+      <div class="ring ring-partial anim"></div>
+      <span class="label">Processing — ring / border channel</span>
     </div>
     <div class="cell">
-      <div class="ring ring-partial"></div>
-      <span class="label">Processing</span>
+      <div class="face-wrap id-possible">
+        <div class="face"></div>
+        <svg class="dash-svg dash-3-2" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+      </div>
+      <span class="label">Possible — dash 3/2 + half-fill notch</span>
     </div>
   </section>
 
   <!-- 4 -->
   <section class="pair">
-    <h2>04 · Possible vs Confirmed</h2>
-    <p class="fail">Fail if dashed vs solid is ambiguous at this size.</p>
+    <h2>04 · Paused vs Failed</h2>
+    <p class="rule">Both stopped mid-operation. Separating rule: Paused is <strong>symmetric</strong>. Failed has a <strong>gap + !</strong>.</p>
     <div class="cell">
-      <div class="face id-possible"><span class="notch"></span></div>
-      <span class="label">Possible — dashed 3/2 + half notch · Possible: Maya R. (0.71)</span>
+      <div class="ring ring-partial static"><span class="pause-bar"></span></div>
+      <span class="label">Paused — symmetric arc + pause bar</span>
     </div>
     <div class="cell">
-      <div class="face id-confirmed"><span class="notch"></span></div>
-      <span class="label">Confirmed — solid + solid notch</span>
+      <div class="ring ring-failed"></div>
+      <span class="label">Failed — gap + ! suffix</span>
     </div>
   </section>
 
   <!-- 5 -->
   <section class="pair">
-    <h2>05 · Ruled out vs Ignored</h2>
-    <p class="fail">Fail if dismissed and never-considered look identical.</p>
+    <h2>05 · Paused vs Unknown</h2>
+    <p class="rule">Both are “waiting.” Separating rule: Paused is a <strong>ring</strong>. Unknown is a <strong>notch</strong>.</p>
     <div class="cell">
-      <div class="face id-ruled"><span class="notch"></span><span class="neq">≠</span></div>
-      <span class="label">Ruled out — durable negative</span>
+      <div class="ring ring-partial static"><span class="pause-bar"></span></div>
+      <span class="label">Paused — ring (analysis)</span>
     </div>
     <div class="cell">
-      <div class="face id-ignored"></div>
-      <span class="label">Ignored — no border, 35% opacity</span>
+      <div class="face-wrap id-unknown">
+        <div class="face"></div>
+        <svg class="dash-svg dash-6-4" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+      </div>
+      <span class="label">Unknown — dashed notch (identity)</span>
     </div>
   </section>
 
   <!-- 6 -->
   <section class="pair">
-    <h2>06 · Paused vs Unknown</h2>
-    <p class="fail">Fail if they share any visual property (brief: must share none).</p>
+    <h2>06 · Failed (analysis) vs Missing (ingest)</h2>
+    <p class="rule">Both mean “can't proceed.” Separating rule: Analysis failed = <strong>ring gap</strong>. Ingest missing = <strong>center glyph</strong>.</p>
     <div class="cell">
-      <div class="ring ring-partial static"><span class="pause-bar"></span></div>
-      <span class="label">Paused — static arc + pause bar · Paused · 37%</span>
+      <div class="ring ring-failed"></div>
+      <span class="label">Failed (analysis) — ring gap + !</span>
     </div>
     <div class="cell">
-      <div class="face id-unknown"><span class="notch"></span></div>
-      <span class="label">Unknown</span>
+      <div class="card-shell card-missing" aria-label="missing ingest">
+        <span class="glyph-missing" title="missing">⚠</span>
+      </div>
+      <span class="label">Missing (ingest) — center glyph</span>
     </div>
   </section>
 
   <!-- 7 -->
   <section class="pair">
-    <h2>07 · Failed vs Cancelled</h2>
-    <p class="fail">Fail if both read as “stopped hollow ring.”</p>
-    <div class="cell">
-      <div class="ring ring-failed"></div>
-      <span class="label">Failed — gap + !</span>
+    <h2>07 · Ignored vs Disabled</h2>
+    <p class="rule">Both “not active.” Separating rule: Ignored 35% + no border; Disabled 40% + no border — nearly identical, so <strong>separate surfaces</strong> (grid vs controls).</p>
+    <div class="cell surface-grid">
+      <div class="face id-ignored"></div>
+      <span class="label">Ignored — 35%, no border · grid surface</span>
     </div>
-    <div class="cell">
-      <div class="ring ring-cancel"></div>
-      <span class="label">Cancelled — hollow + slash</span>
+    <div class="cell surface-controls">
+      <div class="ctrl ctrl-disabled">Split</div>
+      <span class="label">Disabled — 40%, no border · control surface</span>
     </div>
   </section>
 
   <!-- 8 -->
   <section class="pair">
-    <h2>08 · Queued vs Cancelled</h2>
-    <p class="fail">Fail if slash is missing or hollow rings are identical.</p>
+    <h2>08 · Ruled out vs Unknown</h2>
+    <p class="rule">Both “no identity.” Separating rule: Unknown is dashed. Ruled out is dashed + <strong>≠</strong>. The mark is mandatory (suffix, not the state).</p>
     <div class="cell">
-      <div class="ring ring-hollow"></div>
-      <span class="label">Queued — hollow ring</span>
+      <div class="face-wrap id-ruled">
+        <div class="face"></div>
+        <svg class="dash-svg dash-6-4" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+        <span class="neq">≠</span>
+      </div>
+      <span class="label">Ruled out — dash 6/4 + empty notch + ≠</span>
     </div>
     <div class="cell">
-      <div class="ring ring-cancel"></div>
-      <span class="label">Cancelled — hollow + slash</span>
+      <div class="face-wrap id-unknown">
+        <div class="face"></div>
+        <svg class="dash-svg dash-6-4" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+      </div>
+      <span class="label">Unknown — dash 6/4, no mark</span>
     </div>
   </section>
 
   <!-- 9 -->
   <section class="pair">
-    <h2>09 · Completed (processing) vs Confirmed (identity)</h2>
-    <p class="fail">Fail if solid ring and solid face border are interchangeable.</p>
+    <h2>09 · Ruled out vs Possible</h2>
+    <p class="rule">Both are dashed. Separating rule: Possible is dash <strong>3/2</strong> with half-fill notch. Ruled out is dash <strong>6/4</strong> with empty notch + ≠.</p>
     <div class="cell">
-      <div class="ring ring-solid"></div>
-      <span class="label">Completed — solid ring (job channel)</span>
+      <div class="face-wrap id-ruled">
+        <div class="face"></div>
+        <svg class="dash-svg dash-6-4" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+        <span class="neq">≠</span>
+      </div>
+      <span class="label">Ruled out — 6/4 + empty + ≠</span>
     </div>
     <div class="cell">
-      <div class="face id-confirmed"><span class="notch"></span></div>
-      <span class="label">Confirmed — solid face + solid notch</span>
+      <div class="face-wrap id-possible">
+        <div class="face"></div>
+        <svg class="dash-svg dash-3-2" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+      </div>
+      <span class="label">Possible — 3/2 + half-fill</span>
     </div>
   </section>
 
   <!-- 10 -->
   <section class="pair">
-    <h2>10 · Stale vs Ignored</h2>
-    <p class="fail">Fail if freshness and human-defer collapse.</p>
+    <h2>10 · Confirmed vs Selected</h2>
+    <p class="rule">Both are strong. Separating rule: Confirmed is a <strong>notch</strong>. Selected is an <strong>inset rule</strong>. Never the same channel.</p>
     <div class="cell">
-      <div class="ring ring-dotted"></div>
-      <span class="label">Stale — dotted ring (analysis)</span>
+      <div class="face-wrap id-confirmed">
+        <div class="face"></div>
+        <svg class="dash-svg dash-solid" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+      </div>
+      <span class="label">Confirmed — solid notch (identity)</span>
     </div>
     <div class="cell">
-      <div class="face id-ignored"></div>
-      <span class="label">Ignored — 35% face, no notch</span>
+      <div class="card-shell card-selected" aria-label="selected media"></div>
+      <span class="label">Selected — inset rule (selection)</span>
     </div>
   </section>
 
   <!-- 11 -->
   <section class="pair">
-    <h2>11 · Possible vs Ruled out</h2>
-    <p class="fail">Fail if ≠ / slash is not readable at this size.</p>
+    <h2>11 · Stale vs Unknown</h2>
+    <p class="rule">Both “not fresh.” Separating rule: Stale is a <strong>dotted ring</strong>. Unknown is a <strong>dashed notch</strong>.</p>
     <div class="cell">
-      <div class="face id-possible"><span class="notch"></span></div>
-      <span class="label">Possible</span>
+      <div class="ring ring-dotted"></div>
+      <span class="label">Stale — dotted ring (analysis)</span>
     </div>
     <div class="cell">
-      <div class="face id-ruled"><span class="notch"></span><span class="neq">≠</span></div>
-      <span class="label">Ruled out</span>
+      <div class="face-wrap id-unknown">
+        <div class="face"></div>
+        <svg class="dash-svg dash-6-4" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+      </div>
+      <span class="label">Unknown — dashed notch (identity)</span>
     </div>
   </section>
 
   <!-- 12 -->
   <section class="pair">
-    <h2>12 · Confirmed vs Ruled out</h2>
-    <p class="fail">Fail if yes/no are not equally clear.</p>
+    <h2>12 · Destructive-armed vs Error</h2>
+    <p class="rule">Both use red. Separating rule: Destructive red on the <strong>target object</strong>. Error red as a <strong>glyph</strong> — never a border, never on a button.</p>
     <div class="cell">
-      <div class="face id-confirmed"><span class="notch"></span></div>
-      <span class="label">Confirmed</span>
+      <div class="card-shell card-destructive" aria-label="destructive-armed card"></div>
+      <span class="label">Destructive-armed — red on object</span>
     </div>
     <div class="cell">
-      <div class="face id-ruled"><span class="notch"></span><span class="neq">≠</span></div>
-      <span class="label">Ruled out</span>
+      <div class="err-row">
+        <span class="glyph-error" aria-hidden="true">⚠</span>
+        <span>Can't decode HEVC</span>
+      </div>
+      <span class="label">Error — red glyph only</span>
     </div>
   </section>
 
   <!-- 13 -->
   <section class="pair">
-    <h2>13 · Processing vs Paused</h2>
-    <p class="fail">Fail if pause bar / static vs anim is unclear.</p>
+    <h2>13 · Primary vs Selected</h2>
+    <p class="rule">Both high-contrast. Separating rule: Primary is an <strong>inverted pill</strong> (shape). Selected is a <strong>fill + rule</strong> (container). Different silhouettes.</p>
     <div class="cell">
-      <div class="ring ring-partial"></div>
-      <span class="label">Processing <span class="anim-note">(anim)</span></span>
+      <div class="ctrl ctrl-primary">Name</div>
+      <span class="label">Primary — inverted pill</span>
     </div>
     <div class="cell">
-      <div class="ring ring-partial static"><span class="pause-bar"></span></div>
-      <span class="label">Paused — static + bars</span>
+      <div class="nav-selected">Library</div>
+      <span class="label">Selected — fill + left rule</span>
     </div>
   </section>
 
   <!-- 14 -->
   <section class="pair">
-    <h2>14 · Primary disabled vs Primary loading</h2>
-    <p class="fail">Fail if loading looks like disabled (width must stay locked; spinner replaces label).</p>
+    <h2>14 · Possible vs Stale</h2>
+    <p class="rule">Both “mid” states. Separating rule: Different channels — <strong>notch</strong> vs <strong>border</strong>.</p>
     <div class="cell">
-      <div class="ctrl ctrl-primary ctrl-disabled" style="min-width: 88px; text-align: center;">Name</div>
-      <span class="label">Disabled primary — no ring, no hover</span>
+      <div class="face-wrap id-possible">
+        <div class="face"></div>
+        <svg class="dash-svg dash-3-2" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+      </div>
+      <span class="label">Possible — notch channel</span>
     </div>
     <div class="cell">
-      <div class="ctrl ctrl-primary" style="min-width: 88px; text-align: center; opacity: 1;">
-        <span class="ring ring-partial" style="width:16px;height:16px;display:inline-block;vertical-align:middle;border-width:2px;"></span>
-      </div>
-      <span class="label">Loading — spinner, width locked</span>
+      <div class="ring ring-dotted"></div>
+      <span class="label">Stale — border / ring channel</span>
     </div>
   </section>
 
   <!-- 15 -->
   <section class="pair">
-    <h2>15 · Selected media card vs Confirmed face</h2>
-    <p class="fail">Fail if card selection reads as identity Confirmed.</p>
+    <h2>15 · Mixed identity (solid + ≠) vs Ruled out (dashed + ≠)</h2>
+    <p class="rule">Both carry ≠. Separating rule: Mixed is <strong>solid</strong>. Ruled out is <strong>dashed</strong>. The ≠ is a suffix, not the state.</p>
     <div class="cell">
-      <div style="width:72px;height:72px;background:#2a3540;border:2px solid var(--text);box-shadow:inset 0 0 0 2px var(--halo);border-radius:4px;position:relative;">
-        <span style="position:absolute;top:4px;left:4px;width:10px;height:10px;border-radius:50%;background:var(--sem);"></span>
+      <div class="face-wrap id-mixed">
+        <div class="face"></div>
+        <svg class="dash-svg dash-solid" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+        <span class="neq">≠</span>
       </div>
-      <span class="label">Selected media — inset + card notch (selection)</span>
+      <span class="label">Mixed — solid + ≠ suffix</span>
     </div>
     <div class="cell">
-      <div class="face id-confirmed"><span class="notch"></span></div>
-      <span class="label">Confirmed face — identity channel</span>
+      <div class="face-wrap id-ruled">
+        <div class="face"></div>
+        <svg class="dash-svg dash-6-4" viewBox="0 0 64 64" aria-hidden="true"><rect x="1" y="1" width="62" height="62"/></svg>
+        <span class="notch"></span>
+        <span class="neq">≠</span>
+      </div>
+      <span class="label">Ruled out — dashed 6/4 + ≠ suffix</span>
     </div>
   </section>
+
+  <p id="count"></p>
   <script>
     const n = document.querySelectorAll("section.pair").length;
     const el = document.getElementById("count");

@@ -1,30 +1,32 @@
-# R3 §8.5 — Toolkit bake-off checklist (human-run)
+# Artifact 4 — Toolkit bake-off (criteria)
 
-**Status:** NOT STARTED — no PASS/FAIL recorded here.  
-**Authority:** `docs/R3-BRIEF.md` §6.  
-**Prerequisite:** §8.1–§8.4 artifacts under this folder are complete.  
-**Not:** choosing WinUI / Qt / other from preference; inventing schema; polishing Tk Home.
+**Status:** Criteria CANONICAL (owner paste 2026-09-21); **measurements DEFERRED TO LAST** (`SEM-ARCH-V1.4` §I.5).  
+**Authority:** `docs/R3-BRIEF.md` §6 · this file.  
+**Prerequisite:** Artifacts 1–3 under this folder are complete.  
+**Not:** choosing WinUI / Qt / other from preference; inventing schema; polishing Tk Home; inventing PASS.
 
-Measure each criterion on the candidate toolkit(s) on the owner’s Windows machine. Leave blanks until a real run. Wrong spec + passing toolkit = wrong product — do not soft-pass.
+The WinUI/Qt question is a **compliance test**, not a preference. Numbers are the point; toolkit names are not.
+
+| Favored on (hypothesis) | Toolkit |
+|---|---|
+| Criteria 3, 5, 6 | WinUI |
+| Criteria 1, 2, 4 | Qt |
+
+That trade is stated as measurements only after a real owner-machine run.
 
 ## Measurement harness (code exists; no PASS)
 
-Runnable stubs live under **`tools/r3-bakeoff/`**. They write a results JSON matching this checklist’s six criteria. The harness **never** sets `pass` / overall PASS.
-
 | Piece | Path |
 |---|---|
-| README (how to run) | `tools/r3-bakeoff/README.md` |
+| README | `tools/r3-bakeoff/README.md` |
 | Orchestrator | `tools/r3-bakeoff/run_bakeoff.py` |
-| PowerShell wrapper | `tools/r3-bakeoff/Invoke-Bakeoff.ps1` |
-| Results JSON schema | `tools/r3-bakeoff/schema/results.schema.json` |
-| Probes C1–C6 | `tools/r3-bakeoff/probes/c1_*.py` … `c6_*.py` |
-| Written results (local) | `tools/r3-bakeoff/results/bakeoff-*.json` |
+| PowerShell | `tools/r3-bakeoff/Invoke-Bakeoff.ps1` |
+| Schema | `tools/r3-bakeoff/schema/results.schema.json` |
+| Probes C1–C6 | `tools/r3-bakeoff/probes/` |
+| Results | `tools/r3-bakeoff/results/bakeoff-*.json` |
+| CLI | `python -m semblon lab r3-bakeoff --toolkit <WinUI3\|Qt\|dry-run>` |
 
-```text
-py -3 tools/r3-bakeoff/run_bakeoff.py --toolkit <WinUI3|Qt> --operator <you>
-```
-
-Where a criterion cannot be auto-measured without a real WinUI/Qt app, the JSON criterion has `status: pending_human` and `human_steps` with exact owner actions. Optional: `--frametimes` (C3), `--wcag-pairs` (C4) — still leave PASS blank until human confirms.
+The harness **never** invents `pass` / overall PASS.
 
 ## Candidates under test
 
@@ -33,31 +35,57 @@ Where a criterion cannot be auto-measured without a real WinUI/Qt app, the JSON 
 | | | | | |
 | | | | | |
 
-Rejected still (do not bake-off as production shell): Electron, Tauri, permanent Tk AppShell, CustomTkinter.
+Rejected (do not bake-off as production shell): Electron, Tauri, permanent Tk AppShell, CustomTkinter.
 
-## Six criteria (pass / fail blanks)
+---
 
-| # | Criterion | Pass? | Fail notes / evidence path |
+## Six criteria (pass threshold + test)
+
+| # | Criterion | Pass threshold | Test |
 |---|---|---|---|
-| 1 | Fully suppress OS accent in every native control (focus, selection, toggle, progress). | [ ] PASS · [ ] FAIL | |
-| 2 | Opaque achromatic surface over Mica without bleed. | [ ] PASS · [ ] FAIL | |
-| 3 | < 16 ms frame time on 4K/60 video scrub. | [ ] PASS · [ ] FAIL | |
-| 4 | WCAG AA on all custom controls, both themes. | [ ] PASS · [ ] FAIL | |
-| 5 | 10k-thumbnail virtualized grid without jank. | [ ] PASS · [ ] FAIL | |
-| 6 | Native accessibility tree on custom-drawn surfaces (face boxes, compare cells). | [ ] PASS · [ ] FAIL | |
+| **1** | Accent suppression | OS accent does not appear in focus, selection, toggle, progress, or hover in any state of the 17-component matrix | Render the full matrix in both themes; sample every pixel; **zero** accent-value matches |
+| **2** | Mica + opaque compositing | Content surface over Mica shows zero bleed at 100% opacity, at 4K, 150% DPI, all three Windows backdrop modes | Pixel-diff against a solid-color reference; **ΔE < 1.0** |
+| **3** | Frame time, 4K/60 video scrub | 95th percentile frame **≤ 16.0 ms**, sustained 30s | Trace with GPUView; no frame **> 20 ms** |
+| **4** | WCAG AA on custom controls | All text **≥ 4.5:1**; all non-text UI **≥ 3.0:1**; face-box halo **≥ 3.0:1** against sampled crop mean in **95%** of test images | Automated + 200-image manual sample |
+| **5** | Virtualized grid at 10k items | 60 fps scroll, 95th percentile frame **≤ 16.0 ms**, memory **≤ 400 MB** | Synthetic dataset, sustained 60s scroll |
+| **6** | Accessibility tree on custom surfaces | Face boxes, compare cells, and notches expose role, name, and state to UIA; screen reader traverses the Inspector in logical order | Narrator + NVDA, full task walkthrough |
 
-Overall bake-off for a toolkit: **PASS only if all six are PASS**. Partial scores do not choose the shell.
+## Disqualifiers (pass/fail, not scored)
 
-## After this checklist
+| # | Disqualifier | Rule |
+|---|---|---|
+| **D1** | A11y failure | Criterion **6** fails → toolkit is **out**, regardless of C2–C5 |
+| **D2** | Accent leak | Criterion **1** fails → toolkit is **out**, regardless of C2–C5 |
 
-1. Record results (this file **and** linked `tools/r3-bakeoff/results/*.json`) with machine + toolkit versions.  
-2. Fill `docs/r3-artifacts/07-shell-decision.md` — winner only if six-of-six PASS.  
-3. Return to `docs/SEM-ARCH-V1.4.md` §J for **native production shell** claims.  
-4. Durable **Ruled out** ship claim remains §I.5 last — bake-off does not invent columns.
+A bake-off without disqualifiers is theatre. Run **D1/D2 first**.
 
-**Timing:** human bake-off is **DEFERRED TO LAST** (SEM-ARCH §I.5). Shell chrome development continues without measurements.
+C2–C5 may be scored/weighted only after both disqualifiers PASS.
 
-## Related (already landed)
+## Run record (leave blank until measured)
 
-- §8.6 Clickable hierarchy frames: `docs/r3-artifacts/06-hierarchy-frames.html` (TEST, not SPEC).
-- CLI: `python -m semblon lab r3-bakeoff --toolkit dry-run` (same harness; never invents PASS).
+| Toolkit | C1 | C2 | C3 | C4 | C5 | C6 | D1 | D2 | Overall | Evidence path |
+|---|---|---|---|---|---|---|---|---|---|---|
+| | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | | |
+| | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | | |
+
+Overall for a toolkit: **PASS only if** D1 PASS · D2 PASS · and C1–C6 all PASS. Partial scores do not name a winner.
+
+## After measurements (last — §I.5)
+
+1. Record results here **and** `tools/r3-bakeoff/results/*.json` with machine + toolkit versions.  
+2. Fill `07-shell-decision.md` — winner only if six-of-six + disqualifiers PASS.  
+3. Durable **Ruled out** ship claim remains §I.5 last — bake-off does not invent columns.
+
+**Timing:** human bake-off is **DEFERRED TO LAST**. Shell chrome development against Artifacts 1–3 **continues** without measurements.
+
+## What this locks under R3-BRIEF
+
+1. **State matrix is the contract** (`01-state-matrix.md`) — shipped component state missing = bug.  
+2. **State triple is the asset model** (`02-state-triple.md`) — asset without three channels = collapsed layers.  
+3. **Collision ledger is the test plan** (`03-collision-ledger.md` + frames) — hesitation = fail.
+
+## Related
+
+- Hierarchy frames (TEST): `06-hierarchy-frames.html`
+- Shell decision packet: `07-shell-decision.md`
+- Interaction cross-product (identity × processing): `02-interaction-cross-product.md`

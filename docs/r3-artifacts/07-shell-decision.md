@@ -3,7 +3,7 @@
 **Status:** OPEN — no winner named.  
 **Authority:** `docs/SEM-ARCH-V1.4.md` §D.2 / §I.5 / §J · visual contract `docs/R3-BRIEF.md`.  
 **Human naming of winner:** **DEFERRED TO LAST** (SEM-ARCH §I.5). Development of shell chrome continues without a named toolkit.  
-**When naming (last):** §8.1–§8.4 frames done · §8.5 bake-off **measured** for each candidate · §8.6 hierarchy frames walked (TEST) · six-of-six PASS.  
+**When naming (last):** Artifacts 1–3 canonical + frames walked · Artifact 4 bake-off **measured** for each candidate · hierarchy frames walked (TEST) · six-of-six PASS.  
 **Not:** polishing Tk Home · inventing schema · preferring a toolkit without six-of-six PASS · inventing a PASS from dry-run.
 
 ## Decision question
@@ -17,12 +17,14 @@ Still rejected: Electron, Tauri, permanent Tk AppShell, CustomTkinter.
 
 | Input | Path / note | Present? |
 |---|---|---|
-| State matrix (17) | `docs/r3-artifacts/01-state-matrix.md` | yes |
-| Interaction cross-product | `docs/r3-artifacts/02-interaction-cross-product.md` | yes |
+| Artifact 1 — state matrix (17) | `docs/r3-artifacts/01-state-matrix.md` | yes (canonical) |
+| Artifact 2 — state triple | `docs/r3-artifacts/02-state-triple.md` | yes (canonical) |
+| Artifact 3 — collision ledger | `docs/r3-artifacts/03-collision-ledger.md` | yes (canonical) |
+| Artifact 4 — bake-off criteria | `docs/r3-artifacts/05-bake-off-checklist.md` | criteria yes; **measures DEFERRED TO LAST** |
+| Related — identity × processing | `docs/r3-artifacts/02-interaction-cross-product.md` | yes (kept) |
 | Collision frames (15) | `docs/r3-artifacts/03-collision-frames.html` | yes |
 | State-triple grid (30) | `docs/r3-artifacts/04-state-triple-grid.html` | yes |
 | Hierarchy frames (TEST) | `docs/r3-artifacts/06-hierarchy-frames.html` | yes |
-| Bake-off checklist | `docs/r3-artifacts/05-bake-off-checklist.md` | blanks until measured |
 | Bake-off JSON | `tools/r3-bakeoff/results/bakeoff-*.json` | human-run |
 | R2 IPC probe | `semblon lab ipc-probe` (boundary only) | yes on `main` |
 | APP-1 C.3 Windows live gate | owner machine proof | **DEFERRED TO LAST** (SEM-ARCH §I.5) — not a stop-work |
