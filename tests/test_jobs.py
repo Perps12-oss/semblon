@@ -129,18 +129,119 @@ def test_home_control_states_are_job_control_not_app_lock():
     running = home_control_states(job_running=True, resume_ready=True)
     assert running["folder"] == "disabled"
     assert running["resume"] == "disabled"
+    assert running["pause"] == "normal"
     assert running["cancel"] == "normal"
     for name in HOME_CONTROLS_ALWAYS_ON:
         assert running[name] == "normal", name
 
+    paused = home_control_states(job_running=True, job_paused=True, resume_ready=False)
+    assert paused["pause"] == "disabled"
+    assert paused["resume"] == "normal"
+    assert paused["cancel"] == "normal"
+    assert paused["folder"] == "disabled"
+    for name in HOME_CONTROLS_ALWAYS_ON:
+        assert paused[name] == "normal", name
+
     idle = home_control_states(job_running=False, resume_ready=False)
     assert idle["folder"] == "normal"
     assert idle["resume"] == "disabled"
+    assert idle["pause"] == "disabled"
     assert idle["cancel"] == "disabled"
     assert idle["review"] == "normal"
 
     ready = home_control_states(job_running=False, resume_ready=True)
     assert ready["resume"] == "normal"
+    assert ready["pause"] == "disabled"
+
+
+def test_pause_blocks_until_unpause(tmp_path, monkeypatch):
+    entered = threading.Event()
+    left_gate = threading.Event()
+    engine = JobEngine(tmp_path / "s.sqlite")
+
+    def fake_process(folder, **kwargs):
+        entered.set()
+        cancel = kwargs.get("cancel")
+        assert cancel is not None
+        deadline = time.monotonic() + 2
+        while not engine.paused and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert engine.paused is True
+        # Gate blocks here until unpause; then returns False (not cancelled).
+        assert cancel() is False
+        left_gate.set()
+        return {"run_id": "r-pause"}
+
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
+    done = {}
+
+    def on_done(result):
+        done["result"] = result
+
+    engine.submit_ingest(tmp_path / "photos", on_done=on_done)
+    assert entered.wait(1)
+    engine.pause()
+    assert engine.state == "paused"
+    assert engine.busy is True
+    with pytest.raises(JobBusy):
+        engine.submit_ingest(tmp_path / "photos")
+    time.sleep(0.15)
+    assert not left_gate.is_set()
+    assert "result" not in done
+    engine.unpause()
+    assert left_gate.wait(2)
+    deadline = time.monotonic() + 2
+    while "result" not in done and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert done["result"].status == "completed"
+    assert done["result"].run_id == "r-pause"
+    assert engine.busy is False
+    assert engine.state == "idle"
+
+
+def test_cancel_while_paused(tmp_path, monkeypatch):
+    entered = threading.Event()
+    saw_pause = threading.Event()
+    engine = JobEngine(tmp_path / "s.sqlite")
+    done = {}
+
+    def fake_process(folder, **kwargs):
+        entered.set()
+        cancel = kwargs.get("cancel")
+        deadline = time.monotonic() + 2
+        while not engine.paused and time.monotonic() < deadline:
+            time.sleep(0.01)
+        if engine.paused:
+            saw_pause.set()
+        # Blocks while paused; returns True once cancel unblocks the gate.
+        assert cancel() is True
+        raise ProcessCancelled("cancelled", run_id="r-pc")
+
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
+
+    def on_done(result):
+        done["result"] = result
+
+    engine.submit_ingest(tmp_path / "photos", on_done=on_done)
+    assert entered.wait(1)
+    engine.pause()
+    assert saw_pause.wait(2)
+    engine.cancel()
+    deadline = time.monotonic() + 3
+    while "result" not in done and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert done["result"].status == "cancelled"
+    assert done["result"].run_id == "r-pc"
+    assert engine.busy is False
+    assert engine.state == "idle"
+
+
+def test_home_pause_and_unpause_wired():
+    src = inspect.getsource(HomeApp)
+    assert "_request_pause" in src
+    assert "engine.pause" in src
+    assert "engine.unpause" in src
+    assert "btn_pause" in src
 
 
 def test_home_submits_through_job_engine():
@@ -153,7 +254,10 @@ def test_home_submits_through_job_engine():
     assert "withdraw" not in open_src
     assert ".mainloop(" not in open_src
     busy_src = inspect.getsource(HomeApp._set_busy)
-    assert "home_control_states" in busy_src
+    assert "_refresh_job_controls" in busy_src
+    refresh_src = inspect.getsource(HomeApp._refresh_job_controls)
+    assert "home_control_states" in refresh_src
+    assert "job_paused" in refresh_src
 
 
 def test_review_root_is_toplevel_on_parent():

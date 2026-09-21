@@ -2,7 +2,7 @@
 
 Opaque tkinter. No Mica. Ingest goes through JobEngine — job control, not an
 application lock. Review is a Toplevel on this root; Home keeps pumping events.
-Cooperative cancel stops ingest between files.
+Cooperative cancel and pause stop ingest between files (not mid-file).
 Progress text comes from process on_event only — no invented percent.
 """
 
@@ -61,21 +61,29 @@ HOME_CONTROLS_ALWAYS_ON = (
 )
 
 
-def home_control_states(*, job_running: bool, resume_ready: bool) -> dict[str, str]:
+def home_control_states(
+    *,
+    job_running: bool,
+    resume_ready: bool,
+    job_paused: bool = False,
+) -> dict[str, str]:
     """NORMAL/DISABLED for each Home control while a job is running.
 
-    Folder and Resume are job controls. Review / People / Search are not.
+    Folder / Pause / Resume / Cancel are job controls. Review / People / Search are not.
+    Resume while paused = unpause the same job. Resume while idle = resume-after-cancel.
     """
     on, off = "normal", "disabled"
     states = {name: on for name in HOME_CONTROLS_ALWAYS_ON}
     if job_running:
         states["folder"] = off
-        states["resume"] = off
         states["cancel"] = on
+        states["pause"] = off if job_paused else on
+        states["resume"] = on if job_paused else off
     else:
         states["folder"] = on
-        states["resume"] = on if resume_ready else off
+        states["pause"] = off
         states["cancel"] = off
+        states["resume"] = on if resume_ready else off
     return states
 
 
@@ -356,6 +364,8 @@ class HomeApp:
         self.btn_review.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_html = ttk.Button(row, text="Open review.html", command=self._open_html)
         self.btn_html.pack(side=tk.LEFT, padx=(8, 0))
+        self.btn_pause = ttk.Button(row, text="Pause", command=self._request_pause, state=tk.DISABLED)
+        self.btn_pause.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_cancel = ttk.Button(row, text="Cancel", command=self._request_cancel, state=tk.DISABLED)
         self.btn_cancel.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_resume = ttk.Button(row, text="Resume", command=self._resume, state=tk.DISABLED)
@@ -398,9 +408,19 @@ class HomeApp:
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
-        states = home_control_states(job_running=busy, resume_ready=self._resume_ready)
+        self._refresh_job_controls()
+
+    def _refresh_job_controls(self) -> None:
+        busy = self.engine.busy
+        self._busy = busy
+        states = home_control_states(
+            job_running=busy,
+            job_paused=self.engine.paused,
+            resume_ready=self._resume_ready,
+        )
         buttons = {
             "folder": self.btn_folder,
+            "pause": self.btn_pause,
             "resume": self.btn_resume,
             "cancel": self.btn_cancel,
             "review": self.btn_review,
@@ -415,11 +435,19 @@ class HomeApp:
         for key, btn in buttons.items():
             btn.configure(state=tk.NORMAL if states[key] == "normal" else tk.DISABLED)
 
+    def _request_pause(self) -> None:
+        if not self.engine.busy or self.engine.paused:
+            return
+        self.engine.pause()
+        self.status.set("Pausing… (stops between files; not mid-file)")
+        self._refresh_job_controls()
+
     def _request_cancel(self) -> None:
         if not self.engine.busy:
             return
         self.engine.cancel()
         self.status.set("Cancelling…")
+        self._refresh_job_controls()
 
     def _start_process(self, path: Path, *, resume: bool) -> None:
         self._last_folder = path
@@ -465,6 +493,12 @@ class HomeApp:
         self._start_process(Path(folder), resume=False)
 
     def _resume(self) -> None:
+        # Same-job unpause vs resume-after-cancel (new submit with resume=True).
+        if self.engine.paused:
+            self.engine.unpause()
+            self.status.set("Resuming job…")
+            self._refresh_job_controls()
+            return
         if self.engine.busy or self._last_folder is None:
             return
         self._start_process(self._last_folder, resume=True)
@@ -532,9 +566,12 @@ class HomeApp:
         except queue.Empty:
             pass
         if self.engine.busy:
+            if self.engine.paused:
+                self.status.set("Paused — not processing; Resume continues this job (between-files pause)")
             stalled = self._wd.check()
-            if stalled is not None and stalled.kind == KIND_STALLED:
+            if stalled is not None and stalled.kind == KIND_STALLED and not self.engine.paused:
                 self.status.set(status_text(stalled))
+            self._refresh_job_controls()
         if self.root.winfo_exists():
             self.root.after(100, self._drain_queue)
 
@@ -685,9 +722,10 @@ class HomeApp:
             "Settings",
             [
                 f"Store: {self.store}",
-                "Cancel: between files (not mid-file)",
                 "Ingest is a JobEngine job, not an application lock. Review/People/Search stay usable.",
-                "Resume: next to Cancel; continues cancelled/interrupted run from next unfinished stage",
+                "Pause: cooperative between files (not mid-file); Resume while paused continues the same job",
+                "Cancel: between files (not mid-file)",
+                "Resume when idle: continues cancelled/interrupted run from next unfinished stage",
                 "Stills bar: real files done / files total, climbs to 100%",
                 "Provider: FaceKit CPU (not claimed GPU)",
                 f"Home observers: {HOME_OBSERVERS}",

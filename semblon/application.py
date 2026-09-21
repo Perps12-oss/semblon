@@ -12,7 +12,16 @@ from pathlib import Path
 from semblon.canvas import load_canvas
 from semblon.home_ui import home_control_states
 from semblon.inbox import inbox
-from semblon.jobs import KIND_INGEST, JobBusy, JobEngine, JobHandle, JobResult
+from semblon.jobs import (
+    KIND_INGEST,
+    STATE_IDLE,
+    STATE_PAUSED,
+    STATE_RUNNING,
+    JobBusy,
+    JobEngine,
+    JobHandle,
+    JobResult,
+)
 from semblon.process import default_store_path, latest_run_id
 from semblon.review_ui import (
     apply_ignore,
@@ -27,6 +36,9 @@ from semblon.search import search_people, search_person
 
 __all__ = [
     "KIND_INGEST",
+    "STATE_IDLE",
+    "STATE_PAUSED",
+    "STATE_RUNNING",
     "JobBusy",
     "JobEngine",
     "JobHandle",

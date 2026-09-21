@@ -52,6 +52,13 @@ def test_home_control_policy_does_not_lock_read_surfaces():
         assert busy[name] == "normal"
     assert busy["folder"] == "disabled"
     assert busy["cancel"] == "normal"
+    assert busy["pause"] == "normal"
+    assert busy["resume"] == "disabled"
+
+    paused = home_control_states(job_running=True, job_paused=True, resume_ready=False)
+    assert paused["pause"] == "disabled"
+    assert paused["resume"] == "normal"
+    assert paused["cancel"] == "normal"
 
 
 def test_home_is_a_job_client():
