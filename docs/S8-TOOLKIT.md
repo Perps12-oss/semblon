@@ -63,9 +63,6 @@ Owner dump-gate: open the shell on Windows 11, confirm Mica-or-fallback, Name on
 - PySide6 **6.11.1** already installed on that interpreter.
 - Native ARM64 Python + PySide6 **not** measured in this spike (PERF P1 OpenCV hang is a different env). Record separately if native GUI matters.
 - Backdrop: Win11 build ≥ 22621 → `DWMWA_SYSTEMBACKDROP_TYPE` Mica; ≥ 22000 Mica effect; else solid. QML never calls DWM.
-- Some PySide6 `ItemFlag` enums omit `ItemIsKeyboardFocusable`. `semblon.desktop.qtcompat.list_item_flags()` ORs that flag only when present. Do not attribute-lookup the name in `QAbstractListModel.flags()`.
-- Workspace pages (`semblon.desktop.pages`) are a QWidget layer: `refresh(service)` only. The shell owns navigation. They do **not** replace `review-ui`. Name/Ignore on Unknown emit signals; the shell must call `review_ui.apply_*`.
-- Progress copy (`semblon.desktop.copy`) is the user-facing truthfulness layer: no invented percent, no `stage:kind` headlines, no “results are safe” on store damage.
 
 ## License
 
@@ -78,3 +75,4 @@ Qt / PySide6 is **LGPL**. Local-only Semblon can dynamically link. Recorded in `
 - Grow this spike into Intelligence Canvas or S7 UI.
 - Retune `eps`.
 - Replace `semblon review-ui` until dump-gate + product decision say so.
+- Revive a second product shell beside tk Home. Product Home is `semblon home` (tk). User-facing progress copy lives in `semblon.ui_copy`.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from semblon.desktop.copy import (
+from semblon.ui_copy import (
     COUNT_LABELS,
     KIND_LABELS,
     basename,

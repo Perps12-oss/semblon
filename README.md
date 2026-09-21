@@ -27,14 +27,13 @@ py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -e .
 ```
 
-Then **double-click `semblon.cmd`** to open the **Semblon window**: add a folder, watch progress, and review/name groups in the same Mica shell. Review is the Unknown page of that window — not a second app. Face crops show in the grid (the same path+bbox seek used by `review.html`).
+Then **double-click `semblon.cmd`** to open **tk Home**: Choose folder, watch progress (Pause / Cancel / Resume), and Open Review to name people. `review-ui` is the review vertical. Face crops come from path+bbox (same idea as `review.html`).
 
-**Status:** the shipping UI is the PySide6 window (`semblon home` / `semblon-desktop`). tkinter Home/Review remains `--legacy` / `semblon review-ui`. The QML tree under `tools/s8_toolkit_spike/` is a research spike, not a product UI.
+**Status:** the shipping UI is **tk Home + `review-ui`** (`semblon home` / `semblon review-ui`). The QML/PySide tree under `tools/s8_toolkit_spike/` is a research spike, not a product UI. There is no second product shell.
 
 ```text
 semblon.cmd home
-semblon.cmd home --legacy
-semblon.cmd desktop
+semblon.cmd review-ui
 ```
 
 Or pass a path explicitly (no need to activate the venv, no need to copy a run id):
