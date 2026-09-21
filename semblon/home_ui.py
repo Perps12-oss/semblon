@@ -1,7 +1,8 @@
-"""Double-click home — Choose folder / Open review. Not full S8 shell.
+"""Double-click home — client of the application Job boundary.
 
-Opaque tkinter. No Mica. Cooperative cancel stops ingest between files.
-Progress text comes from process on_event only — no invented percent.
+Not the canonical workstation architecture. Tk is a replaceable client.
+Opaque tkinter. No Mica. Jobs live in semblon.jobs; this window observes them.
+Progress text comes from Job snapshots / process events only — no invented percent.
 """
 
 from __future__ import annotations
@@ -9,7 +10,6 @@ from __future__ import annotations
 import json
 import queue
 import sqlite3
-import threading
 import webbrowser
 from pathlib import Path
 
@@ -21,7 +21,8 @@ except ModuleNotFoundError:  # pragma: no cover - depends on host Python build
     filedialog = messagebox = ttk = None
 
 from semblon.desktop.copy import friendly_exception, status_text
-from semblon.process import ProcessCancelled, ProcessError, default_store_path, process_folder
+from semblon.jobs import JobBusy, JobEngine, home_control_states
+from semblon.process import default_store_path
 from semblon.progress import (
     KIND_QUEUED,
     KIND_STALLED,
@@ -280,8 +281,8 @@ class HomeApp:
         if tk is None or ttk is None or filedialog is None or messagebox is None:
             raise RuntimeError("tkinter is required for home-ui")
         self.store = Path(store) if store is not None else default_store_path()
+        self.engine = JobEngine()
         self._busy = False
-        self._cancel = threading.Event()
         self._exit_after_cancel = False
         self._wd = Watchdog(stall_s=120.0)
         self._last_run_id: str | None = None
@@ -360,42 +361,61 @@ class HomeApp:
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
-        state = tk.DISABLED if busy else tk.NORMAL
-        self.btn_folder.configure(state=state)
-        self.btn_review.configure(state=state)
-        self.btn_html.configure(state=state)
-        self.btn_people.configure(state=state)
-        self.btn_unknown.configure(state=state)
-        self.btn_activity.configure(state=state)
-        self.btn_settings.configure(state=state)
-        self.btn_canvas.configure(state=state)
-        self.btn_search.configure(state=state)
-        self.btn_cancel.configure(state=tk.NORMAL if busy else tk.DISABLED)
-        self.btn_resume.configure(
-            state=tk.DISABLED if busy or not self._resume_ready else tk.NORMAL
-        )
+        states = home_control_states(job_active=busy, resume_ready=self._resume_ready)
+        buttons = {
+            "folder": self.btn_folder,
+            "resume": self.btn_resume,
+            "cancel": self.btn_cancel,
+            "review": self.btn_review,
+            "html": self.btn_html,
+            "people": self.btn_people,
+            "unknown": self.btn_unknown,
+            "activity": self.btn_activity,
+            "settings": self.btn_settings,
+            "canvas": self.btn_canvas,
+            "search": self.btn_search,
+        }
+        for key, btn in buttons.items():
+            btn.configure(state=tk.NORMAL if states[key] == "normal" else tk.DISABLED)
 
     def _request_cancel(self) -> None:
-        if not self._busy:
+        if not self.engine.active():
             return
-        self._cancel.set()
+        self.engine.request_cancel()
         self.status.set("Cancelling…")
 
     def _start_process(self, path: Path, *, resume: bool) -> None:
         self._last_folder = path
-        self._cancel.clear()
         self._exit_after_cancel = False
         self._wd = Watchdog(stall_s=120.0)
         self._resume_ready = False
         self.bar.reset()
         self.clock.set("")
-        self._set_busy(True)
         queued = make_event(STAGE_PROCESS, KIND_QUEUED, path=str(path), outcome="resumed" if resume else None)
         self.status.set(status_text(queued))
-        threading.Thread(target=self._run_process, args=(path, resume), daemon=True).start()
+        self._set_busy(True)
+
+        def on_event(ev: ProgressEvent) -> None:
+            self._wd.note(ev)
+            self._q.put(("event", ev))
+
+        try:
+            self.engine.submit_ingest(
+                path,
+                self.store,
+                resume=resume,
+                observers=HOME_OBSERVERS,
+                on_event=on_event,
+                on_done=lambda rec: self._q.put(("done", rec)),
+                on_cancelled=lambda rid: self._q.put(("cancelled", rid or "")),
+                on_error=lambda err: self._q.put(("error", err)),
+            )
+        except JobBusy:
+            self._set_busy(False)
+            self.status.set("Job busy — ingest already running.")
 
     def _choose_folder(self) -> None:
-        if self._busy:
+        if self.engine.active():
             return
         folder = filedialog.askdirectory(title="Choose a folder of photos for Semblon")
         if not folder:
@@ -403,34 +423,9 @@ class HomeApp:
         self._start_process(Path(folder), resume=False)
 
     def _resume(self) -> None:
-        if self._busy or self._last_folder is None:
+        if self.engine.active() or self._last_folder is None:
             return
         self._start_process(self._last_folder, resume=True)
-
-    def _run_process(self, folder: Path, resume: bool = False) -> None:
-        def on_event(ev: ProgressEvent) -> None:
-            self._wd.note(ev)
-            self._q.put(("event", ev))
-
-        try:
-            rec = process_folder(
-                folder,
-                store=self.store,
-                open_review=False,
-                progress=lambda *_: None,
-                on_event=on_event,
-                cancel=self._cancel.is_set,
-                observers=HOME_OBSERVERS,
-                resume=resume,
-            )
-            self._q.put(("done", rec))
-        except ProcessCancelled as e:
-            rid = e.run_id or ""
-            self._q.put(("cancelled", rid))
-        except ProcessError as e:
-            self._q.put(("error", e))
-        except Exception as e:  # noqa: BLE001 — surface unexpected failures in home UI
-            self._q.put(("error", e))
 
     def _drain_queue(self) -> None:
         try:
@@ -502,8 +497,6 @@ class HomeApp:
             self.root.after(100, self._drain_queue)
 
     def _open_review_ui(self) -> None:
-        if self._busy:
-            return
         from semblon.review_ui import ReviewUiError, run_review_ui
 
         try:
@@ -517,8 +510,6 @@ class HomeApp:
                 self.root.deiconify()
 
     def _open_html(self) -> None:
-        if self._busy:
-            return
         path = self._last_review_html
         if path is None or not path.is_file():
             from semblon.process import default_review_out
@@ -656,6 +647,7 @@ class HomeApp:
             "Settings",
             [
                 f"Store: {self.store}",
+                "Ingest is a JobEngine job. Review/People/Search stay usable while it runs.",
                 "Cancel: between files (not mid-file)",
                 "Resume: next to Cancel; continues cancelled/interrupted run from next unfinished stage",
                 "Stills bar: real files done / files total, climbs to 100%",

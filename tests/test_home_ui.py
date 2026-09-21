@@ -1,13 +1,15 @@
-"""Home activity semantics readers."""
+"""Home activity semantics readers + Track-1 control policy."""
 
 from __future__ import annotations
 
+import inspect
 import sqlite3
 from pathlib import Path
 
 import pytest
 
 from semblon.home_ui import format_activity_lines, read_activity_snapshot
+from semblon.jobs import home_control_states
 from semblon.observers import snapshot_memory_graph
 from semblon.review import name_cluster, name_face
 from tests.test_review import _clustered
@@ -43,3 +45,20 @@ def test_activity_reader_broken_db_is_not_swallowed(tmp_path):
     bad.write_text("this is not sqlite")
     with pytest.raises(sqlite3.DatabaseError):
         read_activity_snapshot(Path(bad), "r1")
+
+
+def test_home_control_policy_does_not_lock_read_surfaces():
+    busy = home_control_states(job_active=True, resume_ready=False)
+    for name in ("review", "people", "search", "unknown", "activity", "settings", "canvas", "html"):
+        assert busy[name] == "normal"
+    assert busy["folder"] == "disabled"
+    assert busy["cancel"] == "normal"
+
+
+def test_home_is_a_job_client():
+    import semblon.home_ui as home_ui
+
+    src = inspect.getsource(home_ui.HomeApp)
+    assert "JobEngine" in src
+    assert "home_control_states" in src
+    assert "btn_review.configure(state=state)" not in src
