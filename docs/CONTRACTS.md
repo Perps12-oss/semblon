@@ -80,7 +80,7 @@ Docs/conceptual only. No new columns. Map of SEM-ARCH nouns onto today's store:
 
 - **Store:** no new columns. `decisions.kind=reject` + `policy_json.action=rule_out` (Ignore remains `action=ignore`).
 - **Code:** `rule_out_subject` / `apply_rule_out` behind env `SEMBLON_RULED_OUT=1` (default OFF; canonical gate: `semblon.gates.RULED_OUT`).
-- **Product wire:** code/scaffold may exist; **ship claim DEFERRED TO LAST** (`SEM-ARCH-V1.4` §I.5). Development continues.
+- **Product wire:** **CLOSED / DONE** by owner 2026-09-21 (`SEM-ARCH-V1.4` §I.5). Default verb available when gate ON.
 - **PROPOSED only (not landed):** dedicated `decisions.kind='rule_out'` CHECK expansion if policy discrimination proves insufficient.
 
 Frozen rule: detector → observation; grouping → hypothesis; human → decision. `cluster ≠ person`. `group ≠ entity`. Unknown is valid.

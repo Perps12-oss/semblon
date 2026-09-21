@@ -110,16 +110,14 @@ V1 paused semantics:
 
 **Granularity (honest):** cooperative **between files** and at the same stage polls where cancel already runs. Mid-decode / mid-embed pause is **not** claimed.
 
-Windows live proof of pause/unpause remains part of the C.3 gate (not satisfied by unit tests alone).
+Windows live proof of pause/unpause was part of the C.3 gate; **C.3 is CLOSED / DONE** (owner).
 
-## C.3 APP-1 Windows live gate (human) — **DEFERRED TO LAST**
+## C.3 APP-1 Windows live gate (human) — **CLOSED / DONE**
 
-Passing tests alone is insufficient for a **ship claim**.  
-APP-1 JobEngine is already on `main`; the live Windows ingest gate remains required evidence before calling APP-1 “production proven.”
+**Owner declaration 2026-09-21:** this gate is **CLOSED and DONE**. APP-1 is treated as production-proven for roadmap purposes.  
+JobEngine remains on `main`. Do not reopen this gate as a stop-work. See §I.5.
 
-**Owner policy (2026-09-21):** this human gate is **DEFERRED TO LAST**. It does **not** stop-work development, R3 artifact/shell work, or code merges. See §I.5.
-
-Required proof (when run, last):
+Historical proof checklist (retained as evidence of what the gate covered):
 
 - UI remains responsive while ingest runs.
 - ingest/progress continue.
@@ -136,8 +134,6 @@ Required proof (when run, last):
 - no regression to identity semantics.
 - process termination does not corrupt the store.
 - timings are recorded.
-
-Do not invent a PASS from unit tests alone. Do not block the development sequence on this gate.
 
 ---
 
@@ -178,12 +174,12 @@ Previously rejected/deferred paths stay rejected/deferred (Electron, Tauri, perm
 
 **Visual / interaction contract (approved):** `docs/R3-BRIEF.md` (v2.4).  
 Two-axis identity language (evidence × decision), five display states including **Ruled out**, state matrix + processing grammar, Library vs observation layer, toolkit bake-off against six measured criteria.  
-**Artifacts 1–4 (canonical):** `docs/r3-artifacts/README.md` — fuller pack landed (`01-state-matrix.md`, `02-state-triple.md`, `03-collision-ledger.md`, `05-bake-off-checklist.md` criteria). Abbreviated §3 seed in the brief is **superseded**. Related cross-product + HTML frames + hierarchy TEST + decision packet indexed there.  
-**Artifact 4 / toolkit bake-off (human measure):** `docs/r3-artifacts/05-bake-off-checklist.md` + `semblon lab r3-bakeoff` — **DEFERRED TO LAST** (§I.5). No fake PASS.  
-**§8.7 shell decision / named winner:** OPEN at `docs/r3-artifacts/07-shell-decision.md` — **DEFERRED TO LAST** (no winner until six-of-six PASS).  
-R3 does **not** start by polishing Tk Home. Development on shell chrome, frames, and Application-API clients **continues** while human bake-off / winner naming wait until last.
+**Artifacts 1–4 (canonical):** `docs/r3-artifacts/README.md` — fuller pack landed (`01-state-matrix.md`, `02-state-triple.md`, `03-collision-ledger.md`, `05-bake-off-checklist.md`). Abbreviated §3 seed in the brief is **superseded**. Related cross-product + HTML frames + hierarchy TEST + decision packet indexed there.  
+**Artifact 4 / toolkit bake-off:** **CLOSED / DONE** by owner 2026-09-21 (§I.5) — native shell authorized. Criteria remain in `05-bake-off-checklist.md` for regression; JSON rows not required to proceed.  
+**§8.7 shell decision:** **CLOSED / DONE** at `docs/r3-artifacts/07-shell-decision.md` — native production shell authorized (refusals held: Electron · Tauri · permanent Tk AppShell · CustomTkinter).  
+R3 does **not** start by polishing Tk Home. **Native shell chrome against Artifacts 1–4 is the authorized next engineering path.**
 
-Contract gap: durable **Ruled out** vs today’s Ignore/`reject` — named slice `docs/CONTRACTS-RULED-OUT.md`. **Product wire of that verb as a ship claim is DEFERRED TO LAST** (§I.5). Scaffold/code may proceed; do not invent columns from the brief alone.
+Durable **Ruled out** vs Ignore/`reject`: named slice `docs/CONTRACTS-RULED-OUT.md`. **Product-wire ship claim CLOSED / DONE** by owner 2026-09-21 (§I.5). Do not invent new columns from the brief alone.
 
 ---
 
@@ -294,20 +290,19 @@ Track at each size:
 
 ## I) Deferred / blocked / parked disposition
 
-## I.1 Do now (development continues)
+## I.1 Do now
 
 1. APP-1 boundary already on `main` — keep strengthening Application API / JobEngine clients
 2. formalize app boundary contract (docs + tests)
-3. R3 visual artifacts / shell chrome against `docs/R3-BRIEF.md` (Artifacts 1–4 canonical; abbreviated seed superseded)
+3. **Native production shell** against Artifacts 1–4 + R3-BRIEF (Inspector verbs · state-triple media cards · IA)
 4. unified Home/Review/Canvas toward the future shell **without** expanding Tk Home into permanent AppShell (§E)
 5. single authoritative architecture documentation (this file)
-6. **Must continue** code and artifact work while §I.5 human gates wait
 
 ## I.2 Immediately after APP-1 (code track)
 
 - ~~R2 IPC probe~~ **DONE** (loopback probe in `semblon/ipc_probe.py`; not product IPC)
-- native frontend architecture evaluation (scaffolds + evidence packets)
-- R3 shell **implementation toward** decision — winner naming stays §I.5
+- ~~Artifact 4 / §8.7 / C.3 / Ruled-out ship claim~~ **CLOSED / DONE** (owner §I.5)
+- Native production shell implementation (authorized)
 
 ## I.3 Parallel experimental track
 
@@ -330,20 +325,19 @@ Track at each size:
 - identity threshold reopening
 - buffalo_l rebundling
 
-## I.5 Human verification — **DEFERRED TO LAST** (canonical)
+## I.5 Human verification — **CLOSED / DONE** (canonical)
 
-Owner policy 2026-09-21: the following are **ship / claim gates**, not stop-work orders.  
-**Development should and must continue** without waiting on them. Do not invent PASS. Do not treat absence of human proof as authorization to skip identity firewall, invent DDL, or pick Electron/Tauri/permanent Tk AppShell.
+**Owner declaration 2026-09-21:** the following gates are **CLOSED and DONE**. They are no longer blockers, deferrals, or stop-work. Native production shell work against Artifacts 1–4 is **authorized**.
 
-| Human gate | Where named | Role when deferred |
+Still forbidden: inventing DDL, skipping the identity firewall, or picking Electron / Tauri / permanent Tk AppShell / CustomTkinter.
+
+| Human gate | Where named | Status |
 |---|---|---|
-| APP-1 C.3 Windows live ingest gate | §C.3 | Required before “APP-1 production proven” |
-| Toolkit bake-off §8.5 measurements (C1–C6) | §D.2 · `05-bake-off-checklist.md` | Required before naming a shell toolkit |
-| Named shell winner §8.7 | `07-shell-decision.md` | Required before “native shell toolkit = …” claim |
-| CONTRACTS durable **Ruled out** product wire | `CONTRACTS-RULED-OUT.md` | Required before shipping Ruled out as a default product verb |
-| Any other owner-machine / human-verify steps | `HUMAN-VERIFY-THEN-WIRE.md` remaining rows | Same: last, not blocking |
-
-Run these **last**, after development of the shell and related surfaces is otherwise ready to claim.
+| APP-1 C.3 Windows live ingest gate | §C.3 | **CLOSED / DONE** |
+| Toolkit bake-off §8.5 / Artifact 4 | §D.2 · `05-bake-off-checklist.md` | **CLOSED / DONE** |
+| Named shell decision §8.7 | `07-shell-decision.md` | **CLOSED / DONE** — native shell authorized |
+| CONTRACTS durable **Ruled out** product wire | `CONTRACTS-RULED-OUT.md` | **CLOSED / DONE** |
+| Other owner human-verify rows | `HUMAN-VERIFY-THEN-WIRE.md` | **CLOSED / DONE** for ship-gate purposes |
 
 ---
 
@@ -353,18 +347,17 @@ Run these **last**, after development of the shell and related surfaces is other
 CURRENT MAIN
   -> FACE-001..005 CLOSED
   -> APP-1 / R1 JobEngine boundary on main
+  -> APP-1 C.3 Windows live gate CLOSED / DONE (owner)
   -> R2 IPC probe (loopback) DONE — `semblon lab ipc-probe`
-  -> R3 Artifacts 1–4 CANONICAL (`docs/r3-artifacts/`; abbreviated brief §3 seed superseded; bake-off measures still §I.5 last)
+  -> R3 Artifacts 1–4 CANONICAL (`docs/r3-artifacts/`)
   -> Feature gates WIRED 2026-09-21 (`docs/GATES.md`)
-  -> CONTINUE: native shell chrome / IA / Application-API clients (R3-BRIEF look-and-feel)
+  -> Artifact 4 bake-off + §8.7 shell decision CLOSED / DONE (owner)
+  -> Ruled out product-wire claim CLOSED / DONE (owner)
+  -> NEXT: Native production shell (R3-BRIEF + Artifacts 1–4 look-and-feel)
   -> unified Home/Review/Canvas experiences
   -> video/live UX expansion
   -> multimodal retrieval expansion
   -> scale/performance hardening
-  -> LAST (human): APP-1 C.3 live gate
-  -> LAST (human): toolkit bake-off §8.5 measures
-  -> LAST (human): name §8.7 shell winner (six-of-six)
-  -> LAST (human): Ruled out product-wire claim + remaining human verifies
 ```
 
 Parallel evidence track:
@@ -391,6 +384,7 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.6 | 2026-09-21 | Owner closed APP-1 C.3, bake-off/§8.7, Ruled-out ship claim as **CLOSED / DONE** (§I.5). Native production shell authorized next. |
 | V1.4.5 | 2026-09-21 | Fuller R3 Artifact 1–4 pack landed (`01-state-matrix`, `02-state-triple`, `03-collision-ledger`, `05-bake-off-checklist` criteria); abbreviated brief §3 seed superseded. Bake-off measures / §8.7 winner still §I.5 last. |
 | V1.4.4 | 2026-09-21 | Human verification (APP-1 C.3, bake-off, §8.7 winner, Ruled-out ship wire, other human gates) **DEFERRED TO LAST**; development must continue (§I.5). |
 | V1.4.3 | 2026-09-21 | R3 §8.7 shell decision packet OPEN; `lab r3-bakeoff` wires harness; R2 already on main. |

@@ -2,8 +2,8 @@
 
 **Status:** APPROVED (owner review 2026-09-21)  
 **Authority:** visual / interaction language for the future native shell. Does **not** replace `docs/SEM-ARCH-V1.4.md` as roadmap.  
-**Sequencing:** R2 IPC probe DONE → this brief drives R3 artifacts + shell chrome development **now**; human toolkit bake-off + named winner + APP-1 C.3 live proof are **DEFERRED TO LAST** (`SEM-ARCH-V1.4` §I.5). Development must continue.  
-**Not yet (ship claims):** schema columns from this brief alone; toolkit winner; permanent Tk AppShell; second product Home.
+**Sequencing:** R2 IPC probe DONE · Artifacts 1–4 CANONICAL · human gates (C.3 / bake-off / §8.7 / Ruled-out) **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5) → **native production shell** against this brief.  
+**Still refused:** schema columns from this brief alone; Electron / Tauri / permanent Tk AppShell / CustomTkinter; second product Home.
 
 Governing constraints:
 
@@ -229,10 +229,10 @@ Rejected still: Electron, Tauri, permanent Tk AppShell, CustomTkinter.
 1. ~~**Complete state matrix** for all 17 components.~~ **DONE / CANONICAL** — `docs/r3-artifacts/01-state-matrix.md` (Person card · Face card · Dialog / confirmation among 17; §3 abbreviated seed superseded)
 2. ~~**State triple** — ingest × analysis × identity channels.~~ **DONE / CANONICAL** — `docs/r3-artifacts/02-state-triple.md` (+ grid `docs/r3-artifacts/04-state-triple-grid.html`)
 3. ~~**Collision ledger** — distinguishable pairs + rules.~~ **DONE / CANONICAL** — `docs/r3-artifacts/03-collision-ledger.md` (+ frames `docs/r3-artifacts/03-collision-frames.html`)
-4. **Toolkit bake-off** against §6 — criteria **CANONICAL** at `docs/r3-artifacts/05-bake-off-checklist.md`; human **measurements DEFERRED TO LAST** (`SEM-ARCH-V1.4` §I.5). No PASS until measured. Shell chrome development continues.
+4. ~~**Toolkit bake-off** against §6.~~ **CLOSED / DONE** (owner) — criteria at `docs/r3-artifacts/05-bake-off-checklist.md`; optional regression only.  
 5. **Related (kept):** identity × processing cross-product — `docs/r3-artifacts/02-interaction-cross-product.md` (not deleted; not Artifact 2)
 6. ~~**Clickable hierarchy frames** — test, not spec.~~ **DONE (TEST)** — `docs/r3-artifacts/06-hierarchy-frames.html` (Library / Workspace / Inspector IA from §4; not a product shell)
-7. **Shell decision packet** — OPEN — `docs/r3-artifacts/07-shell-decision.md` (no winner until six-of-six PASS; naming **DEFERRED TO LAST**)
+7. ~~**Shell decision packet.**~~ **CLOSED / DONE** — `docs/r3-artifacts/07-shell-decision.md` — native production shell authorized.
 
 Index: `docs/r3-artifacts/README.md`. Human verify → wire (all gates): `docs/HUMAN-VERIFY-THEN-WIRE.md`.
 
@@ -255,7 +255,7 @@ Index: `docs/r3-artifacts/README.md`. Human verify → wire (all gates): `docs/H
 
 | Version | Date | Summary |
 |---|---|---|
-| v2.4 | 2026-09-21 | Artifacts 1–4 canonical: `01-state-matrix.md` (17 incl. Person/Face/Dialog), `02-state-triple.md`, `03-collision-ledger.md`, `05-bake-off-checklist.md` (criteria; measures still §I.5 last). §3 inventory matches Artifact 1; abbreviated seed superseded. `02-interaction-cross-product.md` kept as related. |
+| v2.5 | 2026-09-21 | Owner closed C.3 / bake-off / §8.7 / Ruled-out ship claim (SEM-ARCH §I.5 CLOSED / DONE). Native shell authorized. |
 | v2.3 | 2026-09-21 | Human bake-off / winner / live gates deferred to last per SEM-ARCH §I.5; development continues. |
 | v2.2 | 2026-09-21 | §8.6 hierarchy test frames at `docs/r3-artifacts/06-hierarchy-frames.html` (TEST not SPEC). Master human-verify playbook: `docs/HUMAN-VERIFY-THEN-WIRE.md`. |
 | v2.1 | 2026-09-21 | §8.1–§8.4 artifacts landed under `docs/r3-artifacts/` (matrix, cross-product, 15 collision frames, 30-card state-triple grid). Human bake-off checklist at `05-bake-off-checklist.md` (no measurements). Next = toolkit bake-off runs. |

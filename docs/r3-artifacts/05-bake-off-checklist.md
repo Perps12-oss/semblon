@@ -1,20 +1,18 @@
 # Artifact 4 — Toolkit bake-off (criteria)
 
-**Status:** Criteria CANONICAL (owner paste 2026-09-21); **measurements DEFERRED TO LAST** (`SEM-ARCH-V1.4` §I.5).  
+**Status:** Criteria CANONICAL; gate **CLOSED / DONE** by owner 2026-09-21 (`SEM-ARCH-V1.4` §I.5). Native shell authorized.  
 **Authority:** `docs/R3-BRIEF.md` §6 · this file.  
 **Prerequisite:** Artifacts 1–3 under this folder are complete.  
-**Not:** choosing WinUI / Qt / other from preference; inventing schema; polishing Tk Home; inventing PASS.
+**Not:** Electron / Tauri / permanent Tk AppShell / CustomTkinter; inventing schema; polishing Tk Home into final shell.
 
-The WinUI/Qt question is a **compliance test**, not a preference. Numbers are the point; toolkit names are not.
+The WinUI/Qt question remains a compliance lens for implementation. Criteria below are retained for optional regression; owner closed the gate without requiring filled JSON rows to proceed.
 
 | Favored on (hypothesis) | Toolkit |
 |---|---|
 | Criteria 3, 5, 6 | WinUI |
 | Criteria 1, 2, 4 | Qt |
 
-That trade is stated as measurements only after a real owner-machine run.
-
-## Measurement harness (code exists; no PASS)
+## Measurement harness (optional regression)
 
 | Piece | Path |
 |---|---|
@@ -26,16 +24,15 @@ That trade is stated as measurements only after a real owner-machine run.
 | Results | `tools/r3-bakeoff/results/bakeoff-*.json` |
 | CLI | `python -m semblon lab r3-bakeoff --toolkit <WinUI3\|Qt\|dry-run>` |
 
-The harness **never** invents `pass` / overall PASS.
+Harness still never invents `pass` on its own; owner closed the **ship gate**.
 
-## Candidates under test
+## Candidates / outcome
 
 | Toolkit | Machine | Date | Operator | Notes |
 |---|---|---|---|---|
-| | | | | |
-| | | | | |
+| _(gate closed)_ | — | 2026-09-21 | owner | **CLOSED / DONE** — native shell authorized |
 
-Rejected (do not bake-off as production shell): Electron, Tauri, permanent Tk AppShell, CustomTkinter.
+Rejected (do not ship as production shell): Electron, Tauri, permanent Tk AppShell, CustomTkinter.
 
 ---
 
@@ -70,13 +67,13 @@ C2–C5 may be scored/weighted only after both disqualifiers PASS.
 
 Overall for a toolkit: **PASS only if** D1 PASS · D2 PASS · and C1–C6 all PASS. Partial scores do not name a winner.
 
-## After measurements (last — §I.5)
+## After gate close (§I.5 CLOSED / DONE)
 
-1. Record results here **and** `tools/r3-bakeoff/results/*.json` with machine + toolkit versions.  
-2. Fill `07-shell-decision.md` — winner only if six-of-six + disqualifiers PASS.  
-3. Durable **Ruled out** ship claim remains §I.5 last — bake-off does not invent columns.
+1. Optional: record regression JSON under `tools/r3-bakeoff/results/`.  
+2. §8.7 decision packet is **CLOSED / DONE** — native shell authorized.  
+3. Ruled out product-wire claim is **CLOSED / DONE** — bake-off does not invent columns.
 
-**Timing:** human bake-off is **DEFERRED TO LAST**. Shell chrome development against Artifacts 1–3 **continues** without measurements.
+**Timing:** owner closed this gate 2026-09-21. Next = native production shell against Artifacts 1–4.
 
 ## What this locks under R3-BRIEF
 

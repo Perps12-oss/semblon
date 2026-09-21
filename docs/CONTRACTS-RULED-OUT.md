@@ -1,10 +1,10 @@
 # CONTRACTS slice — Ruled out
 
-**Status:** NAMED + code scaffold; product **ship claim** for the verb is **DEFERRED TO LAST** (SEM-ARCH-V1.4 §I.5). Development/scaffolds continue.  
+**Status:** NAMED + code scaffold; product **ship claim CLOSED / DONE** by owner 2026-09-21 (SEM-ARCH-V1.4 §I.5).  
 **Date:** 2026-09-21  
 **Authority parent:** `docs/CONTRACTS.md`  
 **Brief driver:** `docs/R3-BRIEF.md` §1 (two-axis identity; Ruled out vs Ignored)  
-**Flag:** `SEMBLON_RULED_OUT` (code default may be ON; opt out `=0`; canonical name `semblon.gates.RULED_OUT`). Human ship verification of the product verb remains §I.5 last.
+**Flag:** `SEMBLON_RULED_OUT` (default ON; opt out `=0`; canonical name `semblon.gates.RULED_OUT`).
 
 This slice closes the contract gap called out in R3: Ignore alone cannot represent a durable negative identity decision.
 
@@ -26,7 +26,7 @@ Ruled out is first-class: dismissed-with-rejection must not share a bit with nev
 | Cluster row | **does not** set `clusters.status='ignored'` | sets `clusters.status='ignored'` |
 | Board hide | **does not** hide by default (`hidden` not set) | face ignore sets `policy.hidden=true`; cluster leave board |
 | Visual (shell, later) | dashed + `≠` / slash notch | none, ~35% opacity |
-| Product wire | **ship claim DEFERRED TO LAST** (§I.5); scaffold OK | wired (`review ignore`, review-ui Ignore) |
+| Product wire | **ship claim CLOSED / DONE** (§I.5) | wired (`review ignore`, review-ui Ignore) |
 
 Media stays in Library either way. Ruled out does not delete media, faces, or clusters. It does not enrol, merge, or change `compare()` / DBSCAN scores. Identity firewall unchanged: FaceKit only.
 
@@ -59,24 +59,23 @@ Re-cluster already treats any `decisions` row with `cluster_id` / `face_id` as a
 
 Expand `decisions.kind` CHECK to include `'rule_out'` as a first-class kind. **Not required** while `action=rule_out` under `kind=reject` is distinguishable from Ignore. Do not invent columns from the brief alone. If a future slice needs a dedicated kind, land it as an explicit CONTRACTS migration with human approve — not as a silent CHECK edit.
 
-## Code path (flagged)
+## Code path (ship claim CLOSED / DONE)
 
-| Surface | Behavior when flag **OFF** (default) | When `SEMBLON_RULED_OUT=1` |
+| Surface | Behavior when flag **OFF** (`=0`) | When gate ON (default) |
 |---|---|---|
 | `semblon.gates.enabled(RULED_OUT)` | False | True |
 | `semblon.review.rule_out_subject` | raises `ReviewError` | writes decision |
 | `semblon.review_ui.apply_rule_out` | raises (via writer) | thin wrapper |
-| CLI `semblon review rule-out` | exit 2 with UNWIRED message | records decision |
-| review-ui / Home button | **not** shown as default | optional stub button only if flag on |
+| CLI `semblon review rule-out` | exit 2 when opted out | records decision |
+| review-ui / Home / shell Inspector | hidden when opted out | **Rule out** verb wired |
 | `semblon.application` | exports `apply_rule_out` name; still gated | same |
 
-Truthful labels in help/docs: **experimental / UNWIRED pending human verify**.
+Owner closed the product-wire ship claim 2026-09-21 (`SEM-ARCH-V1.4` §I.5). Opt out remains via `SEMBLON_RULED_OUT=0`.
 
-## Human verify before product wire
+## Historical verify notes (retained)
 
-1. Confirm `action=rule_out` under `kind=reject` is enough (vs PROPOSED kind enum).
-2. Confirm optional `person_id` is the right attachment for “Possible: Maya → Ruled out”.
-3. Confirm board/export should **show** Ruled out (not hide like Ignore).
-4. Then wire review-ui / Home / shell chrome and remove “UNWIRED” from product docs.
+1. `action=rule_out` under `kind=reject` is enough (vs PROPOSED kind enum).
+2. Optional `person_id` attachment for “Possible: Maya → Ruled out”.
+3. Board/export should **show** Ruled out (not hide like Ignore).
 
-See also: `docs/APPLICATION_API.md` (experimental command row), `docs/r3-packets/06-ruled-out-wiring.md`.
+See also: `docs/APPLICATION_API.md`, `docs/r3-packets/06-ruled-out-wiring.md`.

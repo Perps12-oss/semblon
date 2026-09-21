@@ -1,40 +1,36 @@
 # Human verify → then wire
 
 **Status:** Code gates module **WIRED** 2026-09-21 (defaults ON; opt out via env `=0`).  
-**Owner policy:** remaining **human ship gates are DEFERRED TO LAST** — see `docs/SEM-ARCH-V1.4.md` §I.5. Development must continue without waiting.  
-**Gates module:** `semblon/gates.py` · overview `docs/GATES.md`  
-**Pattern:** code may land and wire behind flags; inventing PASS is forbidden; final human ship proof runs last.
+**Owner declaration 2026-09-21:** human ship gates in §I.5 are **CLOSED / DONE** — see `docs/SEM-ARCH-V1.4.md` §I.5. Native production shell authorized.  
+**Gates module:** `semblon/gates.py` · overview `docs/GATES.md`
 
 | # | Gate | Result |
 |---|---|---|
-| 1 | R3 toolkit bake-off (§6) **measurements** | **DEFERRED TO LAST** — harness/checklist exist; no six-of-six PASS claimed |
-| 2 | Ruled out **ship claim** | **DEFERRED TO LAST** — scaffold/flag may be ON; product verb claim waits §I.5 |
-| 3 | Live overlay | Code wired (lab + Home **Live…**); owner live proof may still run last |
+| 1 | R3 toolkit bake-off (§6) | **CLOSED / DONE** (owner) — native shell authorized |
+| 2 | Ruled out **ship claim** | **CLOSED / DONE** (owner) |
+| 3 | Live overlay | Code wired (lab + Home **Live…**) |
 | 4 | OCR / CLIP / pose honesty | Code wired (Settings notes when `MODALITY_PRODUCT` on) |
-| 5 | APP-1 C.3 Windows live | **DEFERRED TO LAST** — JobEngine on `main`; live ingest proof last |
+| 5 | APP-1 C.3 Windows live | **CLOSED / DONE** (owner) |
 | 6 | R2 IPC probe | Probe on `main` (boundary only) |
 | 7 | PERF workers | Harness exists; product default remains `workers=1` |
-| 8 | Hierarchy frames | TEST frames on `main` (not SPEC) |
-| 9 | Named §8.7 shell winner | **DEFERRED TO LAST** |
+| 8 | Hierarchy frames | TEST frames (not SPEC) |
+| 9 | Named §8.7 shell decision | **CLOSED / DONE** (owner) — see `07-shell-decision.md` |
 
 ---
 
 ## Wire actions completed (code)
 
 1. `semblon.gates.enabled` defaults **ON**; explicit `0`/`false`/`off` opts out.
-2. Review-ui may offer **Rule out…** when flag on (ship claim still §I.5).
+2. Review-ui offers **Rule out…** when flag on — product-wire claim **CLOSED / DONE**.
 3. Home **Live…** launches overlay with `from_home=True` (asks source/seconds; no auto-start).
 4. Settings prints modality honesty `notes` when `MODALITY_PRODUCT` is on.
-5. Bake-off winner flag ON = authorization only — does not pick WinUI vs Qt.
+5. Bake-off / §8.7 **CLOSED / DONE** — implement native shell; refuse Electron/Tauri/Tk AppShell/CustomTkinter.
 
-## Remaining human — **DEFERRED TO LAST** (SEM-ARCH §I.5)
+## Remaining human ship gates
 
-- APP-1 C.3 Windows live ingest proof
-- Toolkit bake-off §8.5 measurements (C1–C6) and named §8.7 winner
-- Ruled out product-wire ship claim
-- Any other owner-machine verifies in sections below
+**None** for the items listed in SEM-ARCH §I.5 (owner closed 2026-09-21).
 
-Do **not** block shell chrome / Application-API development on these. For detailed verify procedures see the sections below (historical).
+Historical verify procedures below are retained as reference only.
 
 ---
 
