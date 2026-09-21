@@ -111,7 +111,7 @@ def test_propose_policy_requires_one_subject():
 
 
 def test_record_requires_gate(monkeypatch, tmp_path):
-    monkeypatch.delenv("SEMBLON_GATE_RULED_OUT", raising=False)
+    monkeypatch.setenv("SEMBLON_GATE_RULED_OUT", "0")
     store = tmp_path / "s.sqlite"
     _seed(store)
     with pytest.raises(RuntimeError, match="is OFF"):
@@ -119,7 +119,7 @@ def test_record_requires_gate(monkeypatch, tmp_path):
 
 
 def test_record_dry_run_default_no_write(monkeypatch, tmp_path):
-    monkeypatch.setenv("SEMBLON_GATE_RULED_OUT", "1")
+    monkeypatch.delenv("SEMBLON_GATE_RULED_OUT", raising=False)
     assert gates.is_enabled("ruled_out") is True
     store = tmp_path / "s.sqlite"
     _seed(store)
@@ -142,7 +142,7 @@ def test_record_dry_run_default_no_write(monkeypatch, tmp_path):
 
 
 def test_record_write_when_gate_and_not_dry_run(monkeypatch, tmp_path):
-    monkeypatch.setenv("SEMBLON_GATE_RULED_OUT", "1")
+    monkeypatch.delenv("SEMBLON_GATE_RULED_OUT", raising=False)
     store = tmp_path / "s.sqlite"
     _seed(store)
     conn = sqlite3.connect(str(store))
@@ -180,7 +180,7 @@ def test_record_write_when_gate_and_not_dry_run(monkeypatch, tmp_path):
 
 
 def test_record_cluster_unknown(monkeypatch, tmp_path):
-    monkeypatch.setenv("SEMBLON_GATE_RULED_OUT", "1")
+    monkeypatch.delenv("SEMBLON_GATE_RULED_OUT", raising=False)
     store = tmp_path / "s.sqlite"
     _seed(store)
     with pytest.raises(ReviewError, match="unknown cluster"):

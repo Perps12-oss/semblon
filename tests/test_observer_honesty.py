@@ -81,7 +81,7 @@ def test_probe_all_keys():
 
 
 def test_optional_status_gate_off_shape_compatible(monkeypatch):
-    monkeypatch.delenv("SEMBLON_GATE_OBSERVER_HONESTY", raising=False)
+    monkeypatch.setenv("SEMBLON_GATE_OBSERVER_HONESTY", "0")
     st = optional_status()
     assert st["facekit"] is True
     assert st["appearance"] is True
@@ -96,7 +96,7 @@ def test_optional_status_gate_off_shape_compatible(monkeypatch):
 
 
 def test_optional_status_gate_on_uses_runnable(monkeypatch):
-    monkeypatch.setenv("SEMBLON_GATE_OBSERVER_HONESTY", "1")
+    monkeypatch.delenv("SEMBLON_GATE_OBSERVER_HONESTY", raising=False)
     mp = types.ModuleType("mediapipe")
     mp.__version__ = "broken-install"
     _install_fake("mediapipe", mp, monkeypatch)

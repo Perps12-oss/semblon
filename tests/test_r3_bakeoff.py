@@ -33,8 +33,8 @@ def test_six_criteria_match_brief_section_6():
     ids = criterion_ids()
     assert ids == [
         "accent_suppress",
-        "opaque_mica",
-        "scrub_4k_16ms",
+        "mica_opaque",
+        "frame_time_4k60",
         "wcag_aa",
         "virtualized_grid_10k",
         "a11y_tree",
@@ -42,8 +42,8 @@ def test_six_criteria_match_brief_section_6():
     assert len(CRITERIA) == 6
     labels = {c.id: c.label for c in CRITERIA}
     assert "accent" in labels["accent_suppress"].lower()
-    assert "Mica" in labels["opaque_mica"]
-    assert "16 ms" in labels["scrub_4k_16ms"]
+    assert "Mica" in labels["mica_opaque"]
+    assert "16 ms" in labels["frame_time_4k60"]
     assert "WCAG AA" in labels["wcag_aa"]
     assert "10k" in labels["virtualized_grid_10k"]
     assert "accessibility" in labels["a11y_tree"].lower()
@@ -69,12 +69,21 @@ def test_stub_measure_fns_return_unverified():
 def test_default_report_has_no_fake_pass(monkeypatch):
     monkeypatch.delenv("SEMBLON_GATE_R3_BAKEOFF", raising=False)
     report = run_bakeoff()
-    assert report["gate_enabled"] is False
+    assert report["gate_enabled"] is True
     assert report["overall"] != "PASS"
     assert report["overall"] in {"incomplete", "FAIL"}
     assert all(not r["pass"] for r in report["criteria"])
     assert all(not r["verified"] for r in report["criteria"])
     assert "PASS" not in json.dumps({k: v for k, v in report.items() if k == "overall"})
+
+
+def test_from_measure_still_unverified_without_host(monkeypatch):
+    monkeypatch.delenv("SEMBLON_GATE_R3_BAKEOFF", raising=False)
+    monkeypatch.delenv("SEMBLON_GATE_R3_MEASURE", raising=False)
+    report = run_bakeoff(from_measure=True)
+    assert report["results_from"] == "r3_measure"
+    assert report["overall"] != "PASS"
+    assert all(not r["verified"] for r in report["criteria"])
 
 
 def test_all_six_verified_passes_yields_pass(monkeypatch):
@@ -111,7 +120,7 @@ def test_one_verified_fail_among_complete_set_is_fail(monkeypatch):
 
 
 def test_main_records_gate_enabled_false_when_off(monkeypatch, capsys):
-    monkeypatch.delenv("SEMBLON_GATE_R3_BAKEOFF", raising=False)
+    monkeypatch.setenv("SEMBLON_GATE_R3_BAKEOFF", "0")
     rc = main(["--json"])
     assert rc == 0
     out = capsys.readouterr().out
@@ -121,7 +130,7 @@ def test_main_records_gate_enabled_false_when_off(monkeypatch, capsys):
 
 
 def test_main_records_gate_enabled_true_when_on(monkeypatch, capsys):
-    monkeypatch.setenv("SEMBLON_GATE_R3_BAKEOFF", "1")
+    monkeypatch.delenv("SEMBLON_GATE_R3_BAKEOFF", raising=False)
     rc = main(["--json"])
     assert rc == 0
     data = json.loads(capsys.readouterr().out)

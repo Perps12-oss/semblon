@@ -110,7 +110,11 @@ def load_canvas(store: Path, run_id: str | None = None) -> dict:
 
 
 def overlay_boxes(board: dict, media_id: str) -> list[dict]:
-    """Display boxes for one media. Includes persisted track lane IDs when present."""
+    """Display boxes for one media. Includes persisted track lane IDs when present.
+
+    When ``live_overlay`` is ON (default after VERIFY), attaches R3 overlay
+    styles via ``apply_overlay_styles``. Never assigns ``person_id``.
+    """
     boxes = []
     lane_by_face = board.get("track_lane_by_face") or {}
     lane_by_item = board.get("track_lane_by_item") or {}
@@ -121,6 +125,12 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
         tag = "named" if f.get("person_id") else ("group" if f.get("cluster_id") else "unassigned")
         if lane:
             tag = f"{tag} lane={lane}"
+        if f.get("person_id"):
+            display_state = "confirmed"
+        elif f.get("cluster_id"):
+            display_state = "possible"
+        else:
+            display_state = "unknown"
         boxes.append(
             {
                 "kind": "face",
@@ -128,6 +138,7 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
                 "bbox": [f.get("bbox_x1"), f.get("bbox_y1"), f.get("bbox_x2"), f.get("bbox_y2")],
                 "tag": tag,
                 "color": "#2e8b57",
+                "display_state": display_state,
             }
         )
     for it in board.get("items") or []:
@@ -146,9 +157,12 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
                 "bbox": [it.get("bbox_x1"), it.get("bbox_y1"), it.get("bbox_x2"), it.get("bbox_y2")],
                 "tag": tag,
                 "color": "#c47a1a",
+                "display_state": "unknown",
             }
         )
-    return boxes
+    from semblon.overlay_preview import apply_overlay_styles
+
+    return apply_overlay_styles(boxes)
 
 
 def _ppm_photo(img_bgr, max_side: int = 720):
@@ -222,20 +236,31 @@ def run_canvas(store: Path | None = None, run_id: str | None = None, *, parent=N
             x1, y1, x2, y2 = box["bbox"]
             if None in (x1, y1, x2, y2):
                 continue
+            style = box.get("overlay_style") or {}
+            border = (style.get("border") or {}) if isinstance(style, dict) else {}
+            layers = (style.get("layers") or {}) if isinstance(style, dict) else {}
+            semantic = (layers.get("semantic") or {}).get("color")
+            outline = semantic or box.get("color") or "#2e8b57"
+            width = 3 if border.get("style") == "solid" else 2
             preview.create_rectangle(
                 x1 * scale,
                 y1 * scale,
                 x2 * scale,
                 y2 * scale,
-                outline=box["color"],
-                width=2,
+                outline=outline,
+                width=width,
             )
+            label = f"{box['kind']} {box['tag']}"
+            notch = (style.get("notch") or {}) if isinstance(style, dict) else {}
+            mark = notch.get("mark") or border.get("mark")
+            if mark:
+                label = f"{label} {mark}"
             preview.create_text(
                 x1 * scale + 4,
                 y1 * scale + 4,
                 anchor=tk.NW,
-                fill=box["color"],
-                text=f"{box['kind']} {box['tag']}",
+                fill=outline,
+                text=label,
             )
         status.set(f"{path}  boxes={len(boxes)}  group ≠ person")
 

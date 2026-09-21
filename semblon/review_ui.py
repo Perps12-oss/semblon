@@ -533,6 +533,41 @@ def apply_ignore(store: Path, run_id: str, item: dict, disposition: str | None =
     return ignore_subject(store, run_id, face_id=fid, disposition=disposition)
 
 
+def apply_ruled_out(
+    store: Path,
+    run_id: str,
+    item: dict,
+    *,
+    person_id: str | None = None,
+    reason: str | None = None,
+) -> dict:
+    """Durable negative — distinct from Ignore. Writes when ruled_out gate is ON."""
+    from semblon.ruled_out import record_ruled_out
+
+    if item["kind"] == "cluster":
+        return record_ruled_out(
+            store,
+            run_id,
+            cluster_id=item["cluster_id"],
+            person_id=person_id,
+            reason=reason,
+            dry_run=False,
+        )
+    fid = item.get("face_id")
+    if item["kind"] == "track" and not fid:
+        raise ReviewUiError("click a face in the video to Rule out (a track is not a person)")
+    if not fid:
+        raise ReviewUiError("select a cluster or face to Rule out")
+    return record_ruled_out(
+        store,
+        run_id,
+        face_id=fid,
+        person_id=person_id,
+        reason=reason,
+        dry_run=False,
+    )
+
+
 def apply_note(store: Path, run_id: str, item: dict, text: str) -> dict:
     if item["kind"] == "cluster":
         return note_subject(store, run_id, cluster_id=item["cluster_id"], text=text)
@@ -636,6 +671,8 @@ class ReviewApp:
         self.btn_split.pack(side=tk.LEFT, padx=2)
         self.btn_ignore = ttk.Button(actions, text="Ignore", command=self._do_ignore)
         self.btn_ignore.pack(side=tk.LEFT, padx=2)
+        self.btn_ruled_out = ttk.Button(actions, text="Ruled out", command=self._do_ruled_out)
+        self.btn_ruled_out.pack(side=tk.LEFT, padx=2)
         self.btn_note = ttk.Button(actions, text="Note…", command=self._do_note)
         self.btn_note.pack(side=tk.LEFT, padx=2)
         ttk.Button(actions, text="Reload", command=self.reload).pack(side=tk.LEFT, padx=2)
@@ -645,11 +682,14 @@ class ReviewApp:
             "merge": self.btn_merge,
             "split": self.btn_split,
             "ignore": self.btn_ignore,
+            "ruled_out": self.btn_ruled_out,
             "note": self.btn_note,
         }
 
         self.root.bind("<Return>", lambda _e: self._do_name())
         self.root.bind("<Delete>", lambda _e: self._do_ignore())
+        self.root.bind("r", lambda _e: self._do_ruled_out())
+        self.root.bind("R", lambda _e: self._do_ruled_out())
         self.root.bind("n", lambda _e: self._do_note())
         self.root.bind("N", lambda _e: self._do_note())
         self.root.bind("m", lambda _e: self._do_merge())
@@ -930,6 +970,32 @@ class ReviewApp:
             self._err(e)
             return
         self.reload(invalidate_tracks=item["kind"] != "cluster")
+
+    def _do_ruled_out(self) -> None:
+        try:
+            item = self._item_for_face_action()
+        except ReviewUiError as e:
+            self._err(e)
+            return
+        if item is None:
+            self._err(ReviewUiError("select a cluster or face"))
+            return
+        if item["kind"] == "track":
+            self._err(ReviewUiError("click a face in the video to Rule out (a track is not a person)"))
+            return
+        if not messagebox.askyesno(
+            "Ruled out",
+            "Durable negative on this candidate/link (not Ignore). "
+            "Writes reject + policy action=ruled_out. Does not hide like Ignore.",
+            parent=self.root,
+        ):
+            return
+        try:
+            apply_ruled_out(self.store, self.run_id, item)
+        except (ReviewError, RuntimeError) as e:
+            self._err(e)
+            return
+        self.reload(invalidate_tracks=False)
 
     def _do_note(self) -> None:
         try:

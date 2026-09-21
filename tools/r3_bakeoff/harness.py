@@ -1,8 +1,8 @@
 """R3 bake-off harness — aggregate §6 criteria; never invent PASS.
 
-Gate key: ``r3_bakeoff`` (SEMBLON_GATE_R3_BAKEOFF). Default OFF.
-``main()`` may still run as a lab tool when the gate is OFF; the report
-records ``gate_enabled=false``. Prefer ``is_enabled`` over ``require_enabled``.
+Gate key: ``r3_bakeoff`` (default ON after VERIFY). Lab CLI may still run
+when disabled via env=0; the report records ``gate_enabled``.
+Wired path: ``run_bakeoff(from_measure=True)`` pulls ``tools.r3_measure``.
 """
 
 from __future__ import annotations
@@ -74,14 +74,19 @@ def _overall(results: Sequence[Mapping[str, Any]]) -> str:
     return "PASS"
 
 
-def run_bakeoff(criteria_results: Iterable[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+def run_bakeoff(
+    criteria_results: Iterable[Mapping[str, Any]] | None = None,
+    *,
+    from_measure: bool = False,
+) -> dict[str, Any]:
     """Aggregate criterion results into a bake-off report.
 
     Parameters
     ----------
     criteria_results:
         Iterable of per-criterion dicts (id, verified, pass, status, …).
-        When None, runs stub measure_fns (all unverified).
+        When None and ``from_measure`` is False, runs stub measure_fns.
+        When ``from_measure`` is True (wired path), pulls ``tools.r3_measure.run_all``.
 
     Returns
     -------
@@ -89,17 +94,44 @@ def run_bakeoff(criteria_results: Iterable[Mapping[str, Any]] | None = None) -> 
     ``verified=True`` and ``pass=True``. Unrun stubs never yield PASS.
     """
     gate_on = is_enabled(GATE_KEY)
-    raw_list = list(criteria_results) if criteria_results is not None else default_results()
+    measure_gate = is_enabled("r3_measure")
+    source = "stubs"
+    if criteria_results is not None:
+        raw_list = list(criteria_results)
+        source = "injected"
+    elif from_measure and measure_gate:
+        from tools.r3_measure import assert_no_fake_pass, run_all
+
+        measured = run_all()
+        for row in measured:
+            assert_no_fake_pass(row)
+        raw_list = [
+            {
+                "id": r.get("criterion_id") or r.get("id"),
+                "label": r.get("label", ""),
+                "status": r.get("status", "unverified"),
+                "verified": bool(r.get("verified")),
+                "pass": bool(r.get("pass")),
+                "detail": r.get("notes") or r.get("detail") or "",
+                "metrics": r.get("metrics") or {},
+            }
+            for r in measured
+        ]
+        source = "r3_measure"
+    else:
+        raw_list = default_results()
+        source = "stubs"
     results = [_normalize_result(r) for r in raw_list]
     present = {r["id"] for r in results}
     missing = sorted(EXPECTED_IDS - present)
-    # Drop unknown ids from overall consideration but keep them listed.
     overall = _overall(results)
     return {
         "harness": "r3_bakeoff",
         "source": "docs/R3-BRIEF.md §6",
+        "results_from": source,
         "gate_key": GATE_KEY,
         "gate_enabled": gate_on,
+        "measure_gate_enabled": measure_gate,
         "rejected_toolkits": list(REJECTED_TOOLKITS),
         "expected_criteria": list(criterion_ids()),
         "criteria": results,

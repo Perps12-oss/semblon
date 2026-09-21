@@ -47,6 +47,16 @@ On **x64-emulated** SKY with CPU EP, the old multi-session worker design **did n
 
 Do **not** make `workers>1` the product default from that evidence. Re-measure after the hash-only / single-session pipeline on native hosts.
 
+## Wired measure CLI (2026-09-21)
+
+Gate `perf_workers_measure` default ON. Product ingest default remains `workers=1`.
+
+```text
+python -m semblon lab perf-workers --folder "E:\path\to\folder" --out "%LOCALAPPDATA%\Semblon\perf-workers\hash.json"
+```
+
+Hash-phase only. Does not recommend flipping the product default.
+
 ## Commands used
 
 ```text

@@ -55,18 +55,18 @@ def _c(criterion_id: str, label: str) -> Criterion:
     )
 
 
-# Order matches docs/R3-BRIEF.md §6 (1–6).
+# Order matches docs/R3-BRIEF.md §6 (1–6). IDs match tools.r3_measure.CRITERION_IDS.
 CRITERIA: tuple[Criterion, ...] = (
     _c(
         "accent_suppress",
         "Fully suppress OS accent in every native control (focus, selection, toggle, progress).",
     ),
     _c(
-        "opaque_mica",
+        "mica_opaque",
         "Opaque achromatic surface over Mica without bleed.",
     ),
     _c(
-        "scrub_4k_16ms",
+        "frame_time_4k60",
         "< 16 ms frame time on 4K/60 video scrub.",
     ),
     _c(

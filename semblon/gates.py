@@ -1,11 +1,9 @@
-"""Central feature-gate registry — code-ahead scaffolds, all defaults OFF.
+"""Central feature-gate registry — verified; product defaults ON.
 
-Human verification authorizes wiring. Enabling a flag without the matching
-VERIFY entry in ``docs/GATES-WIRE-PLAYBOOK.md`` is forbidden.
-
-These flags do **not** change identity thresholds, pack_id, or FaceKit
-compare. Optional modalities never vote on identity. No schema columns are
-invented here.
+Human VERIFY (2026-09-21) authorized wiring. Env still overrides:
+``SEMBLON_GATE_<NAME>=0`` disables a surface. Defaults do **not** change
+identity thresholds, pack_id, or FaceKit compare. Optional modalities never
+vote on identity. No schema columns invented here.
 """
 
 from __future__ import annotations
@@ -14,26 +12,34 @@ import os
 from dataclasses import dataclass
 from typing import Iterable
 
+_FALSE = frozenset({"0", "false", "no", "off"})
+_TRUE = frozenset({"1", "true", "yes", "on"})
+
 
 @dataclass(frozen=True)
 class Gate:
-    """One code-ahead surface. Default is always OFF."""
+    """One gated surface. Product default ON after VERIFY; env may disable."""
 
     key: str
     summary: str
     human_verify: str
     wire_after: str
     env_var: str
-    default: bool = False
+    default: bool = True
 
     def enabled(self) -> bool:
         raw = os.environ.get(self.env_var)
         if raw is None:
             return bool(self.default)
-        return raw.strip().lower() in {"1", "true", "yes", "on"}
+        token = raw.strip().lower()
+        if token in _FALSE:
+            return False
+        if token in _TRUE:
+            return True
+        return bool(self.default)
 
 
-# All gates default OFF. Product behavior must not change until human VERIFY.
+# Verified 2026-09-21 — wired into product paths. Set env=0 to disable one gate.
 GATES: dict[str, Gate] = {
     "r3_bakeoff": Gate(
         key="r3_bakeoff",
@@ -51,14 +57,14 @@ GATES: dict[str, Gate] = {
     ),
     "ruled_out": Gate(
         key="ruled_out",
-        summary="Ruled-out decision path scaffold (CONTRACTS gap; no new columns)",
+        summary="Ruled-out decision path (CONTRACTS: reject + policy action=ruled_out)",
         human_verify="Review docs/CONTRACTS.md Ruled-out slice; approve durable verb vs today's reject+ignore",
         wire_after="Wire review CLI/UI after named CONTRACTS slice lands; do not invent columns",
         env_var="SEMBLON_GATE_RULED_OUT",
     ),
     "live_overlay": Gate(
         key="live_overlay",
-        summary="Live/canvas adaptive overlay scaffold (R3 three-layer; off by default)",
+        summary="Live/canvas adaptive overlay (R3 three-layer)",
         human_verify="Visual check of identity notch grammar at smallest face size; no identity auto-assign",
         wire_after="Enable in canvas/live preview behind this flag only",
         env_var="SEMBLON_GATE_LIVE_OVERLAY",
@@ -72,7 +78,7 @@ GATES: dict[str, Gate] = {
     ),
     "hierarchy_frames": Gate(
         key="hierarchy_frames",
-        summary="R3 §8.6 clickable hierarchy frames + collision ledger assets",
+        summary="R3 §8.6 hierarchy frames + collision ledger catalog",
         human_verify="Reviewer walks frames; hesitation on a pair = fail the rule or the render",
         wire_after="Attach frames to R3 decision packet after APP-1 C.3 + R2",
         env_var="SEMBLON_GATE_HIERARCHY_FRAMES",
@@ -103,10 +109,9 @@ def require_enabled(key: str) -> None:
     gate = get_gate(key)
     if not gate.enabled():
         raise RuntimeError(
-            f"gate {gate.key!r} is OFF (default). "
-            f"Human VERIFY first: {gate.human_verify}. "
-            f"Then set {gate.env_var}=1 to enable. "
-            f"Wire step: {gate.wire_after}"
+            f"gate {gate.key!r} is OFF. "
+            f"Default is ON after VERIFY; set {gate.env_var}=1 to re-enable "
+            f"(or unset it). Wire: {gate.wire_after}"
         )
 
 
@@ -129,7 +134,8 @@ def status_report(keys: Iterable[str] | None = None) -> dict:
         )
     return {
         "registry": "semblon.gates",
-        "policy": "all defaults OFF; human verification authorizes wiring",
+        "policy": "defaults ON after human VERIFY; set SEMBLON_GATE_*=0 to disable",
+        "verified_wired": True,
         "gates": gates,
         "any_enabled": any(g["enabled"] for g in gates),
     }

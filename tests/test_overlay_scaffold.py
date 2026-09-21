@@ -97,7 +97,7 @@ def test_normalize_rejects_unknown_state():
 
 
 def test_preview_noop_when_gate_off(monkeypatch):
-    monkeypatch.delenv("SEMBLON_GATE_LIVE_OVERLAY", raising=False)
+    monkeypatch.setenv("SEMBLON_GATE_LIVE_OVERLAY", "0")
     assert preview.render_overlay_enabled() is False
     boxes = [{"id": "f1", "display_state": "possible", "bbox": [0, 0, 1, 1]}]
     out = preview.apply_overlay_styles(boxes)
@@ -108,7 +108,7 @@ def test_preview_noop_when_gate_off(monkeypatch):
 
 
 def test_preview_require_enabled_raises_when_off(monkeypatch):
-    monkeypatch.delenv("SEMBLON_GATE_LIVE_OVERLAY", raising=False)
+    monkeypatch.setenv("SEMBLON_GATE_LIVE_OVERLAY", "0")
     with pytest.raises(RuntimeError, match="is OFF"):
         preview.require_overlay_enabled()
     with pytest.raises(RuntimeError, match="is OFF"):
@@ -116,7 +116,7 @@ def test_preview_require_enabled_raises_when_off(monkeypatch):
 
 
 def test_preview_applies_styles_when_gate_on(monkeypatch):
-    monkeypatch.setenv("SEMBLON_GATE_LIVE_OVERLAY", "1")
+    monkeypatch.delenv("SEMBLON_GATE_LIVE_OVERLAY", raising=False)
     assert preview.render_overlay_enabled() is True
     boxes = [
         {"id": "f1", "display_state": "confirmed", "bbox": [0, 0, 10, 10]},
@@ -140,5 +140,5 @@ def test_no_fake_identity_in_gate_status():
     report = gates.status_report(keys=["live_overlay"])
     gate = report["gates"][0]
     assert gate["key"] == "live_overlay"
-    assert gate["default"] is False
+    assert gate["default"] is True
     assert "identity" in gate["human_verify"].lower() or "notch" in gate["human_verify"].lower()

@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     lab_sub.add_parser("providers", help="list observation providers and availability")
     gates_p = lab_sub.add_parser(
         "gates",
-        help="code-ahead gate registry status (read-only; all defaults OFF until human VERIFY)",
+        help="gate registry status (read-only; defaults ON after VERIFY; env=0 disables)",
     )
     gates_p.add_argument(
         "--gate",
@@ -87,6 +87,50 @@ def main(argv: list[str] | None = None) -> int:
         dest="gate_keys",
         default=None,
         help="optional gate key filter (repeatable)",
+    )
+    bake = lab_sub.add_parser(
+        "r3-bakeoff",
+        help="R3 §6 toolkit bake-off (aggregates measure runners; never invents PASS)",
+    )
+    bake.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="optional JSON report path (also printed)",
+    )
+    meas = lab_sub.add_parser(
+        "r3-measure",
+        help="R3 §6 measurement runners (unverified without host evidence)",
+    )
+    meas.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="optional JSON report path",
+    )
+    frames = lab_sub.add_parser(
+        "r3-frames",
+        help="R3 test-frame catalog (collision / state-triple / hierarchy; not shipping UI)",
+    )
+    frames.add_argument(
+        "--set",
+        dest="frame_set",
+        default=None,
+        choices=("collision_ledger", "state_triple", "hierarchy"),
+        help="optional frame-set filter",
+    )
+    pwh = lab_sub.add_parser(
+        "perf-workers",
+        help="PERF hash-phase workers=1/2/4 measure (does not change ingest default=1)",
+    )
+    pwh.add_argument("--folder", type=Path, required=True)
+    pwh.add_argument("--out", type=Path, default=None, help="optional JSON report path")
+    pwh.add_argument(
+        "--workers",
+        type=int,
+        nargs="+",
+        default=[1, 2, 4],
+        help="worker counts to measure (default 1 2 4)",
     )
     oc = lab_sub.add_parser("opencv", help="timed OpenCV import probe (does not hang the suite)")
     oc.add_argument("--timeout", type=float, default=8.0)
@@ -305,6 +349,19 @@ def main(argv: list[str] | None = None) -> int:
     r_i.add_argument("--cluster", default=None)
     r_i.add_argument("--face", default=None)
     r_i.add_argument("--as", dest="disposition", default=None)
+    r_ro = rev_sub.add_parser(
+        "ruled-out",
+        help="durable negative (reject + policy action=ruled_out); distinct from ignore",
+    )
+    r_ro.add_argument("--cluster", default=None)
+    r_ro.add_argument("--face", default=None)
+    r_ro.add_argument("--person", default=None, help="candidate person_id (policy only unless row exists)")
+    r_ro.add_argument("--reason", default=None)
+    r_ro.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print intended decision without writing",
+    )
     r_n = rev_sub.add_parser("note", help="durable review note")
     r_n.add_argument("--cluster", default=None)
     r_n.add_argument("--face", default=None)
@@ -312,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
 
     rui = sub.add_parser(
         "review-ui",
-        help="S8 Interactive Review slice (tkinter; Name/Merge/Split/Ignore over review APIs)",
+        help="S8 Interactive Review (tkinter; Name/Merge/Split/Ignore/Ruled out over review APIs)",
     )
     rui.add_argument(
         "--store",
@@ -483,6 +540,76 @@ def main(argv: list[str] | None = None) -> int:
         from semblon.gates import status_report
 
         print(json.dumps(status_report(args.gate_keys), indent=2))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "r3-bakeoff":
+        from semblon.gates import require_enabled
+        from tools.r3_bakeoff.harness import run_bakeoff
+
+        require_enabled("r3_bakeoff")
+        rec = run_bakeoff(from_measure=True)
+        text = json.dumps(rec, indent=2)
+        print(text)
+        if args.out is not None:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text + "\n", encoding="utf-8")
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "r3-measure":
+        from semblon.gates import require_enabled
+        from tools.r3_measure import run_all
+
+        require_enabled("r3_measure")
+        results = run_all()
+        rec = {
+            "harness": "r3_measure",
+            "source": "docs/R3-BRIEF.md §6",
+            "criteria": results,
+            "policy": "never invent PASS; unverified without host measurement",
+        }
+        text = json.dumps(rec, indent=2)
+        print(text)
+        if args.out is not None:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text + "\n", encoding="utf-8")
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "r3-frames":
+        import sys
+        from pathlib import Path as _Path
+
+        from semblon.gates import require_enabled
+
+        require_enabled("hierarchy_frames")
+        root = _Path(__file__).resolve().parents[1]
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from tools.r3_frames.catalog import generate_catalog
+
+        cat = generate_catalog()
+        if args.frame_set:
+            cat = [f for f in cat if f.get("set") == args.frame_set]
+        rec = {
+            "harness": "r3_frames",
+            "source": "docs/R3-FRAMES.md",
+            "count": len(cat),
+            "frames": cat,
+            "note": "test assets only; not shipping UI",
+        }
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "perf-workers":
+        from semblon.gates import require_enabled
+        from semblon.perf_workers_harness import measure_hash_workers
+
+        require_enabled("perf_workers_measure")
+        rec = measure_hash_workers(args.folder, workers_list=list(args.workers))
+        text = json.dumps(rec, indent=2)
+        print(text)
+        if args.out is not None:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text + "\n", encoding="utf-8")
         return 0
 
     if args.cmd == "lab" and args.labcmd == "opencv":
@@ -760,6 +887,18 @@ def main(argv: list[str] | None = None) -> int:
                     face_id=args.face,
                     disposition=args.disposition,
                 )
+            elif args.reviewcmd == "ruled-out":
+                from semblon.ruled_out import record_ruled_out
+
+                rec = record_ruled_out(
+                    args.store,
+                    args.run,
+                    face_id=args.face,
+                    cluster_id=args.cluster,
+                    person_id=args.person,
+                    reason=args.reason,
+                    dry_run=bool(args.dry_run),
+                )
             else:
                 rec = note_subject(
                     args.store,
@@ -769,6 +908,9 @@ def main(argv: list[str] | None = None) -> int:
                     face_id=args.face,
                 )
         except ReviewError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        except RuntimeError as e:
             print(str(e), file=sys.stderr)
             return 2
         print(json.dumps(rec, indent=2))
