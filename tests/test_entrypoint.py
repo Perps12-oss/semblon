@@ -35,7 +35,6 @@ def test_python_m_semblon_help():
         "merge",
         "split",
         "home",
-        "desktop",
         "review-ui",
         "tracks",
         "memory",
@@ -46,6 +45,7 @@ def test_python_m_semblon_help():
         "search",
     ):
         assert cmd in out, cmd
+    assert "desktop" not in out.split()
     from semblon.cli import main as _main
     import io
     from unittest.mock import patch
@@ -79,20 +79,17 @@ def test_packaging_hygiene():
     assert "gui" in extras
     scripts = data["project"]["scripts"]
     assert scripts["semblon"] == "semblon.cli:main"
-    assert scripts["semblon-desktop"] == "semblon.desktop.app:main"
+    assert "semblon-desktop" not in scripts
     req = data["project"]["requires-python"]
     assert req.startswith(">=3.11")
     assert "<3.14" in req
     assert "version" in data["project"]["dynamic"]
     assert __version__
-    qss = root / "semblon" / "desktop" / "theme.qss"
-    text = qss.read_text(encoding="utf-8")
-    for name in ("#emptyState", "#emptyTitle", "#emptyBody", "#title", "#subtitle"):
-        assert name in text, name
+    assert not (root / "semblon" / "desktop").exists()
+    assert (root / "semblon" / "ui_copy.py").is_file()
     readme = (root / "README.md").read_text(encoding="utf-8")
-    assert "shipping UI is the PySide6 window" in readme
-    assert "semblon-desktop" in readme
+    assert "tk Home" in readme or "review-ui" in readme
+    assert "shipping UI is the PySide6 window" not in readme
+    assert "semblon-desktop" not in readme
     assert "s8_toolkit_spike" in readme and "research spike" in readme
     assert not (root / "tools" / "s8_toolkit_spike" / "__init__.py").exists()
-    installer = (root / "tools" / "install-windows.ps1").read_text(encoding="utf-8")
-    assert ".[gui]" in installer

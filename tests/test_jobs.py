@@ -283,10 +283,10 @@ def test_review_root_is_toplevel_on_parent():
     assert standalone.kind == "tk"
     run_src = inspect.getsource(ReviewApp.run)
     assert "if self._owns_loop" in run_src
-    workers = Path(__file__).resolve().parents[1] / "semblon" / "desktop" / "workers.py"
+    workers = Path(__file__).resolve().parents[1] / "semblon" / "jobs.py"
     text = workers.read_text(encoding="utf-8")
     assert "JobEngine" in text
-    assert "run_ingest" in text
+    assert "submit_ingest" in text
 
 
 def test_review_reads_set_busy_timeout(tmp_path):

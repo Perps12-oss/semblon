@@ -1,4 +1,4 @@
-# Double-click entry: Semblon home (PySide6 window: ingest + review).
+# Double-click entry: Semblon home (tk Home: ingest + Open Review).
 param(
     [Parameter(Mandatory = $true)]
     [string]$Root,

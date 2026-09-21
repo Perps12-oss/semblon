@@ -6,9 +6,8 @@ FACE-004: identify vs persons, never clusters. Unknown is valid.
 FACE-005: incremental ingest + inbox. No watcher.
 S6: memory history / together / events. Time/place are not identity.
 process: happy-path ingest -> cluster -> export review.html.
-home: double-click opens the PySide6 window (ingest + review in one shell).
-review-ui: tkinter review vertical kept as --legacy / CLI.
-desktop: alias for the same PySide6 window.
+home: double-click opens tk Home (JobEngine ingest + Review Toplevel).
+review-ui: tkinter review vertical (Name/Merge/Split/Ignore/Note).
 S7a: video files in the ingest folder are sampled (not every frame).
 S7b: tracks --run is derived IoU+time association (not identity, not written).
 """
@@ -318,26 +317,9 @@ def main(argv: list[str] | None = None) -> int:
 
     home = sub.add_parser(
         "home",
-        help="Semblon window: add a folder and review in the same PySide6 shell",
+        help="tk Home: Choose folder, Pause/Cancel/Resume, Open Review (JobEngine)",
     )
     home.add_argument(
-        "--store",
-        default=None,
-        type=Path,
-        help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
-    )
-    home.add_argument(
-        "--legacy",
-        action="store_true",
-        help="tkinter Home (separate Review window). Default is the PySide6 shell.",
-    )
-
-    desk = sub.add_parser(
-        "desktop",
-        help="PySide6 workspace (optional extra; not the default Home)",
-        description="PySide6 workspace. Optional extra; not the default Home.",
-    )
-    desk.add_argument(
         "--store",
         default=None,
         type=Path,
@@ -786,29 +768,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "home":
-        if not args.legacy:
-            try:
-                from semblon.desktop.app import main as desktop_main
-
-                argv = ["--store", str(args.store)] if args.store is not None else []
-                return desktop_main(argv)
-            except ImportError:
-                pass
         from semblon.home_ui import run_home_ui
 
         return run_home_ui(store=args.store)
-
-    if args.cmd == "desktop":
-        try:
-            from semblon.desktop.app import main as desktop_main
-        except ImportError:
-            print(
-                'desktop needs the gui extra: pip install -e ".[gui]"',
-                file=sys.stderr,
-            )
-            return 2
-        argv = ["--store", str(args.store)] if args.store is not None else []
-        return desktop_main(argv)
 
     if args.cmd == "stats":
         from semblon.stats import StatsError, stats as run_stats

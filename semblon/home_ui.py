@@ -21,7 +21,7 @@ except ModuleNotFoundError:  # pragma: no cover - depends on host Python build
     tk = None
     filedialog = messagebox = ttk = None
 
-from semblon.desktop.copy import friendly_exception, status_text
+from semblon.ui_copy import friendly_exception, status_text
 from semblon.jobs import JobBusy, JobEngine
 from semblon.process import default_store_path
 from semblon.progress import (

@@ -54,7 +54,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 ## DEFERRED
 
-Identify/inbox as dedicated full pages; default GPU/workers; vector DB; PySide6 shell as the default Home.
+Identify/inbox as dedicated full pages; default GPU/workers; vector DB; a second native shell as default Home.
 
 ## UNAVAILABLE
 

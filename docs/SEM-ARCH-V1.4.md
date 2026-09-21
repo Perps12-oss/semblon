@@ -180,7 +180,7 @@ Previously rejected/deferred paths stay rejected/deferred (Electron, Tauri, perm
 2. Keep Tk Home as a temporary compatibility frontend while the boundary is extracted.  
 3. Keep `review-ui` as the production/evidence surface during migration.  
 4. Keep `review.html` as an engineering/forensic artifact, not the end-user shell.  
-5. Keep PySide6 spike as reference only; do not auto-promote to production.
+5. Keep PySide6 / QML under `tools/s8_toolkit_spike` as reference only; do not auto-promote to production. There is no second product Home shell on `main`.
 
 ---
 
