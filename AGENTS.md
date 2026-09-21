@@ -14,7 +14,7 @@ Unknown is valid. False merge > false split. Wrong identity > unknown.
 
 ## Now
 
-**North star / planned work:** `docs/SEM-ARCH.md`.
+**North star / planned work:** `docs/SEM-ARCH-V1.4.md`.
 
 S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do not retune clustering. Do not re-ingest that dump. FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue.
 
