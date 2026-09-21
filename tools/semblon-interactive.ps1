@@ -16,24 +16,57 @@ trap {
     exit 1
 }
 
+function Test-SemblonImport {
+    param([string]$PythonExe)
+    & $PythonExe -c "import semblon" 2>$null
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Repair-SemblonInstall {
+    param([string]$PythonExe, [string]$RepoRoot)
+    $pyproject = Join-Path $RepoRoot "pyproject.toml"
+    if (-not (Test-Path -LiteralPath $pyproject)) {
+        return $false
+    }
+    Write-Host "Semblon package missing in this venv. Reinstalling editable install..." -ForegroundColor Yellow
+    & $PythonExe -m pip install -e $RepoRoot
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+    return (Test-SemblonImport -PythonExe $PythonExe)
+}
+
 function Get-SemblonLaunch {
-    # Prefer python -m semblon over a stale console script after package moves.
+    # Prefer python -m semblon. Never run a stale semblon.exe when python exists
+    # but import fails — that is the ModuleNotFoundError path after package moves.
     $candidates = @(
-        @{ Exe = Join-Path $Root ".venv\Scripts\semblon.exe"; Py = Join-Path $Root ".venv\Scripts\python.exe" },
-        @{ Exe = Join-Path $Root "semblon\.venv\Scripts\semblon.exe"; Py = Join-Path $Root "semblon\.venv\Scripts\python.exe" }
+        @{ Py = Join-Path $Root ".venv\Scripts\python.exe"; Repo = $Root },
+        @{ Py = Join-Path $Root "semblon\.venv\Scripts\python.exe"; Repo = (Join-Path $Root "semblon") }
     )
     foreach ($c in $candidates) {
-        if (Test-Path -LiteralPath $c.Py) {
-            & $c.Py -c "import semblon" 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                return @{ Kind = "py"; Path = $c.Py }
-            }
+        if (-not (Test-Path -LiteralPath $c.Py)) {
+            continue
         }
-        if (Test-Path -LiteralPath $c.Exe) {
-            return @{ Kind = "exe"; Path = $c.Exe }
+        if (Test-SemblonImport -PythonExe $c.Py) {
+            return @{ Kind = "py"; Path = $c.Py }
         }
+        if (Repair-SemblonInstall -PythonExe $c.Py -RepoRoot $c.Repo) {
+            return @{ Kind = "py"; Path = $c.Py }
+        }
+        Write-Error @"
+Semblon package still missing after reinstall under $($c.Repo).
+From that folder run:
+  powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
+Then double-click semblon.cmd again.
+"@
+        exit 1
     }
-    Write-Error "Semblon: repo .venv not found or package not installed under $Root. Run: tools\install-windows.ps1"
+    Write-Error @"
+Semblon: repo .venv not found under $Root.
+From this folder, once:
+  powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
+Then double-click semblon.cmd.
+"@
     exit 1
 }
 
@@ -42,20 +75,12 @@ function Invoke-SemblonProcess {
     $cliArgs = @("process", $PhotoFolder)
     if ($NoOpen) { $cliArgs += "--no-open" }
     $launch = Get-SemblonLaunch
-    if ($launch.Kind -eq "exe") {
-        & $launch.Path @cliArgs
-        exit $LASTEXITCODE
-    }
     & $launch.Path -m semblon @cliArgs
     exit $LASTEXITCODE
 }
 
 function Invoke-SemblonHome {
     $launch = Get-SemblonLaunch
-    if ($launch.Kind -eq "exe") {
-        & $launch.Path home
-        exit $LASTEXITCODE
-    }
     & $launch.Path -m semblon home
     exit $LASTEXITCODE
 }
