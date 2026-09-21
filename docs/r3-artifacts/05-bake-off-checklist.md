@@ -51,9 +51,11 @@ Overall bake-off for a toolkit: **PASS only if all six are PASS**. Partial score
 ## After this checklist
 
 1. Record results (this file **and** linked `tools/r3-bakeoff/results/*.json`) with machine + toolkit versions.  
-2. Return to `docs/SEM-ARCH-V1.4.md` §J for **R3 shell decision**.  
-3. Durable **Ruled out** remains a separate CONTRACTS gap — bake-off does not invent columns.
+2. Fill `docs/r3-artifacts/07-shell-decision.md` — winner only if six-of-six PASS.  
+3. Return to `docs/SEM-ARCH-V1.4.md` §J for **native production shell**.  
+4. Durable **Ruled out** remains a separate CONTRACTS gap — bake-off does not invent columns.
 
-## Explicitly deferred
+## Related (already landed)
 
-- §8.6 Clickable hierarchy frames (last; test, not spec)
+- §8.6 Clickable hierarchy frames: `docs/r3-artifacts/06-hierarchy-frames.html` (TEST, not SPEC).
+- CLI: `python -m semblon lab r3-bakeoff --toolkit dry-run` (same harness; never invents PASS).
