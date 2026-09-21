@@ -60,11 +60,11 @@ Mutations (one writer: Python domain ops):
 | `apply_split` | `apply_split` | Faces leave the cluster |
 | `apply_ignore` | `apply_ignore` | Hide from board |
 | `apply_note` | `apply_note` | `decisions.kind=note` |
-| `apply_rule_out` | `apply_rule_out` | **Experimental / UNWIRED** — durable reject (`action=rule_out`); requires `SEMBLON_RULED_OUT=1`; not a default Home/review button. See `docs/CONTRACTS-RULED-OUT.md` |
+| `apply_rule_out` | `apply_rule_out` | Durable reject (`action=rule_out`); gate default **ON** (`semblon.gates.RULED_OUT`); opt out `SEMBLON_RULED_OUT=0`. **Ship claim DEFERRED TO LAST** (§I.5). See `docs/CONTRACTS-RULED-OUT.md` |
 
 Named later, not implemented as Job types in this slice: `watch`, `live`. The API must not assume stills-only.
 
-**Ruled out wire gate:** code path exists behind the flag; do not treat it as product chrome until human verify (checklist in `docs/CONTRACTS-RULED-OUT.md`).
+**Ruled out gate:** code path + review chrome may be on by default; **ship claim** waits §I.5 (`docs/CONTRACTS-RULED-OUT.md`). Do not invent PASS.
 
 ## Job states (V1.4 C.2)
 

@@ -1,13 +1,15 @@
 # Ruled out — wiring note
 
-**Status:** CONTRACTS + code scaffold landed; **UNWIRED** as product default  
-**Flag:** `SEMBLON_RULED_OUT=1` (default OFF)  
-**Contracts:** `docs/CONTRACTS-RULED-OUT.md`
+**Status:** code gate **default ON** (`semblon.gates`); **ship claim DEFERRED TO LAST** (`SEM-ARCH-V1.4` §I.5)  
+**Flag:** `SEMBLON_RULED_OUT` — unset → ON; opt out `=0` (code wins over older “default OFF” wording)  
+**Contracts:** `docs/CONTRACTS-RULED-OUT.md` · overview `docs/GATES.md`
 
-Pending **human verify**, then:
+Code may show **Rule out…** when the gate is on. That is **not** a human ship PASS.
 
-1. Expose Rule out on review-ui / Home / native shell (visual grammar: R3 §1).
+Before claiming Ruled out as a closed product verb (§I.5 last):
+
+1. Confirm visual grammar on review-ui / Home / future shell (R3 §1).
 2. Keep Ignore as deferred; do not collapse the two.
-3. Drop UNWIRED labels once verify checklist in CONTRACTS-RULED-OUT passes.
+3. Complete the human checklist in `docs/CONTRACTS-RULED-OUT.md`.
 
-Do not treat presence of `rule_out_subject` as product-ready chrome.
+Do not invent PASS from portable pytest or from gate default ON alone.

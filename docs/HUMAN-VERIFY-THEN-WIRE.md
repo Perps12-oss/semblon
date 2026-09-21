@@ -241,7 +241,7 @@ Missing → `false` + `notes[<key>]` starting with `unavailable:`. Optional smok
 | Contract | `docs/APPLICATION_API.md` |
 | Roadmap gate text | `docs/SEM-ARCH-V1.4.md` §C.3 |
 
-**Merge status note:** JobEngine is on `main`. Branch `grok/app1-c3-gate-pass` records C.3 **PASSED** (2026-09-21) in docs. If that commit is **not** on your `main` yet, treat C.3 as still open and run the live gate below before closing the checklist.
+**Merge status note:** JobEngine is on `main`. APP-1 **C.3 Windows live ship proof** is **DEFERRED TO LAST** (`docs/SEM-ARCH-V1.4.md` §I.5). Do **not** invent PASS from unit tests or from a side branch docs claim. Run the live gate below when human ship gates are executed last.
 
 ### How to verify
 
@@ -266,9 +266,9 @@ Real Windows, live folder ingest via Home (unit tests alone insufficient). Proof
 
 ### Wire after PASS
 
-1. If docs on `main` still say C.3 open: merge the C.3 PASS record (`grok/app1-c3-gate-pass` or equivalent) — docs only if code already matches.
-2. APP-1 is closed; do not open another APP-1 feature merge. Next is R2 (below) then R3 shell decision inputs.
-3. No product-default change required for JobEngine (already the ingest door).
+1. Record C.3 evidence under §I.5 / this checklist — do not invent PASS earlier.
+2. APP-1 JobEngine is already the ingest door; do not open another APP-1 feature merge.
+3. No product-default change required for JobEngine.
 
 ---
 

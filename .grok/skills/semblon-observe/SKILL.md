@@ -7,7 +7,7 @@ description: Semblon product and planned-work guard. Use on any Semblon code, CL
 
 Folder-first, local-first. Faces are the first mature capability, not the centre. Still photographs in, conservative groups out, human names people.
 
-North star / planned work: `docs/SEM-ARCH.md`.
+North star / planned work: `docs/SEM-ARCH-V1.4.md`.
 
 ## Invariants
 
@@ -20,7 +20,7 @@ North star / planned work: `docs/SEM-ARCH.md`.
 
 ## Queue
 
-Planned work is `docs/SEM-ARCH.md` (ARCH-001 next: contracts, docs only). FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue. Identify vs named persons, never clusters. STRONG is not a person until `name`. Incremental ingest + inbox and S6 memory are on `main`. Time/place must not change identity scores. Sampled video is holdout evidence (`docs/S7A.md`), not a second identity engine. S8 toolkit spike is presentation-only (`docs/S8-TOOLKIT.md`).
+Planned work is `docs/SEM-ARCH-V1.4.md` (APP-1 JobEngine MERGED; next = Application-API clients, R3 chrome, PERF parallel; human ship gates §I.5 DEFERRED TO LAST). FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue. Identify vs named persons, never clusters. STRONG is not a person until `name`. Incremental ingest + inbox and S6 memory are on `main`. Time/place must not change identity scores. Sampled video is holdout evidence (`docs/S7A.md`), not a second identity engine. S8 toolkit spike is presentation-only (`docs/S8-TOOLKIT.md`).
 
 Do not print precision without `--eval-set confirmatory`.
 
@@ -28,4 +28,4 @@ Do not print precision without `--eval-set confirmatory`.
 
 Public lookup, CCTV, webcam, ACC, mobile, multi-user, sharing, live ID, automatic identity. GUI is not required for v1 (`review-ui` is a shipped vertical).
 
-If a change needs any of those, stop and say which SEM-ARCH slice authorizes it.
+If a change needs any of those, stop and say which SEM-ARCH-V1.4 slice authorizes it.
