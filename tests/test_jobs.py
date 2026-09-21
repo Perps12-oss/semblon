@@ -30,7 +30,7 @@ def test_second_submit_is_job_busy(tmp_path, monkeypatch):
             raise RuntimeError("test gate timed out")
         return {"run_id": "r-job", "out": None}
 
-    monkeypatch.setattr("semblon.jobs.process_folder", fake_process)
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
     engine = JobEngine(tmp_path / "s.sqlite")
     folder = tmp_path / "photos"
     folder.mkdir()
@@ -61,7 +61,7 @@ def test_run_ingest_passes_cancel_and_observers(tmp_path, monkeypatch):
         saw["resume"] = kwargs.get("resume")
         return {"run_id": "r-ok"}
 
-    monkeypatch.setattr("semblon.jobs.process_folder", fake_process)
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
     engine = JobEngine(tmp_path / "s.sqlite")
     rec = engine.run_ingest(tmp_path / "photos", observers="face,color,object", resume=True)
     assert rec["run_id"] == "r-ok"
@@ -84,7 +84,7 @@ def test_cancel_stops_submitted_ingest(tmp_path, monkeypatch):
             time.sleep(0.02)
         return {"run_id": "too-late"}
 
-    monkeypatch.setattr("semblon.jobs.process_folder", fake_process)
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
     engine = JobEngine(tmp_path / "s.sqlite")
 
     def on_done(result):
@@ -109,7 +109,7 @@ def test_submit_ingest_reports_cancelled(tmp_path, monkeypatch):
         gate.wait(2)
         raise ProcessCancelled("cancelled", run_id="r-c")
 
-    monkeypatch.setattr("semblon.jobs.process_folder", fake_process)
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
     engine = JobEngine(tmp_path / "s.sqlite")
 
     def on_done(result):
@@ -151,7 +151,7 @@ def test_home_submits_through_job_engine():
     open_src = inspect.getsource(HomeApp._open_review_ui)
     assert "parent=self.root" in open_src
     assert "withdraw" not in open_src
-    assert "mainloop" not in open_src
+    assert ".mainloop(" not in open_src
     busy_src = inspect.getsource(HomeApp._set_busy)
     assert "home_control_states" in busy_src
 

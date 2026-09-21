@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from semblon.process import ProcessCancelled, process_folder
 from semblon.progress import ProgressEvent
 
 KIND_INGEST = "ingest"
@@ -131,6 +130,8 @@ class JobEngine:
         observers: str | None,
         open_review: bool,
     ) -> dict:
+        from semblon.process import process_folder
+
         kwargs: dict = {
             "store": self.store,
             "open_review": open_review,
@@ -151,6 +152,8 @@ class JobEngine:
         observers: str | None,
         open_review: bool,
     ) -> None:
+        from semblon.process import ProcessCancelled
+
         result = JobResult(status="failed")
         try:
             rec = self._invoke_process(handle, on_event, observers, open_review)
