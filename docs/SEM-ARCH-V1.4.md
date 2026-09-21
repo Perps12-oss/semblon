@@ -225,6 +225,8 @@ Current truth:
 
 OCR / CLIP / pose / objects are observation modalities and retrieval evidence, not identity replacements.
 
+**Status:** PRODUCTIZED (optional) — honesty probes + `MODALITY_PRODUCT` gate; Home/CLI defaults append ready extras; `search --text` / `--similar`. See `docs/OPTIONAL-MODALITY-STATUS.md`.
+
 Identity firewall remains:
 
 > optional modalities must never silently change face identity decisions.
@@ -374,6 +376,7 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.4 | 2026-09-21 | Optional OCR/CLIP/pose PRODUCTIZED (optional): probe-gated defaults, Settings rich status, `search --text`; identity firewall unchanged. |
 | V1.4.3 | 2026-09-21 | GPU productized: `select_execution_provider` + Home Settings EP/arch honesty; Azure ≠ GPU; FaceKit unchanged. |
 | V1.4.2 | 2026-09-21 | R2 IPC probe: loopback JSON-lines `semblon/ipc_probe.py` + `lab ipc-probe`. Boundary proof only; not product IPC. |
 | V1.4 | 2026-09-21 | Reconciled roadmap authority: FACE closed; APP-1 first; Windows live gate; IPC as boundary test; measurement-first performance track; single planning source. |

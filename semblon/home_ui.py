@@ -45,6 +45,7 @@ __all__ = [
     "HOME_NAV",
     "HOME_OBSERVERS",
     "HomeApp",
+    "format_library_lines",
     "format_progress_line",
     "home_control_states",
     "resolve_home_observers",
@@ -456,8 +457,8 @@ class HomeApp:
         self.btn_resume.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_live = ttk.Button(jobs, text="Live…", command=self._open_live_overlay)
         self.btn_live.pack(side=tk.LEFT, padx=(8, 0))
-        # Canvas stays first-class; button refreshes workspace to canvas nav.
-        self.btn_canvas = ttk.Button(jobs, text="Canvas", command=lambda: self._navigate("home"))
+        # Canvas stays first-class; button focuses Home workspace canvas.
+        self.btn_canvas = ttk.Button(jobs, text="Canvas", command=lambda: self._navigate("canvas"))
         self.btn_canvas.pack(side=tk.LEFT, padx=(8, 0))
 
         # Aliases kept for control-state map (People/Unknown/Activity are sidebar).
@@ -564,25 +565,32 @@ class HomeApp:
         title = "Selection" if media_id else "Canvas"
         self._set_inspector(title, lines)
 
-    def _show_workspace_canvas(self, *, reload: bool = True) -> None:
+    def _show_workspace_canvas(
+        self,
+        *,
+        reload: bool = True,
+        source_types: tuple[str, ...] | None = None,
+    ) -> None:
         self._welcome.pack_forget()
         self._canvas_ws.pack(fill=tk.BOTH, expand=True)
         if reload:
             try:
-                self._canvas_ws.reload(self.store, self._last_run_id)
+                self._canvas_ws.reload(
+                    self.store, self._last_run_id, source_types=source_types
+                )
             except Exception as e:  # noqa: BLE001 — surface in inspector
                 self._set_inspector("Canvas", [f"Canvas unavailable: {e}"])
 
     def _show_workspace_welcome(self) -> None:
-        self._canvas_ws.frame.pack_forget()
+        self._canvas_ws.pack_forget()
         self._welcome.pack(fill=tk.BOTH, expand=True, anchor=tk.NW)
 
     def _navigate(self, nav_id: str) -> None:
         self._nav = nav_id
-        if nav_id == "home":
-            self._show_workspace_canvas(reload=True)
+        if nav_id in {"home", "canvas"}:
+            self._show_workspace_canvas(reload=True, source_types=None)
             self._set_inspector(
-                "Home",
+                "Home" if nav_id == "home" else "Canvas",
                 [
                     "Library is the source-media layer.",
                     "People/Unknown is the identity-observation layer.",
@@ -590,16 +598,34 @@ class HomeApp:
                     f"Product observers: {resolve_home_observers()}",
                     f"GPU product path prefer={resolve_home_prefer_gpu()}",
                     "Open Review to name people (cluster → review → person → name).",
+                    *format_library_lines(self.store)[:6],
                 ],
             )
             return
         if nav_id == "photos":
-            self._show_workspace_welcome()
-            self._set_inspector("Photos", format_library_lines(self.store, source_type="folder"))
+            # Stills are typically source_type=folder; exclude video assets.
+            self._show_workspace_canvas(reload=True, source_types=("folder",))
+            lib = format_library_lines(self.store, source_type="folder")
+            self._set_inspector(
+                "Photos",
+                [
+                    "Source-media layer. Zero-face files stay here.",
+                    "Select a row in Canvas to inspect observation overlays.",
+                    *lib,
+                ],
+            )
             return
         if nav_id == "videos":
-            self._show_workspace_welcome()
-            self._set_inspector("Videos", format_library_lines(self.store, source_type="video"))
+            self._show_workspace_canvas(reload=True, source_types=("video",))
+            lib = format_library_lines(self.store, source_type="video")
+            self._set_inspector(
+                "Videos",
+                [
+                    "One video asset, many observations. Track ≠ person.",
+                    "Select a row in Canvas to inspect observation overlays.",
+                    *lib,
+                ],
+            )
             return
         if nav_id == "people":
             self._show_workspace_welcome()
@@ -752,8 +778,13 @@ class HomeApp:
                             files_total=1,
                         )
                     )
-                    if self._nav == "home":
-                        self._show_workspace_canvas(reload=True)
+                    if self._nav in {"home", "canvas", "photos", "videos"}:
+                        types = None
+                        if self._nav == "photos":
+                            types = ("folder",)
+                        elif self._nav == "videos":
+                            types = ("video",)
+                        self._show_workspace_canvas(reload=True, source_types=types)
                 elif kind == "cancelled":
                     self._resume_ready = self._last_folder is not None
                     self._set_busy(False)
