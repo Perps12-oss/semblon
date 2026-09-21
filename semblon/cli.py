@@ -315,6 +315,21 @@ def main(argv: list[str] | None = None) -> int:
     r_n.add_argument("--cluster", default=None)
     r_n.add_argument("--face", default=None)
     r_n.add_argument("--text", required=True)
+    r_ro = rev_sub.add_parser(
+        "rule-out",
+        help=(
+            "experimental/UNWIRED durable Ruled out (not Ignore); "
+            "requires SEMBLON_RULED_OUT=1 — see docs/CONTRACTS-RULED-OUT.md"
+        ),
+    )
+    r_ro.add_argument("--cluster", default=None)
+    r_ro.add_argument("--face", default=None)
+    r_ro.add_argument(
+        "--person",
+        default=None,
+        help="optional person_id being ruled out",
+    )
+    r_ro.add_argument("--text", default=None, help="optional note text")
 
     rui = sub.add_parser(
         "review-ui",
@@ -773,6 +788,7 @@ def main(argv: list[str] | None = None) -> int:
             ignore_subject,
             merge_clusters,
             note_subject,
+            rule_out_subject,
             split_cluster,
         )
 
@@ -788,6 +804,15 @@ def main(argv: list[str] | None = None) -> int:
                     cluster_id=args.cluster,
                     face_id=args.face,
                     disposition=args.disposition,
+                )
+            elif args.reviewcmd == "rule-out":
+                rec = rule_out_subject(
+                    args.store,
+                    args.run,
+                    cluster_id=args.cluster,
+                    face_id=args.face,
+                    person_id=args.person,
+                    text=args.text,
                 )
             else:
                 rec = note_subject(

@@ -1,6 +1,7 @@
-"""Review ops: name / merge / split / ignore / note. Clusters are not persons.
+"""Review ops: name / merge / split / ignore / note / rule-out (flagged).
 
 Invariant: cluster → review → person → name.
+Ruled out is experimental: set SEMBLON_RULED_OUT=1 (see docs/CONTRACTS-RULED-OUT.md).
 Human corrections are decisions (evidence), not training.
 """
 
@@ -16,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from semblon.compare import CompareError, compare
+from semblon.gates import RULED_OUT, enabled as gate_enabled, require_human_note
 from semblon.store import connect, init_db
 
 _ENTERED_S3_LOCK = threading.Lock()
@@ -1021,3 +1023,124 @@ def note_subject(
         "decision_id": decision_id,
         "person_id": None,
     }
+
+
+RULED_OUT_ENV = RULED_OUT
+
+
+def ruled_out_enabled() -> bool:
+    """Feature flag for Ruled out. Default OFF — UNWIRED pending human verify."""
+    return gate_enabled(RULED_OUT)
+
+
+def require_ruled_out_enabled() -> None:
+    if not ruled_out_enabled():
+        raise ReviewError(
+            "Ruled out is experimental/UNWIRED; set SEMBLON_RULED_OUT=1 "
+            f"({require_human_note(RULED_OUT)})"
+        )
+
+
+def _require_active_person(conn, person_id: str):
+    row = conn.execute(
+        "SELECT person_id, status FROM persons WHERE person_id=?",
+        (person_id,),
+    ).fetchone()
+    if row is None:
+        raise ReviewError(f"unknown person: {person_id}")
+    if row["status"] != "active":
+        raise ReviewError(f"person is not active: {person_id}")
+    return row
+
+
+def rule_out_subject(
+    store: Path,
+    run_id: str,
+    *,
+    cluster_id: str | None = None,
+    face_id: str | None = None,
+    person_id: str | None = None,
+    text: str | None = None,
+) -> dict:
+    """Durable negative identity decision. Distinct from Ignore (deferred).
+
+    Store: decisions.kind=reject + policy_json.action=rule_out. No new columns.
+    Does not set clusters.status='ignored' and does not hide the subject.
+    Requires SEMBLON_RULED_OUT=1.
+    """
+    require_ruled_out_enabled()
+    if bool(cluster_id) == bool(face_id):
+        raise ReviewError("rule-out requires exactly one of --cluster or --face")
+    note = (text or "").strip() or None
+    _warn_enter_s3(store, run_id)
+    conn = connect(store)
+    init_db(conn)
+    try:
+        run = _require_run(conn, run_id)
+        pack_id = run["pack_id"]
+        target_person = None
+        if person_id:
+            _require_active_person(conn, person_id)
+            target_person = person_id
+
+        if cluster_id:
+            cluster = _require_cluster(conn, run_id, cluster_id)
+            decision_id = _record_decision(
+                conn,
+                kind="reject",
+                run_id=run_id,
+                pack_id=pack_id,
+                cluster_id=cluster_id,
+                person_id=target_person,
+                policy={
+                    "action": "rule_out",
+                    "subject": "cluster",
+                    "target_person_id": target_person,
+                    "face_count": cluster["face_count"],
+                    **({"text": note} if note else {}),
+                },
+            )
+            conn.commit()
+            return {
+                "run_id": run_id,
+                "cluster_id": cluster_id,
+                "face_id": None,
+                "person_id": target_person,
+                "decision_id": decision_id,
+                "action": "rule_out",
+                "note": "durable reject; not Ignore; cluster status unchanged",
+            }
+
+        face = _require_face(conn, run_id, face_id)
+        decision_id = _record_decision(
+            conn,
+            kind="reject",
+            run_id=run_id,
+            pack_id=pack_id,
+            face_id=face_id,
+            cluster_id=face["cluster_id"],
+            person_id=target_person,
+            policy={
+                "action": "rule_out",
+                "subject": "face",
+                "target_person_id": target_person,
+                "face_status": face["status"],
+                "hidden": False,
+                **({"text": note} if note else {}),
+            },
+        )
+        conn.commit()
+        return {
+            "run_id": run_id,
+            "cluster_id": face["cluster_id"],
+            "face_id": face_id,
+            "person_id": target_person,
+            "decision_id": decision_id,
+            "action": "rule_out",
+            "note": "durable reject; not Ignore; subject not hidden",
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
