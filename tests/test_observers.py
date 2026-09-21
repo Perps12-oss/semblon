@@ -2,22 +2,127 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import sys
+import types
+from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from semblon.canvas import overlay_boxes
 from semblon.cluster import cluster_run
 from semblon.home_ui import format_people_lines, format_search_lines, format_unknown_lines
 from semblon.identify import identify_face
-from semblon.observers import CLIP_PACK, observe_bgr
+from semblon.observers import (
+    CLIP_PACK,
+    find_local_clip_weights,
+    observe_bgr,
+    optional_status,
+    probe_clip_status,
+    probe_ocr_status,
+    probe_pose_status,
+)
+from semblon.review import name_cluster
 from semblon.search import SearchError, search_similar
 from semblon.store import connect, init_db
 from tests.test_cluster import _seed, _vec
 from tests.test_review import _clustered
-from semblon.review import name_cluster
 
-import pytest
+
+def test_optional_status_pose_false_without_solutions():
+    fake_mp = types.ModuleType("mediapipe")
+    with patch.dict(sys.modules, {"mediapipe": fake_mp}):
+        ok, note = probe_pose_status()
+    assert ok is False
+    assert note is not None
+    assert "solutions" in note
+    with patch("semblon.observers.probe_ocr_status", return_value=(False, "unavailable: mocked")):
+        with patch("semblon.observers.probe_clip_status", return_value=(False, "unavailable: mocked")):
+            with patch("semblon.observers.probe_pose_status", return_value=(False, "unavailable: mediapipe.solutions.pose missing")):
+                st = optional_status()
+    assert st["pose"] is False
+    assert "solutions" in st["notes"]["pose"]
+    assert st["identity"] == "facekit only"
+
+
+def test_optional_status_ocr_false_without_tesseract_binary():
+    with patch("semblon.observers.shutil.which", return_value=None):
+        ok, note = probe_ocr_status()
+    assert ok is False
+    assert note is not None
+    assert "tesseract" in note.lower()
+    assert "PATH" in note
+
+
+def test_optional_status_clip_false_without_weights(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENCLIP_CACHE_DIR", str(tmp_path / "clip-cache"))
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hf-hub"))
+    fake_oc = types.ModuleType("open_clip")
+    fake_pretrained = types.ModuleType("open_clip.pretrained")
+
+    def _cfg(model, tag):
+        assert model == "ViT-B-32"
+        return {
+            "url": "https://example.test/models/deadbeef/ViT-B-32.pt",
+            "hf_hub": "timm/vit_base_patch32_clip_224.openai/",
+        }
+
+    fake_pretrained.get_pretrained_cfg = _cfg
+    fake_oc.pretrained = fake_pretrained
+    fake_torch = types.ModuleType("torch")
+    with patch.dict(
+        sys.modules,
+        {"open_clip": fake_oc, "open_clip.pretrained": fake_pretrained, "torch": fake_torch},
+    ):
+        assert find_local_clip_weights() is None
+        ok, note = probe_clip_status()
+    assert ok is False
+    assert note is not None
+    assert "weights missing" in note
+    assert "no download" in note
+
+
+def test_optional_status_clip_true_when_url_cache_present(tmp_path, monkeypatch):
+    cache = tmp_path / "clip-cache"
+    cache.mkdir()
+    weights = cache / "ViT-B-32.pt"
+    weights.write_bytes(b"fake-weights")
+    monkeypatch.setenv("OPENCLIP_CACHE_DIR", str(cache))
+    fake_oc = types.ModuleType("open_clip")
+    fake_pretrained = types.ModuleType("open_clip.pretrained")
+    fake_pretrained.get_pretrained_cfg = MagicMock(
+        return_value={"url": "https://example.test/deadbeef/ViT-B-32.pt", "hf_hub": "timm/x/"}
+    )
+    fake_oc.pretrained = fake_pretrained
+    fake_torch = types.ModuleType("torch")
+    with patch.dict(
+        sys.modules,
+        {"open_clip": fake_oc, "open_clip.pretrained": fake_pretrained, "torch": fake_torch},
+    ):
+        found = find_local_clip_weights()
+        ok, note = probe_clip_status()
+    assert found == weights
+    assert ok is True
+    assert note is None
+
+
+def test_optional_status_mock_missing_apis_report_unavailable():
+    with patch("semblon.observers.probe_ocr_status", return_value=(False, "unavailable: tesseract binary not on PATH")):
+        with patch(
+            "semblon.observers.probe_clip_status",
+            return_value=(False, "unavailable: open_clip+torch present but ViT-B-32/openai weights missing (no download)"),
+        ):
+            with patch(
+                "semblon.observers.probe_pose_status",
+                return_value=(False, "unavailable: mediapipe.solutions.pose missing"),
+            ):
+                st = optional_status()
+    assert st["ocr"] is False
+    assert st["clip"] is False
+    assert st["pose"] is False
+    assert "tesseract" in st["notes"]["ocr"]
+    assert "weights" in st["notes"]["clip"]
+    assert "solutions" in st["notes"]["pose"]
 
 
 def test_ocr_unavailable_is_a_stub_not_a_person(tmp_path):
