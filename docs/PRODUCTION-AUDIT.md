@@ -369,6 +369,7 @@ Verified on later `main` (portable pytest; no InsightFace download):
 - Schema v2 tables are written from clusters, FaceKit faces, and S6 memory (`confirmed=0`)
 - `watch` / `live` / `canvas` / `search --similar` exist; extras do not vote on identity
 - Optional OCR/CLIP/pose observers persist items when asked; missing libraries are unavailable/error items
+- ARCH-011 / APP-1: `JobEngine` is the ingest door (`JobBusy` on second submit); Review is a Toplevel on Home’s root; Review reads use `busy_timeout=5000`
 
 
 ## FINAL ENGINEERING VERDICT
