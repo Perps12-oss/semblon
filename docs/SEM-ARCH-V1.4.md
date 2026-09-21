@@ -40,6 +40,7 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | Review UI | **SHIPPED, legacy Tk surface** |
 | Native application shell | **NOT decided/implemented** |
 | APP-1 JobEngine boundary | **MERGED** (`main`) |
+| APP-1 C.2 paused / unpause | **IMPLEMENTED** (code+unit tests; Windows live gate still required) |
 | IPC boundary | **NOT implemented** |
 | Native ARM64 performance | **BLOCKED** |
 | Multi-worker ingest | **EXPERIMENTAL / not default** |
@@ -105,13 +106,11 @@ V1 paused semantics:
 
 > `paused` means resumable and not currently consuming ingest processing resources.
 
-Implementation must explicitly state actual granularity:
+**Implementation (code on this branch):** `JobEngine.pause` / `unpause` / `state` / `paused`. The ingest gate blocks in `JobEngine._gate` (passed as `cancel=` into `process_folder`).  
 
-- cooperative between files, or
-- cooperative between batches, or
-- interruptible inside a media operation.
+**Granularity (honest):** cooperative **between files** and at the same stage polls where cancel already runs. Mid-decode / mid-embed pause is **not** claimed.
 
-Do not claim finer granularity than exists.
+Windows live proof of pause/unpause remains part of the C.3 gate (not satisfied by unit tests alone).
 
 ## C.3 APP-1 acceptance is a hard Windows gate
 

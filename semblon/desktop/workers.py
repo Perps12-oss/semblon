@@ -31,6 +31,12 @@ class ImportWorker(QObject):
     def request_cancel(self) -> None:
         self._engine.cancel()
 
+    def request_pause(self) -> None:
+        self._engine.pause()
+
+    def request_unpause(self) -> None:
+        self._engine.unpause()
+
     def run(self) -> None:
         def on_event(ev: ProgressEvent) -> None:
             self._wd.note(ev)
