@@ -41,7 +41,7 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | Native application shell | **NOT decided/implemented** |
 | APP-1 JobEngine boundary | **MERGED** (`main`) |
 | APP-1 C.2 paused / unpause | **IMPLEMENTED** (code+unit tests; Windows live gate still required) |
-| IPC boundary | **NOT implemented** |
+| IPC boundary | **PROBE** (`semblon/ipc_probe.py` loopback JSON-lines; not product IPC) |
 | Native ARM64 performance | **BLOCKED** |
 | Multi-worker ingest | **EXPERIMENTAL / not default** |
 | GPU | **NOT productized** |
@@ -149,13 +149,15 @@ R2 remains in-scope but is reframed as an architecture boundary proof:
 external/native client <-> IPC <-> JobEngine <-> existing engine
 ```
 
-Probe scope only:
+**Probe in tree:** `semblon/ipc_probe.py` + `semblon lab ipc-probe` — JSON-lines on `127.0.0.1` only. Ops: `ping`, `status`, `submit_ingest`, `cancel`, `pause`, `unpause`, `result`, `shutdown`, plus push `progress` / `done`. Tests: `tests/test_ipc_probe.py`. This is **not** the final IPC system (no named pipes, no WinUI host, no LAN bind).
+
+Probe scope (satisfied by the loopback probe):
 
 - start job
 - status query
 - progress stream
 - cancel
-- resume
+- resume (`unpause` in-flight; `submit_ingest` with `resume=true` after cancel)
 - result retrieval
 - error handling
 
@@ -300,7 +302,7 @@ Track at each size:
 
 ## I.2 Immediately after APP-1
 
-- R2 IPC probe
+- ~~R2 IPC probe~~ **DONE** (loopback probe in `semblon/ipc_probe.py`; not product IPC)
 - formalize app boundary contract
 - native frontend architecture evaluation
 - R3 shell decision from architecture + evidence
@@ -336,9 +338,10 @@ CURRENT MAIN
   -> APP-1 / R1 JobEngine boundary
        -> Windows live gate + contract tests
        -> merge gate
-  -> R2 IPC probe
+  -> R2 IPC probe (loopback) — include `semblon/ipc_probe.py` when merged
   -> R3 brief artifacts §8.1–§8.4 DONE (`docs/r3-artifacts/`)
-  -> Toolkit bake-off (`docs/R3-BRIEF.md` §6 · checklist `docs/r3-artifacts/05-bake-off-checklist.md`)  ← next
+  -> Feature gates WIRED 2026-09-21 (`docs/GATES.md`)
+  -> Toolkit bake-off checklist — human names winner; then R3 shell decision
   -> R3 shell decision
   -> Native production shell
   -> unified Home/Review/Canvas experiences
@@ -371,6 +374,7 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.2 | 2026-09-21 | R2 IPC probe: loopback JSON-lines `semblon/ipc_probe.py` + `lab ipc-probe`. Boundary proof only; not product IPC. |
 | V1.4 | 2026-09-21 | Reconciled roadmap authority: FACE closed; APP-1 first; Windows live gate; IPC as boundary test; measurement-first performance track; single planning source. |
 | V1.4.1 | 2026-09-21 | Point R3 at approved `docs/R3-BRIEF.md` v2; frames before toolkit bake-off; Ruled out flagged as CONTRACTS gap. |
 | V1.4.2 | 2026-09-21 | R3 §8.1–§8.4 artifacts DONE under `docs/r3-artifacts/`; sequence next = toolkit bake-off (human-run checklist; no measurements claimed). |

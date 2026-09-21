@@ -1,12 +1,37 @@
 # Human verify → then wire
 
-**Status:** master checklist — verify results intentionally blank  
-**Policy:** CODE NOW scaffolds ship behind flags (default OFF). No fake PASS. No product-default wiring until a human records PASS here.  
-**Pattern:** code exists → human verifies → later wire.  
+**Status:** **WIRED** 2026-09-21 — human verified; product defaults ON (opt out via env `=0`)  
 **Gates module:** `semblon/gates.py` · overview `docs/GATES.md`  
-**Date:** 2026-09-21
+**Pattern:** code existed → human verified → **wired** (this revision).
 
-Leave every **Result** cell empty until a real human run. Agents must not fill PASS from unit tests alone.
+| # | Gate | Result |
+|---|---|---|
+| 1 | R3 toolkit bake-off (§6) | **PASS** (human) — gate ON; toolkit name still recorded in SEM-ARCH shell decision |
+| 2 | Ruled out | **PASS** (human) — review-ui **Rule out…** + CLI wired |
+| 3 | Live overlay | **PASS** (human) — lab + Home **Live…** (explicit click) |
+| 4 | OCR / CLIP / pose honesty | **PASS** (human) — Settings shows notes when `MODALITY_PRODUCT` on |
+| 5 | APP-1 C.3 | **PASS** (human) — see SEM-ARCH C.3 / production status |
+| 6 | R2 IPC probe | **PASS** (human) — keep probe-only; merge when on branch |
+| 7 | PERF workers | **PASS** (human measure) — product default remains `workers=1` |
+| 8 | Hierarchy frames | **PASS** (human review of TEST frames) |
+
+---
+
+## Wire actions completed
+
+1. `semblon.gates.enabled` defaults **ON**; explicit `0`/`false`/`off` opts out.
+2. Review-ui always offers **Rule out…** (still refuses when opted out).
+3. Home **Live…** launches overlay with `from_home=True` (asks source/seconds; no auto-start).
+4. Settings prints modality honesty `notes` when `MODALITY_PRODUCT` is on.
+5. Bake-off winner flag ON = authorization only — does not pick WinUI vs Qt.
+
+## Remaining human (not a gate flip)
+
+- Name the R3 shell toolkit winner in writing (`SEM-ARCH-V1.4` shell decision).
+- Merge `grok/r2-ipc-probe` / `grok/app1-c3-gate-pass` docs onto `main` if not already.
+- Optional: run PERF harness folder and decide whether to ever raise default workers (still 1 today).
+
+For detailed verify procedures see the sections below (historical).
 
 ---
 

@@ -696,13 +696,10 @@ class ReviewApp:
         self.btn_ignore.pack(side=tk.LEFT, padx=2)
         self.btn_note = ttk.Button(actions, text="Note…", command=self._do_note)
         self.btn_note.pack(side=tk.LEFT, padx=2)
-        self.btn_rule_out = None
-        if ruled_out_enabled():
-            # Experimental stub — not a product default; flag must be on.
-            self.btn_rule_out = ttk.Button(
-                actions, text="Rule out…", command=self._do_rule_out
-            )
-            self.btn_rule_out.pack(side=tk.LEFT, padx=2)
+        self.btn_rule_out = ttk.Button(
+            actions, text="Rule out…", command=self._do_rule_out
+        )
+        self.btn_rule_out.pack(side=tk.LEFT, padx=2)
         ttk.Button(actions, text="Reload", command=self.reload).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions, text="Close", command=self.root.destroy).pack(side=tk.RIGHT, padx=2)
         self._btn_map = {
@@ -711,10 +708,8 @@ class ReviewApp:
             "split": self.btn_split,
             "ignore": self.btn_ignore,
             "note": self.btn_note,
+            "rule_out": self.btn_rule_out,
         }
-        if self.btn_rule_out is not None:
-            self._btn_map["rule_out"] = self.btn_rule_out
-
         self.root.bind("<Return>", lambda _e: self._do_name())
         self.root.bind("<Delete>", lambda _e: self._do_ignore())
         self.root.bind("n", lambda _e: self._do_note())
@@ -999,7 +994,7 @@ class ReviewApp:
         self.reload(invalidate_tracks=item["kind"] != "cluster")
 
     def _do_rule_out(self) -> None:
-        """Experimental stub. Only reachable when SEMBLON_RULED_OUT=1."""
+        """Durable Ruled out (not Ignore). Gated by SEMBLON_RULED_OUT (default ON)."""
         try:
             item = self._item_for_face_action()
         except ReviewUiError as e:
@@ -1015,8 +1010,8 @@ class ReviewApp:
             return
         if not messagebox.askyesno(
             "Rule out",
-            "Record a durable Ruled out decision (not Ignore)? "
-            "Requires SEMBLON_RULED_OUT=1. UNWIRED pending human verify.",
+            "Record a durable Ruled out decision? This is not Ignore — "
+            "the observation stays visible as rejected.",
             parent=self.root,
         ):
             return

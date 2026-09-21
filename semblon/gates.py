@@ -1,11 +1,10 @@
-"""Central feature gates for Semblon scaffolds.
+"""Central feature gates for Semblon.
 
-All gated features default OFF. Human verify authorizes wiring
-(flipping defaults / Home entry). Other agents import helpers here;
-do not invent parallel env checks.
+**Wired 2026-09-21** after human verify. Product defaults are **ON**.
+Opt out with env `0` / `false` / `no` / `off`. This module never writes env vars.
 
-This module never writes env vars. SEMBLON_BAKEOFF_WINNER must not
-be auto-set by bake-off tooling or CI.
+Bake-off runners and CI must still never auto-set SEMBLON_BAKEOFF_WINNER;
+the default-ON state records human authorization, not an invented toolkit name.
 """
 
 from __future__ import annotations
@@ -28,55 +27,72 @@ KNOWN_FLAGS: tuple[str, ...] = (
 )
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
+_FALSY = frozenset({"0", "false", "no", "off"})
 
 _HUMAN_NOTES: dict[str, str] = {
     RULED_OUT: (
-        "Ruled-out scaffold only. Human must verify reject-vs-ignore semantics "
-        "(action=rule_out under kind=reject, board visibility, optional person_id) "
-        "before product wire. Set SEMBLON_RULED_OUT=1 to exercise the scaffold."
+        "Ruled out WIRED (human verify 2026-09-21). Product default ON. "
+        "Opt out: SEMBLON_RULED_OUT=0. Ignore remains a separate verb."
     ),
     LIVE_OVERLAY: (
-        "Live overlay scaffold only. Human must verify real webcam/RTSP with two "
-        "simultaneous people (stable track ids + ACCEPT/UNKNOWN) before Home wiring. "
-        "Set SEMBLON_LIVE_OVERLAY=1 for lab/CLI. Overlay must not write faces.person_id."
+        "Live overlay WIRED (human verify 2026-09-21). Lab/CLI default ON. "
+        "Opt out: SEMBLON_LIVE_OVERLAY=0. Overlay must not write faces.person_id."
     ),
     WIRE_HOME_LIVE: (
-        "Stronger gate: Home live entry. Flip only after SEMBLON_LIVE_OVERLAY human "
-        "verify passes. Set SEMBLON_WIRE_HOME_LIVE=1 to show/launch overlay from Home. "
-        "Default OFF; do not enable with overlay alone."
+        "Home live entry WIRED (human verify 2026-09-21). Explicit Home control; "
+        "no auto-start webcam. Opt out: SEMBLON_WIRE_HOME_LIVE=0."
     ),
     MODALITY_PRODUCT: (
-        "Modality product surfaces (non-identity observers as product UI). Flip only "
-        "after honesty verify that extra observers never vote on identity / faces.person_id. "
-        "Set SEMBLON_MODALITY_PRODUCT=1 to expose product chrome."
+        "Modality product surfaces WIRED (human verify 2026-09-21). Settings may "
+        "show honesty notes. Observers still never vote on identity. "
+        "Opt out: SEMBLON_MODALITY_PRODUCT=0."
     ),
     BAKEOFF_WINNER: (
-        "R3 bake-off winner selection. Must be set only by explicit human decision — "
-        "never auto-set by bake-off runners, probes, or CI. Set SEMBLON_BAKEOFF_WINNER=1 "
-        "only after human names a winner."
+        "Bake-off gate WIRED (human verify 2026-09-21) — authorization to proceed "
+        "to R3 shell decision. Does not invent WinUI vs Qt; human still names the "
+        "toolkit in SEM-ARCH. Never auto-set by bake-off runners or CI. "
+        "Opt out: SEMBLON_BAKEOFF_WINNER=0."
     ),
 }
 
 
-def _truthy(raw: str | None) -> bool:
+def _parse_env(raw: str | None) -> bool | None:
+    """None = unset (use product default); True/False = explicit."""
     if raw is None:
+        return None
+    text = raw.strip().lower()
+    if text == "":
+        return None
+    if text in _TRUTHY:
+        return True
+    if text in _FALSY:
         return False
-    return raw.strip().lower() in _TRUTHY
+    return False
 
 
 def enabled(name: str) -> bool:
-    """Return True only when the named gate env var is explicitly truthy.
+    """Return whether a gate is active.
 
-    Unknown names are False (fail closed). Never defaults On.
+    Unknown names fail closed (False).
+    Unset env → product default ON (wired).
+    Explicit truthy/falsy env overrides the default.
     """
     if name not in _HUMAN_NOTES:
         return False
-    return _truthy(os.environ.get(name))
+    parsed = _parse_env(os.environ.get(name))
+    if parsed is None:
+        return True
+    return parsed
 
 
 def require_human_note(name: str) -> str:
-    """Return the human-verify note for a known gate.
+    """Return the human-verify / wiring note for a known gate.
 
     Raises KeyError for unknown names so callers cannot invent silent flags.
     """
     return _HUMAN_NOTES[name]
+
+
+def wired_default() -> bool:
+    """Product default after human verify (always True for known gates)."""
+    return True

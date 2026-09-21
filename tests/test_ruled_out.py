@@ -97,18 +97,17 @@ def _clear_flag(monkeypatch):
     monkeypatch.delenv("SEMBLON_RULED_OUT", raising=False)
 
 
-def test_flag_defaults_off():
-    assert ruled_out_enabled() is False
+def test_flag_defaults_on():
+    assert ruled_out_enabled() is True
 
 
-def test_rule_out_refuses_without_flag(tmp_path, monkeypatch):
+def test_rule_out_refuses_when_opted_out(tmp_path, monkeypatch):
     store = tmp_path / "s.sqlite"
     assigned = _clustered(store)
     c1 = assigned["f1"]
-    monkeypatch.delenv("SEMBLON_RULED_OUT", raising=False)
-    with pytest.raises(ReviewError, match="UNWIRED"):
+    monkeypatch.setenv("SEMBLON_RULED_OUT", "0")
+    with pytest.raises(ReviewError, match="disabled"):
         rule_out_subject(store, "r1", cluster_id=c1)
-
 
 def test_rule_out_cluster_writes_reject_action(tmp_path, monkeypatch):
     monkeypatch.setenv("SEMBLON_RULED_OUT", "1")
@@ -206,11 +205,11 @@ def test_apply_rule_out_wrapper(tmp_path, monkeypatch):
     assert rec["action"] == "rule_out"
 
 
-def test_cli_rule_out_requires_flag(tmp_path, monkeypatch):
+def test_cli_rule_out_refuses_when_opted_out(tmp_path, monkeypatch):
     store = tmp_path / "s.sqlite"
     assigned = _clustered(store)
     c1 = assigned["f1"]
-    monkeypatch.delenv("SEMBLON_RULED_OUT", raising=False)
+    monkeypatch.setenv("SEMBLON_RULED_OUT", "0")
     assert (
         main(
             [

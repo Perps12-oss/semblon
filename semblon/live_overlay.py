@@ -1,26 +1,19 @@
-"""Experimental live multi-person overlay scaffold (Tk).
+"""Live multi-person overlay (Tk) — WIRED after human verify 2026-09-21.
 
 Calls into ``live_capture`` and draws bbox + track id + ACCEPT/UNKNOWN.
-Does **not** write ``faces.person_id``. Not launched from Home unless gated.
+Does **not** write ``faces.person_id``. Home entry is explicit click only
+(no auto-start webcam). Opt out: SEMBLON_LIVE_OVERLAY=0 / SEMBLON_WIRE_HOME_LIVE=0.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Callable
 
+from semblon.gates import LIVE_OVERLAY, WIRE_HOME_LIVE, enabled, require_human_note
 from semblon.live import LiveError, live_capture
 
-ENV_LIVE_OVERLAY = "SEMBLON_LIVE_OVERLAY"
-
-# Human must verify real webcam/RTSP with 2 people before Home wiring.
-HUMAN_VERIFY_NOTE = (
-    "Live overlay scaffold only. Human must verify real webcam/RTSP with two "
-    "simultaneous people (stable track ids + ACCEPT/UNKNOWN labels) before "
-    "wiring into Home. Gate: SEMBLON_LIVE_OVERLAY=1, --live-overlay, or "
-    "`semblon lab live-overlay`. Overlay never assigns faces.person_id."
-)
+HUMAN_VERIFY_NOTE = require_human_note(LIVE_OVERLAY)
 
 
 class LiveOverlayError(ValueError):
@@ -28,8 +21,11 @@ class LiveOverlayError(ValueError):
 
 
 def env_overlay_enabled() -> bool:
-    raw = os.environ.get(ENV_LIVE_OVERLAY, "").strip().lower()
-    return raw in ("1", "true", "yes", "on")
+    return enabled(LIVE_OVERLAY)
+
+
+def home_live_enabled() -> bool:
+    return enabled(WIRE_HOME_LIVE)
 
 
 def overlay_launch_allowed(
@@ -37,12 +33,12 @@ def overlay_launch_allowed(
     explicit_flag: bool = False,
     from_home: bool = False,
 ) -> bool:
-    """Home stays off unless env or explicit flag. Lab passes explicit_flag=True."""
-    if explicit_flag or env_overlay_enabled():
-        return True
+    """Lab/CLI uses LIVE_OVERLAY (default ON). Home requires WIRE_HOME_LIVE."""
     if from_home:
-        return False
-    return False
+        return home_live_enabled()
+    if explicit_flag:
+        return True
+    return env_overlay_enabled()
 
 
 def format_overlay_label(ann: dict) -> str:
@@ -129,8 +125,9 @@ def run_live_overlay(
     """
     if not overlay_launch_allowed(explicit_flag=explicit_flag, from_home=from_home):
         raise LiveOverlayError(
-            "live overlay is gated: set SEMBLON_LIVE_OVERLAY=1, pass "
-            "--live-overlay / explicit_flag, or use `semblon lab live-overlay`"
+            "live overlay disabled: set SEMBLON_LIVE_OVERLAY=1 (lab) or "
+            "SEMBLON_WIRE_HOME_LIVE=1 (Home), or unset opt-out "
+            f"({require_human_note(LIVE_OVERLAY if not from_home else WIRE_HOME_LIVE)})"
         )
 
     store = Path(store)
@@ -154,9 +151,13 @@ def run_live_overlay(
             raise LiveOverlayError(f"tkinter required for live overlay: {e}") from e
 
         root = tk.Tk()
-        root.title("Semblon Live Overlay (experimental)")
+        root.title("Semblon Live Overlay")
         root.geometry("960x640")
-        ttk.Label(root, text=HUMAN_VERIFY_NOTE, wraplength=920).pack(anchor=tk.W, padx=8, pady=6)
+        ttk.Label(
+            root,
+            text="Live overlay — boxes, track id, ACCEPT/UNKNOWN. Never assigns person_id.",
+            wraplength=920,
+        ).pack(anchor=tk.W, padx=8, pady=6)
         preview = tk.Label(root)
         preview.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
         status = tk.StringVar(value="starting…")

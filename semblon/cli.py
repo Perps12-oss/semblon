@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     oc.add_argument("--timeout", type=float, default=8.0)
     lov = lab_sub.add_parser(
         "live-overlay",
-        help="experimental Tk live multi-person overlay scaffold (not Home; never assigns person_id)",
+        help="Tk live multi-person overlay (WIRED; never assigns person_id; Home has Live…)",
     )
     lov.add_argument("--store", required=True, type=Path)
     lov.add_argument("--source", default="0", help="camera index or RTSP URL")
@@ -96,6 +96,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="run pipeline without Tk window (tests / CI)",
     )
+    ipc = lab_sub.add_parser(
+        "ipc-probe",
+        help="R2 loopback JSON-lines JobEngine probe (not product IPC; 127.0.0.1 only)",
+    )
+    ipc.add_argument(
+        "--store",
+        default=None,
+        type=Path,
+        help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
+    )
+    ipc.add_argument("--host", default="127.0.0.1", help="loopback only")
+    ipc.add_argument("--port", type=int, default=0, help="0 = ephemeral")
 
     ev = lab_sub.add_parser("eval", help="FACE-002 confirmatory eval harness")
     ev_sub = ev.add_subparsers(dest="evalcmd", required=True)
@@ -318,8 +330,8 @@ def main(argv: list[str] | None = None) -> int:
     r_ro = rev_sub.add_parser(
         "rule-out",
         help=(
-            "experimental/UNWIRED durable Ruled out (not Ignore); "
-            "requires SEMBLON_RULED_OUT=1 — see docs/CONTRACTS-RULED-OUT.md"
+            "durable Ruled out (not Ignore); default ON; opt out SEMBLON_RULED_OUT=0 — "
+            "see docs/CONTRACTS-RULED-OUT.md"
         ),
     )
     r_ro.add_argument("--cluster", default=None)
@@ -534,6 +546,40 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"cancelled": True, "run_id": e.run_id}, indent=2))
             return 2
         print(json.dumps(rec, indent=2, default=str))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "ipc-probe":
+        from semblon.ipc_probe import IpcProbeServer
+        from semblon.process import default_store_path
+
+        store = args.store if args.store is not None else default_store_path()
+        server = IpcProbeServer(store, host=args.host, port=args.port)
+        try:
+            bound = server.start()
+        except ValueError as e:
+            print(json.dumps({"ok": False, "error": str(e)}, indent=2))
+            return 2
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "protocol": "semblon-ipc-probe/1",
+                    "host": args.host,
+                    "port": bound,
+                    "store": str(store),
+                    "note": "R2 probe only; send JSON-lines; shutdown op or Ctrl+C",
+                },
+                indent=2,
+            ),
+            flush=True,
+        )
+        try:
+            while server.wait_stopped(0.25) is False:
+                pass
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.stop()
         return 0
 
     if args.cmd == "lab" and args.labcmd == "eval":

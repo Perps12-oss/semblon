@@ -1,7 +1,8 @@
 """Review ops: name / merge / split / ignore / note / rule-out (flagged).
 
 Invariant: cluster → review → person → name.
-Ruled out is experimental: set SEMBLON_RULED_OUT=1 (see docs/CONTRACTS-RULED-OUT.md).
+Ruled out is WIRED (human verify 2026-09-21): default ON; opt out SEMBLON_RULED_OUT=0
+(see docs/CONTRACTS-RULED-OUT.md).
 Human corrections are decisions (evidence), not training.
 """
 
@@ -1029,14 +1030,14 @@ RULED_OUT_ENV = RULED_OUT
 
 
 def ruled_out_enabled() -> bool:
-    """Feature flag for Ruled out. Default OFF — UNWIRED pending human verify."""
+    """Ruled out gate. Default ON after human wire; SEMBLON_RULED_OUT=0 opts out."""
     return gate_enabled(RULED_OUT)
 
 
 def require_ruled_out_enabled() -> None:
     if not ruled_out_enabled():
         raise ReviewError(
-            "Ruled out is experimental/UNWIRED; set SEMBLON_RULED_OUT=1 "
+            "Ruled out is disabled (SEMBLON_RULED_OUT=0). "
             f"({require_human_note(RULED_OUT)})"
         )
 
@@ -1066,7 +1067,7 @@ def rule_out_subject(
 
     Store: decisions.kind=reject + policy_json.action=rule_out. No new columns.
     Does not set clusters.status='ignored' and does not hide the subject.
-    Requires SEMBLON_RULED_OUT=1.
+    Requires SEMBLON_RULED_OUT enabled (default ON; opt out with =0).
     """
     require_ruled_out_enabled()
     if bool(cluster_id) == bool(face_id):

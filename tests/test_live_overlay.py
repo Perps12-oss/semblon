@@ -23,23 +23,25 @@ class _MultiDetModel:
         return arr, None
 
 
-def test_overlay_gate_default_off(monkeypatch):
+def test_overlay_gate_default_on(monkeypatch):
     from semblon.live_overlay import overlay_launch_allowed
 
     monkeypatch.delenv("SEMBLON_LIVE_OVERLAY", raising=False)
-    assert overlay_launch_allowed() is False
-    assert overlay_launch_allowed(from_home=True) is False
-    assert overlay_launch_allowed(from_home=True, explicit_flag=True) is True
-
-
-def test_overlay_gate_env_or_lab_explicit(monkeypatch):
-    from semblon.live_overlay import overlay_launch_allowed
-
-    monkeypatch.setenv("SEMBLON_LIVE_OVERLAY", "1")
+    monkeypatch.delenv("SEMBLON_WIRE_HOME_LIVE", raising=False)
     assert overlay_launch_allowed() is True
     assert overlay_launch_allowed(from_home=True) is True
+
+
+def test_overlay_gate_opt_out_and_lab_explicit(monkeypatch):
+    from semblon.live_overlay import overlay_launch_allowed
+
     monkeypatch.setenv("SEMBLON_LIVE_OVERLAY", "0")
+    monkeypatch.setenv("SEMBLON_WIRE_HOME_LIVE", "0")
+    assert overlay_launch_allowed() is False
+    assert overlay_launch_allowed(from_home=True) is False
     assert overlay_launch_allowed(explicit_flag=True) is True
+    monkeypatch.setenv("SEMBLON_WIRE_HOME_LIVE", "1")
+    assert overlay_launch_allowed(from_home=True) is True
 
 
 def test_format_overlay_label():
@@ -207,11 +209,11 @@ def test_run_live_overlay_headless_does_not_assign_person(tmp_path, monkeypatch)
     assert n_live_person == 0
 
 
-def test_run_live_overlay_refuses_home_without_gate(tmp_path, monkeypatch):
+def test_run_live_overlay_refuses_home_when_opted_out(tmp_path, monkeypatch):
     from semblon.live_overlay import LiveOverlayError, run_live_overlay
 
-    monkeypatch.delenv("SEMBLON_LIVE_OVERLAY", raising=False)
-    with pytest.raises(LiveOverlayError, match="gated"):
+    monkeypatch.setenv("SEMBLON_WIRE_HOME_LIVE", "0")
+    with pytest.raises(LiveOverlayError, match="disabled"):
         run_live_overlay(
             tmp_path / "missing.sqlite",
             show=False,

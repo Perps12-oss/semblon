@@ -11,15 +11,16 @@ from __future__ import annotations
 import json
 import queue
 import sqlite3
+import threading
 import webbrowser
 from pathlib import Path
 
 try:
     import tkinter as tk
-    from tkinter import filedialog, messagebox, ttk
+    from tkinter import filedialog, messagebox, simpledialog, ttk
 except ModuleNotFoundError:  # pragma: no cover - depends on host Python build
     tk = None
-    filedialog = messagebox = ttk = None
+    filedialog = messagebox = simpledialog = ttk = None
 
 from semblon.ui_copy import friendly_exception, status_text
 from semblon.jobs import JobBusy, JobEngine
@@ -58,6 +59,7 @@ HOME_CONTROLS_ALWAYS_ON = (
     "settings",
     "canvas",
     "search",
+    "live",
 )
 
 
@@ -383,6 +385,8 @@ class HomeApp:
         self.btn_settings.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_canvas = ttk.Button(row2, text="Canvas", command=self._open_canvas)
         self.btn_canvas.pack(side=tk.LEFT, padx=(8, 0))
+        self.btn_live = ttk.Button(row2, text="Live…", command=self._open_live_overlay)
+        self.btn_live.pack(side=tk.LEFT, padx=(8, 0))
 
         search_row = ttk.Frame(frm)
         search_row.pack(fill=tk.X, pady=(0, 8))
@@ -430,6 +434,7 @@ class HomeApp:
             "activity": self.btn_activity,
             "settings": self.btn_settings,
             "canvas": self.btn_canvas,
+            "live": self.btn_live,
             "search": self.btn_search,
         }
         for key, btn in buttons.items():
@@ -713,29 +718,101 @@ class HomeApp:
         self._list_window("Search", format_search_lines(rec))
 
     def _show_settings(self) -> None:
+        from semblon.gates import MODALITY_PRODUCT, enabled
         from semblon.observers import optional_status
         from semblon.providers import weights_status
 
         w = weights_status()
         st = optional_status()
-        self._list_window(
-            "Settings",
-            [
-                f"Store: {self.store}",
-                "Ingest is a JobEngine job, not an application lock. Review/People/Search stay usable.",
-                "Pause: cooperative between files (not mid-file); Resume while paused continues the same job",
-                "Cancel: between files (not mid-file)",
-                "Resume when idle: continues cancelled/interrupted run from next unfinished stage",
-                "Stills bar: real files done / files total, climbs to 100%",
-                "Provider: FaceKit CPU (not claimed GPU)",
-                f"Home observers: {HOME_OBSERVERS}",
-                f"Weights dir: {w['dir']}",
-                f"onnx files: {w['onnx_count']}  bundled={w['bundled']}",
-                w["note"],
-                f"optional ocr={st['ocr']} clip={st['clip']} pose={st['pose']}",
-                st["identity"],
-            ],
+        lines = [
+            f"Store: {self.store}",
+            "Ingest is a JobEngine job, not an application lock. Review/People/Search stay usable.",
+            "Pause: cooperative between files (not mid-file); Resume while paused continues the same job",
+            "Cancel: between files (not mid-file)",
+            "Resume when idle: continues cancelled/interrupted run from next unfinished stage",
+            "Stills bar: real files done / files total, climbs to 100%",
+            "Provider: FaceKit CPU (not claimed GPU)",
+            f"Home observers: {HOME_OBSERVERS}",
+            f"Weights dir: {w['dir']}",
+            f"onnx files: {w['onnx_count']}  bundled={w['bundled']}",
+            w["note"],
+            f"optional ocr={st['ocr']} clip={st['clip']} pose={st['pose']}",
+            st["identity"],
+        ]
+        if enabled(MODALITY_PRODUCT):
+            notes = st.get("notes") or {}
+            if notes:
+                lines.append("Modality honesty notes:")
+                for key in ("ocr", "clip", "pose"):
+                    if key in notes:
+                        lines.append(f"  {key}: {notes[key]}")
+            else:
+                lines.append("Modality honesty notes: (all optional probes ready on this machine)")
+        self._list_window("Settings", lines)
+
+    def _open_live_overlay(self) -> None:
+        from semblon.gates import WIRE_HOME_LIVE, enabled, require_human_note
+        from semblon.live_overlay import LiveOverlayError, run_live_overlay
+
+        if not enabled(WIRE_HOME_LIVE):
+            messagebox.showinfo(
+                "Semblon",
+                f"Live overlay Home entry is off.\n{require_human_note(WIRE_HOME_LIVE)}",
+            )
+            return
+        if self.engine.busy:
+            messagebox.showinfo("Semblon", "Finish or cancel ingest before Live.")
+            return
+        source = simpledialog.askstring(
+            "Live overlay",
+            "Camera index or RTSP URL (explicit start — no auto-webcam):",
+            initialvalue="0",
+            parent=self.root,
         )
+        if source is None:
+            return
+        source = source.strip() or "0"
+        try:
+            seconds = float(
+                simpledialog.askstring(
+                    "Live overlay",
+                    "Seconds (0 = until you close the window):",
+                    initialvalue="30",
+                    parent=self.root,
+                )
+                or "30"
+            )
+        except ValueError:
+            messagebox.showerror("Semblon", "Seconds must be a number.")
+            return
+        self.status.set("Live overlay running…")
+        self.root.update_idletasks()
+
+        def _run() -> None:
+            try:
+                src: str | int = int(source) if source.isdigit() else source
+                rec = run_live_overlay(
+                    self.store,
+                    source=src,
+                    seconds=seconds,
+                    show=True,
+                    from_home=True,
+                    explicit_flag=False,
+                )
+            except Exception as e:  # noqa: BLE001 — surface to Home status
+                self.root.after(0, lambda: self._live_failed(e))
+                return
+            self.root.after(0, lambda: self._live_done(rec))
+
+        threading.Thread(target=_run, name="semblon-home-live", daemon=True).start()
+
+    def _live_failed(self, err: BaseException) -> None:
+        self.status.set(friendly_exception(err))
+        messagebox.showerror("Semblon Live", friendly_exception(err))
+
+    def _live_done(self, rec: dict) -> None:
+        rid = rec.get("run_id") if isinstance(rec, dict) else None
+        self.status.set(f"Live overlay done. run_id={rid or '—'}")
 
     def _on_close(self) -> None:
         if self.engine.busy:

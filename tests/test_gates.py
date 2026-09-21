@@ -1,4 +1,4 @@
-"""Central feature-gate defaults: all OFF unless env explicitly truthy."""
+"""Central feature-gate defaults: ON after human wire; env can opt out."""
 
 from __future__ import annotations
 
@@ -8,22 +8,28 @@ from semblon import gates
 
 
 @pytest.mark.parametrize("name", gates.KNOWN_FLAGS)
-def test_enabled_defaults_false(monkeypatch, name: str):
+def test_enabled_defaults_true_when_unset(monkeypatch, name: str):
     monkeypatch.delenv(name, raising=False)
-    assert gates.enabled(name) is False
+    assert gates.enabled(name) is True
 
 
 @pytest.mark.parametrize("name", gates.KNOWN_FLAGS)
-@pytest.mark.parametrize("value", ["0", "false", "no", "off", "", "  "])
-def test_enabled_falsy_values(monkeypatch, name: str, value: str):
+@pytest.mark.parametrize("value", ["0", "false", "no", "off", "FALSE"])
+def test_enabled_explicit_opt_out(monkeypatch, name: str, value: str):
     monkeypatch.setenv(name, value)
     assert gates.enabled(name) is False
 
 
 @pytest.mark.parametrize("name", gates.KNOWN_FLAGS)
 @pytest.mark.parametrize("value", ["1", "true", "yes", "on", "TRUE", " Yes "])
-def test_enabled_truthy_values(monkeypatch, name: str, value: str):
+def test_enabled_explicit_on(monkeypatch, name: str, value: str):
     monkeypatch.setenv(name, value)
+    assert gates.enabled(name) is True
+
+
+@pytest.mark.parametrize("name", gates.KNOWN_FLAGS)
+def test_enabled_blank_env_uses_default_on(monkeypatch, name: str):
+    monkeypatch.setenv(name, "  ")
     assert gates.enabled(name) is True
 
 
@@ -37,7 +43,7 @@ def test_require_human_note_nonempty(name: str):
     note = gates.require_human_note(name)
     assert isinstance(note, str)
     assert len(note.strip()) > 20
-    assert name in note
+    assert "WIRED" in note or name in note
 
 
 def test_require_human_note_unknown_raises():
@@ -45,8 +51,7 @@ def test_require_human_note_unknown_raises():
         gates.require_human_note("SEMBLON_NOT_A_REAL_GATE")
 
 
-def test_bakeoff_winner_human_only_note():
-    """BAKEOFF_WINNER is read-only API; note forbids auto-set."""
+def test_bakeoff_winner_never_autoset_note():
     note = gates.require_human_note(gates.BAKEOFF_WINNER)
     assert "never auto-set" in note.lower()
     assert gates.BAKEOFF_WINNER == "SEMBLON_BAKEOFF_WINNER"
@@ -64,3 +69,7 @@ def test_canonical_flag_constants():
         gates.MODALITY_PRODUCT,
         gates.BAKEOFF_WINNER,
     }
+
+
+def test_wired_default():
+    assert gates.wired_default() is True
