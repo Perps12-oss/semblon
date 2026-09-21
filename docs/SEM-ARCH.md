@@ -500,7 +500,7 @@ Instead: make the architecture general first. Add intelligence capabilities one 
 
 ## 12. Planned work
 
-`ARCH-001` … `ARCH-010` are the order Semblon grows. They are not FACE-006… and not OBJECT-001. Blueprint S0–S9 remain earned history; they are not the future ticket shape.
+`ARCH-001` … `ARCH-011` are the order Semblon grows. They are not FACE-006… and not OBJECT-001. Blueprint S0–S9 remain earned history; they are not the future ticket shape.
 
 | Layer | Name | Job | Now? |
 |---|---|---|---|
@@ -514,6 +514,7 @@ Instead: make the architecture general first. Add intelligence capabilities one 
 | **ARCH-008** | Visual search | Image / text / entity into owned memory | **SHIPPED (bounded)** person lookup + same-modality similar only (`search --person/--people/--face/--similar`); not CLIP text search. |
 | **ARCH-009** | Visual memory | Durable index = media + observations + entities + relationships + events + decisions + time | **SHIPPED** as SQLite v2 tables + S6. |
 | **ARCH-010** | Intelligence Canvas | GUI consumes the architecture | **SHIPPED (overlay scope)** observation overlay (`semblon canvas` / Home Canvas). S8 shell is not default. |
+| **ARCH-011** | Job / Application boundary (APP-1) | Every UI submits ingest through `JobEngine`; Review is a Toplevel on Home’s root | **THIS SLICE** — see §22. No DDL. No WinUI. No Rust crate. |
 
 ```text
 CORE → PROVIDERS → OBSERVATIONS → CONNECTIONS → MEMORY
@@ -751,3 +752,51 @@ Illegal: silently comparing incompatible embedding spaces; silently mixing space
 | V1.1 | 2026-09-19 | ARCH-001 completed as docs in `docs/CONTRACTS.md`. No DDL. Next code-bearing slice remains ARCH-002+ only when earned; production KEEP hardening is recorded in `docs/PRODUCTION-STATUS.md`. |
 | V1.2 | 2026-09-19 | Thin FaceKitProvider (CPU) ships as ARCH-002. No second provider. GPU not claimed. |
 | V1.3 | 2026-09-19 | ARCH-003…010 tables on `main`; v2 write-through from clusters/memory/faces; optional extras; Canvas overlay. FaceKit remains the only identity engine. |
+| V1.4 | 2026-09-21 | Native-layer optionality absorbed here (§21–§23). ARCH-011 / APP-1 is the job door. APP-2 / APP-3 wait. Identity firewall unchanged. |
+
+---
+
+## 21. Native-layer optionality
+
+A later native Windows shell is optional. It is not a rewrite of Semblon.
+
+The cheap path is already in the product: keep `process_folder` / `review.py` as the engines, put one Job / Application boundary in front of them, and let every UI (tk Home, later WinUI, later a pipe probe) submit through that door.
+
+```text
+UI  →  Job / Application boundary  →  process_folder / review.py
+```
+
+Home-owned worker plus `_set_busy(True)` that disables Review / People / Search is an **application lock**, not job control. Nested `Tk().mainloop()` is why Review felt frozen — not SQLite.
+
+V1.4 absorbs that vote into this file. Do not grow a companion “native architecture” paper.
+
+---
+
+## 22. ARCH-011 / APP-1 — Job / Application boundary
+
+**Authorized now.** Closed when, on a real store:
+
+- Home submits ingest through `JobEngine`; a second submit is `JobBusy`
+- During ingest: Review, `review.html`, People, Unknown, Activity, Settings, Canvas, Search stay on; folder / Resume stay off; Cancel stays on
+- Review is a `Toplevel` on Home’s root; Home keeps pumping events
+- Review reads set `busy_timeout=5000`; mutations wait on the existing writer
+- Focused tests pass on Windows
+- No DDL, no WinUI project, no Rust crate, identity loop unchanged
+
+`JobEngine` does not write `faces.person_id` and does not touch identity `compare()`. Review mutations stay on `review.py`.
+
+This is the last architectural piece that makes a later native shell cheap. It is also the cheapest product honesty win.
+
+---
+
+## 23. Not next
+
+These wait until APP-1 is on `main` and proven during a live ingest:
+
+- APP-2 pipe probe
+- APP-3 empty WinUI shell
+- A second observer
+- Retuning `eps`
+- A systems crate
+
+Do not start those slices from this paper.

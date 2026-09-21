@@ -2,7 +2,7 @@
 
 Working name SEMBLON (SEM-blon). FACEKIT is an engineering term only.
 
-Read in order: `docs/PRODUCT.md` → `docs/CONTRACTS.md` → `docs/SEM-ARCH.md`. Do not invent a parallel plan, OBS/SIM/VISION tickets, a FACE-n successor queue, or `SEMBLON_IMPLEMENTATION_PLAN.md`.
+Read in order: `docs/PRODUCT.md` → `docs/CONTRACTS.md` → `docs/SEM-ARCH-V1.4.md`. Do not invent a parallel plan, OBS/SIM/VISION tickets, a FACE-n successor queue, or `SEMBLON_IMPLEMENTATION_PLAN.md`.
 
 ## Product
 

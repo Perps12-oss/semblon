@@ -58,6 +58,24 @@ class ReviewUiError(ValueError):
     pass
 
 
+def _ro_connect(store: Path) -> sqlite3.Connection:
+    """Read-only store connection. Waits on the existing writer (busy_timeout=5000)."""
+    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    return conn
+
+
+def make_review_root(parent=None, *, tk_mod=None):
+    """Tk when standalone; Toplevel on Home's root so Home keeps pumping events."""
+    if tk_mod is None:
+        _ensure_tk()
+        tk_mod = tk
+    if parent is not None:
+        return tk_mod.Toplevel(parent), False
+    return tk_mod.Tk(), True
+
+
 def resolve_run_id(store: Path, run_id: str | None) -> str:
     """Use --run when given; otherwise the latest run that still has faces.
 
@@ -67,8 +85,7 @@ def resolve_run_id(store: Path, run_id: str | None) -> str:
     if not store.is_file():
         raise ReviewUiError(f"store not found: {store}")
     if run_id:
-        conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
-        conn.row_factory = sqlite3.Row
+        conn = _ro_connect(store)
         row = conn.execute("SELECT 1 FROM runs WHERE run_id=?", (run_id,)).fetchone()
         conn.close()
         if row is None:
@@ -175,8 +192,7 @@ def load_board(
 ) -> dict:
     """Read-only board for the review UI. Does not enrol anyone."""
     store = Path(store)
-    conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
+    conn = _ro_connect(store)
     run = conn.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
     if run is None:
         conn.close()
@@ -563,7 +579,7 @@ def _actions_for_kind(kind: str) -> dict[str, bool]:
 class ReviewApp:
     """Minimal tkinter surface. All mutations go through review.py."""
 
-    def __init__(self, store: Path, run_id: str):
+    def __init__(self, store: Path, run_id: str, *, parent=None):
         _ensure_tk()
         self.store = Path(store)
         self.run_id = run_id
@@ -574,7 +590,7 @@ class ReviewApp:
         self._selected_faces: set[str] = set()
         self._draw_gen = 0
 
-        self.root = tk.Tk()
+        self.root, self._owns_loop = make_review_root(parent)
         self.root.title(f"Semblon Review — {self.run_id}")
         self.root.geometry("980x640")
 
@@ -938,12 +954,18 @@ class ReviewApp:
         self.reload(invalidate_tracks=False)
 
     def run(self) -> None:
-        self.root.mainloop()
+        if self._owns_loop:
+            self.root.mainloop()
 
 
-def run_review_ui(store: Path | None = None, run_id: str | None = None) -> dict:
+def run_review_ui(
+    store: Path | None = None,
+    run_id: str | None = None,
+    *,
+    parent=None,
+) -> dict:
     store_path = Path(store) if store is not None else default_store_path()
     rid = resolve_run_id(store_path, run_id)
-    app = ReviewApp(store_path, rid)
+    app = ReviewApp(store_path, rid, parent=parent)
     app.run()
     return {"store": str(store_path.resolve()), "run_id": rid}

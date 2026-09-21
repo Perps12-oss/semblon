@@ -39,7 +39,7 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | Home | **SHIPPED but architecturally constrained** |
 | Review UI | **SHIPPED, legacy Tk surface** |
 | Native application shell | **NOT decided/implemented** |
-| APP-1 JobEngine boundary | **NOT merged** |
+| APP-1 JobEngine boundary | **MERGED** (`main`) |
 | IPC boundary | **NOT implemented** |
 | Native ARM64 performance | **BLOCKED** |
 | Multi-worker ingest | **EXPERIMENTAL / not default** |
