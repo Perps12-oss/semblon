@@ -172,8 +172,9 @@ R3 question:
 Candidates can include WinUI 3, Qt/PySide, or another justified native approach.  
 Previously rejected/deferred paths stay rejected/deferred (Electron, Tauri, permanent Tk shell, CustomTkinter).
 
-**Visual / interaction contract (approved):** `docs/R3-BRIEF.md` (v2).  
+**Visual / interaction contract (approved):** `docs/R3-BRIEF.md` (v2 / v2.1).  
 Two-axis identity language (evidence × decision), five display states including **Ruled out**, state matrix + processing grammar, Library vs observation layer, toolkit bake-off against six measured criteria.  
+**§8.1–§8.4 artifact pack:** `docs/r3-artifacts/README.md` (DONE). Next human step: toolkit bake-off per `docs/r3-artifacts/05-bake-off-checklist.md` (§6 criteria; no fake PASS).  
 R3 does **not** start by polishing Tk Home. Frames and bake-off follow APP-1 Windows live gate + R2 IPC probe; order inside the brief §8.
 
 Contract gap called out by the brief: durable **Ruled out** vs today’s Ignore/`reject` policy needs a named `docs/CONTRACTS.md` slice before the shell ships that state. Do not invent columns from the brief alone.
@@ -336,8 +337,8 @@ CURRENT MAIN
        -> Windows live gate + contract tests
        -> merge gate
   -> R2 IPC probe
-  -> R3 brief artifacts (state matrix complete · collision frames · state-triple grid)
-  -> Toolkit bake-off (`docs/R3-BRIEF.md` §6)
+  -> R3 brief artifacts §8.1–§8.4 DONE (`docs/r3-artifacts/`)
+  -> Toolkit bake-off (`docs/R3-BRIEF.md` §6 · checklist `docs/r3-artifacts/05-bake-off-checklist.md`)  ← next
   -> R3 shell decision
   -> Native production shell
   -> unified Home/Review/Canvas experiences
@@ -372,3 +373,4 @@ PERF: ARM64 + workers + provider + scale
 |---|---|---|
 | V1.4 | 2026-09-21 | Reconciled roadmap authority: FACE closed; APP-1 first; Windows live gate; IPC as boundary test; measurement-first performance track; single planning source. |
 | V1.4.1 | 2026-09-21 | Point R3 at approved `docs/R3-BRIEF.md` v2; frames before toolkit bake-off; Ruled out flagged as CONTRACTS gap. |
+| V1.4.2 | 2026-09-21 | R3 §8.1–§8.4 artifacts DONE under `docs/r3-artifacts/`; sequence next = toolkit bake-off (human-run checklist; no measurements claimed). |

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>R3 §8.4 — State-triple grid (30 cards)</title>
+  <style>
+    :root {
+      --bg: #121214;
+      --s2: #1c1c1f;
+      --text: #e8e8ea;
+      --text2: #a0a0a6;
+      --halo: #f2f2f4;
+      --sem: #9aa0a6;
+      --frame: #2a2a2e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 13px/1.35 system-ui, Segoe UI, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+    }
+    h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+    .meta { color: var(--text2); margin-bottom: 20px; max-width: 80ch; }
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 12px 20px;
+      margin-bottom: 20px; color: var(--text2); font-size: 12px;
+    }
+    .grid {
+      display: grid;
+      /* rowhead + 6 analysis columns */
+      grid-template-columns: minmax(100px, 0.7fr) repeat(6, minmax(140px, 1fr));
+      gap: 10px;
+    }
+    #count {
+      margin-top: 16px;
+      color: var(--text2);
+      font-size: 12px;
+    }
+    .colhead, .rowhead {
+      color: var(--text2);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 4px;
+    }
+    .rowhead { display: flex; align-items: center; }
+    .card {
+      background: var(--s2);
+      border: 1px solid var(--frame);
+      border-radius: 6px;
+      padding: 10px;
+      min-height: 132px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .card .channels {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+    .face {
+      width: 48px; height: 48px;
+      border-radius: 3px;
+      background: #3a4540;
+      position: relative;
+      flex-shrink: 0;
+    }
+    .notch {
+      position: absolute;
+      top: -5px; right: -5px;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #0e0e10;
+      box-shadow: 0 0 0 1.5px var(--halo);
+    }
+    .id-unknown { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
+    .id-unknown .notch { border: 1.5px solid var(--sem); background: transparent; }
+    .id-possible { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
+    .id-possible .notch {
+      background: conic-gradient(var(--sem) 0 180deg, transparent 180deg 360deg);
+      border: 1.5px solid var(--sem);
+    }
+    .id-confirmed { outline: 2px solid var(--sem); outline-offset: 1px; }
+    .id-confirmed .notch { background: var(--sem); border: none; }
+    .id-ruled { outline: 1.5px dashed var(--sem); outline-offset: 1px; }
+    .id-ruled .notch { border: 1.5px solid var(--sem); background: transparent; }
+    .id-ruled .neq {
+      position: absolute; top: -9px; right: -16px;
+      font-size: 12px; color: var(--sem); font-weight: 700;
+    }
+    .id-ruled .notch::after {
+      content: "";
+      position: absolute; left: 1px; top: 4px;
+      width: 9px; height: 1.5px; background: var(--sem);
+      transform: rotate(-45deg);
+    }
+    .id-ignored { opacity: 0.35; }
+    .id-ignored .notch { display: none; }
+
+    .ring {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 2px solid var(--sem);
+      position: relative;
+      flex-shrink: 0;
+    }
+    .ring-hollow { background: transparent; }
+    .ring-partial {
+      border-color: transparent;
+      background: conic-gradient(var(--sem) 0 110deg, transparent 110deg 360deg);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+    }
+    .ring-solid { background: var(--sem); border: none; }
+    .ring-solid::after {
+      content: "";
+      position: absolute; inset: 3px;
+      border-radius: 50%;
+      background: var(--s2);
+    }
+    .ring-failed { border-right-color: transparent; }
+    .ring-failed::after {
+      content: "!"; position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: var(--sem);
+    }
+    .ring-cancel::after {
+      content: "";
+      position: absolute; left: 3px; top: 9px;
+      width: 14px; height: 2px; background: var(--sem);
+      transform: rotate(-45deg);
+    }
+    .ring-dotted { border-style: dotted; }
+    .pause-bar {
+      position: absolute; left: 6px; top: 5px;
+      width: 2px; height: 10px; background: var(--sem);
+      box-shadow: 4px 0 0 var(--sem);
+    }
+    .meta-line { font-size: 10px; color: var(--text2); }
+    .id-name { font-size: 11px; color: var(--text); }
+    .corner { font-size: 10px; color: var(--text2); margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <h1>R3 §8.4 — State-triple grid (30 cards)</h1>
+  <p class="meta">
+    Every card exposes three channels: <strong>ingest</strong> (row) × <strong>analysis</strong> (column) × <strong>identity notch</strong> (cycles Unknown → Possible → Confirmed → Ruled out → Ignored across the 30 cells).
+    Confusable pair = wrong channel assignment. Spec: <code>docs/R3-BRIEF.md</code> §7–§8.4.
+  </p>
+  <div class="legend">
+    <span>Ingest (5): queued · running · paused · completed · cancelled</span>
+    <span>Analysis (6): none · queued · detecting · embedding · clustered · failed</span>
+    <span>Identity (cycles): U · P · C · R · I</span>
+  </div>
+  <div id="grid" class="grid"></div>
+  <p id="count"></p>
+  <script>
+    const INGEST = ["queued", "running", "paused", "completed", "cancelled"];
+    const ANALYSIS = ["none", "queued", "detecting", "embedding", "clustered", "failed"];
+    const IDENTITY = ["unknown", "possible", "confirmed", "ruled", "ignored"];
+    const ID_LABEL = {
+      unknown: "Unknown",
+      possible: "Possible: Maya R. (0.71)",
+      confirmed: "Confirmed",
+      ruled: "Ruled out",
+      ignored: "Ignored",
+    };
+
+    function ringHTML(kind) {
+      if (kind === "none") return '<span class="meta-line">—</span>';
+      if (kind === "queued") return '<div class="ring ring-hollow" title="queued"></div>';
+      if (kind === "running" || kind === "detecting" || kind === "embedding")
+        return '<div class="ring ring-partial" title="processing"></div>';
+      if (kind === "paused")
+        return '<div class="ring ring-partial"><span class="pause-bar"></span></div>';
+      if (kind === "completed" || kind === "clustered")
+        return '<div class="ring ring-solid" title="completed"></div>';
+      if (kind === "cancelled")
+        return '<div class="ring ring-hollow ring-cancel" title="cancelled"></div>';
+      if (kind === "failed")
+        return '<div class="ring ring-failed" title="failed"></div>';
+      if (kind === "stale")
+        return '<div class="ring ring-dotted" title="stale"></div>';
+      return '';
+    }
+
+    function faceHTML(id) {
+      const neq = id === "ruled" ? '<span class="neq">≠</span>' : '';
+      const notch = id === "ignored" ? '' : '<span class="notch"></span>';
+      return `<div class="face id-${id}">${notch}${neq}</div>`;
+    }
+
+    const root = document.getElementById("grid");
+    // header row
+    root.innerHTML += '<div class="colhead"></div>';
+    for (const a of ANALYSIS) {
+      root.innerHTML += `<div class="colhead">analysis · ${a}</div>`;
+    }
+
+    let n = 0;
+    for (const ing of INGEST) {
+      root.innerHTML += `<div class="rowhead">ingest · ${ing}</div>`;
+      for (const ana of ANALYSIS) {
+        const id = IDENTITY[n % 5];
+        n += 1;
+        const card = document.createElement("div");
+        card.className = "card";
+        card.dataset.card = String(n);
+        card.innerHTML = `
+          <div class="corner">#${String(n).padStart(2, "0")}</div>
+          <div class="channels">
+            <div title="ingest">${ringHTML(ing === "running" ? "running" : ing)}</div>
+            <div title="analysis">${ringHTML(ana === "detecting" || ana === "embedding" ? "running" : ana === "clustered" ? "completed" : ana === "none" ? "none" : ana)}</div>
+            ${faceHTML(id)}
+          </div>
+          <div class="meta-line">ingest=${ing} · analysis=${ana}</div>
+          <div class="id-name">${ID_LABEL[id]}</div>
+        `;
+        root.appendChild(card);
+      }
+    }
+    const expected = INGEST.length * ANALYSIS.length;
+    const countEl = document.getElementById("count");
+    const ok = n === expected && expected === 30;
+    countEl.textContent = `Card count: ${n} (expected 30 = ${INGEST.length} ingest × ${ANALYSIS.length} analysis)${ok ? "" : " — COUNT MISMATCH"}`;
+    if (!ok) countEl.style.color = "#e5484d";
+  </script>
+</body>
+</html>
