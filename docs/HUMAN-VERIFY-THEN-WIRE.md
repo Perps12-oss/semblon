@@ -1,46 +1,49 @@
 # Human verify → then wire
 
-**Status:** **WIRED** 2026-09-21 — human verified; product defaults ON (opt out via env `=0`)  
+**Status:** Code gates module **WIRED** 2026-09-21 (defaults ON; opt out via env `=0`).  
+**Owner policy:** remaining **human ship gates are DEFERRED TO LAST** — see `docs/SEM-ARCH-V1.4.md` §I.5. Development must continue without waiting.  
 **Gates module:** `semblon/gates.py` · overview `docs/GATES.md`  
-**Pattern:** code existed → human verified → **wired** (this revision).
+**Pattern:** code may land and wire behind flags; inventing PASS is forbidden; final human ship proof runs last.
 
 | # | Gate | Result |
 |---|---|---|
-| 1 | R3 toolkit bake-off (§6) | **PASS** (human) — gate ON; toolkit name still recorded in SEM-ARCH shell decision |
-| 2 | Ruled out | **PASS** (human) — review-ui **Rule out…** + CLI wired |
-| 3 | Live overlay | **PASS** (human) — lab + Home **Live…** (explicit click) |
-| 4 | OCR / CLIP / pose honesty | **PASS** (human) — Settings shows notes when `MODALITY_PRODUCT` on |
-| 5 | APP-1 C.3 | **PASS** (human) — see SEM-ARCH C.3 / production status |
-| 6 | R2 IPC probe | **PASS** (human) — keep probe-only; merge when on branch |
-| 7 | PERF workers | **PASS** (human measure) — product default remains `workers=1` |
-| 8 | Hierarchy frames | **PASS** (human review of TEST frames) |
+| 1 | R3 toolkit bake-off (§6) **measurements** | **DEFERRED TO LAST** — harness/checklist exist; no six-of-six PASS claimed |
+| 2 | Ruled out **ship claim** | **DEFERRED TO LAST** — scaffold/flag may be ON; product verb claim waits §I.5 |
+| 3 | Live overlay | Code wired (lab + Home **Live…**); owner live proof may still run last |
+| 4 | OCR / CLIP / pose honesty | Code wired (Settings notes when `MODALITY_PRODUCT` on) |
+| 5 | APP-1 C.3 Windows live | **DEFERRED TO LAST** — JobEngine on `main`; live ingest proof last |
+| 6 | R2 IPC probe | Probe on `main` (boundary only) |
+| 7 | PERF workers | Harness exists; product default remains `workers=1` |
+| 8 | Hierarchy frames | TEST frames on `main` (not SPEC) |
+| 9 | Named §8.7 shell winner | **DEFERRED TO LAST** |
 
 ---
 
-## Wire actions completed
+## Wire actions completed (code)
 
 1. `semblon.gates.enabled` defaults **ON**; explicit `0`/`false`/`off` opts out.
-2. Review-ui always offers **Rule out…** (still refuses when opted out).
+2. Review-ui may offer **Rule out…** when flag on (ship claim still §I.5).
 3. Home **Live…** launches overlay with `from_home=True` (asks source/seconds; no auto-start).
 4. Settings prints modality honesty `notes` when `MODALITY_PRODUCT` is on.
 5. Bake-off winner flag ON = authorization only — does not pick WinUI vs Qt.
 
-## Remaining human (not a gate flip)
+## Remaining human — **DEFERRED TO LAST** (SEM-ARCH §I.5)
 
-- Name the R3 shell toolkit winner in writing (`SEM-ARCH-V1.4` shell decision).
-- Merge `grok/r2-ipc-probe` / `grok/app1-c3-gate-pass` docs onto `main` if not already.
-- Optional: run PERF harness folder and decide whether to ever raise default workers (still 1 today).
+- APP-1 C.3 Windows live ingest proof
+- Toolkit bake-off §8.5 measurements (C1–C6) and named §8.7 winner
+- Ruled out product-wire ship claim
+- Any other owner-machine verifies in sections below
 
-For detailed verify procedures see the sections below (historical).
+Do **not** block shell chrome / Application-API development on these. For detailed verify procedures see the sections below (historical).
 
 ---
 
 ## How to use
 
 1. Confirm the **code already exists** path(s) on your branch / `main`.
-2. Run **How to verify** on owner Windows hardware (quote paths; project venv).
+2. Run **How to verify** on owner Windows hardware (quote paths; project venv) **when executing §I.5 last**.
 3. Record Result: PASS / FAIL + date + machine + evidence path (screenshots, JSON, notes).
-4. Only after PASS, follow **Wire after PASS** exactly. Do not invent extra defaults.
+4. Only after PASS, treat the item as a ship claim. Do not invent PASS earlier.
 
 ---
 

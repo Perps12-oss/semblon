@@ -1,10 +1,10 @@
 # CONTRACTS slice — Ruled out
 
-**Status:** NAMED + code scaffold; **UNWIRED** as a product default pending human verify  
+**Status:** NAMED + code scaffold; product **ship claim** for the verb is **DEFERRED TO LAST** (SEM-ARCH-V1.4 §I.5). Development/scaffolds continue.  
 **Date:** 2026-09-21  
 **Authority parent:** `docs/CONTRACTS.md`  
 **Brief driver:** `docs/R3-BRIEF.md` §1 (two-axis identity; Ruled out vs Ignored)  
-**Flag:** `SEMBLON_RULED_OUT` (default **ON** after human wire 2026-09-21; opt out `=0`; canonical name `semblon.gates.RULED_OUT`)
+**Flag:** `SEMBLON_RULED_OUT` (code default may be ON; opt out `=0`; canonical name `semblon.gates.RULED_OUT`). Human ship verification of the product verb remains §I.5 last.
 
 This slice closes the contract gap called out in R3: Ignore alone cannot represent a durable negative identity decision.
 
@@ -26,7 +26,7 @@ Ruled out is first-class: dismissed-with-rejection must not share a bit with nev
 | Cluster row | **does not** set `clusters.status='ignored'` | sets `clusters.status='ignored'` |
 | Board hide | **does not** hide by default (`hidden` not set) | face ignore sets `policy.hidden=true`; cluster leave board |
 | Visual (shell, later) | dashed + `≠` / slash notch | none, ~35% opacity |
-| Product wire | **UNWIRED** until human verify | wired (`review ignore`, review-ui Ignore) |
+| Product wire | **ship claim DEFERRED TO LAST** (§I.5); scaffold OK | wired (`review ignore`, review-ui Ignore) |
 
 Media stays in Library either way. Ruled out does not delete media, faces, or clusters. It does not enrol, merge, or change `compare()` / DBSCAN scores. Identity firewall unchanged: FaceKit only.
 

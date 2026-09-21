@@ -52,8 +52,10 @@ Overall bake-off for a toolkit: **PASS only if all six are PASS**. Partial score
 
 1. Record results (this file **and** linked `tools/r3-bakeoff/results/*.json`) with machine + toolkit versions.  
 2. Fill `docs/r3-artifacts/07-shell-decision.md` — winner only if six-of-six PASS.  
-3. Return to `docs/SEM-ARCH-V1.4.md` §J for **native production shell**.  
-4. Durable **Ruled out** remains a separate CONTRACTS gap — bake-off does not invent columns.
+3. Return to `docs/SEM-ARCH-V1.4.md` §J for **native production shell** claims.  
+4. Durable **Ruled out** ship claim remains §I.5 last — bake-off does not invent columns.
+
+**Timing:** human bake-off is **DEFERRED TO LAST** (SEM-ARCH §I.5). Shell chrome development continues without measurements.
 
 ## Related (already landed)
 
