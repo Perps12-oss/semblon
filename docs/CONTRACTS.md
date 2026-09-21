@@ -108,3 +108,36 @@ FAR/FRR on confirmatory sets only. Mined tail is discovery. Remine does not refr
 Local dump confirmatory (`docs/FACE-002-CONFIRMATORY.md`): 22 pairs; FAR 0/11, FRR 1/11 at frozen threshold 0.60. That is harness-measurable on this dump, not a 10k or public-FRTE claim. Identify is 1:N vs named persons, never clusters. Cluster ≠ person. STRONG ≠ person until `name`. Pair labels ≠ cluster/person ground truth.
 
 Gate index: `docs/FACE-GATES.md`. Incremental ingest + inbox are implemented (1.1). S7a sampled video ingest is implemented. Experimental `ingest --workers` hashes stills with bounded submission (`docs/PERF-WORKERS.md`); product default remains 1. No `--batch` / `embed_batch` until batched inference exists. Product-default workers>1 and GPU EP remain measurement-gated, not P1-blocked.
+
+## Ruled out (FLAGGED — not wired)
+
+**Status:** CONTRACTS gap / scaffold only. Gate: `ruled_out` / `SEMBLON_GATE_RULED_OUT` (`semblon/gates.py`). Code: `semblon/ruled_out.py`. **Not wired** to CLI, `review-ui`, or Home. Do not treat this section as shipping authority until human VERIFY.
+
+### Gap vs Ignore / reject today
+
+R3 (`docs/R3-BRIEF.md`) separates two human negatives:
+
+| Display | Axis meaning | Today in store |
+|---|---|---|
+| **Ignored** | Human **deferred** — leave the observation layer; media stays in Library | `decisions.kind='reject'` + `policy_json.action='ignore'` (`review ignore_subject`); cluster may get `status='ignored'` |
+| **Ruled out** | Human **rejected** — durable negative on a candidate / link | **Missing as a distinct durable verb.** Reject+ignore collapses “never this person” with “park for later.” |
+
+Without a named ruled-out shape, dismissed and never-considered share one bit. That is the gap.
+
+### PROPOSAL (pending human VERIFY) — existing columns only
+
+No new `decisions.kind` value. No new DDL. Reuse the Ignore pattern with a distinct policy action:
+
+| Field | Ignore (today) | Ruled out (**PROPOSAL**) |
+|---|---|---|
+| `decisions.kind` | `reject` | `reject` |
+| `policy_json.action` | `ignore` | `ruled_out` |
+| Cluster / face row mutation | may set `clusters.status='ignored'` / hide from board | **none** in this proposal — decision row is the durable negative; do not invent person/cluster identity columns |
+
+Optional policy keys (same envelope as ignore; not new columns): `disposition`, `person_id` (candidate ruled out), `reason`, subject ids already on the decision row (`face_id` / `cluster_id`).
+
+Scaffold API: `display_state(evidence, decision)` (R3 five-state matrix), `propose_ruled_out_policy(...)`, `record_ruled_out(..., dry_run=True)` behind the gate. Default `dry_run=True` returns the intended row without writing; write only when gate enabled **and** `dry_run=False`.
+
+### Explicit: no DDL in this slice
+
+This section and `semblon/ruled_out.py` invent **no** schema columns. Do not add `kind='ruled_out'`, do not alter `CHECK (kind IN (...))`, do not add persons/cluster fields from R3 alone. Human VERIFY of this proposal (or a revised shape) is required before CLI/UI wire.
