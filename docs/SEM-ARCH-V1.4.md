@@ -172,6 +172,12 @@ R3 question:
 Candidates can include WinUI 3, Qt/PySide, or another justified native approach.  
 Previously rejected/deferred paths stay rejected/deferred (Electron, Tauri, permanent Tk shell, CustomTkinter).
 
+**Visual / interaction contract (approved):** `docs/R3-BRIEF.md` (v2).  
+Two-axis identity language (evidence × decision), five display states including **Ruled out**, state matrix + processing grammar, Library vs observation layer, toolkit bake-off against six measured criteria.  
+R3 does **not** start by polishing Tk Home. Frames and bake-off follow APP-1 Windows live gate + R2 IPC probe; order inside the brief §8.
+
+Contract gap called out by the brief: durable **Ruled out** vs today’s Ignore/`reject` policy needs a named `docs/CONTRACTS.md` slice before the shell ships that state. Do not invent columns from the brief alone.
+
 ---
 
 ## E) Frontend migration constraints
@@ -180,7 +186,8 @@ Previously rejected/deferred paths stay rejected/deferred (Electron, Tauri, perm
 2. Keep Tk Home as a temporary compatibility frontend while the boundary is extracted.  
 3. Keep `review-ui` as the production/evidence surface during migration.  
 4. Keep `review.html` as an engineering/forensic artifact, not the end-user shell.  
-5. Keep PySide6 / QML under `tools/s8_toolkit_spike` as reference only; do not auto-promote to production. There is no second product Home shell on `main`.
+5. Keep PySide6 / QML under `tools/s8_toolkit_spike` as reference only; do not auto-promote to production. There is no second product Home shell on `main`.  
+6. Shell look-and-feel follows `docs/R3-BRIEF.md`; do not invent a parallel visual plan.
 
 ---
 
@@ -329,7 +336,8 @@ CURRENT MAIN
        -> Windows live gate + contract tests
        -> merge gate
   -> R2 IPC probe
-  -> Native frontend architecture evaluation
+  -> R3 brief artifacts (state matrix complete · collision frames · state-triple grid)
+  -> Toolkit bake-off (`docs/R3-BRIEF.md` §6)
   -> R3 shell decision
   -> Native production shell
   -> unified Home/Review/Canvas experiences
@@ -363,3 +371,4 @@ PERF: ARM64 + workers + provider + scale
 | Version | Date | Summary |
 |---|---|---|
 | V1.4 | 2026-09-21 | Reconciled roadmap authority: FACE closed; APP-1 first; Windows live gate; IPC as boundary test; measurement-first performance track; single planning source. |
+| V1.4.1 | 2026-09-21 | Point R3 at approved `docs/R3-BRIEF.md` v2; frames before toolkit bake-off; Ruled out flagged as CONTRACTS gap. |
