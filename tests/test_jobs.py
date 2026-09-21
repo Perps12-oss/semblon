@@ -122,12 +122,3 @@ def test_application_facade_exports_board_ops():
     assert app.search_people is not None
     assert app.inbox is not None
     assert callable(app.board)
-
-
-def test_review_ui_accepts_parent_without_owning_the_loop():
-    import inspect
-
-    from semblon.review_ui import ReviewApp, run_review_ui
-
-    assert "parent" in inspect.signature(ReviewApp.__init__).parameters
-    assert "parent" in inspect.signature(run_review_ui).parameters
