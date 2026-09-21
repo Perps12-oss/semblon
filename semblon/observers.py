@@ -75,7 +75,35 @@ def contour_objects(img, *, min_area: int = 400, max_regions: int = 8) -> list[d
 
 
 def optional_status() -> dict:
-    """Honest availability of extra providers. Missing extras are not a crash."""
+    """Honest availability of extra providers. Missing extras are not a crash.
+
+    Default (gate OFF): import-only checks — unchanged historical shape.
+    When ``observer_honesty`` is ON: Pose/OCR/CLIP use capability probes
+    (import ≠ runnable). Contour objects remain always-on and are not a
+    trained detector pack.
+    """
+    from semblon import gates
+
+    if gates.is_enabled("observer_honesty"):
+        from semblon.observer_probes import probe_all
+
+        probes = probe_all()
+        notes = {key: probes[key]["detail"] for key in ("ocr", "clip", "pose")}
+        notes["object"] = "opencv contour regions (not a trained object detector)"
+        return {
+            "facekit": True,
+            "appearance": True,
+            "object": True,
+            "object_kind": "contour_regions",
+            "ocr": bool(probes["ocr"]["runnable"]),
+            "clip": bool(probes["clip"]["runnable"]),
+            "pose": bool(probes["pose"]["runnable"]),
+            "notes": notes,
+            "probes": probes,
+            "identity": "facekit only",
+            "note": "optional extras never write faces.person_id or embeddings.modality=face",
+        }
+
     ocr = clip = pose = False
     notes = {}
     try:
