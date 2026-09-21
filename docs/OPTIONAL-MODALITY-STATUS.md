@@ -1,8 +1,8 @@
-# Optional modality status (honesty)
+"""Optional modality status (honesty)
 
-Optional OCR / CLIP / pose observers are **experimental**. They never vote on identity (`faces.person_id`, `embeddings.modality='face'`, `compare()`, DBSCAN). FaceKit remains the only identity engine.
+Optional OCR / CLIP / pose observers are **observation / retrieval only**. They never vote on identity (`faces.person_id`, `embeddings.modality='face'`, `compare()`, DBSCAN). FaceKit remains the only identity engine.
 
-`optional_status()` (CLI: `lab providers`; Home Settings line) must match what the call path needs — not a bare `import`.
+`optional_status()` (CLI: `lab providers`; Home Settings) must match what the call path needs — not a bare `import`.
 
 | Flag | Ready only when | Probe |
 |---|---|---|
@@ -10,9 +10,19 @@ Optional OCR / CLIP / pose observers are **experimental**. They never vote on id
 | `clip` | `open_clip` + `torch` import **and** local `ViT-B-32` / `openai` weights exist | `probe_clip_status` / `find_local_clip_weights` (no download) |
 | `pose` | `mediapipe.solutions.pose` exists (API used by `pose_landmarks`) | `probe_pose_status` |
 
-Missing pieces → `False` plus a `notes[<key>]` string starting with `unavailable:`. Do not claim production-ready. Do not change product defaults until a human verifies the binaries/weights on the target machine.
+Missing pieces → `False` plus a `notes[<key>]` string starting with `unavailable:`. Do not claim production-ready when probes fail.
 
-## Human verify (before Settings copy / product defaults)
+## Product path (gated `SEMBLON_MODALITY_PRODUCT`, default ON)
+
+Wire module: `semblon.gates.MODALITY_PRODUCT`.
+
+1. **Settings UX** — Home Settings (Inspector) shows honesty booleans + `notes` via `modality_product_settings_lines()`.
+2. **Optional ingest** — `resolve_product_observers()` / Home `resolve_home_observers()` appends `ocr` / `clip` / `pose` **only when** the matching probe is ready. Base remains `face,color,object`.
+3. **Identity firewall** — optional items write `observation_items` / non-face `embeddings` only. Never `faces.person_id` or `embeddings.modality='face'`.
+
+When the gate is opted out (`SEMBLON_MODALITY_PRODUCT=0`), Settings still lists probe results but product ingest stays on the base observer list.
+
+## Human verify (before claiming extras on a machine)
 
 Run on the machine that will run Semblon (quote paths; use the project venv):
 
@@ -32,13 +42,7 @@ Check the JSON:
 3. **Pose** — `observers.pose` is `true` only if `import mediapipe` exposes `mediapipe.solutions.pose`.
    - A mediapipe package without `solutions` (e.g. some 1.0 builds) must stay `false` with note `mediapipe.solutions.pose missing`.
 
-## After verify — wiring (human / follow-up slice)
-
-Once the three flags match reality on the owner machine:
-
-- Home Settings may print `notes` when a flag is false (today it prints booleans only).
-- Product docs / defaults may list OCR/CLIP/pose as optional extras **for that machine**, still Level 3 experimental, still non-identity.
-- Do not flip defaults on for clean `install-windows.ps1` installs that lack the binary/weights.
+Clean `install-windows.ps1` installs without binaries/weights correctly report unavailable; product defaults do not invent readiness.
 
 ## Out of scope here
 

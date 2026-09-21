@@ -18,7 +18,7 @@ if not enabled(LIVE_OVERLAY):
 | `SEMBLON_RULED_OUT` | `RULED_OUT` | **ON** | Ruled out review verb (not Ignore) |
 | `SEMBLON_LIVE_OVERLAY` | `LIVE_OVERLAY` | **ON** | Live overlay lab/CLI |
 | `SEMBLON_WIRE_HOME_LIVE` | `WIRE_HOME_LIVE` | **ON** | Home **Live…** button (explicit click; no auto-webcam) |
-| `SEMBLON_MODALITY_PRODUCT` | `MODALITY_PRODUCT` | **ON** | Settings honesty notes for OCR/CLIP/pose |
+| `SEMBLON_MODALITY_PRODUCT` | `MODALITY_PRODUCT` | **ON** | Productized optional OCR/CLIP/pose: Settings rich status + probe-gated ingest defaults |
 | `SEMBLON_BAKEOFF_WINNER` | `BAKEOFF_WINNER` | **ON** | Authorize R3 shell decision path — does **not** invent WinUI vs Qt |
 
 Bake-off runners and CI must never write `SEMBLON_BAKEOFF_WINNER`. Human still names the toolkit in SEM-ARCH.

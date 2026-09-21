@@ -43,9 +43,9 @@ _HUMAN_NOTES: dict[str, str] = {
         "no auto-start webcam. Opt out: SEMBLON_WIRE_HOME_LIVE=0."
     ),
     MODALITY_PRODUCT: (
-        "Modality product surfaces WIRED (human verify 2026-09-21). Settings may "
-        "show honesty notes. Observers still never vote on identity. "
-        "Opt out: SEMBLON_MODALITY_PRODUCT=0."
+        "Modality product surfaces WIRED (human verify 2026-09-21). PRODUCTIZED "
+        "optional: Settings rich status + probe-gated ingest defaults. Observers "
+        "still never vote on identity. Opt out: SEMBLON_MODALITY_PRODUCT=0."
     ),
     BAKEOFF_WINNER: (
         "Bake-off gate WIRED (human verify 2026-09-21) — authorization to proceed "

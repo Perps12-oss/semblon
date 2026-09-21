@@ -172,8 +172,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     ing.add_argument(
         "--observers",
-        default="face",
-        help="comma list: face,color,object,text,clip,pose (face is identity; extras never vote)",
+        default=None,
+        help=(
+            "comma list: face,color,object,text,clip,pose "
+            "(default: face + ready optional extras when MODALITY_PRODUCT; "
+            "face is identity; extras never vote)"
+        ),
     )
     ing.add_argument("--prefer-gpu", action="store_true", help="use GPU EP if available; recorded honestly")
     ing.add_argument(
@@ -210,7 +214,11 @@ def main(argv: list[str] | None = None) -> int:
         help="do not open review.html automatically",
     )
     proc.add_argument("--workers", type=int, default=1)
-    proc.add_argument("--observers", default="face")
+    proc.add_argument(
+        "--observers",
+        default=None,
+        help="default: face + ready optional extras when MODALITY_PRODUCT",
+    )
     proc.add_argument("--prefer-gpu", action="store_true")
     proc.add_argument(
         "--resume",
@@ -380,13 +388,22 @@ def main(argv: list[str] | None = None) -> int:
     srch.add_argument("--run", default=None, help="required with --face")
     srch.add_argument("--people", action="store_true", help="list active named persons")
     srch.add_argument("--similar", default=None, help="observation_item_id in a non-identity space")
+    srch.add_argument(
+        "--text",
+        default=None,
+        help="substring over OCR observation payloads (not identity; no new columns)",
+    )
 
     wat = sub.add_parser("watch", help="poll a folder and ingest incrementally (cancellable)")
     wat.add_argument("folder", type=Path)
     wat.add_argument("--store", required=True, type=Path)
     wat.add_argument("--interval", type=float, default=5.0)
     wat.add_argument("--once", action="store_true")
-    wat.add_argument("--observers", default="face")
+    wat.add_argument(
+        "--observers",
+        default=None,
+        help="default: face + ready optional extras when MODALITY_PRODUCT",
+    )
 
     liv = sub.add_parser(
         "live",
@@ -640,14 +657,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "ingest":
         from semblon.ingest import CancelledError, ingest
+        from semblon.observers import resolve_product_observers
 
+        observers = args.observers if args.observers is not None else resolve_product_observers(base="face")
         try:
             rec = ingest(
                 args.folder,
                 args.store,
                 reprocess=args.reprocess,
                 workers=args.workers,
-                observers=args.observers,
+                observers=observers,
                 prefer_gpu=args.prefer_gpu,
                 resume_run_id=args.resume_run,
             )
@@ -664,8 +683,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "process":
+        from semblon.observers import resolve_product_observers
         from semblon.process import ProcessCancelled, ProcessError, process_folder
 
+        observers = args.observers if args.observers is not None else resolve_product_observers(base="face")
         try:
             from semblon.progress import format_progress_line
 
@@ -679,7 +700,7 @@ def main(argv: list[str] | None = None) -> int:
                 reprocess=args.reprocess,
                 open_review=not args.no_open,
                 workers=args.workers,
-                observers=args.observers,
+                observers=observers,
                 prefer_gpu=args.prefer_gpu,
                 resume=args.resume,
                 on_event=_cli_progress,
@@ -912,7 +933,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "search":
-        from semblon.search import SearchError, search_face, search_people, search_person, search_similar
+        from semblon.search import (
+            SearchError,
+            search_face,
+            search_people,
+            search_person,
+            search_similar,
+            search_text,
+        )
 
         try:
             if args.people:
@@ -926,8 +954,13 @@ def main(argv: list[str] | None = None) -> int:
                 rec = search_face(args.store, args.run, args.face)
             elif args.similar:
                 rec = search_similar(args.store, args.similar)
+            elif args.text is not None:
+                rec = search_text(args.store, args.text)
             else:
-                print("search requires --people, --person, --face, or --similar", file=sys.stderr)
+                print(
+                    "search requires --people, --person, --face, --similar, or --text",
+                    file=sys.stderr,
+                )
                 return 2
         except SearchError as e:
             print(str(e), file=sys.stderr)
@@ -969,15 +1002,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "watch":
         from semblon.ingest import CancelledError
+        from semblon.observers import resolve_product_observers
         from semblon.watch import WatchError, watch_folder
 
+        observers = args.observers if args.observers is not None else resolve_product_observers(base="face")
         try:
             rec = watch_folder(
                 args.folder,
                 args.store,
                 interval_s=args.interval,
                 once=args.once,
-                observers=args.observers,
+                observers=observers,
             )
         except (WatchError, FileNotFoundError) as e:
             print(str(e), file=sys.stderr)

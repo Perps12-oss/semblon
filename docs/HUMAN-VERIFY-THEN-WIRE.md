@@ -221,12 +221,12 @@ On the machine that will run Semblon:
 
 Missing → `false` + `notes[<key>]` starting with `unavailable:`. Optional smoke with `--observers …` on a still folder; extras must never write `embeddings.modality='face'` or `faces.person_id`.
 
-### Wire after PASS
+### Wire after PASS (landed — PRODUCTIZED optional)
 
-1. Home Settings may surface `notes` when a flag is false.
-2. Docs may list OCR/CLIP/pose as optional extras **for that machine** (still Level 3 / experimental / non-identity).
-3. Product chrome for modality surfaces: only with `SEMBLON_MODALITY_PRODUCT=1` after honesty verify.
-4. Do **not** add these packages to default `install-windows.ps1` / `requirements.txt` product path; do not flip clean-install defaults on.
+1. Home Settings surfaces rich status via `modality_product_settings_lines()` (ready/unavailable + effective observers).
+2. Home / CLI ingest defaults append ready OCR→`text` / CLIP / pose when `MODALITY_PRODUCT` is on and probes pass (still non-identity).
+3. Read paths: `search --text` (OCR); `search --similar` (CLIP/appearance). See `docs/OPTIONAL-MODALITY-STATUS.md`.
+4. Do **not** add these packages to default `install-windows.ps1` / `requirements.txt` product path; clean installs without binaries stay on base observers.
 
 ---
 

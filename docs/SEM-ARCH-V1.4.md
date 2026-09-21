@@ -34,9 +34,9 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | Derived tracks / S7b | **SHIPPED slice** |
 | Watch | **EXISTS** |
 | Live | **EXISTS / hardware proof pending** |
-| Canvas | **EXISTS, prototype implementation** |
+| Canvas | **EXISTS — Home-integrated Tk production overlay** (renderer still provisional vs native shell) |
 | Search | **EXISTS** |
-| Home | **SHIPPED but architecturally constrained** |
+| Home | **SHIPPED — sidebar shell (Library \| Workspace/Canvas \| Inspector)**; R3 native shell still open |
 | Review UI | **SHIPPED, legacy Tk surface** |
 | Native application shell | **NOT decided/implemented** |
 | APP-1 JobEngine boundary | **MERGED** (`main`) |
@@ -44,7 +44,7 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | IPC boundary | **PROBE** (`semblon/ipc_probe.py` loopback JSON-lines; not product IPC) |
 | Native ARM64 performance | **BLOCKED** |
 | Multi-worker ingest | **EXPERIMENTAL / not default** |
-| GPU | **NOT productized** |
+| GPU | **PRODUCTIZED** — prefer when ORT lists CUDA/DirectML/TensorRT; else honest CPU; Azure ≠ GPU; listed ≠ smoke-tested |
 | Rust | **DEFERRED until measurements justify it** |
 
 ---
@@ -374,6 +374,7 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.3 | 2026-09-21 | GPU productized: `select_execution_provider` + Home Settings EP/arch honesty; Azure ≠ GPU; FaceKit unchanged. |
 | V1.4.2 | 2026-09-21 | R2 IPC probe: loopback JSON-lines `semblon/ipc_probe.py` + `lab ipc-probe`. Boundary proof only; not product IPC. |
 | V1.4 | 2026-09-21 | Reconciled roadmap authority: FACE closed; APP-1 first; Windows live gate; IPC as boundary test; measurement-first performance track; single planning source. |
 | V1.4.1 | 2026-09-21 | Point R3 at approved `docs/R3-BRIEF.md` v2; frames before toolkit bake-off; Ruled out flagged as CONTRACTS gap. |

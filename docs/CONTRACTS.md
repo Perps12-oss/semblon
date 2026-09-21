@@ -55,7 +55,7 @@ Schema **v2** (migration engine) adds `observation_items`, `embeddings`, `tracks
 
 Progress `on_event` kinds: `queued` / `started` / `progress` / `partial` / `completed` / `failed` / `cancelled` / `stalled`. Skip is an `outcome` on `progress` (`skipped_seen`, `skipped_same_run`), not a silent success. Cancel stamps `runs.finished_at` and `runs.notes=cancelled`. SIGINT is cooperative at file boundaries. Writer commits in batches (every N files or ~100 ms), not necessarily per file; cancelled work that already committed stays. Cancelled work must not emit `completed`. A stall watchdog may emit `stalled`; it does not kill the job. `process --resume` / Home **Resume** (next to Cancel) continues the latest unfinished run for that folder: same `run_id` for cancelled ingest (same-run skip), then cluster, then export; completed stages are skipped (`outcome=skipped_stage`). No new columns. Progress events carry wall-clock `clock`, `elapsed_s`, and `eta_s` only when files already done give a real rate. Stills percent is `files_processed/files_total` (0–100) with **monotonic** `files_processed`; never invent a denominator. Progress emits are time-throttled; the final tick for a file set is always emitted.
 
-`search --person` / `--people` / `--face --run` / `--similar ITEM` (lookup of named persons or identify vs persons; `--similar` is same-modality+pack only and refuses face identity; not a vector DB; similarity is not identity). `lab integrity --store` (read-only; exit 3 if unfinished/orphans). `lab models` (weight presence; does not download). `lab providers` (optional extra availability).
+`search --person` / `--people` / `--face --run` / `--similar ITEM` / `--text` (lookup of named persons or identify vs persons; `--similar` is same-modality+pack only and refuses face identity; `--text` is RO substring over OCR `observation_items` payloads — no new columns; not a vector DB; similarity/text are not identity). `lab integrity --store` (read-only; exit 3 if unfinished/orphans). `lab models` (weight presence; does not download). `lab providers` (optional extra availability). Product ingest defaults (`ingest`/`process`/`watch`/`home`) append ready OCR/CLIP/pose observers when `SEMBLON_MODALITY_PRODUCT` is on and honesty probes pass; extras never vote on identity.
 
 ## Observation primitives (ARCH-001)
 
@@ -87,7 +87,7 @@ Frozen rule: detector → observation; grouping → hypothesis; human → decisi
 
 Embedding envelope (conceptual, ARCH-001 name / ARCH-003 map): modality, provider/`pack_id`, dimensions, normalisation, version, vector. Incompatible spaces never compare. Face identity remains FaceKit/`pack_id` only. Full map: **Embedding envelope (ARCH-003)** below.
 
-`ObservationProvider`: thin `FaceKitProvider` class in `semblon/providers.py` (CPU recorded). Ingest/identify still call `engine.load_app()`. No second provider is authorized. GPU is not claimed.
+`ObservationProvider`: thin `FaceKitProvider` class in `semblon/providers.py`. Ingest/identify call `engine.load_app()` via FaceKit only. No second identity provider. GPU EP may be preferred when ORT lists CUDA/DirectML/TensorRT (`prefer_gpu` / product path); otherwise CPU. AzureExecutionProvider is not GPU. Listed ≠ proven usable.
 
 `ObservationGroup`: today's `clusters` — related under a model/config, not “the same thing”. Do not retune `eps=0.40`.
 

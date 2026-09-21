@@ -13,13 +13,13 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 1. **Identity contract** — immutable. Unknown valid; cluster ≠ person; no silent auto-ID; native/emulated honesty. FaceKit is the only identity engine.
 2. **Production capabilities** — Home/review-ui, cancel, backup, integrity, person search, Canvas overlay, schema v2 write-through, stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks.
-3. **Experimental / unavailable** — product-default `workers>1`, GPU when no EP, MSI+weights, 10k run, OCR/CLIP/pose unless those libraries are installed.
+3. **Experimental / unavailable** — product-default `workers>1`, GPU when no EP, MSI+weights, 10k run. OCR/CLIP/pose are **PRODUCTIZED (optional)** when honesty probes pass (`docs/OPTIONAL-MODALITY-STATUS.md`); still non-identity.
 
 ## COMPLETE (verified in portable pytest)
 
 - Identity loop, FACE-002→005 evidence, S1 golden frozen
 - Incremental ingest, inbox (RO), identify vs persons
-- Home + review-ui; empty states; file missing; People/Unknown/Activity/Settings list windows; person search field
+- Home + review-ui; empty states; file missing; **Home sidebar shell** (Library | Workspace/Canvas | Inspector per R3 §4 IA); person search field
 - ARCH-011 / APP-1: `JobEngine` is the ingest door; second submit is `JobBusy`; Home job-control (folder/Resume off, Cancel on) does not lock Review / People / Search; Review is a Toplevel on Home’s root; Review reads use `busy_timeout=5000`
 - Cancel (GUI + SIGINT at file boundaries); cancelled ≠ completed; partial then cancelled
 - Backup/restore; integrity report; unfinished runs stamped interrupted (not completed)
@@ -30,17 +30,20 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 - DBSCAN clusters snapshot to `observation_groups` (group ≠ person)
 - S6 together/events snapshot to `relationships`/`events` with `confirmed=0`
 - `search --person/--people/--face/--similar` (similar is same-modality only; face refused)
-- `watch`; `live` detect→track→selective embed→identify vs named persons (`--seconds 0` unbounded, `--retain-s` optional); `canvas` observation overlay
-- Color-hist + OpenCV contour observers; OCR/CLIP/pose run when libraries exist, otherwise an unavailable/error item
+- `watch`; `live` detect→track→selective embed→identify vs named persons (`--seconds 0` unbounded, `--retain-s` optional); **Canvas** Home-integrated observation overlay (boxes/tracks; never writes `person_id`)
+- Color-hist + OpenCV contour observers; OCR/CLIP/pose product path when honesty probes ready (`MODALITY_PRODUCT`)
+- GPU product path: `product_prefer_gpu` / Settings status from ORT EP listing (no fake GPU claims)
 - S7a/S7b; S6 memory
 - Process callback emits `KIND_QUEUED` before `KIND_STARTED`
 - Portable CI workflow (no weight download)
 
 ## PARTIAL
 
-- Home People/Unknown/Activity/Settings are list windows, not a full sidebar shell
-- OCR/CLIP/pose: implemented behind optional imports; not in `requirements.txt`; CLIP/pose may fail without local weights (recorded as error items, not crashes)
-- Canvas overlay is tk PhotoImage, not a pixel compositor
+- Identify/inbox as dedicated full pages (Inspector lists today; native shell pending R3 toolkit winner)
+- Canvas Tk PhotoImage compositor (production Home-integrated overlay; pixel compositor still provisional)
+- OCR/CLIP/pose: product path ON when probes ready; not in `requirements.txt`; CLIP/pose may fail without local weights (recorded as error/unavailable items, not crashes)
+- GPU: honest EP detection + product `prefer_gpu` when CUDA/DirectML/TensorRT listed; listed ≠ smoke-tested
+
 ## COMPLETE — ENVIRONMENT-LIMITED
 
 - ARM64 native OpenCV ingest (binary exists; load hang)
@@ -54,7 +57,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 ## DEFERRED
 
-Identify/inbox as dedicated full pages; default GPU/workers; vector DB; a second native shell as default Home.
+Identify/inbox as dedicated full pages; vector DB; a second native shell as default Home (R3 toolkit winner still human-named).
 
 ## UNAVAILABLE
 

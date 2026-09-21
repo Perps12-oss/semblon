@@ -166,6 +166,20 @@ def test_gpu_detection_does_not_invent_gpu():
     assert rec["gpu"] is True or rec["device"] == "cpu"
     if rec["gpu"]:
         assert rec["chosen"] in rec["available"]
+        assert rec["chosen"] in (
+            "CUDAExecutionProvider",
+            "DmlExecutionProvider",
+            "TensorrtExecutionProvider",
+        )
+    else:
+        assert rec["device"] == "cpu"
+        assert "AzureExecutionProvider" not in (
+            [rec["chosen"]] if rec.get("gpu") else []
+        )
+    # Azure never counts as GPU even if listed.
+    assert "AzureExecutionProvider" not in (
+        rec.get("gpu_eps") or []
+    )
 
 
 def test_opencv_probe_returns_dict():
