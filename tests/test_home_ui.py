@@ -68,3 +68,7 @@ def test_home_is_a_job_client():
     assert "JobEngine" in src
     assert "home_control_states" in src
     assert "btn_review.configure(state=state)" not in src
+    assert "LIBRARY" in src
+    assert "CanvasWorkspace" in src
+    assert "INSPECTOR" in src
+    assert "faces.person_id" in src or "person_id" in src
