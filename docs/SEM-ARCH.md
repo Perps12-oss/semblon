@@ -1,25 +1,25 @@
-# SEM-ARCH — North star and planned work
+# SEM-ARCH — historical snapshot (superseded)
 
-**Status:** Architecture Reset V1.4 — native-layer optionality absorbed. Identity firewall unchanged.  
-**Date:** 2026-09-21
+**Status:** superseded on 2026-09-21.  
+**Authoritative source now:** `docs/SEM-ARCH-V1.4.md`.
+
+Use `docs/SEM-ARCH-V1.4.md` for all roadmap, gate, and sequencing decisions.
+
+This file is retained only as historical context for the 2026-09-19 reset and should not be extended.
 
 | File | Job |
 |---|---|
-| `docs/PRODUCT.md` | Frozen v1 — what the user can do now |
-| `docs/CONTRACTS.md` | Schema / CLI / runtime |
-| **This file** | North star + planned work + native-layer votes (**one source of truth**) |
-| `docs/SEMBLON_MATURITY_BLUEPRINT.md` | Earned history + absorb + measure. Not a second plan. |
-| `docs/FACE-GATES.md` | Closed FACE-002→005 validation index |
-| `docs/PERF-P0-BASELINE.md` / `PERF-P1-ARM64.md` / `PERF-WORKERS.md` / `runtime.md` | Measurement evidence. Not planned-work. |
+| `docs/PRODUCT.md` | Frozen product contract + amendments |
+| `docs/CONTRACTS.md` | Schema / CLI / runtime authority |
+| `docs/SEM-ARCH-V1.4.md` | **Current architecture + roadmap authority** |
+| `docs/SEMBLON_MATURITY_BLUEPRINT.md` | Historical maturity evidence |
+| `docs/FACE-GATES.md` | Closed FACE validation index |
 
-`docs/ARCHITECTURE.md` and `docs/ROADMAP-RECONCILE.md` are pointers here. Do not grow a second plan in those files, the blueprint, slice evidence docs, or companion “native architecture” papers. Native systems and native Windows-shell decisions live in §21–§23 of this file.
+`docs/ARCHITECTURE.md` and `docs/ROADMAP-RECONCILE.md` are pointers only.
 
-There is no `SEMBLON_IMPLEMENTATION_PLAN.md`. This file is not one.  
-There is no OBS / SIM / VISION clock and no successor FACE queue. `ARCH-*` layers below **are** the planned-work sequence.
+No second north star is allowed.
 
-Does not replace PRODUCT v1 identity contract. CONTRACTS v2 adds observation_items / embeddings / tracks / groups / relationships / events. Extra observers are **not** a second identity engine.
-
-**Architecture may anticipate the future. Implementation must earn it.**
+The remainder of this file is preserved as historical material from 2026-09-19.
 
 ---
 

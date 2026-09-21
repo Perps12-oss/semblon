@@ -4,8 +4,10 @@
 **Version:** 1.4.0 (`main` @ schema v2 write-through + optional observers; ARCH-011 / APP-1 job door)  
 **Branch intent:** full-stack architecture on the frozen identity contract.
 
-Authority: `docs/PRODUCT.md` (v1 + 2026-09-19 production amendment), `docs/CONTRACTS.md`, `docs/SEM-ARCH.md`.  
+Authority: `docs/PRODUCT.md` (v1 + 2026-09-19 production amendment), `docs/CONTRACTS.md`, `docs/SEM-ARCH-V1.4.md`.  
 Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical freeze at `8403292`). Addendum below that file records later main.
+
+Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-ARCH-V1.4.md`.
 
 ## Hierarchy
 

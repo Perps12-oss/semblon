@@ -1,8 +1,8 @@
 # Roadmap reconcile
 
-**Status:** retired as planned-work source (2026-09-19).
+**Status:** retired as planned-work source (2026-09-21 update reaffirmed).
 
-**Source of truth:** `docs/SEM-ARCH.md`.
+**Source of truth:** `docs/SEM-ARCH-V1.4.md`.
 
 This file was a 2026-09-17 reconcile of review-ui, video inspectability, and sampled-video evidence. Do not extend it.
 
