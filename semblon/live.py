@@ -246,10 +246,16 @@ def live_capture(
     strict: bool = False,
     cancel=None,
     on_event=None,
+    on_frame=None,
     prefer_gpu: bool = False,
     capture_factory=None,
 ) -> dict:
-    """Capture webcam/RTSP: detect -> track -> selective embed -> identify."""
+    """Capture webcam/RTSP: detect -> track -> selective embed -> identify.
+
+    Optional ``on_frame(frame, annotations)`` receives each processed frame with
+    per-detection bbox/track_id/decision/display_name for overlay scaffolds.
+    Live faces never auto-assign person_id.
+    """
     store = Path(store)
     if sample_hz <= 0:
         raise LiveError("hz must be > 0")
@@ -448,6 +454,8 @@ def live_capture(
                         "last_seen_t_ms": None,
                         "last_embed_t_ms": None,
                         "has_decision": False,
+                        "decision": None,
+                        "display_name": None,
                     },
                 )
                 is_new_track = state["last_seen_t_ms"] is None
@@ -507,7 +515,13 @@ def live_capture(
                         track_key = selected_track_keys[i]
                         state = track_state.setdefault(
                             track_key,
-                            {"last_seen_t_ms": t_ms, "last_embed_t_ms": None, "has_decision": False},
+                            {
+                                "last_seen_t_ms": t_ms,
+                                "last_embed_t_ms": None,
+                                "has_decision": False,
+                                "decision": None,
+                                "display_name": None,
+                            },
                         )
                         if row["status"] != "ok":
                             continue
@@ -519,6 +533,8 @@ def live_capture(
                             face_id=row["face_id"],
                         )
                         state["has_decision"] = True
+                        state["decision"] = ident["decision"]
+                        state["display_name"] = ident["display_name"]
                         if ident["decision"] == "ACCEPT":
                             identified_accept += 1
                         else:
@@ -544,6 +560,23 @@ def live_capture(
             persist_derived_tracks(store, run_id, conn=conn)
             n_frames += 1
             idx += 1
+            if on_frame is not None:
+                frame_annotations = []
+                for det in frame_detections:
+                    track_key = det_to_track.get(det["det_id"], det["det_id"])
+                    state = track_state.get(track_key) or {}
+                    frame_annotations.append(
+                        {
+                            "bbox": det["bbox"],
+                            "track_id": track_key,
+                            "decision": state.get("decision"),
+                            "display_name": state.get("display_name"),
+                        }
+                    )
+                try:
+                    on_frame(frame, frame_annotations)
+                except Exception as frame_cb_err:
+                    _ = frame_cb_err
             emit(
                 on_event,
                 make_event(

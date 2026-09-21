@@ -79,6 +79,23 @@ def main(argv: list[str] | None = None) -> int:
     lab_sub.add_parser("providers", help="list observation providers and availability")
     oc = lab_sub.add_parser("opencv", help="timed OpenCV import probe (does not hang the suite)")
     oc.add_argument("--timeout", type=float, default=8.0)
+    lov = lab_sub.add_parser(
+        "live-overlay",
+        help="experimental Tk live multi-person overlay scaffold (not Home; never assigns person_id)",
+    )
+    lov.add_argument("--store", required=True, type=Path)
+    lov.add_argument("--source", default="0", help="camera index or RTSP URL")
+    lov.add_argument("--seconds", type=float, default=5.0)
+    lov.add_argument("--hz", type=float, default=1.0)
+    lov.add_argument("--reembed-s", type=float, default=2.0)
+    lov.add_argument("--retain-s", type=float, default=None)
+    lov.add_argument("--strict", action="store_true")
+    lov.add_argument("--prefer-gpu", action="store_true")
+    lov.add_argument(
+        "--headless",
+        action="store_true",
+        help="run pipeline without Tk window (tests / CI)",
+    )
 
     ev = lab_sub.add_parser("eval", help="FACE-002 confirmatory eval harness")
     ev_sub = ev.add_subparsers(dest="evalcmd", required=True)
@@ -474,6 +491,35 @@ def main(argv: list[str] | None = None) -> int:
         rec = probe_opencv(timeout_s=args.timeout)
         print(json.dumps(rec, indent=2))
         return 0 if rec.get("ok") else 2
+
+    if args.cmd == "lab" and args.labcmd == "live-overlay":
+        from semblon.live_overlay import HUMAN_VERIFY_NOTE, LiveOverlayError, run_live_overlay
+        from semblon.ingest import CancelledError
+        from semblon.live import LiveError
+
+        print(HUMAN_VERIFY_NOTE, file=sys.stderr)
+        try:
+            rec = run_live_overlay(
+                args.store,
+                source=args.source,
+                seconds=args.seconds,
+                sample_hz=args.hz,
+                reembed_s=args.reembed_s,
+                retain_s=args.retain_s,
+                strict=args.strict,
+                prefer_gpu=args.prefer_gpu,
+                show=not args.headless,
+                explicit_flag=True,
+                from_home=False,
+            )
+        except (LiveOverlayError, LiveError, FileNotFoundError) as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        except CancelledError as e:
+            print(json.dumps({"cancelled": True, "run_id": e.run_id}, indent=2))
+            return 2
+        print(json.dumps(rec, indent=2, default=str))
+        return 0
 
     if args.cmd == "lab" and args.labcmd == "eval":
         from semblon.eval import (
