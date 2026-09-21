@@ -1,8 +1,8 @@
-# Application API (R1)
+# Application API (APP-1 / R1)
 
 **Status:** extracted from existing Python. Not a framework. Not WinUI.  
 **Date:** 2026-09-21  
-**Code:** `semblon/jobs.py`, `semblon/application.py`  
+**Code:** `semblon/jobs.py`, `semblon/application.py`, Home control policy in `semblon/home_ui.py`  
 **Authority:** `docs/CONTRACTS.md`, `docs/SEM-ARCH.md`. This page names UI-visible capabilities. It does not add columns.
 
 A future native client consumes this surface. Home is a client of it. Tk is not the architecture.
@@ -21,9 +21,9 @@ Home button  →  Home-owned worker  →  Tk callback chain  →  ingest
 
 | Noun | Meaning | Source now |
 |---|---|---|
-| Job | One bounded unit of work (today: ingest/process) | `JobSnapshot` |
-| Progress | Honest counts and stage/kind; no invented percent | `ProgressEvent` folded into the snapshot |
-| Cancellation | Cooperative; cancelled ≠ completed; partial retained | `JobEngine.request_cancel` → ingest `cancel` |
+| Job | One bounded unit of work (today: ingest/process) | `JobHandle` while running; `JobResult` when done |
+| Progress | Honest counts and stage/kind; no invented percent | `ProgressEvent` via `on_event` |
+| Cancellation | Cooperative; cancelled ≠ completed; partial retained | `JobEngine.cancel` → ingest `cancel` |
 | Application state | store path, latest run with faces | `default_store_path`, `latest_run_id` |
 | Review state | board items (cluster / track / unassigned) | `load_board` |
 | Person operations | Name / Merge / Split / Ignore / Note | `apply_*` → `review.py` |
@@ -44,14 +44,14 @@ Reads:
 | `inbox(store, run_id)` | `inbox` | UNKNOWN is valid |
 | `activity(store, run_id)` | Home `read_activity_snapshot` | groups / relationships / events; track ≠ person |
 | `canvas(store, run_id?)` | `load_canvas` | Overlay payload. Cluster ≠ person |
-| `job_snapshot()` | `JobEngine.snapshot` | JSON-safe |
+| `job_current()` | `JobEngine.current` / `busy` | Handle while running; None when idle |
 
 Mutations (one writer: Python domain ops):
 
 | Command | Existing call | Notes |
 |---|---|---|
-| `submit_ingest(folder, store, resume?)` | `JobEngine.submit_ingest` → `process_folder` | One ingest at a time. Second submit is `JobBusy` |
-| `cancel_job()` | `JobEngine.request_cancel` | Cooperative at file boundaries |
+| `submit_ingest(folder, resume?)` | `JobEngine.submit_ingest` → `process_folder` | Engine owns the store. One ingest at a time. Second submit is `JobBusy` |
+| `cancel_job()` | `JobEngine.cancel` | Cooperative at file boundaries |
 | `apply_name` | `review_ui.apply_name` | Cluster / track members / unassigned face |
 | `apply_merge` | `apply_merge` | Clusters only |
 | `apply_split` | `apply_split` | Faces leave the cluster |
@@ -60,26 +60,17 @@ Mutations (one writer: Python domain ops):
 
 Named later, not implemented as Job types in this slice: `watch`, `live`. The API must not assume stills-only.
 
-## Job states
+## Job result status
 
 ```
-queued → starting → running → {completed, cancelled, failed}
+completed | cancelled | failed
 ```
 
-`cancelling` is a running substate after cancel is requested.  
-`paused` is named and **not implemented**.
+`JobEngine.busy` is true while a handle is claimed. `JobResult.status` is the terminal outcome delivered to `on_done`.
 
-Progress fields on `JobSnapshot` (None means unknown — do not invent):
+Progress stays on `ProgressEvent` (None means unknown — do not invent). Percent belongs to the presentation of an event that already has a denominator (`stills_percent`).
 
-```
-job_id type state source store run_id resume
-files_total files_processed faces skipped failed
-elapsed_s rate eta_s current_stage kind error stalled
-```
-
-Percent belongs to the presentation of a `ProgressEvent` that already has a denominator (`stills_percent`). The snapshot does not invent one.
-
-`JobSnapshot.to_dict()` is the R2 JSON shape. Callbacks on `JobEngine.submit_ingest` are a Python convenience, not the IPC.
+Callbacks on `JobEngine.submit_ingest` are a Python convenience, not the IPC. R2 will serialize handle/result fields, not widgets.
 
 ## What the contract must not expose
 
@@ -95,39 +86,12 @@ Enabled: Cancel.
 |---|---|---|
 | Review (read board) | allowed | RO SQLite + `busy_timeout=5000` |
 | Review Name/Merge/Split/Ignore/Note | allowed, serialized | same store writer as ingest; waits on `busy_timeout` |
-| People / Search / Unknown / Activity / Canvas | allowed | RO + `busy_timeout` |
-| Choose folder / Resume | disabled | one ingest job |
-| Cancel | enabled | cooperative flag |
+| People / Unknown / Activity / Search / Canvas | allowed | RO reads |
+| Choose folder / Resume | blocked | would be a second ingest (`JobBusy`) |
+| Cancel | allowed | cooperative cancel |
 
-Review mutations during ingest are not a second writer *process*. Naming faces of the *in-flight* run can see a board that is still growing — documented, not forbidden. Do not pretend the board is a frozen snapshot of a finished run.
+Review opens as a `Toplevel` on Home's root so Home keeps pumping job events. Standalone `run_review_ui()` still owns its own loop when there is no parent.
 
-Review during ingest is a **Toplevel** on Home's root so Home keeps pumping Job events. A nested `Tk().mainloop()` is the actual reason Review used to be locked, not SQLite.
+## Identity firewall
 
-## Concurrency / read-safety
-
-- Store writes: `semblon.store.connect` already sets WAL + `busy_timeout=5000`.
-- Search / inbox / canvas / activity already open `mode=ro` with the same timeout.
-- `load_board` / `resolve_run_id` now set the same timeout so Review can open while ingest commits batches.
-- Two Python connections in one process is not two writer *processes*. A future native UI must not open a second SQLite writer.
-
-## R2 (not this slice)
-
-Intended later probe:
-
-```
-Native UI  ↔  JSON IPC (named pipe / stdio)  ↔  Python application/backend
-```
-
-Commands would be JSON objects such as `{ "op": "submit_ingest", ... }` and `{ "op": "job_snapshot" }`. Events would be `JobSnapshot.to_dict()`. No PyWinRT. No `.csproj` on `main`.
-
-## What remains Tk-specific
-
-Home widgets, StillProgressBar, list Toplevels, ReviewApp layout, Canvas PhotoImage preview. Those stay clients.
-
-## What remains unsuitable for future IPC as-is
-
-- `on_event` / `on_done` Python callables on `JobEngine.submit_ingest`
-- Tk `parent=` on Review / Canvas
-- `board["_tracks_cache"]` (process-local cache object)
-- Home `read_activity_snapshot` living next to widgets (should move before R2)
-- Any FaceKit / `engine.load_app` import from a UI process
+This API does not enrol, merge, or compare faces. FaceKit remains the only identity engine. Optional observers must not write `faces.person_id` or `embeddings.modality='face'`.

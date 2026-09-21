@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from semblon.home_ui import format_activity_lines, read_activity_snapshot
-from semblon.jobs import home_control_states
+from semblon.home_ui import format_activity_lines, home_control_states, read_activity_snapshot
 from semblon.observers import snapshot_memory_graph
 from semblon.review import name_cluster, name_face
 from tests.test_review import _clustered
@@ -48,7 +47,7 @@ def test_activity_reader_broken_db_is_not_swallowed(tmp_path):
 
 
 def test_home_control_policy_does_not_lock_read_surfaces():
-    busy = home_control_states(job_active=True, resume_ready=False)
+    busy = home_control_states(job_running=True, resume_ready=False)
     for name in ("review", "people", "search", "unknown", "activity", "settings", "canvas", "html"):
         assert busy[name] == "normal"
     assert busy["folder"] == "disabled"

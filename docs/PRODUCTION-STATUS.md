@@ -1,7 +1,7 @@
 # Semblon production status
 
-**Date:** 2026-09-19  
-**Version:** 1.4.0 (`main` @ schema v2 write-through + optional observers)  
+**Date:** 2026-09-21  
+**Version:** 1.4.0 (`main` @ schema v2 write-through + optional observers; ARCH-011 / APP-1 job door)  
 **Branch intent:** full-stack architecture on the frozen identity contract.
 
 Authority: `docs/PRODUCT.md` (v1 + 2026-09-19 production amendment), `docs/CONTRACTS.md`, `docs/SEM-ARCH.md`.  
@@ -18,6 +18,7 @@ Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical freeze at `8403292`). Adden
 - Identity loop, FACE-002→005 evidence, S1 golden frozen
 - Incremental ingest, inbox (RO), identify vs persons
 - Home + review-ui; empty states; file missing; People/Unknown/Activity/Settings list windows; person search field
+- ARCH-011 / APP-1: `JobEngine` is the ingest door; second submit is `JobBusy`; Home job-control (folder/Resume off, Cancel on) does not lock Review / People / Search; Review is a Toplevel on Home’s root; Review reads use `busy_timeout=5000`
 - Cancel (GUI + SIGINT at file boundaries); cancelled ≠ completed; partial then cancelled
 - Backup/restore; integrity report; unfinished runs stamped interrupted (not completed)
 - `FaceKitProvider.load()` is the ingest load path (`ingest.load_app` wraps it)

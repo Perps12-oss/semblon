@@ -1,124 +1,228 @@
-"""Job boundary and Home control policy. No FaceKit. No live ingest."""
+"""ARCH-011 / APP-1 — JobEngine is the ingest door. No InsightFace."""
 
 from __future__ import annotations
 
+import inspect
+import sqlite3
 import threading
+import time
 from pathlib import Path
 
 import pytest
 
-from semblon.jobs import (
-    STATE_CANCELLED,
-    STATE_COMPLETED,
-    STATE_FAILED,
-    STATE_QUEUED,
-    STATE_RUNNING,
-    JobBusy,
-    JobEngine,
-    JobSnapshot,
-    home_control_states,
-    snapshot_from_event,
-)
+from semblon.home_ui import HOME_CONTROLS_ALWAYS_ON, HomeApp, home_control_states
+from semblon.jobs import JobBusy, JobEngine
 from semblon.process import ProcessCancelled
-from semblon.progress import KIND_PROGRESS, STAGE_INGEST, make_event
+from semblon.review import name_cluster
+from semblon.review_ui import ReviewApp, _ro_connect, load_board, make_review_root, resolve_run_id
+from tests.test_review import _clustered
 
 
-def test_home_keeps_read_surfaces_on_during_job():
-    busy = home_control_states(job_active=True, resume_ready=False)
-    idle = home_control_states(job_active=False, resume_ready=True)
-    for name in ("review", "people", "search", "unknown", "activity", "settings", "canvas", "html"):
-        assert busy[name] == "normal"
-        assert idle[name] == "normal"
-    assert busy["folder"] == "disabled"
-    assert busy["resume"] == "disabled"
-    assert busy["cancel"] == "normal"
-    assert idle["folder"] == "normal"
-    assert idle["resume"] == "normal"
-    assert idle["cancel"] == "disabled"
-
-
-def test_snapshot_is_json_safe_and_does_not_invent_counts():
-    snap = JobSnapshot(job_id="j1", type="ingest", state=STATE_QUEUED, source="/photos")
-    ev = make_event(STAGE_INGEST, KIND_PROGRESS, files_processed=3, files_total=10, faces_found=4)
-    out = snapshot_from_event(snap, ev)
-    d = out.to_dict()
-    assert d["files_processed"] == 3
-    assert d["files_total"] == 10
-    assert d["faces"] == 4
-    assert d["failed"] is None
-    assert "root" not in d
-    assert out.state == STATE_RUNNING
-
-
-def test_engine_rejects_second_ingest(tmp_path, monkeypatch):
+def test_second_submit_is_job_busy(tmp_path, monkeypatch):
     started = threading.Event()
     release = threading.Event()
+    calls = {"n": 0}
 
-    def fake_process(*_a, **kw):
+    def fake_process(folder, **kwargs):
+        calls["n"] += 1
         started.set()
-        release.wait(timeout=2)
-        return {"run_id": "r-fake", "out": str(tmp_path / "review.html")}
+        if not release.wait(2):
+            raise RuntimeError("test gate timed out")
+        return {"run_id": "r-job", "out": None}
 
-    monkeypatch.setattr("semblon.jobs.process_folder", fake_process)
-    eng = JobEngine()
-    folder = tmp_path / "pics"
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
+    engine = JobEngine(tmp_path / "s.sqlite")
+    folder = tmp_path / "photos"
     folder.mkdir()
-    store = tmp_path / "s.sqlite"
-    eng.submit_ingest(folder, store)
-    assert started.wait(timeout=2)
-    with pytest.raises(JobBusy):
-        eng.submit_ingest(folder, store)
+    engine.submit_ingest(folder)
+    assert started.wait(1)
+    assert engine.busy is True
+    with pytest.raises(JobBusy, match="already running"):
+        engine.submit_ingest(folder)
+    assert calls["n"] == 1
     release.set()
-    if eng._thread is not None:
-        eng._thread.join(timeout=2)
-    assert eng.snapshot().state == STATE_COMPLETED
+    deadline = time.monotonic() + 2
+    while engine.busy and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert engine.busy is False
+    started.clear()
+    engine.submit_ingest(folder)
+    assert started.wait(1)
+    assert calls["n"] == 2
+    release.set()
 
 
-def test_engine_cancel_maps_to_cancelled(tmp_path, monkeypatch):
-    def fake_process(*_a, **kw):
-        cancel = kw.get("cancel")
-        if cancel is not None:
-            pass
-        raise ProcessCancelled("process cancelled", run_id="r-c")
+def test_run_ingest_passes_cancel_and_observers(tmp_path, monkeypatch):
+    saw = {}
 
-    monkeypatch.setattr("semblon.jobs.process_folder", fake_process)
-    eng = JobEngine()
-    folder = tmp_path / "pics"
-    folder.mkdir()
-    cancelled = []
-    eng.submit_ingest(
-        folder,
-        tmp_path / "s.sqlite",
-        on_cancelled=cancelled.append,
-    )
-    if eng._thread is not None:
-        eng._thread.join(timeout=2)
-    assert eng.snapshot().state == STATE_CANCELLED
-    assert cancelled == ["r-c"]
+    def fake_process(folder, **kwargs):
+        saw["cancel"] = kwargs.get("cancel")
+        saw["observers"] = kwargs.get("observers")
+        saw["resume"] = kwargs.get("resume")
+        return {"run_id": "r-ok"}
+
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
+    engine = JobEngine(tmp_path / "s.sqlite")
+    rec = engine.run_ingest(tmp_path / "photos", observers="face,color,object", resume=True)
+    assert rec["run_id"] == "r-ok"
+    assert saw["observers"] == "face,color,object"
+    assert saw["resume"] is True
+    assert saw["cancel"] is not None
+    assert saw["cancel"]() is False
 
 
-def test_engine_failure_is_failed_not_completed(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "semblon.jobs.process_folder",
-        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("boom")),
-    )
-    eng = JobEngine()
-    folder = tmp_path / "pics"
-    folder.mkdir()
-    errors = []
-    eng.submit_ingest(folder, tmp_path / "s.sqlite", on_error=errors.append)
-    if eng._thread is not None:
-        eng._thread.join(timeout=2)
-    assert eng.snapshot().state == STATE_FAILED
-    assert errors and "boom" in str(errors[0])
+def test_cancel_stops_submitted_ingest(tmp_path, monkeypatch):
+    entered = threading.Event()
+    done = {}
+
+    def fake_process(folder, **kwargs):
+        entered.set()
+        for _ in range(100):
+            cancel = kwargs.get("cancel")
+            if cancel is not None and cancel():
+                raise ProcessCancelled("cancelled", run_id="r-c")
+            time.sleep(0.02)
+        return {"run_id": "too-late"}
+
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
+    engine = JobEngine(tmp_path / "s.sqlite")
+
+    def on_done(result):
+        done["result"] = result
+
+    engine.submit_ingest(tmp_path / "photos", on_done=on_done)
+    assert entered.wait(1)
+    engine.cancel()
+    deadline = time.monotonic() + 3
+    while "result" not in done and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert done["result"].status == "cancelled"
+    assert done["result"].run_id == "r-c"
+    assert engine.busy is False
 
 
-def test_application_facade_exports_board_ops():
-    from semblon import application as app
+def test_submit_ingest_reports_cancelled(tmp_path, monkeypatch):
+    done = {}
+    gate = threading.Event()
 
-    assert app.load_board is not None
-    assert app.apply_name is not None
-    assert app.JobEngine is JobEngine
-    assert app.search_people is not None
-    assert app.inbox is not None
-    assert callable(app.board)
+    def fake_process(folder, **kwargs):
+        gate.wait(2)
+        raise ProcessCancelled("cancelled", run_id="r-c")
+
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
+    engine = JobEngine(tmp_path / "s.sqlite")
+
+    def on_done(result):
+        done["result"] = result
+
+    engine.submit_ingest(tmp_path / "photos", on_done=on_done)
+    gate.set()
+    deadline = time.monotonic() + 2
+    while "result" not in done and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert done["result"].status == "cancelled"
+    assert done["result"].run_id == "r-c"
+    assert engine.busy is False
+
+
+def test_home_control_states_are_job_control_not_app_lock():
+    running = home_control_states(job_running=True, resume_ready=True)
+    assert running["folder"] == "disabled"
+    assert running["resume"] == "disabled"
+    assert running["cancel"] == "normal"
+    for name in HOME_CONTROLS_ALWAYS_ON:
+        assert running[name] == "normal", name
+
+    idle = home_control_states(job_running=False, resume_ready=False)
+    assert idle["folder"] == "normal"
+    assert idle["resume"] == "disabled"
+    assert idle["cancel"] == "disabled"
+    assert idle["review"] == "normal"
+
+    ready = home_control_states(job_running=False, resume_ready=True)
+    assert ready["resume"] == "normal"
+
+
+def test_home_submits_through_job_engine():
+    src = inspect.getsource(HomeApp)
+    assert "submit_ingest" in src
+    assert "JobBusy" in src
+    assert "JobEngine" in inspect.getsource(HomeApp.__init__)
+    open_src = inspect.getsource(HomeApp._open_review_ui)
+    assert "parent=self.root" in open_src
+    assert "withdraw" not in open_src
+    assert ".mainloop(" not in open_src
+    busy_src = inspect.getsource(HomeApp._set_busy)
+    assert "home_control_states" in busy_src
+
+
+def test_review_root_is_toplevel_on_parent():
+    class FakeTk:
+        def __init__(self):
+            self.kind = "tk"
+
+    class FakeToplevel:
+        def __init__(self, parent):
+            self.kind = "toplevel"
+            self.parent = parent
+
+    class FakeMod:
+        Tk = FakeTk
+        Toplevel = FakeToplevel
+
+    child, owns = make_review_root(parent="home-root", tk_mod=FakeMod)
+    assert owns is False
+    assert child.kind == "toplevel"
+    assert child.parent == "home-root"
+    standalone, owns = make_review_root(parent=None, tk_mod=FakeMod)
+    assert owns is True
+    assert standalone.kind == "tk"
+    run_src = inspect.getsource(ReviewApp.run)
+    assert "if self._owns_loop" in run_src
+    workers = Path(__file__).resolve().parents[1] / "semblon" / "desktop" / "workers.py"
+    text = workers.read_text(encoding="utf-8")
+    assert "JobEngine" in text
+    assert "run_ingest" in text
+
+
+def test_review_reads_set_busy_timeout(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _clustered(store)
+    conn = _ro_connect(store)
+    timeout = int(conn.execute("PRAGMA busy_timeout").fetchone()[0])
+    conn.close()
+    assert timeout == 5000
+    board = load_board(store, "r1")
+    assert board["run_id"] == "r1"
+    assert resolve_run_id(store, "r1") == "r1"
+
+
+def test_review_mutation_waits_on_existing_writer(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    writer = sqlite3.connect(str(store))
+    writer.execute("BEGIN IMMEDIATE")
+    writer.execute("UPDATE runs SET software_version=software_version")
+    finished = {}
+
+    def mutate():
+        try:
+            name_cluster(store, "r1", assigned["f1"], "Alice")
+            finished["ok"] = True
+        except Exception as e:  # noqa: BLE001 — capture for the assertion
+            finished["err"] = e
+
+    t = threading.Thread(target=mutate)
+    t.start()
+    blocked = False
+    for _ in range(20):
+        time.sleep(0.05)
+        if t.is_alive() and "ok" not in finished:
+            blocked = True
+            break
+    assert blocked, finished
+    writer.commit()
+    writer.close()
+    t.join(3)
+    assert finished.get("ok") is True
+    assert "err" not in finished

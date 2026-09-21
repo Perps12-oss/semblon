@@ -10,14 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from semblon.canvas import load_canvas
+from semblon.home_ui import home_control_states
 from semblon.inbox import inbox
-from semblon.jobs import (
-    JOB_TYPE_INGEST,
-    JobBusy,
-    JobEngine,
-    JobSnapshot,
-    home_control_states,
-)
+from semblon.jobs import KIND_INGEST, JobBusy, JobEngine, JobHandle, JobResult
 from semblon.process import default_store_path, latest_run_id
 from semblon.review_ui import (
     apply_ignore,
@@ -31,10 +26,11 @@ from semblon.review_ui import (
 from semblon.search import search_people, search_person
 
 __all__ = [
-    "JOB_TYPE_INGEST",
+    "KIND_INGEST",
     "JobBusy",
     "JobEngine",
-    "JobSnapshot",
+    "JobHandle",
+    "JobResult",
     "apply_ignore",
     "apply_merge",
     "apply_name",
