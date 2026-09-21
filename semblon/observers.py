@@ -230,6 +230,75 @@ def optional_status() -> dict:
     }
 
 
+# Always-on Home observers (non-identity extras that need no optional binaries).
+BASE_HOME_OBSERVERS: tuple[str, ...] = ("face", "color", "object")
+# Probe key → --observers token (observe_bgr accepts "ocr" or "text" for OCR).
+OPTIONAL_PROBE_TO_OBSERVER: tuple[tuple[str, str], ...] = (
+    ("ocr", "text"),
+    ("clip", "clip"),
+    ("pose", "pose"),
+)
+
+
+def resolve_product_observers(*, base: tuple[str, ...] | str | None = None) -> str:
+    """Observer CSV for product ingest when MODALITY_PRODUCT is on.
+
+    Appends text/clip/pose only when honesty probes say ready. Never votes identity.
+    When the gate is off, returns the base list only. Clean installs without
+    binaries/weights stay on base (no silent True).
+    """
+    from semblon.gates import MODALITY_PRODUCT, enabled
+
+    if base is None:
+        parts = list(BASE_HOME_OBSERVERS)
+    elif isinstance(base, str):
+        parts = [x.strip() for x in base.split(",") if x.strip()]
+    else:
+        parts = list(base)
+    if not enabled(MODALITY_PRODUCT):
+        return ",".join(parts)
+    st = optional_status()
+    seen = set(parts)
+    for probe_key, obs_name in OPTIONAL_PROBE_TO_OBSERVER:
+        if st.get(probe_key) and obs_name not in seen and probe_key not in seen:
+            parts.append(obs_name)
+            seen.add(obs_name)
+    return ",".join(parts)
+
+
+def modality_product_settings_lines() -> list[str]:
+    """Rich Settings copy for optional modalities. Honest probes + product path."""
+    from semblon.gates import MODALITY_PRODUCT, enabled, require_human_note
+
+    st = optional_status()
+    lines = [
+        "Optional modalities: PRODUCTIZED (optional) — observation/retrieval only",
+        f"optional ocr={st['ocr']} clip={st['clip']} pose={st['pose']}",
+        st["identity"],
+        st["note"],
+    ]
+    if not enabled(MODALITY_PRODUCT):
+        lines.append(f"Modality product surfaces OFF. {require_human_note(MODALITY_PRODUCT)}")
+        return lines
+    lines.append(f"Product observers (this machine): {resolve_product_observers()}")
+    notes = st.get("notes") or {}
+    lines.append("Modality status:")
+    for probe_key, obs_name in OPTIONAL_PROBE_TO_OBSERVER:
+        if st.get(probe_key):
+            lines.append(f"  {probe_key}: ready → observer '{obs_name}' in product defaults")
+        else:
+            note = notes.get(probe_key) or "unavailable"
+            lines.append(f"  {probe_key}: {note}")
+    lines.append(
+        "Read paths: search --text (OCR); search --similar ITEM (CLIP/appearance). "
+        "Pose is observation-only (no identity compare)."
+    )
+    lines.append(
+        "OCR/CLIP/pose never write faces.person_id or embeddings.modality=face."
+    )
+    return lines
+
+
 def ocr_image(img) -> dict | None:
     """OCR text. None = library missing. Never identity."""
     try:

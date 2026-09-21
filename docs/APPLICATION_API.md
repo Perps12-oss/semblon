@@ -102,6 +102,21 @@ Callbacks on `JobEngine.submit_ingest` are a Python convenience, not the IPC. R2
 
 Tk objects · Tk event-loop · Qt objects · FaceKit · Python UI callbacks as the public shape · SQLite connection objects · worker threads · InsightFace / ORT sessions · clusterer internals.
 
+## Home shell (Track-1 Tk)
+
+Tk Home implements R3-BRIEF §4 IA as a **compatibility frontend** (not the final native shell; no PySide product Home):
+
+```text
+Library sidebar │ Workspace / Intelligence Canvas │ Inspector
+```
+
+- Library nav: Home · Photos · Videos · People · Unknown · Activity
+- Workspace embeds `CanvasWorkspace` (observation overlays for selected media)
+- Inspector shows evidence lines for the selection; mutations stay in Review
+- Canvas/UI overlays **never** write `faces.person_id`
+
+`load_canvas` / `overlay_boxes` / `media_inspector_lines` / `CanvasWorkspace` are the read surface. JobEngine remains the ingest door.
+
 ## Home controls during a job (Track-1)
 
 Enabled while ingest runs: Review, review.html, People, Unknown, Activity, Settings, Canvas, Search.  

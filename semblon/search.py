@@ -1,11 +1,13 @@
 """Evidence-based retrieval over owned memory. Not a vector database.
 
 Person search is named-entity lookup. Face search is identify vs persons.
-Similarity is not identity. Search does not write the store.
+Similarity is not identity. OCR text search is payload substring lookup.
+Search does not write the store.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -184,4 +186,59 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10) -> dict:
         "count": min(limit, len(scored)),
         "items": scored[:limit],
         "note": "Lens-like lookup in owned memory. Similarity is not identity.",
+    }
+
+
+def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
+    """Substring lookup over OCR observation_items payloads. Not identity.
+
+    No new columns. Reads ``kind='text'`` payload_json only. Does not write
+    the store and never touches faces.person_id or face embeddings.
+    """
+    q = (query or "").strip()
+    if not q:
+        raise SearchError("text query is empty")
+    q_lower = q.lower()
+    conn = _open_ro(store)
+    try:
+        rows = conn.execute(
+            """SELECT item_id, observation_id, run_id, provider, score, payload_json
+               FROM observation_items
+               WHERE kind='text'
+               ORDER BY item_id"""
+        ).fetchall()
+    finally:
+        conn.close()
+    items = []
+    for r in rows:
+        try:
+            payload = json.loads(r["payload_json"] or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        if not isinstance(payload, dict):
+            continue
+        text = payload.get("text")
+        if not isinstance(text, str) or not text:
+            continue
+        if q_lower not in text.lower():
+            continue
+        items.append(
+            {
+                "item_id": r["item_id"],
+                "observation_id": r["observation_id"],
+                "run_id": r["run_id"],
+                "provider": r["provider"],
+                "score": r["score"],
+                "text": text[:4000],
+                "why": "OCR payload substring; not a person",
+            }
+        )
+        if len(items) >= limit:
+            break
+    return {
+        "kind": "text",
+        "query": q,
+        "count": len(items),
+        "items": items,
+        "note": "OCR text lookup is observation evidence only; not identity.",
     }

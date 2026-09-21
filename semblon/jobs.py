@@ -119,13 +119,14 @@ class JobEngine:
         on_event: OnEvent | None = None,
         on_done: OnDone | None = None,
         observers: str | None = None,
+        prefer_gpu: bool | None = None,
         open_review: bool = False,
     ) -> JobHandle:
         """Start process_folder on a worker thread. Raises JobBusy if running."""
         handle = self._claim(folder, resume=resume)
         thread = threading.Thread(
             target=self._run_submitted,
-            args=(handle, on_event, on_done, observers, open_review),
+            args=(handle, on_event, on_done, observers, prefer_gpu, open_review),
             daemon=True,
             name="semblon-job-ingest",
         )
@@ -141,12 +142,15 @@ class JobEngine:
         resume: bool = False,
         on_event: OnEvent | None = None,
         observers: str | None = None,
+        prefer_gpu: bool | None = None,
         open_review: bool = False,
     ) -> dict:
         """Run process_folder on this thread. Raises JobBusy if running."""
         handle = self._claim(folder, resume=resume)
         try:
-            return self._invoke_process(handle, on_event, observers, open_review)
+            return self._invoke_process(
+                handle, on_event, observers, prefer_gpu, open_review
+            )
         finally:
             self._release(handle)
 
@@ -190,6 +194,7 @@ class JobEngine:
         handle: JobHandle,
         on_event: OnEvent | None,
         observers: str | None,
+        prefer_gpu: bool | None,
         open_review: bool,
     ) -> dict:
         from semblon.process import process_folder
@@ -204,6 +209,8 @@ class JobEngine:
         }
         if observers is not None:
             kwargs["observers"] = observers
+        if prefer_gpu is not None:
+            kwargs["prefer_gpu"] = prefer_gpu
         return process_folder(handle.folder, **kwargs)
 
     def _run_submitted(
@@ -212,13 +219,16 @@ class JobEngine:
         on_event: OnEvent | None,
         on_done: OnDone | None,
         observers: str | None,
+        prefer_gpu: bool | None,
         open_review: bool,
     ) -> None:
         from semblon.process import ProcessCancelled
 
         result = JobResult(status="failed")
         try:
-            rec = self._invoke_process(handle, on_event, observers, open_review)
+            rec = self._invoke_process(
+                handle, on_event, observers, prefer_gpu, open_review
+            )
             result = JobResult(status="completed", rec=rec, run_id=rec.get("run_id"))
         except ProcessCancelled as e:
             result = JobResult(status="cancelled", run_id=e.run_id, error=e)

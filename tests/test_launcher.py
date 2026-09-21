@@ -92,7 +92,8 @@ def test_home_wires_watchdog_and_optional_observers():
     assert "Watchdog" in src
     assert "KIND_STALLED" in src
     assert HOME_OBSERVERS == "face,color,object"
-    assert "observers=HOME_OBSERVERS" in src
+    assert "resolve_home_observers" in src
+    assert "modality_product_settings_lines" in src
     assert "btn_resume" in src
     assert 'text="Resume"' in src
     assert "StillProgressBar" in src

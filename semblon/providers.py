@@ -1,7 +1,8 @@
 """ObservationProvider boundary. FaceKit is the only identity provider.
 
-CPU is the default record. GPU is only claimed when ORT lists a GPU EP
-(present ≠ proven usable). No second detector.
+CPU is the default record. GPU is only claimed when ORT lists CUDA /
+DirectML / TensorRT (Azure is not GPU; present ≠ proven usable).
+No second detector. load() does not silent-swap FaceKit.
 """
 
 from __future__ import annotations

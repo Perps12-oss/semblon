@@ -1,9 +1,13 @@
-"""Double-click home — Choose folder / Open review. Not full S8 shell.
+"""Home shell — Library | Workspace/Canvas | Inspector (R3-BRIEF §4 IA).
 
-Opaque tkinter. No Mica. Ingest goes through JobEngine — job control, not an
-application lock. Review is a Toplevel on this root; Home keeps pumping events.
-Cooperative cancel and pause stop ingest between files (not mid-file).
-Progress text comes from process on_event only — no invented percent.
+Opaque tkinter. No Mica. No second PySide Home. Ingest goes through JobEngine —
+job control, not an application lock. Review is a Toplevel on this root; Home
+keeps pumping events. Cooperative cancel and pause stop ingest between files
+(not mid-file). Progress text comes from process on_event only — no invented percent.
+
+Canvas is first-class in the workspace pane (observation overlay). Canvas never
+writes faces.person_id. Toolkit bake-off winner is still human-named (E.5: no
+PySide promote).
 """
 
 from __future__ import annotations
@@ -38,16 +42,26 @@ from semblon.progress import (
 
 # Tests and callers import the status line from home_ui.
 __all__ = [
+    "HOME_NAV",
     "HOME_OBSERVERS",
     "HomeApp",
+    "format_library_lines",
     "format_progress_line",
     "home_control_states",
+    "resolve_home_observers",
     "run_home_ui",
 ]
 from semblon.watchdog import Watchdog
 
-# Home ingest fills cheap non-identity items for Canvas. Face remains identity.
+# Base Home observers (always). Product path may append OCR/CLIP/pose when ready.
 HOME_OBSERVERS = "face,color,object"
+
+# R3-BRIEF §4 information architecture (nav ids → label).
+HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    ("LIBRARY", (("home", "Home"), ("photos", "Photos"), ("videos", "Videos"))),
+    ("PEOPLE", (("people", "People"), ("unknown", "Unknown"))),
+    ("WORK", (("activity", "Activity"),)),
+)
 
 # Job control, not an application lock. These stay usable while ingest runs.
 HOME_CONTROLS_ALWAYS_ON = (
@@ -61,6 +75,20 @@ HOME_CONTROLS_ALWAYS_ON = (
     "search",
     "live",
 )
+
+
+def resolve_home_observers() -> str:
+    """Product observer CSV: base + optional modalities when MODALITY_PRODUCT + ready."""
+    from semblon.observers import resolve_product_observers
+
+    return resolve_product_observers()
+
+
+def resolve_home_prefer_gpu() -> bool:
+    """Product GPU prefer flag from honest ORT EP detection."""
+    from semblon.engine import product_prefer_gpu
+
+    return product_prefer_gpu()
 
 
 def home_control_states(
@@ -198,6 +226,17 @@ def format_search_lines(rec: dict) -> list[str]:
         if rec.get("count") == 0:
             lines.append("No same-space neighbours.")
         return lines
+    if kind == "text":
+        lines = [
+            f"OCR text {rec.get('query')!r}  hits={rec.get('count', 0)}",
+            rec.get("note") or "OCR text is not identity.",
+        ]
+        for i in rec.get("items") or []:
+            snippet = (i.get("text") or "")[:80]
+            lines.append(f"{i.get('item_id')}  {snippet!r}  {i.get('why', '')}")
+        if rec.get("count") == 0:
+            lines.append("No OCR text matches.")
+        return lines
     return [json_fallback(rec)]
 
 
@@ -242,6 +281,48 @@ def format_activity_lines(
         lines.append("events: none")
 
     lines.append(f"tracks={track_count}  (track ≠ person)")
+    return lines
+
+
+def format_library_lines(store: Path, *, source_type: str | None = None) -> list[str]:
+    """Library rows: source-media layer (includes zero-face files when present)."""
+    if not store.is_file():
+        return [f"No store yet: {store}"]
+    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        if source_type:
+            rows = conn.execute(
+                """
+                SELECT media_id, path, source_type
+                FROM media
+                WHERE source_type=?
+                ORDER BY path
+                LIMIT 200
+                """,
+                (source_type,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT media_id, path, source_type
+                FROM media
+                ORDER BY path
+                LIMIT 200
+                """
+            ).fetchall()
+        total = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+    except sqlite3.OperationalError as e:
+        conn.close()
+        return [f"Library unavailable: {e}"]
+    conn.close()
+    label = source_type or "all"
+    if not rows:
+        return [f"Library ({label}): no media yet. Choose a folder to ingest."]
+    lines = [f"Library ({label}): showing {len(rows)} of {total}  (source-media layer)"]
+    for r in rows:
+        lines.append(f"  {r['source_type']}  {r['path']}")
     return lines
 
 
@@ -322,7 +403,7 @@ def json_fallback(rec: dict) -> str:
 
 
 class HomeApp:
-    """Small entry window. Mutations stay in review-ui / review.py."""
+    """Production Home shell: sidebar Library + Canvas workspace + Inspector."""
 
     def __init__(self, store: Path | None = None):
         if tk is None or ttk is None or filedialog is None or messagebox is None:
@@ -337,78 +418,229 @@ class HomeApp:
         self._last_folder: Path | None = None
         self._resume_ready = False
         self._q: queue.Queue = queue.Queue()
+        self._nav = "home"
+        self._nav_buttons: dict[str, ttk.Button] = {}
 
         self.root = tk.Tk()
         self.root.title("Semblon")
-        self.root.minsize(480, 380)
-        self.root.geometry("560x460")
+        self.root.minsize(900, 560)
+        self.root.geometry("1120x700")
 
-        frm = ttk.Frame(self.root, padding=16)
-        frm.pack(fill=tk.BOTH, expand=True)
+        # ── Top chrome: brand · search · settings ──
+        top = ttk.Frame(self.root, padding=(12, 10, 12, 4))
+        top.pack(fill=tk.X)
+        ttk.Label(top, text="SEMBLON", font=("Segoe UI", 16, "bold")).pack(side=tk.LEFT)
+        self.btn_settings = ttk.Button(top, text="⚙ Settings", command=self._show_settings)
+        self.btn_settings.pack(side=tk.RIGHT)
+        search_row = ttk.Frame(top)
+        search_row.pack(side=tk.RIGHT, padx=(0, 12))
+        ttk.Label(search_row, text="Search").pack(side=tk.LEFT)
+        self.search_var = tk.StringVar()
+        ttk.Entry(search_row, textvariable=self.search_var, width=22).pack(side=tk.LEFT, padx=(6, 0))
+        self.btn_search = ttk.Button(search_row, text="Go", command=self._search_person)
+        self.btn_search.pack(side=tk.LEFT, padx=(6, 0))
 
-        ttk.Label(frm, text="SEMBLON", font=("Segoe UI", 14, "bold")).pack(anchor=tk.W)
-        ttk.Label(
-            frm,
-            text="Choose a photo folder to process, or open Review to name people.",
-            wraplength=480,
-        ).pack(anchor=tk.W, pady=(4, 4))
-        ttk.Label(
-            frm,
-            text="Local-first. buffalo_l weights are internal evaluation only — not a commercial pack.",
-            wraplength=480,
-        ).pack(anchor=tk.W, pady=(0, 12))
-
-        row = ttk.Frame(frm)
-        row.pack(fill=tk.X, pady=(0, 8))
-        self.btn_folder = ttk.Button(row, text="Choose folder…", command=self._choose_folder)
+        # ── Job controls (ingest door) ──
+        jobs = ttk.Frame(self.root, padding=(12, 0, 12, 4))
+        jobs.pack(fill=tk.X)
+        self.btn_folder = ttk.Button(jobs, text="Choose folder…", command=self._choose_folder)
         self.btn_folder.pack(side=tk.LEFT)
-        self.btn_review = ttk.Button(row, text="Open Review", command=self._open_review_ui)
+        self.btn_review = ttk.Button(jobs, text="Open Review", command=self._open_review_ui)
         self.btn_review.pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_html = ttk.Button(row, text="Open review.html", command=self._open_html)
+        self.btn_html = ttk.Button(jobs, text="Open review.html", command=self._open_html)
         self.btn_html.pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_pause = ttk.Button(row, text="Pause", command=self._request_pause, state=tk.DISABLED)
+        self.btn_pause = ttk.Button(jobs, text="Pause", command=self._request_pause, state=tk.DISABLED)
         self.btn_pause.pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_cancel = ttk.Button(row, text="Cancel", command=self._request_cancel, state=tk.DISABLED)
+        self.btn_cancel = ttk.Button(jobs, text="Cancel", command=self._request_cancel, state=tk.DISABLED)
         self.btn_cancel.pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_resume = ttk.Button(row, text="Resume", command=self._resume, state=tk.DISABLED)
+        self.btn_resume = ttk.Button(jobs, text="Resume", command=self._resume, state=tk.DISABLED)
         self.btn_resume.pack(side=tk.LEFT, padx=(8, 0))
-
-        row2 = ttk.Frame(frm)
-        row2.pack(fill=tk.X, pady=(0, 8))
-        self.btn_people = ttk.Button(row2, text="People", command=self._show_people)
-        self.btn_people.pack(side=tk.LEFT)
-        self.btn_unknown = ttk.Button(row2, text="Unknown", command=self._show_unknown)
-        self.btn_unknown.pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_activity = ttk.Button(row2, text="Activity", command=self._show_activity)
-        self.btn_activity.pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_settings = ttk.Button(row2, text="Settings", command=self._show_settings)
-        self.btn_settings.pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_canvas = ttk.Button(row2, text="Canvas", command=self._open_canvas)
+        self.btn_live = ttk.Button(jobs, text="Live…", command=self._open_live_overlay)
+        self.btn_live.pack(side=tk.LEFT, padx=(8, 0))
+        # Canvas stays first-class; button focuses Home workspace canvas.
+        self.btn_canvas = ttk.Button(jobs, text="Canvas", command=lambda: self._navigate("canvas"))
         self.btn_canvas.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_live = ttk.Button(row2, text="Live…", command=self._open_live_overlay)
         self.btn_live.pack(side=tk.LEFT, padx=(8, 0))
 
-        search_row = ttk.Frame(frm)
-        search_row.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(search_row, text="Find person").pack(side=tk.LEFT)
-        self.search_var = tk.StringVar()
-        ttk.Entry(search_row, textvariable=self.search_var, width=24).pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_search = ttk.Button(search_row, text="Search", command=self._search_person)
-        self.btn_search.pack(side=tk.LEFT, padx=(8, 0))
+        # Aliases kept for control-state map (People/Unknown/Activity are sidebar).
+        self.btn_people = self.btn_canvas  # placeholder; rebound after sidebar build
+        self.btn_unknown = self.btn_canvas
+        self.btn_activity = self.btn_canvas
 
+        prog = ttk.Frame(self.root, padding=(12, 0, 12, 6))
+        prog.pack(fill=tk.X)
         self.status = tk.StringVar(value=f"Store: {self.store}")
-        ttk.Label(frm, textvariable=self.status, wraplength=520, justify=tk.LEFT).pack(
-            anchor=tk.W, fill=tk.X, pady=(8, 0)
+        ttk.Label(prog, textvariable=self.status, wraplength=900, justify=tk.LEFT).pack(
+            anchor=tk.W, fill=tk.X
         )
         self.clock = tk.StringVar(value="")
-        ttk.Label(frm, textvariable=self.clock, wraplength=520, justify=tk.LEFT).pack(
-            anchor=tk.W, fill=tk.X, pady=(2, 4)
+        ttk.Label(prog, textvariable=self.clock, wraplength=900, justify=tk.LEFT).pack(
+            anchor=tk.W, fill=tk.X, pady=(2, 2)
         )
-        self.bar = StillProgressBar(frm)
-        self.bar.pack(fill=tk.X, pady=(0, 8))
+        self.bar = StillProgressBar(prog)
+        self.bar.pack(fill=tk.X)
+
+        # ── Body: Library | Workspace | Inspector ──
+        body = ttk.Frame(self.root, padding=(8, 0, 8, 8))
+        body.pack(fill=tk.BOTH, expand=True)
+        body.columnconfigure(1, weight=3)
+        body.columnconfigure(2, weight=2)
+        body.rowconfigure(0, weight=1)
+
+        # Library sidebar
+        side = ttk.Frame(body, padding=(4, 4))
+        side.grid(row=0, column=0, sticky="nsw")
+        ttk.Label(side, text="LIBRARY", font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(0, 2))
+        for section, items in HOME_NAV:
+            if section != "LIBRARY":
+                ttk.Label(side, text=section, font=("Segoe UI", 9)).pack(
+                    anchor=tk.W, pady=(10, 2)
+                )
+            for nav_id, label in items:
+                btn = ttk.Button(side, text=label, command=lambda n=nav_id: self._navigate(n))
+                btn.pack(fill=tk.X, pady=1)
+                self._nav_buttons[nav_id] = btn
+
+        # Keep job-control map keys: people/unknown/activity point at sidebar buttons.
+        self.btn_people = self._nav_buttons["people"]
+        self.btn_unknown = self._nav_buttons["unknown"]
+        self.btn_activity = self._nav_buttons["activity"]
+
+        # Workspace (Canvas / welcome)
+        work = ttk.LabelFrame(body, text="WORKSPACE / INTELLIGENCE CANVAS", padding=6)
+        work.grid(row=0, column=1, sticky="nsew", padx=(8, 8))
+        self._workspace = work
+        self._welcome = ttk.Frame(work)
+        ttk.Label(
+            self._welcome,
+            text="Choose a photo folder to process, or open Review to name people.",
+            wraplength=420,
+        ).pack(anchor=tk.W, pady=(4, 4))
+        ttk.Label(
+            self._welcome,
+            text="Local-first. buffalo_l weights are internal evaluation only — not a commercial pack.",
+            wraplength=420,
+        ).pack(anchor=tk.W, pady=(0, 8))
+        ttk.Label(
+            self._welcome,
+            text="Canvas overlays observations here. Identity stays FaceKit; canvas never writes person_id.",
+            wraplength=420,
+        ).pack(anchor=tk.W)
+
+        from semblon.canvas import CanvasWorkspace
+
+        self._canvas_ws = CanvasWorkspace(
+            work,
+            store=self.store,
+            run_id=self._last_run_id,
+            on_select=self._on_canvas_select,
+            show_chrome=True,
+        )
+
+        # Inspector
+        insp = ttk.LabelFrame(body, text="INSPECTOR", padding=6)
+        insp.grid(row=0, column=2, sticky="nsew")
+        self._inspector_title = tk.StringVar(value="Home")
+        ttk.Label(insp, textvariable=self._inspector_title, font=("Segoe UI", 10, "bold")).pack(
+            anchor=tk.W
+        )
+        insp_body = ttk.Frame(insp)
+        insp_body.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
+        self._inspector = tk.Listbox(insp_body, exportselection=False)
+        sb = ttk.Scrollbar(insp_body, orient=tk.VERTICAL, command=self._inspector.yview)
+        self._inspector.configure(yscrollcommand=sb.set)
+        self._inspector.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb.pack(side=tk.LEFT, fill=tk.Y)
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._drain_queue)
+        self._navigate("home")
+
+    def _set_inspector(self, title: str, lines: list[str]) -> None:
+        self._inspector_title.set(title)
+        self._inspector.delete(0, tk.END)
+        for line in lines:
+            self._inspector.insert(tk.END, line)
+
+    def _on_canvas_select(self, media_id: str | None, lines: list[str]) -> None:
+        title = "Selection" if media_id else "Canvas"
+        self._set_inspector(title, lines)
+
+    def _show_workspace_canvas(
+        self,
+        *,
+        reload: bool = True,
+        source_types: tuple[str, ...] | None = None,
+    ) -> None:
+        self._welcome.pack_forget()
+        self._canvas_ws.pack(fill=tk.BOTH, expand=True)
+        if reload:
+            try:
+                self._canvas_ws.reload(
+                    self.store, self._last_run_id, source_types=source_types
+                )
+            except Exception as e:  # noqa: BLE001 — surface in inspector
+                self._set_inspector("Canvas", [f"Canvas unavailable: {e}"])
+
+    def _show_workspace_welcome(self) -> None:
+        self._canvas_ws.pack_forget()
+        self._welcome.pack(fill=tk.BOTH, expand=True, anchor=tk.NW)
+
+    def _navigate(self, nav_id: str) -> None:
+        self._nav = nav_id
+        if nav_id in {"home", "canvas"}:
+            self._show_workspace_canvas(reload=True, source_types=None)
+            self._set_inspector(
+                "Home" if nav_id == "home" else "Canvas",
+                [
+                    "Library is the source-media layer.",
+                    "People/Unknown is the identity-observation layer.",
+                    "Canvas overlays boxes/tracks — never writes faces.person_id.",
+                    f"Product observers: {resolve_home_observers()}",
+                    f"GPU product path prefer={resolve_home_prefer_gpu()}",
+                    "Open Review to name people (cluster → review → person → name).",
+                    *format_library_lines(self.store)[:6],
+                ],
+            )
+            return
+        if nav_id == "photos":
+            # Stills are typically source_type=folder; exclude video assets.
+            self._show_workspace_canvas(reload=True, source_types=("folder",))
+            lib = format_library_lines(self.store, source_type="folder")
+            self._set_inspector(
+                "Photos",
+                [
+                    "Source-media layer. Zero-face files stay here.",
+                    "Select a row in Canvas to inspect observation overlays.",
+                    *lib,
+                ],
+            )
+            return
+        if nav_id == "videos":
+            self._show_workspace_canvas(reload=True, source_types=("video",))
+            lib = format_library_lines(self.store, source_type="video")
+            self._set_inspector(
+                "Videos",
+                [
+                    "One video asset, many observations. Track ≠ person.",
+                    "Select a row in Canvas to inspect observation overlays.",
+                    *lib,
+                ],
+            )
+            return
+        if nav_id == "people":
+            self._show_workspace_welcome()
+            self._show_people()
+            return
+        if nav_id == "unknown":
+            self._show_workspace_welcome()
+            self._show_unknown()
+            return
+        if nav_id == "activity":
+            self._show_workspace_welcome()
+            self._show_activity()
+            return
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -464,6 +696,8 @@ class HomeApp:
         queued = make_event(STAGE_PROCESS, KIND_QUEUED, path=str(path), outcome="resumed" if resume else None)
         self.status.set(status_text(queued))
         self._set_busy(True)
+        observers = resolve_home_observers()
+        prefer_gpu = resolve_home_prefer_gpu()
 
         def on_event(ev: ProgressEvent) -> None:
             self._wd.note(ev)
@@ -481,7 +715,8 @@ class HomeApp:
             self.engine.submit_ingest(
                 path,
                 resume=resume,
-                observers=HOME_OBSERVERS,
+                observers=observers,
+                prefer_gpu=prefer_gpu,
                 on_event=on_event,
                 on_done=on_done,
             )
@@ -545,6 +780,13 @@ class HomeApp:
                             files_total=1,
                         )
                     )
+                    if self._nav in {"home", "canvas", "photos", "videos"}:
+                        types = None
+                        if self._nav == "photos":
+                            types = ("folder",)
+                        elif self._nav == "videos":
+                            types = ("video",)
+                        self._show_workspace_canvas(reload=True, source_types=types)
                 elif kind == "cancelled":
                     self._resume_ready = self._last_folder is not None
                     self._set_busy(False)
@@ -601,57 +843,46 @@ class HomeApp:
         webbrowser.open(path.resolve().as_uri())
 
     def _list_window(self, title: str, lines: list[str]) -> None:
-        win = tk.Toplevel(self.root)
-        win.title(title)
-        win.geometry("520x360")
-        body = ttk.Frame(win)
-        body.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
-        lb = tk.Listbox(body)
-        sb = ttk.Scrollbar(body, orient=tk.VERTICAL, command=lb.yview)
-        lb.configure(yscrollcommand=sb.set)
-        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        sb.pack(side=tk.LEFT, fill=tk.Y)
-        for line in lines:
-            lb.insert(tk.END, line)
-        ttk.Button(win, text="Close", command=win.destroy).pack(pady=(0, 8))
+        """Legacy helper: route into Inspector (no floating list-only windows)."""
+        self._set_inspector(title, lines)
 
     def _show_people(self) -> None:
         from semblon.search import SearchError, search_people
 
         if not self.store.is_file():
-            messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
+            self._set_inspector("People", [f"No store yet:\n{self.store}"])
             return
         try:
             rec = search_people(self.store)
         except SearchError as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self._list_window("People", format_people_lines(rec))
+        self._set_inspector("People", format_people_lines(rec))
 
     def _show_unknown(self) -> None:
         from semblon.inbox import InboxError, inbox
         from semblon.process import latest_run_id
 
         if not self.store.is_file():
-            messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
+            self._set_inspector("Unknown", [f"No store yet:\n{self.store}"])
             return
         rid = latest_run_id(self.store, with_faces=True)
         if rid is None:
-            messagebox.showinfo("Semblon", "Store has no runs with faces.")
+            self._set_inspector("Unknown", ["Store has no runs with faces."])
             return
         try:
             rec = inbox(self.store, rid)
         except InboxError as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self._list_window("Unknown / inbox", format_unknown_lines(rec, rid))
+        self._set_inspector("Unknown", format_unknown_lines(rec, rid))
 
     def _show_activity(self) -> None:
         from semblon.process import empty_state_line, latest_run_id
         from semblon.store import integrity_report
 
         if not self.store.is_file():
-            messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
+            self._set_inspector("Activity", [f"No store yet:\n{self.store}"])
             return
         rid = latest_run_id(self.store)
         line = empty_state_line(self.store, rid) if rid else "no runs"
@@ -662,7 +893,7 @@ class HomeApp:
             extra = f"integrity unavailable: {e}"
 
         if not rid:
-            self._list_window(
+            self._set_inspector(
                 "Activity",
                 format_activity_lines(
                     run_line=line,
@@ -678,9 +909,9 @@ class HomeApp:
         try:
             rec = read_activity_snapshot(self.store, rid)
         except (sqlite3.DatabaseError, OSError) as e:
-            self._list_window("Activity", [line, extra, f"activity unavailable: {e}"])
+            self._set_inspector("Activity", [line, extra, f"activity unavailable: {e}"])
             return
-        self._list_window(
+        self._set_inspector(
             "Activity",
             format_activity_lines(
                 run_line=line,
@@ -693,19 +924,16 @@ class HomeApp:
         )
 
     def _open_canvas(self) -> None:
-        from semblon.canvas import CanvasError, run_canvas
-
-        try:
-            run_canvas(self.store, self._last_run_id, parent=self.root)
-        except CanvasError as e:
-            messagebox.showerror("Semblon", str(e))
+        """First-class canvas is the Home workspace; keep Toplevel as escape hatch."""
+        self._navigate("home")
 
     def _search_person(self) -> None:
-        from semblon.search import SearchError, search_person
+        from semblon.gates import MODALITY_PRODUCT, enabled
+        from semblon.search import SearchError, search_person, search_text
 
         q = (self.search_var.get() or "").strip()
         if not q:
-            messagebox.showinfo("Semblon", "Type a person name first.")
+            messagebox.showinfo("Semblon", "Type a person name or OCR text.")
             return
         if not self.store.is_file():
             messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
@@ -715,40 +943,40 @@ class HomeApp:
         except SearchError as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self._list_window("Search", format_search_lines(rec))
+        lines = format_search_lines(rec)
+        if enabled(MODALITY_PRODUCT) and int(rec.get("count") or 0) == 0:
+            try:
+                text_rec = search_text(self.store, q)
+            except SearchError:
+                text_rec = None
+            if text_rec is not None and int(text_rec.get("count") or 0) > 0:
+                lines.append("")
+                lines.extend(format_search_lines(text_rec))
+        self._set_inspector("Search", lines)
 
     def _show_settings(self) -> None:
-        from semblon.gates import MODALITY_PRODUCT, enabled
-        from semblon.observers import optional_status
+        from semblon.engine import format_execution_status_lines
+        from semblon.observers import modality_product_settings_lines
         from semblon.providers import weights_status
 
         w = weights_status()
-        st = optional_status()
         lines = [
             f"Store: {self.store}",
+            "Shell: Library | Workspace/Canvas | Inspector (Tk; R3 toolkit winner still human-named)",
             "Ingest is a JobEngine job, not an application lock. Review/People/Search stay usable.",
             "Pause: cooperative between files (not mid-file); Resume while paused continues the same job",
             "Cancel: between files (not mid-file)",
             "Resume when idle: continues cancelled/interrupted run from next unfinished stage",
             "Stills bar: real files done / files total, climbs to 100%",
-            "Provider: FaceKit CPU (not claimed GPU)",
-            f"Home observers: {HOME_OBSERVERS}",
+            f"Home observers (base): {HOME_OBSERVERS}",
+            f"Home observers (product): {resolve_home_observers()}",
             f"Weights dir: {w['dir']}",
             f"onnx files: {w['onnx_count']}  bundled={w['bundled']}",
             w["note"],
-            f"optional ocr={st['ocr']} clip={st['clip']} pose={st['pose']}",
-            st["identity"],
         ]
-        if enabled(MODALITY_PRODUCT):
-            notes = st.get("notes") or {}
-            if notes:
-                lines.append("Modality honesty notes:")
-                for key in ("ocr", "clip", "pose"):
-                    if key in notes:
-                        lines.append(f"  {key}: {notes[key]}")
-            else:
-                lines.append("Modality honesty notes: (all optional probes ready on this machine)")
-        self._list_window("Settings", lines)
+        lines.extend(format_execution_status_lines())
+        lines.extend(modality_product_settings_lines())
+        self._set_inspector("Settings", lines)
 
     def _open_live_overlay(self) -> None:
         from semblon.gates import WIRE_HOME_LIVE, enabled, require_human_note
@@ -790,6 +1018,8 @@ class HomeApp:
 
         def _run() -> None:
             try:
+                from semblon.engine import product_prefer_gpu
+
                 src: str | int = int(source) if source.isdigit() else source
                 rec = run_live_overlay(
                     self.store,
@@ -798,6 +1028,7 @@ class HomeApp:
                     show=True,
                     from_home=True,
                     explicit_flag=False,
+                    prefer_gpu=product_prefer_gpu(),
                 )
             except Exception as e:  # noqa: BLE001 — surface to Home status
                 self.root.after(0, lambda: self._live_failed(e))

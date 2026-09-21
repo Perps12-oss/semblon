@@ -16,17 +16,94 @@ from semblon.identify import identify_face
 from semblon.observers import (
     CLIP_PACK,
     find_local_clip_weights,
+    modality_product_settings_lines,
     observe_bgr,
     optional_status,
     probe_clip_status,
     probe_ocr_status,
     probe_pose_status,
+    resolve_product_observers,
 )
 from semblon.review import name_cluster
-from semblon.search import SearchError, search_similar
+from semblon.search import SearchError, search_similar, search_text
 from semblon.store import connect, init_db
 from tests.test_cluster import _seed, _vec
 from tests.test_review import _clustered
+
+
+def test_resolve_product_observers_gate_off_keeps_base(monkeypatch):
+    monkeypatch.setenv("SEMBLON_MODALITY_PRODUCT", "0")
+    with patch("semblon.observers.optional_status", return_value={"ocr": True, "clip": True, "pose": True}):
+        assert resolve_product_observers(base="face") == "face"
+        assert resolve_product_observers() == "face,color,object"
+
+
+def test_resolve_product_observers_appends_ready_only(monkeypatch):
+    monkeypatch.delenv("SEMBLON_MODALITY_PRODUCT", raising=False)
+    st = {
+        "ocr": True,
+        "clip": False,
+        "pose": True,
+        "notes": {"clip": "unavailable: mocked"},
+        "identity": "facekit only",
+        "note": "optional extras never write faces.person_id or embeddings.modality=face",
+    }
+    with patch("semblon.observers.optional_status", return_value=st):
+        got = resolve_product_observers(base="face")
+    assert got == "face,text,pose"
+    assert "clip" not in got.split(",")
+
+
+def test_modality_product_settings_lines_rich_status(monkeypatch):
+    monkeypatch.delenv("SEMBLON_MODALITY_PRODUCT", raising=False)
+    st = {
+        "ocr": False,
+        "clip": True,
+        "pose": False,
+        "notes": {
+            "ocr": "unavailable: tesseract binary not on PATH",
+            "pose": "unavailable: mediapipe.solutions.pose missing",
+        },
+        "identity": "facekit only",
+        "note": "optional extras never write faces.person_id or embeddings.modality=face",
+    }
+    with patch("semblon.observers.optional_status", return_value=st):
+        with patch("semblon.observers.resolve_product_observers", return_value="face,color,object,clip"):
+            lines = modality_product_settings_lines()
+    joined = "\n".join(lines)
+    assert "PRODUCTIZED" in joined
+    assert "ocr: unavailable: tesseract" in joined
+    assert "clip: ready" in joined
+    assert "facekit only" in joined
+    assert "never write faces.person_id" in joined
+
+
+def test_search_text_is_readonly_not_identity(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    conn = connect(store)
+    init_db(conn)
+    img = np.ones((12, 12, 3), dtype=np.uint8)
+    with patch("semblon.observers.ocr_image", return_value={"text": "HELLO SEMBLON", "score": 1.0}):
+        observe_bgr(conn, observation_id="o1", run_id="r1", img=img, observers=("text",))
+    conn.commit()
+    before_persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    conn.close()
+    rec = search_text(store, "semblon")
+    assert rec["kind"] == "text"
+    assert rec["count"] == 1
+    assert "HELLO" in rec["items"][0]["text"]
+    assert "not a person" in rec["items"][0]["why"]
+    miss = search_text(store, "nope-xyz")
+    assert miss["count"] == 0
+    conn = connect(store)
+    after_persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    n_face = conn.execute("SELECT COUNT(*) FROM embeddings WHERE modality='face'").fetchone()[0]
+    conn.close()
+    assert before_persons == after_persons == 0
+    assert n_face == 0
+    with pytest.raises(SearchError):
+        search_text(store, "   ")
 
 
 def test_optional_status_pose_false_without_solutions():
@@ -273,3 +350,14 @@ def test_home_list_formatters():
     )
     assert "appearance" in sim[0]
     assert "not a person" in sim[2]
+    text_lines = format_search_lines(
+        {
+            "kind": "text",
+            "query": "hello",
+            "count": 1,
+            "items": [{"item_id": "t1", "text": "hello world", "why": "OCR payload substring; not a person"}],
+            "note": "OCR text lookup is observation evidence only; not identity.",
+        }
+    )
+    assert "OCR text" in text_lines[0]
+    assert "hello world" in text_lines[2]
