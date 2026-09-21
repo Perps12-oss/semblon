@@ -77,6 +77,17 @@ def main(argv: list[str] | None = None) -> int:
     integ.add_argument("--store", required=True, type=Path)
     mods = lab_sub.add_parser("models", help="report local buffalo_l weights (does not download)")
     lab_sub.add_parser("providers", help="list observation providers and availability")
+    gates_p = lab_sub.add_parser(
+        "gates",
+        help="code-ahead gate registry status (read-only; all defaults OFF until human VERIFY)",
+    )
+    gates_p.add_argument(
+        "--gate",
+        action="append",
+        dest="gate_keys",
+        default=None,
+        help="optional gate key filter (repeatable)",
+    )
     oc = lab_sub.add_parser("opencv", help="timed OpenCV import probe (does not hang the suite)")
     oc.add_argument("--timeout", type=float, default=8.0)
 
@@ -466,6 +477,12 @@ def main(argv: list[str] | None = None) -> int:
 
         rec = {"observers": optional_status(), "execution": select_execution_provider(prefer_gpu=True)}
         print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "gates":
+        from semblon.gates import status_report
+
+        print(json.dumps(status_report(args.gate_keys), indent=2))
         return 0
 
     if args.cmd == "lab" and args.labcmd == "opencv":
