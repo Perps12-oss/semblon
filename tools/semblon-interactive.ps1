@@ -17,19 +17,23 @@ trap {
 }
 
 function Get-SemblonLaunch {
+    # Prefer python -m semblon over a stale console script after package moves.
     $candidates = @(
         @{ Exe = Join-Path $Root ".venv\Scripts\semblon.exe"; Py = Join-Path $Root ".venv\Scripts\python.exe" },
         @{ Exe = Join-Path $Root "semblon\.venv\Scripts\semblon.exe"; Py = Join-Path $Root "semblon\.venv\Scripts\python.exe" }
     )
     foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c.Py) {
+            & $c.Py -c "import semblon" 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                return @{ Kind = "py"; Path = $c.Py }
+            }
+        }
         if (Test-Path -LiteralPath $c.Exe) {
             return @{ Kind = "exe"; Path = $c.Exe }
         }
-        if (Test-Path -LiteralPath $c.Py) {
-            return @{ Kind = "py"; Path = $c.Py }
-        }
     }
-    Write-Error "Semblon: repo .venv not found under $Root"
+    Write-Error "Semblon: repo .venv not found or package not installed under $Root. Run: tools\install-windows.ps1"
     exit 1
 }
 
