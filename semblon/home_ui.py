@@ -1354,9 +1354,15 @@ class HomeApp:
 
         try:
             # Toplevel on Home's root. Home keeps pumping events. No nested mainloop.
-            run_review_ui(store=self.store, run_id=self._last_run_id, parent=self.root)
+            run_review_ui(
+                store=self.store,
+                run_id=self._last_run_id,
+                parent=self.root,
+                on_add_folder=self._choose_folder,
+            )
         except ReviewUiError as e:
-            messagebox.showerror("Semblon", str(e))
+            # Expected empty (no store / no runs) is handled inside run_review_ui.
+            messagebox.showerror("Couldn't open Review", str(e))
 
     def _open_html(self) -> None:
         path = self._last_review_html

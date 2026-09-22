@@ -35,11 +35,19 @@ THUMB_MAX = 96
 _FRAME_CACHE_MAX = 64
 _CROP_CACHE_MAX = 256
 
-# semblon.ui_tokens not present yet — Segoe UI sizes match Home / UX Rescue spec.
-_FONT_UI = ("Segoe UI", 10)
-_FONT_UI_BOLD = ("Segoe UI", 10, "bold")
-_FONT_HEADLINE = ("Segoe UI", 14, "bold")
-_FONT_BANNER = ("Segoe UI", 10)
+# Design tokens (UX Rescue §1). Soft fallback if tokens module is mid-merge.
+try:
+    from semblon.ui_tokens import BODY, BODY_STRONG, H2, SECONDARY_FONT
+except ImportError:  # pragma: no cover
+    BODY = ("Segoe UI", 11)
+    BODY_STRONG = ("Segoe UI", 11, "bold")
+    H2 = ("Segoe UI", 16, "bold")
+    SECONDARY_FONT = ("Segoe UI", 10)
+
+_FONT_UI = BODY
+_FONT_UI_BOLD = BODY_STRONG
+_FONT_HEADLINE = H2
+_FONT_BANNER = SECONDARY_FONT
 
 REVIEW_WINDOW_TITLE = "Review faces"
 REVIEW_BANNER = (
