@@ -75,3 +75,16 @@ def test_home_is_a_job_client():
     # Activity reads go through Application façade (APP-1), not a Home-owned SQL path.
     assert "from semblon.application import activity" in src
     assert "inspector_verbs" in src or "Merge observations" in src
+
+
+def test_home_defers_canvas_load_until_inspector_ready():
+    """Regression: Canvas on_select during __init__ must not touch missing _canvas_ws."""
+    import semblon.home_ui as home_ui
+
+    init_src = inspect.getsource(home_ui.HomeApp.__init__)
+    # First CanvasWorkspace construction must not pass the live store (reload→on_select
+    # runs before Inspector widgets / attribute assignment complete).
+    assert "store=None" in init_src
+    sel_src = inspect.getsource(home_ui.HomeApp._on_canvas_select)
+    assert 'getattr(self, "_canvas_ws"' in sel_src
+    assert 'hasattr(self, "_sel_list")' in sel_src
