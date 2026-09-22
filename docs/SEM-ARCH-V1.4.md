@@ -34,9 +34,9 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | Derived tracks / S7b | **SHIPPED slice** |
 | Watch | **EXISTS** |
 | Live | **EXISTS / hardware proof pending** |
-| Canvas | **EXISTS, prototype implementation** |
+| Canvas | **EXISTS — Home-integrated Tk production overlay** (renderer still provisional vs native shell) |
 | Search | **EXISTS** |
-| Home | **SHIPPED but architecturally constrained** |
+| Home | **SHIPPED — sidebar shell (Library \| Workspace/Canvas \| Inspector)**; R3 native shell still open |
 | Review UI | **SHIPPED, legacy Tk surface** |
 | Native application shell | **NOT decided/implemented** |
 | APP-1 JobEngine boundary | **MERGED** (`main`) |
@@ -44,7 +44,7 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | IPC boundary | **PROBE** (`semblon/ipc_probe.py` loopback JSON-lines; not product IPC) |
 | Native ARM64 performance | **BLOCKED** |
 | Multi-worker ingest | **EXPERIMENTAL / not default** |
-| GPU | **NOT productized** |
+| GPU | **PRODUCTIZED** — prefer when ORT lists CUDA/DirectML/TensorRT; else honest CPU; Azure ≠ GPU; listed ≠ smoke-tested |
 | Rust | **DEFERRED until measurements justify it** |
 
 ---
@@ -306,9 +306,9 @@ Track at each size:
 
 ## I.3 Parallel experimental track
 
-- native ARM64 perf investigation
-- multi-worker headless benchmark
-- provider benchmark
+- native ARM64 perf investigation — **OpenCV load still BLOCKED** (`docs/PERF-P1-ARM64.md`); no fake speedup
+- multi-worker headless benchmark — harness dry-run OK; product default **workers=1** (`docs/PERF-WORKERS-HARNESS.md`)
+- provider benchmark — EP listing harness (`docs/PERF-PROVIDER-HARNESS.md`); listed ≠ smoke-tested; Azure ≠ GPU
 - 1k/5k/10k scale testing
 - webcam/RTSP real-hardware tests when available
 
@@ -384,6 +384,7 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.7 | 2026-09-21 | Plan-gaps productization on `main`: status table Home sidebar + CanvasWorkspace + GPU PRODUCTIZED + optional observers (`product_prefer_gpu` / `resolve_product_observers`). |
 | V1.4.6 | 2026-09-21 | Owner closed APP-1 C.3, bake-off/§8.7, Ruled-out ship claim as **CLOSED / DONE** (§I.5). Native production shell authorized next. |
 | V1.4.5 | 2026-09-21 | Fuller R3 Artifact 1–4 pack landed (`01-state-matrix`, `02-state-triple`, `03-collision-ledger`, `05-bake-off-checklist` criteria); abbreviated brief §3 seed superseded. Bake-off measures / §8.7 winner still §I.5 last. |
 | V1.4.4 | 2026-09-21 | Human verification (APP-1 C.3, bake-off, §8.7 winner, Ruled-out ship wire, other human gates) **DEFERRED TO LAST**; development must continue (§I.5). |

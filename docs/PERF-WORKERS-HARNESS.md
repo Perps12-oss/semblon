@@ -45,3 +45,9 @@ Optional: `--out-dir` for the per-workers stores (default: `<out.parent>\perf-wo
 ## Tests
 
 `tests/test_perf_workers_harness.py` exercises the dry-run / `verified: false` path without a real photo corpus or InsightFace download.
+
+## Shakedown (2026-09-21)
+
+Cloud/Linux dry-run: `python tools/perf_workers_harness.py --out …` → `verified=false`, `status=pending_human`, exit 0.  
+`python tools/bench_ingest.py --out …` → `verified=false`, `workers=1`.  
+No folder corpus here — **no throughput or speedup claimed**. ARM64 OpenCV remains **BLOCKED** (`docs/PERF-P1-ARM64.md`). Product default stays `workers=1`.

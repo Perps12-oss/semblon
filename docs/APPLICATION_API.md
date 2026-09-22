@@ -27,9 +27,8 @@ Home button  →  Home-owned worker  →  Tk callback chain  →  ingest
 | Pause | Cooperative; same job stays claimed; not consuming ingest work | `JobEngine.pause` / `unpause` |
 | Application state | store path, latest run with faces | `default_store_path`, `latest_run_id` |
 | Review state | board items (cluster / track / unassigned) | `load_board` |
-| Person operations | Name / Merge / Split / Ignore / Note / Rule out | `apply_*` → `review.py` (Home Inspector + review-ui) |
-| Search / read snapshots | people, unknown, activity, person query, canvas overlay | `search_*`, `inbox`, Home `read_activity_snapshot`, `load_canvas` |
-| Observation overlay | `path` + `frame_id` + `bbox` + optional track lane | `load_canvas` / `overlay_boxes` |
+| Person operations | Name / Merge / Split / Ignore / Note / Rule out (gate default ON; ship claim CLOSED / DONE §I.5) | `apply_*` → `review.py` (Home Inspector + review-ui) |
+| Search / read snapshots | people, unknown, activity, person query, canvas overlay | `search_*`, `inbox`, `activity` / Home `read_activity_snapshot`, `load_canvas` || Observation overlay | `path` + `frame_id` + `bbox` + optional track lane | `load_canvas` / `overlay_boxes` |
 
 CONTRACTS family this maps onto: Media, Observation, Face, Embedding, Track, Episode (not a first-class UI command yet), Person, Decision, SearchResult, Job, Progress, Cancellation.
 
@@ -43,7 +42,7 @@ Reads:
 | `people(store)` | `search_people` | Named persons only |
 | `search_person(store, query)` | `search_person` | Lookup, not identity |
 | `inbox(store, run_id)` | `inbox` | UNKNOWN is valid |
-| `activity(store, run_id)` | Home `read_activity_snapshot` | groups / relationships / events; track ≠ person |
+| `activity(store, run_id?)` | `application.activity` → Home `read_activity_snapshot` | groups / relationships / events; track ≠ person |
 | `canvas(store, run_id?)` | `load_canvas` | Overlay payload. Cluster ≠ person |
 | `job_current()` | `JobEngine.current` / `busy` / `state` / `paused` | Handle while running; None when idle |
 
@@ -60,12 +59,11 @@ Mutations (one writer: Python domain ops):
 | `apply_split` | `apply_split` | Faces leave the cluster |
 | `apply_ignore` | `apply_ignore` | Hide from board |
 | `apply_note` | `apply_note` | `decisions.kind=note` |
-| `apply_rule_out` | `apply_rule_out` | Durable reject (`action=rule_out`); gate `SEMBLON_RULED_OUT` default **ON** (opt out `=0`). Home Inspector **Rule out** + review-ui. See `docs/CONTRACTS-RULED-OUT.md` |
+| `apply_rule_out` | `apply_rule_out` | Durable reject (`action=rule_out`); gate default **ON** (`semblon.gates.RULED_OUT`); opt out `SEMBLON_RULED_OUT=0`. Home Inspector **Rule out** + review-ui. **Ship claim CLOSED / DONE** (§I.5). See `docs/CONTRACTS-RULED-OUT.md` |
 
 Named later, not implemented as Job types in this slice: `watch`, `live`. The API must not assume stills-only.
 
-**Ruled out:** product-wire ship claim **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5). Chrome on Home Inspector + review-ui when gate ON.
-
+**Ruled out:** product-wire ship claim **CLOSED / DONE** by owner 2026-09-21 (`docs/CONTRACTS-RULED-OUT.md` · SEM-ARCH §I.5). Chrome on Home Inspector + review-ui when gate ON.
 ## Job states (V1.4 C.2)
 
 ```
@@ -138,6 +136,8 @@ Cancel: always available while a job is claimed.
 | Resume after cancel | idle only | new submit with `resume=True` |
 
 Review opens as a `Toplevel` on Home's root so Home keeps pumping job events. Standalone `run_review_ui()` still owns its own loop when there is no parent.
+
+`JobEngine` is the only ingest door for Home / Review / IPC probe. Headless CLI `semblon process` / `ingest` may call `process_folder` directly — that is not a second Tk application door. Home and Review must never import or call `process_folder`.
 
 ## Identity firewall
 

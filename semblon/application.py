@@ -2,7 +2,9 @@
 
 A future native UI talks to these names, not to Home widgets or FaceKit.
 Mutations stay in review.py via review_ui.apply_*. Reads are RO SQLite.
-Job ownership lives in semblon.jobs. Home is a client.
+Job ownership lives in semblon.jobs. Home and Review are clients only —
+they must not own the ingest worker (CLI `process`/`ingest` remain
+headless doors; Tk surfaces submit through JobEngine).
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from semblon.home_ui import home_control_states, read_activity_snapshot
 from semblon.inbox import inbox
 from semblon.jobs import (
     KIND_INGEST,
+    STATE_CANCELLING,
     STATE_IDLE,
     STATE_PAUSED,
     STATE_RUNNING,
@@ -37,6 +40,7 @@ from semblon.search import search_people, search_person
 
 __all__ = [
     "KIND_INGEST",
+    "STATE_CANCELLING",
     "STATE_IDLE",
     "STATE_PAUSED",
     "STATE_RUNNING",

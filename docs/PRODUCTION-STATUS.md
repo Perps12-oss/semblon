@@ -1,7 +1,7 @@
 # Semblon production status
 
 **Date:** 2026-09-21  
-**Version:** 1.4.0 (`main` @ schema v2 write-through + optional observers; ARCH-011 / APP-1 job door)  
+**Version:** 1.4.0 (`main` @ observation-table write-through / store `SCHEMA_VERSION=4` + optional observers; ARCH-011 / APP-1 job door)  
 **Branch intent:** full-stack architecture on the frozen identity contract.
 
 Authority: `docs/PRODUCT.md` (v1 + 2026-09-19 production amendment), `docs/CONTRACTS.md`, `docs/SEM-ARCH-V1.4.md`.  
@@ -12,7 +12,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 ## Hierarchy
 
 1. **Identity contract** — immutable. Unknown valid; cluster ≠ person; no silent auto-ID; native/emulated honesty. FaceKit is the only identity engine.
-2. **Production capabilities** — Home/review-ui, cancel, backup, integrity, person search, Canvas overlay, schema v2 write-through, stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks.
+2. **Production capabilities** — Home/review-ui, cancel, backup, integrity, person search, Canvas overlay, observation-table write-through (“schema v2” / `SCHEMA_VERSION=4`), stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks.
 3. **Experimental / unavailable** — product-default `workers>1`, GPU when no EP, MSI+weights, 10k run. OCR/CLIP/pose are **PRODUCTIZED (optional)** when honesty probes pass (`docs/OPTIONAL-MODALITY-STATUS.md`); still non-identity.
 
 ## COMPLETE (verified in portable pytest)
@@ -25,7 +25,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 - Backup/restore; integrity report; unfinished runs stamped interrupted (not completed)
 - `FaceKitProvider.load()` is the ingest load path (`ingest.load_app` wraps it)
 - Stall watchdog on Home status; stalled ≠ killed
-- Schema v2: `observation_items`, `embeddings`, `tracks`, `observation_groups`, `relationships`, `events`
+- Schema v2 tables (`observation_items`, `embeddings`, `tracks`, `observation_groups`, `relationships`, `events`) at store `SCHEMA_VERSION=4`
 - Face dual-write as `observation_items` kind=`face` without identity vectors in `embeddings`
 - DBSCAN clusters snapshot to `observation_groups` (group ≠ person)
 - S6 together/events snapshot to `relationships`/`events` with `confirmed=0`
@@ -57,7 +57,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 ## DEFERRED
 
-Identify/inbox as dedicated full pages; vector DB; a second native shell as default Home (R3 toolkit winner still human-named).
+Identify/inbox as dedicated full pages; vector DB; native production shell as default Home (authorized §I.5 / §8.7 — not yet shipped as replacement for Tk Home).
 
 ## UNAVAILABLE
 

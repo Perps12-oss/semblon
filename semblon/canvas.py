@@ -38,10 +38,10 @@ CANVAS_NOTE = (
 
 
 def face_evidence_tag(face: dict) -> str:
-    """Evidence-axis label for a face box. Does not read person_id for chrome."""
-    if face.get("cluster_id"):
-        return "clustered"
-    return "unassigned"
+    """Evidence-axis label for a face box (R3-BRIEF). Does not read person_id."""
+    from semblon.r3_chrome import face_evidence_label
+
+    return face_evidence_label(face)
 
 
 def load_canvas(store: Path, run_id: str | None = None) -> dict:
@@ -240,12 +240,15 @@ def media_inspector_lines(board: dict, media_id: str | None) -> list[str]:
     Labels distinguish Evidence (machine) from Proposed action (human).
     Actual verb buttons live on Home Inspector; this is read-only chrome.
     """
+    from semblon.r3_chrome import chrome_legend_lines, face_display_state
+
     if not media_id:
         return [
             "Evidence relationship (machine)",
             board.get("note") or CANVAS_NOTE,
             f"run={board.get('run_id')}",
             f"media={len(board.get('media') or [])}  faces={len(board.get('faces') or [])}",
+            *chrome_legend_lines()[:3],
             "Proposed action (human): use Home Inspector verbs",
             "Merge observations ≠ Assign to person",
         ]
@@ -258,12 +261,18 @@ def media_inspector_lines(board: dict, media_id: str | None) -> list[str]:
     cluster_ids = sorted({f.get("cluster_id") for f in faces if f.get("cluster_id")})
     triples = media_state_triples(board, [media] if media else [])
     triple = triples.get(media_id) if media_id else None
+    display_counts: dict[str, int] = {}
+    for f in faces:
+        label = face_display_state(f)
+        display_counts[label] = display_counts.get(label, 0) + 1
+    display_bits = "  ".join(f"{k}={v}" for k, v in sorted(display_counts.items())) or "none"
     lines = [
         "Evidence relationship (machine)",
         f"path={media.get('path') if media else '?'}",
         f"source_type={media.get('source_type') if media else '?'}",
         f"faces={len(faces)}  clustered={clustered}  unassigned={unassigned}",
         f"cluster membership: {', '.join(c[:12] for c in cluster_ids) or 'none'}",
+        f"display: {display_bits}",
         f"items={len(items)}  tracks={len(tracks)}  (track ≠ person)",
         "Boxes/tracks only. Group ≠ person. Similarity is not identity.",
         "Proposed action (human): Home Inspector — Merge · Assign · Split · Name · Rule out · Ignore",
