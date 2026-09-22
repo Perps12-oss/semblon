@@ -17,7 +17,7 @@
 | Native production shell | Slice 1 + Inspector + Canvas RO list | `semblon/native_shell/`; Application.canvas + overlay_boxes + state-triple labels | Pixel compositor / default entry swap | **IN PROGRESS** |
 | Tk Home | Compatibility frontend | `semblon home` | Keep until native shell replaces default entry | **KEEP** |
 | `review.html` as UX | Engineering export only | export path | Must not become default workflow | **SUPERSEDED as UX** |
-| PERF ARM64 OpenCV | Load hang | `docs/PERF-P1-ARM64.md` | Owner/machine native load when unblocked | **BLOCKED** (perf track; not APP-1) |
+| PERF ARM64 OpenCV | Load hang unreproduced-as-fixed; in-repo PE/timed probes + owner repro shipped | `docs/PERF-P1-ARM64.md`; `semblon/opencv_probe.py`; `tools/_perf_p1_load_cv2.py`; `tests/test_opencv_probe.py` | Owner Windows ARM64: `tools\\perf_p1_arm64_repro.ps1` (or `_perf_p1_load_cv2.py --timeout 20`); fix/replace `opencv_geometry500.dll` load; then separate-store timing vs P0 | **BLOCKED** (native load) · probe tooling **COMPLETE** (perf track; not APP-1) |
 | Multi-worker default | Experimental | workers default 1 | Measure before product default | **EXPERIMENTAL** |
 | MSI + weights | Unavailable | licenses | Legal + packaging | **UNAVAILABLE** |
 
