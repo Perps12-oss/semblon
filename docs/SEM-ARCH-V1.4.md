@@ -36,11 +36,11 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | Live | **EXISTS / hardware proof pending** |
 | Canvas | **EXISTS — Home-integrated Tk production overlay** (renderer still provisional vs native shell) |
 | Search | **EXISTS** |
-| Home | **SHIPPED — sidebar shell (Library \| Workspace/Canvas \| Inspector)**; Tk = compatibility; native `semblon shell` slice 1 |
-| Review UI | **SHIPPED, legacy Tk surface** |
-| Native application shell | **SLICE 1 SHIPPED** (`semblon shell` / `semblon/native_shell/` via Application API; deepen Canvas/Inspector; Tk Home = compatibility) |
-| APP-1 JobEngine boundary | **MERGED** (`main`) |
-| APP-1 C.2 paused / unpause | **COMPLETE** (JobEngine + `Application.pause_job`/`unpause_job` + Home/shell/IPC; unit tests) |
+| Home | **SHIPPED — production GUI shell** (Library \| Workspace/Canvas \| Inspector); one shipping GUI per **#54**; wired **#63–#66**; UNWIRED claims closed **#65** |
+| Review UI | **SHIPPED** (KEEP vertical with Home) |
+| Native application shell | **N/A as mapped open item** — production shell is Tk Home (#54/#65). Optional Qt `semblon shell` (#67) is KEEP optional, not a second product Home |
+| APP-1 JobEngine boundary | **MERGED** (`main`) · **CLOSED** (C.2+C.3) |
+| APP-1 C.2 paused / unpause | **COMPLETE** |
 | IPC boundary | **PROBE** (`semblon/ipc_probe.py` loopback JSON-lines; not product IPC) |
 | Native ARM64 performance | **BLOCKED** |
 | Multi-worker ingest | **EXPERIMENTAL / not default** |
@@ -296,17 +296,19 @@ Track at each size:
 
 ## I.1 Do now
 
-1. ~~APP-1 boundary / C.2 pause~~ **COMPLETE** — `Application` + JobEngine + Home/shell/IPC
-2. ~~formalize app boundary contract~~ **DONE** (`docs/APPLICATION_API.md` + tests)
-3. **Deepen native production shell** (`semblon shell` slice 1 on main) against Artifacts 1–4 + R3-BRIEF (Inspector verbs · state-triple media cards · Canvas)
-4. unified Home/Review/Canvas toward the native shell **without** expanding Tk Home into permanent AppShell (§E)
-5. single authoritative architecture documentation (this file) + `docs/COMPLETION-MATRIX.md`
+1. ~~APP-1 boundary / C.2 pause / C.3 Windows~~ **CLOSED**
+2. ~~Production GUI shell (tk Home)~~ **COMPLETE** (#54 one-GUI · #63–#66 wire · #65 UNWIRED closed)
+3. **PERF ARM64 OpenCV** — unblock / probe / measure (do not silent-swap S1)
+4. **Multi-worker / scale** — harden hash workers; keep default=1 until measured
+5. **MSI code packaging** (no buffalo_l); weights remain UNAVAILABLE legally
+6. Keep `docs/COMPLETION-MATRIX.md` authoritative for current status
 
 ## I.2 Immediately after APP-1 (code track)
 
-- ~~R2 IPC probe~~ **DONE** (loopback probe in `semblon/ipc_probe.py`; not product IPC)
-- ~~Artifact 4 / §8.7 / C.3 / Ruled-out ship claim~~ **CLOSED / DONE** (owner §I.5)
-- ~~Native production shell first slice~~ **SHIPPED** (`semblon/native_shell/` · `semblon shell`) — deepen next
+- ~~R2 IPC probe~~ **DONE**
+- ~~Artifact 4 / §8.7 / C.3 / Ruled-out ship claim~~ **CLOSED / DONE** (owner §I.5) · Ruled-out chrome **WIRED** (#65)
+- ~~Production GUI shell~~ **COMPLETE** (Tk Home — not an open “native shell” blocker)
+- Optional Qt `semblon shell` remains KEEP optional (#67); do not revive a second product Home (#54)
 
 ## I.3 Parallel experimental track
 
@@ -357,9 +359,9 @@ CURRENT MAIN
   -> Feature gates WIRED 2026-09-21 (`docs/GATES.md`)
   -> Artifact 4 bake-off + §8.7 shell decision CLOSED / DONE (owner)
   -> Ruled out product-wire claim CLOSED / DONE (owner)
-  -> Native production shell slice 1 SHIPPED (`semblon shell`)
-  -> NEXT: deepen native shell (Inspector verbs · Canvas · state-triple cards)
-  -> unified Home/Review/Canvas experiences (Tk remains compatibility)
+  -> Production GUI shell COMPLETE (Tk Home: #54 one-GUI · #63–#66 · #65 WIRED)
+  -> Optional Qt `semblon shell` KEEP (#67) — not a second product Home
+  -> NEXT: PERF ARM64 · workers/scale harden · MSI (no weights)
   -> video/live UX expansion
   -> multimodal retrieval expansion
   -> scale/performance hardening
@@ -389,6 +391,7 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.10 | 2026-09-22 | Correct production shell status: Tk Home COMPLETE (#54/#65); optional Qt shell is KEEP not mapped blocker; next = PERF/MSI/workers. |
 | V1.4.9 | 2026-09-22 | APP-1 C.3 **VERIFIED ON WINDOWS** (owner live evidence); APP-1 **CLOSED**; next = deepen native shell. |
 | V1.4.8 | 2026-09-22 | APP-1 C.2 COMPLETE (`Application` pause/unpause); completion matrix; native shell slice 1 (`semblon shell`); next = deepen shell. |
 | V1.4.7 | 2026-09-21 | Plan-gaps productization on `main`: status table Home sidebar + CanvasWorkspace + GPU PRODUCTIZED + optional observers (`product_prefer_gpu` / `resolve_product_observers`). |

@@ -5,7 +5,7 @@
 **Code:** `semblon/application.py` (`Application` façade), `semblon/jobs.py`, Home control policy in `semblon/home_ui.py`, native shell in `semblon/native_shell/`  
 **Authority:** `docs/CONTRACTS.md`, `docs/SEM-ARCH-V1.4.md`. This page names UI-visible capabilities. It does not add columns.
 
-A future native client consumes this surface. Home is a client of it. The Qt/PySide `semblon shell` is the authorized production shell path (R3). Tk is not the architecture.
+A future native client may also consume this surface. **One shipping GUI:** tk Home + `review-ui` (#54). Home is a client of this API. Optional Qt `semblon shell` (#67) is KEEP optional — not a second product Home.
 
 ```
 UI  →  Application / Job boundary  →  existing Python implementation
@@ -103,17 +103,17 @@ Callbacks on `submit_ingest` are a Python convenience, not the IPC. R2 serialize
 
 Tk objects · Tk event-loop · Qt objects · FaceKit · Python UI callbacks as the public shape · SQLite connection objects · worker threads · InsightFace / ORT sessions · clusterer internals.
 
-## Production shell (R3 native) vs Track-1 Tk
+## Production shell (Tk Home) vs optional Qt
 
 | Surface | Command | Role |
 |---|---|---|
-| **Native production shell** | `semblon shell` | Authorized R3 path (`semblon/native_shell/`). Qt/PySide via optional `[gui]`. Talks only through `Application`. |
-| Tk Home | `semblon home` | Compatibility frontend (Library \| Workspace/Canvas \| Inspector). Still JobEngine door. Not permanent AppShell. |
+| **Production GUI shell** | `semblon home` | **One shipping GUI** (#54). Wired #63–#66; UNWIRED claims closed #65. Library \| Workspace/Canvas \| Inspector. |
 | `review-ui` | `semblon review-ui` | KEEP evidence vertical (Toplevel on Home or standalone). |
+| Optional Qt shell | `semblon shell` | KEEP optional Application API client (#67). **Not** a second product Home. |
 | `review.html` | export | Engineering / forensic artifact — **not** the normal user workflow. |
 | S8 toolkit spike | `tools/s8_toolkit_spike` | Reference only. Do not auto-promote. |
 
-Native shell IA (R3-BRIEF §4):
+Home IA (R3-BRIEF §4) on the production Tk shell:
 
 ```text
 Library sidebar │ Workspace / Intelligence Canvas │ Inspector

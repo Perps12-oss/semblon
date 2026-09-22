@@ -20,7 +20,7 @@ North star / planned work: `docs/SEM-ARCH-V1.4.md`.
 
 ## Queue
 
-Planned work is `docs/SEM-ARCH-V1.4.md` (APP-1 **CLOSED** — C.2 COMPLETE + C.3 VERIFIED ON WINDOWS; §I.5 human ship gates **CLOSED / DONE**; native shell slice 1 shipped — deepen next; PERF parallel). Completion matrix: `docs/COMPLETION-MATRIX.md`. FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue. Identify vs named persons, never clusters. STRONG is not a person until `name`. Incremental ingest + inbox and S6 memory are on `main`. Time/place must not change identity scores. Sampled video is holdout evidence (`docs/S7A.md`), not a second identity engine. S8 toolkit spike is presentation-only (`docs/S8-TOOLKIT.md`).
+Planned work is `docs/SEM-ARCH-V1.4.md` (APP-1 **CLOSED**; production GUI = tk Home **COMPLETE** per #54/#65; optional Qt shell KEEP; next = PERF ARM64 · workers/scale · MSI without weights). Completion matrix: `docs/COMPLETION-MATRIX.md`. FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue. Identify vs named persons, never clusters. STRONG is not a person until `name`. Incremental ingest + inbox and S6 memory are on `main`. Time/place must not change identity scores. Sampled video is holdout evidence (`docs/S7A.md`), not a second identity engine. S8 toolkit spike is presentation-only (`docs/S8-TOOLKIT.md`).
 
 Do not print precision without `--eval-set confirmatory`.
 
