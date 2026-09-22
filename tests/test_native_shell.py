@@ -29,6 +29,8 @@ def test_native_shell_uses_application_pause_commands():
     assert "unpause_job" in src
     assert "cancel_job" in src
     assert "submit_ingest" in src
+    assert "apply_inspector_name" in src
+    assert "apply_inspector_rule_out" in src
     assert "from semblon.process import process_folder" not in src
 
 
