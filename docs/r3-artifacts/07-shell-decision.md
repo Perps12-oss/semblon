@@ -56,7 +56,7 @@ Owner closed Artifact 4 / §8.7 without requiring filled C1–C6 JSON rows to un
 | Linked bake-off JSON | not required (gate closed) |
 | Linked checklist | `05-bake-off-checklist.md` criteria retained |
 | Explicit refusals still held | Electron · Tauri · permanent Tk AppShell · CustomTkinter · WinUI-for-speed-alone |
-| Next engineering slice | Native production shell against Artifacts 1–4 + R3 brief |
+| Next engineering slice | Deepen native production shell (`semblon shell` slice 1) against Artifacts 1–4 + R3 brief |
 
 ## Explicitly still refused
 

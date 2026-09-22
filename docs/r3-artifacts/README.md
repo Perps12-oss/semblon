@@ -3,7 +3,7 @@
 **Status:** Artifacts 1–4 CANONICAL; hierarchy frames TEST; §8.7 shell decision **CLOSED / DONE** (owner).  
 **Authority:** `docs/R3-BRIEF.md` (visual/interaction). Roadmap: `docs/SEM-ARCH-V1.4.md` (§I.5 human gates **CLOSED / DONE** — native shell authorized).  
 **Date:** 2026-09-21  
-**Next:** native production shell against this pack. Still refused: Electron / Tauri / permanent Tk AppShell / CustomTkinter; inventing schema columns.
+**Next:** deepen native production shell (`semblon shell` slice 1). Still refused: Electron / Tauri / permanent Tk AppShell / CustomTkinter; inventing schema columns.
 
 Open the HTML frames in a browser. Spec docs are markdown. Reviewer hesitation on a collision pair = rule or rendering fails. Hierarchy frames are **TEST, not SPEC**.
 

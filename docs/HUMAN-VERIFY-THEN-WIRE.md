@@ -1,7 +1,7 @@
 # Human verify → then wire
 
 **Status:** Code gates module **WIRED** 2026-09-21 (defaults ON; opt out via env `=0`).  
-**Owner declaration 2026-09-21:** human ship gates in §I.5 are **CLOSED / DONE** — see `docs/SEM-ARCH-V1.4.md` §I.5. Native production shell authorized.  
+**Owner declaration 2026-09-21:** human ship gates in §I.5 are **CLOSED / DONE** — see `docs/SEM-ARCH-V1.4.md` §I.5. Native production shell slice 1: `semblon shell`. Completion matrix: `docs/COMPLETION-MATRIX.md`.  
 **Gates module:** `semblon/gates.py` · overview `docs/GATES.md`
 
 | # | Gate | Result |

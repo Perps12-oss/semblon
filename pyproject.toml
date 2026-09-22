@@ -13,7 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
-gui = ["PySide6>=6.6"]  # research spike only (tools/s8_toolkit_spike); not product Home
+gui = ["PySide6>=6.6"]  # native production shell (`semblon shell`) + S8 spike reference
 
 [project.scripts]
 semblon = "semblon.cli:main"
