@@ -37,17 +37,41 @@ _CROP_CACHE_MAX = 256
 
 # Design tokens (UX Rescue §1). Soft fallback if tokens module is mid-merge.
 try:
-    from semblon.ui_tokens import BODY, BODY_STRONG, H2, SECONDARY_FONT
+    from semblon.ui_theme import apply_theme, style_listbox
+    from semblon.ui_tokens import (
+        BG_CANVAS,
+        BG_DARK,
+        BODY,
+        BODY_STRONG,
+        H1,
+        H2,
+        INK_ON_DARK,
+        SECONDARY_FONT,
+    )
+    from semblon.ui_widgets import Button as RoleButton
 except ImportError:  # pragma: no cover
-    BODY = ("Segoe UI", 11)
-    BODY_STRONG = ("Segoe UI", 11, "bold")
-    H2 = ("Segoe UI", 16, "bold")
-    SECONDARY_FONT = ("Segoe UI", 10)
+    apply_theme = None
+    style_listbox = None
+    RoleButton = None
+    BG_CANVAS = "#FBFAF7"
+    BG_DARK = "#14130F"
+    BODY = ("Segoe UI", 13)
+    BODY_STRONG = ("Segoe UI", 13, "bold")
+    H1 = ("Segoe UI", 24, "bold")
+    H2 = ("Segoe UI", 18, "bold")
+    INK_ON_DARK = "#B5B1A8"
+    SECONDARY_FONT = ("Segoe UI", 13)
 
 _FONT_UI = BODY
 _FONT_UI_BOLD = BODY_STRONG
-_FONT_HEADLINE = H2
+_FONT_HEADLINE = H1
 _FONT_BANNER = SECONDARY_FONT
+
+
+def _review_button(master, text, command, kind="secondary"):
+    if RoleButton is None or tk is None:
+        return ttk.Button(master, text=text, command=command)
+    return RoleButton(master, text=text, command=command, kind=kind, plate=BG_CANVAS)
 
 REVIEW_WINDOW_TITLE = "Review faces"
 REVIEW_BANNER = (
@@ -770,6 +794,9 @@ class ReviewApp:
         self.root, self._owns_loop = make_review_root(parent)
         self.root.title(REVIEW_WINDOW_TITLE)
         self.root.geometry("980x640")
+        self.root.minsize(880, 640)
+        if apply_theme is not None:
+            apply_theme(self.root)
 
         if empty_reason is not None or run_id is None:
             self._build_entry_empty()
@@ -795,10 +822,10 @@ class ReviewApp:
         ).pack(anchor=tk.W, pady=(10, 20))
         row = ttk.Frame(frame)
         row.pack(anchor=tk.W)
-        ttk.Button(
-            row, text="Add a photo folder", command=self._do_add_folder
-        ).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(row, text="Close", command=self.root.destroy).pack(side=tk.LEFT)
+        _review_button(row, "Add a photo folder", self._do_add_folder, kind="primary").pack(
+            side=tk.LEFT, padx=(0, 8)
+        )
+        _review_button(row, "Close", self.root.destroy, kind="tertiary").pack(side=tk.LEFT)
 
     def _do_add_folder(self) -> None:
         cb = self.on_add_folder
@@ -865,34 +892,38 @@ class ReviewApp:
 
         ttk.Label(left, text="Groups", font=_FONT_UI).pack(anchor=tk.W)
         self.listbox = tk.Listbox(left, exportselection=False)
+        if style_listbox is not None:
+            style_listbox(self.listbox)
         self.listbox.pack(fill=tk.BOTH, expand=True)
         self.listbox.bind("<<ListboxSelect>>", self._on_select)
 
         ttk.Label(right, text="Faces (click to toggle for Split)", font=_FONT_UI).pack(
             anchor=tk.W
         )
-        self.canvas = tk.Canvas(right, background="#222", height=420)
+        self.canvas = tk.Canvas(right, background=BG_DARK, height=420, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.canvas.bind("<Button-1>", self._on_canvas_click)
 
         actions = ttk.Frame(self.root, padding=6)
         actions.pack(fill=tk.X)
-        self.btn_name = ttk.Button(actions, text="Name", command=self._do_name)
+        self.btn_name = _review_button(actions, "Name", self._do_name, kind="primary")
         self.btn_name.pack(side=tk.LEFT, padx=2)
-        self.btn_merge = ttk.Button(actions, text="Merge…", command=self._do_merge)
+        self.btn_merge = _review_button(actions, "Merge…", self._do_merge, kind="secondary")
         self.btn_merge.pack(side=tk.LEFT, padx=2)
-        self.btn_split = ttk.Button(actions, text="Split selected", command=self._do_split)
+        self.btn_split = _review_button(
+            actions, "Split selected", self._do_split, kind="secondary"
+        )
         self.btn_split.pack(side=tk.LEFT, padx=2)
-        self.btn_ignore = ttk.Button(actions, text="Ignore", command=self._do_ignore)
+        self.btn_ignore = _review_button(actions, "Ignore", self._do_ignore, kind="secondary")
         self.btn_ignore.pack(side=tk.LEFT, padx=2)
-        self.btn_note = ttk.Button(actions, text="Note…", command=self._do_note)
+        self.btn_note = _review_button(actions, "Note…", self._do_note, kind="secondary")
         self.btn_note.pack(side=tk.LEFT, padx=2)
-        self.btn_rule_out = ttk.Button(
-            actions, text="Rule out…", command=self._do_rule_out
+        self.btn_rule_out = _review_button(
+            actions, "Rule out…", self._do_rule_out, kind="destructive"
         )
         self.btn_rule_out.pack(side=tk.LEFT, padx=2)
-        ttk.Button(actions, text="Reload", command=self.reload).pack(side=tk.LEFT, padx=2)
-        ttk.Button(actions, text="Close", command=self.root.destroy).pack(
+        _review_button(actions, "Reload", self.reload, kind="tertiary").pack(side=tk.LEFT, padx=2)
+        _review_button(actions, "Close", self.root.destroy, kind="tertiary").pack(
             side=tk.RIGHT, padx=2
         )
         self._btn_map = {
@@ -955,7 +986,7 @@ class ReviewApp:
     def _set_empty_canvas(self, text: str) -> None:
         self.canvas.delete("all")
         self._photos = []
-        self.canvas.create_text(12, 12, anchor=tk.NW, fill="#ccc", text=text)
+        self.canvas.create_text(24, 24, anchor=tk.NW, fill=INK_ON_DARK, text=text, font=_FONT_UI)
 
     def _update_action_buttons(self) -> None:
         item = self._current_item()
@@ -1156,8 +1187,8 @@ class ReviewApp:
             dlg.destroy()
             self.reload(invalidate_tracks=True)
 
-        ttk.Button(dlg, text="Merge", command=ok).pack(side=tk.LEFT, padx=6, pady=6)
-        ttk.Button(dlg, text="Cancel", command=dlg.destroy).pack(
+        _review_button(dlg, "Merge", ok, kind="primary").pack(side=tk.LEFT, padx=6, pady=6)
+        _review_button(dlg, "Cancel", dlg.destroy, kind="secondary").pack(
             side=tk.RIGHT, padx=6, pady=6
         )
 

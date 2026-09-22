@@ -349,7 +349,13 @@ else:
             self._listbox = tk.Listbox(body, width=36, exportselection=False)
             self._listbox.pack(side=tk.LEFT, fill=tk.Y)
             self._listbox.bind("<<ListboxSelect>>", self._on_list_select)
-            self.preview = tk.Canvas(body, background="#111", highlightthickness=0)
+            from semblon.ui_theme import style_listbox
+            from semblon.ui_tokens import BG_DARK, CAPTION, INK_ON_DARK
+
+            style_listbox(self._listbox)
+            self.preview = tk.Canvas(body, background=BG_DARK, highlightthickness=0)
+            self._ink_on_dark = INK_ON_DARK
+            self._caption_font = CAPTION
             self.preview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
 
             if store is not None:
@@ -462,7 +468,7 @@ else:
                 import cv2
             except ImportError as e:
                 self.preview.create_text(
-                    12, 12, anchor=tk.NW, fill="#ddd", text=f"OpenCV unavailable: {e}"
+                    12, 12, anchor=tk.NW, fill=getattr(self, "_ink_on_dark", "#B5B1A8"), text=f"OpenCV unavailable: {e}"
                 )
                 self.status.set(f"preview unavailable  {path}")
                 return
@@ -470,7 +476,7 @@ else:
             img = cv2.imread(str(path)) if path else None
             if img is None:
                 self.preview.create_text(
-                    12, 12, anchor=tk.NW, fill="#ddd", text=f"file missing\n{path}"
+                    12, 12, anchor=tk.NW, fill=getattr(self, "_ink_on_dark", "#B5B1A8"), text=f"file missing\n{path}"
                 )
                 y = 48
                 for box in boxes:
@@ -492,7 +498,7 @@ else:
                     12,
                     12,
                     anchor=tk.NW,
-                    fill="#ddd",
+                    fill=getattr(self, "_ink_on_dark", "#B5B1A8"),
                     text=f"preview unavailable: {type(e).__name__}\n{path}",
                 )
                 self.status.set(f"preview unavailable  {path}")
@@ -543,6 +549,9 @@ def run_canvas(store: Path | None = None, run_id: str | None = None, *, parent=N
         rid = run_id
         board = None
 
+    from semblon.ui_theme import apply_theme
+
+    apply_theme(root)
     root.title(f"Semblon Canvas — {rid or '—'}")
     root.geometry("960x640")
     ttk.Label(root, text=board_note, wraplength=920).pack(anchor=tk.W, padx=8, pady=6)
