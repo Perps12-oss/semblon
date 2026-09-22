@@ -44,6 +44,25 @@ from semblon.progress import (
     make_event,
     stills_percent,
 )
+from semblon.empty_states import (
+    SEARCH_PLACEHOLDER,
+    activity_empty,
+    activity_history_lines,
+    failure_dialog_for,
+    groups_waiting_line,
+    is_expected_condition,
+    library_has_media_lines,
+    people_empty,
+    photos_empty,
+    photos_videos_nothing_selected,
+    search_no_matches,
+    search_no_named_people,
+    search_no_store,
+    search_result_lines,
+    show_failure_dialog,
+    to_review_empty,
+    videos_empty,
+)
 
 # UX Rescue §1 tokens — soft import so Home ships if Foundation lands later.
 try:
@@ -108,8 +127,11 @@ INSPECTOR_EMPTY = (
 
 # Tests and callers import the status line from home_ui.
 __all__ = [
+    "HOME_IDLE_STATUS",
     "HOME_NAV",
     "HOME_OBSERVERS",
+    "INSPECTOR_EMPTY",
+    "INSPECTOR_HOME_EMPTY",
     "HomeApp",
     "format_library_lines",
     "format_progress_line",
@@ -259,55 +281,36 @@ else:
 def format_people_lines(rec: dict) -> list[str]:
     items = rec.get("items") or []
     if not items:
-        return ["No named people yet. Open Review and Name a cluster or face."]
-    return [f"{i.get('display_name') or i.get('person_id')}  ({i.get('faces', 0)} faces)" for i in items]
-
-
-def format_unknown_lines(rec: dict, run_id: str) -> list[str]:
-    c = rec.get("counts") or {}
+        return people_empty().as_lines()
     return [
-        f"run={run_id}",
-        f"KNOWN={c.get('KNOWN', 0)}  UNKNOWN={c.get('UNKNOWN', 0)}",
-        f"REVIEW_REQUIRED={c.get('REVIEW_REQUIRED', 0)}  REJECTED={c.get('REJECTED', 0)}",
-        "UNKNOWN is valid. Identify never auto-assigns a person.",
+        f"{i.get('display_name') or i.get('person_id')}  ({i.get('faces', 0)} photos)"
+        for i in items
     ]
 
 
-def format_search_lines(rec: dict) -> list[str]:
-    kind = rec.get("kind")
-    if kind == "person":
-        items = rec.get("items") or []
-        if not items:
-            return [f"No named person matching {rec.get('query')!r}."]
-        return [f"{i.get('display_name') or i.get('person_id')}  ({i.get('faces', 0)} faces)  {i.get('why','')}" for i in items]
-    if kind == "similar":
-        lines = [
-            f"similar {rec.get('query')}  modality={rec.get('modality')}  pack={rec.get('pack_id')}",
-            rec.get("note") or "Similarity is not identity.",
-        ]
-        for i in rec.get("items") or []:
-            score = i.get("score")
-            if score is None:
-                s = "n/a"
-            else:
-                try:
-                    s = f"{float(score):.4f}"
-                except (TypeError, ValueError):
-                    s = "n/a"
-            lines.append(f"{s}  {i.get('kind')}  {i.get('item_id')}  {i.get('why','')}")
-        if rec.get("count") == 0:
-            lines.append("No same-space neighbours.")
-        return lines
-    if kind == "text":
-        lines = [
-            f"OCR text {rec.get('query')!r}  hits={rec.get('count', 0)}",
-            rec.get("note") or "OCR text is not identity.",
-        ]
-        for i in rec.get("items") or []:
-            snippet = (i.get("text") or "")[:80]
-            lines.append(f"{i.get('item_id')}  {snippet!r}  {i.get('why', '')}")
-        if rec.get("count") == 0:
-            lines.append("No OCR text matches.")
+def format_unknown_lines(
+    rec: dict, run_id: str, *, advanced: bool = False
+) -> list[str]:
+    """§13 To review — soft counts by default; KNOWN=/UNKNOWN= only when advanced."""
+    c = rec.get("counts") or {}
+    waiting = int(c.get("UNKNOWN", 0) or 0) + int(c.get("REVIEW_REQUIRED", 0) or 0)
+    lines = [groups_waiting_line(waiting)]
+    if advanced:
+        lines.extend(
+            [
+                f"run={run_id}",
+                f"KNOWN={c.get('KNOWN', 0)}  UNKNOWN={c.get('UNKNOWN', 0)}",
+                f"REVIEW_REQUIRED={c.get('REVIEW_REQUIRED', 0)}  REJECTED={c.get('REJECTED', 0)}",
+                "UNKNOWN is valid. Identify never auto-assigns a person.",
+            ]
+        )
+    return lines
+
+
+def format_search_lines(rec: dict, *, advanced: bool = False) -> list[str]:
+    """§16 — demote modality=/pack= unless advanced=True."""
+    lines = search_result_lines(rec, advanced=advanced)
+    if lines:
         return lines
     return [json_fallback(rec)]
 
@@ -320,13 +323,41 @@ def format_activity_lines(
     relationships: list[dict],
     events: list[dict],
     track_count: int,
+    photos: int | None = None,
+    faces: int | None = None,
+    stamped: str | None = None,
+    has_unnamed: bool = False,
+    advanced: bool = False,
+    group_count: int | None = None,
 ) -> list[str]:
-    lines = [run_line, integrity_line]
+    """§14 Recent activity — history rows by default; jargon only when advanced."""
+    group_n = (
+        int(group_count)
+        if group_count is not None
+        else (len(groups) if groups else 0)
+    )
+    soft = activity_history_lines(
+        photos=photos,
+        faces=faces if faces is not None else None,
+        groups=group_n,
+        stamped=stamped,
+        has_unnamed=has_unnamed,
+    )
+    # Prefer a soft title derived from run_line only when no photo count given.
+    if photos is None and run_line and not run_line.lower().startswith("run="):
+        soft = [run_line, *soft[1:]] if soft else [run_line]
+    if not advanced:
+        return soft
+
+    lines = list(soft)
+    lines.append(run_line)
+    lines.append(integrity_line)
     if groups:
         lines.append("observation_groups:")
         for g in groups:
             lines.append(
-                f"  kind={g.get('kind')} members={g.get('member_count')} status={g.get('status')} (not a person)"
+                f"  kind={g.get('kind')} members={g.get('member_count')} "
+                f"status={g.get('status')} (not a person)"
             )
     else:
         lines.append("observation_groups: none")
@@ -335,7 +366,11 @@ def format_activity_lines(
         lines.append("relationships:")
         for r in relationships:
             names = [n for n in (r.get("name_a"), r.get("name_b")) if n]
-            ids = [i for i in [r.get("src_person_id"), *(r.get("other_person_ids") or [])] if i]
+            ids = [
+                i
+                for i in [r.get("src_person_id"), *(r.get("other_person_ids") or [])]
+                if i
+            ]
             who = ", ".join(names) if names else (", ".join(ids) if ids else "unknown")
             lines.append(
                 f"  kind={r.get('kind')} people={who} confirmed={r.get('confirmed', 0)}"
@@ -347,7 +382,8 @@ def format_activity_lines(
         lines.append("events:")
         for ev in events:
             lines.append(
-                f"  {ev.get('label')}  {ev.get('t_start')} -> {ev.get('t_end')}  folder={ev.get('folder')}"
+                f"  {ev.get('label')}  {ev.get('t_start')} -> {ev.get('t_end')}  "
+                f"folder={ev.get('folder')}"
             )
     else:
         lines.append("events: none")
@@ -601,68 +637,98 @@ class HomeApp:
         self._q: queue.Queue = queue.Queue()
         self._nav = "home"
         self._nav_buttons: dict[str, ttk.Button] = {}
+        self._prefer_gpu_user: bool | None = None  # Settings toggle; None = product default
+        self._completion: dict | None = None  # last done/cancelled summary for §11 card
+        self._completion_kind: str | None = None  # "done" | "cancelled" | None
+        self._last_progress_files: tuple[int | None, int | None] = (None, None)
+        self._inspector_collapsed = False
+        self._settings_win: tk.Toplevel | None = None
 
         self.root = tk.Tk()
         self.root.title("Semblon")
         self.root.minsize(900, 560)
         self.root.geometry("1120x700")
+        try:
+            self.root.configure(bg=SURFACE_PRIMARY)
+        except tk.TclError:
+            pass
 
         # ── Top chrome: brand · search · settings ──
         top = ttk.Frame(self.root, padding=(12, 10, 12, 4))
         top.pack(fill=tk.X)
-        ttk.Label(top, text="SEMBLON", font=("Segoe UI", 16, "bold")).pack(side=tk.LEFT)
+        ttk.Label(top, text="Semblon", font=H2).pack(side=tk.LEFT)
         self.btn_settings = ttk.Button(top, text="⚙ Settings", command=self._show_settings)
         self.btn_settings.pack(side=tk.RIGHT)
         search_row = ttk.Frame(top)
         search_row.pack(side=tk.RIGHT, padx=(0, 12))
-        ttk.Label(search_row, text="Search").pack(side=tk.LEFT)
+        ttk.Label(search_row, text=SEARCH_PLACEHOLDER, font=BODY).pack(side=tk.LEFT)
         self.search_var = tk.StringVar()
         ttk.Entry(search_row, textvariable=self.search_var, width=22).pack(side=tk.LEFT, padx=(6, 0))
         self.btn_search = ttk.Button(search_row, text="Go", command=self._search_person)
         self.btn_search.pack(side=tk.LEFT, padx=(6, 0))
 
-        # ── Job controls (ingest door) ──
+        # ── Job controls (demoted on home — UX Rescue §3) ──
         jobs = ttk.Frame(self.root, padding=(12, 0, 12, 4))
         jobs.pack(fill=tk.X)
+        self._jobs_frame = jobs
         self.btn_folder = ttk.Button(jobs, text="Choose folder…", command=self._choose_folder)
-        self.btn_folder.pack(side=tk.LEFT)
+        # Pack later via _sync_chrome_for_route (hidden on cold home; CTA is on landing).
         self.btn_review = ttk.Button(jobs, text="Open Review", command=self._open_review_ui)
-        self.btn_review.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_html = ttk.Button(jobs, text="Open review.html", command=self._open_html)
-        self.btn_html.pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_pause = ttk.Button(jobs, text="Pause", command=self._request_pause, state=tk.DISABLED)
-        self.btn_pause.pack(side=tk.LEFT, padx=(8, 0))
         self.btn_cancel = ttk.Button(jobs, text="Cancel", command=self._request_cancel, state=tk.DISABLED)
-        self.btn_cancel.pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_resume = ttk.Button(jobs, text="Resume", command=self._resume, state=tk.DISABLED)
-        self.btn_resume.pack(side=tk.LEFT, padx=(8, 0))
+        # Pause/Resume live next to the progress bar as a single toggle (§3 / §10).
+        self.btn_pause = ttk.Button(
+            jobs, text="Pause", command=self._toggle_pause_resume, state=tk.DISABLED
+        )
+        self.btn_resume = self.btn_pause  # alias: one toggle control
         self.btn_live = ttk.Button(jobs, text="Live…", command=self._open_live_overlay)
-        self.btn_live.pack(side=tk.LEFT, padx=(8, 0))
-        # Canvas stays first-class; button focuses Home workspace canvas.
         self.btn_canvas = ttk.Button(jobs, text="Canvas", command=lambda: self._navigate("canvas"))
-        self.btn_canvas.pack(side=tk.LEFT, padx=(8, 0))
+        # Overflow keeps advanced callbacks reachable without equal-weight job bar.
+        self._overflow = ttk.Menubutton(jobs, text="⋯")
+        self._overflow_menu = tk.Menu(self._overflow, tearoff=0)
+        self._overflow_menu.add_command(label="Live…", command=self._open_live_overlay)
+        self._overflow_menu.add_command(label="Open review.html", command=self._open_html)
+        self._overflow_menu.add_command(
+            label="Canvas", command=lambda: self._navigate("canvas")
+        )
+        self._overflow.configure(menu=self._overflow_menu)
 
-        # Aliases kept for control-state map (People/Unknown/Activity are sidebar).
-        self.btn_people = self.btn_canvas  # placeholder; rebound after sidebar build
+        # Aliases rebound after sidebar build.
+        self.btn_people = self.btn_canvas
         self.btn_unknown = self.btn_canvas
         self.btn_activity = self.btn_canvas
 
         prog = ttk.Frame(self.root, padding=(12, 0, 12, 6))
         prog.pack(fill=tk.X)
-        self.status = tk.StringVar(value=f"Store: {self.store}")
-        ttk.Label(prog, textvariable=self.status, wraplength=900, justify=tk.LEFT).pack(
-            anchor=tk.W, fill=tk.X
-        )
+        self._prog_frame = prog
+        self.status = tk.StringVar(value=HOME_IDLE_STATUS)
+        ttk.Label(
+            prog, textvariable=self.status, wraplength=900, justify=tk.LEFT, font=BODY
+        ).pack(anchor=tk.W, fill=tk.X)
         self.clock = tk.StringVar(value="")
-        ttk.Label(prog, textvariable=self.clock, wraplength=900, justify=tk.LEFT).pack(
-            anchor=tk.W, fill=tk.X, pady=(2, 2)
+        ttk.Label(
+            prog, textvariable=self.clock, wraplength=900, justify=tk.LEFT, font=CAPTION
+        ).pack(anchor=tk.W, fill=tk.X, pady=(2, 2))
+        bar_row = ttk.Frame(prog)
+        bar_row.pack(fill=tk.X)
+        self.bar = StillProgressBar(bar_row)
+        self.bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.btn_pause_toggle = ttk.Button(
+            bar_row, text="Pause", command=self._toggle_pause_resume, state=tk.DISABLED
         )
-        self.bar = StillProgressBar(prog)
-        self.bar.pack(fill=tk.X)
+        # Keep btn_pause pointing at the visible toggle for control-state map.
+        self.btn_pause = self.btn_pause_toggle
+        self.btn_resume = self.btn_pause_toggle
+        self.btn_cancel_prog = ttk.Button(
+            bar_row, text="Cancel", command=self._request_cancel, state=tk.DISABLED
+        )
+        # Prefer progress-adjacent Cancel when processing; job-bar Cancel unused on home.
+        self.btn_cancel = self.btn_cancel_prog
 
         # ── Body: Library | Workspace | Inspector ──
         body = ttk.Frame(self.root, padding=(8, 0, 8, 8))
         body.pack(fill=tk.BOTH, expand=True)
+        self._body = body
         body.columnconfigure(1, weight=3)
         body.columnconfigure(2, weight=2)
         body.rowconfigure(0, weight=1)
@@ -670,15 +736,14 @@ class HomeApp:
         # Library sidebar
         side = ttk.Frame(body, padding=(4, 4))
         side.grid(row=0, column=0, sticky="nsw")
-        ttk.Label(side, text="LIBRARY", font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(0, 2))
+        self._sidebar = side
         for section, items in HOME_NAV:
-            if section != "LIBRARY":
-                ttk.Label(side, text=section, font=("Segoe UI", 9)).pack(
-                    anchor=tk.W, pady=(10, 2)
-                )
+            ttk.Label(side, text=section, font=CAPTION).pack(
+                anchor=tk.W, pady=(SP_8 if section != "LIBRARY" else 0, 2)
+            )
             for nav_id, label in items:
                 btn = ttk.Button(side, text=label, command=lambda n=nav_id: self._navigate(n))
-                btn.pack(fill=tk.X, pady=1)
+                btn.pack(fill=tk.X, pady=1, ipady=2)
                 self._nav_buttons[nav_id] = btn
 
         # Keep job-control map keys: people/unknown/activity point at sidebar buttons.
@@ -686,8 +751,8 @@ class HomeApp:
         self.btn_unknown = self._nav_buttons["unknown"]
         self.btn_activity = self._nav_buttons["activity"]
 
-        # Workspace (Canvas / welcome)
-        work = ttk.LabelFrame(body, text="WORKSPACE / INTELLIGENCE CANVAS", padding=6)
+        # Workspace (landing / Canvas / welcome)
+        work = ttk.LabelFrame(body, text="WORKSPACE", padding=6)
         work.grid(row=0, column=1, sticky="nsew", padx=(8, 8))
         self._workspace = work
         self._welcome = ttk.Frame(work)
@@ -695,17 +760,22 @@ class HomeApp:
             self._welcome,
             text="Choose a photo folder to process, or open Review to name people.",
             wraplength=420,
+            font=BODY,
         ).pack(anchor=tk.W, pady=(4, 4))
+        # Deep empty-state copy for People/Unknown/Activity is owned by S12–16 agents.
         ttk.Label(
             self._welcome,
-            text="Local-first. buffalo_l weights are internal evaluation only — not a commercial pack.",
+            text="Open a sidebar item to continue.",
             wraplength=420,
+            font=BODY,
+            foreground=TEXT_SECONDARY,
         ).pack(anchor=tk.W, pady=(0, 8))
-        ttk.Label(
-            self._welcome,
-            text="Canvas overlays observations here. Identity stays FaceKit; canvas never writes person_id.",
-            wraplength=420,
-        ).pack(anchor=tk.W)
+
+        # Cold-launch landing (UX Rescue §2) — built once, shown via _show_home_landing.
+        self._landing = ttk.Frame(work)
+        self._result_card = ttk.Frame(work)
+        self._build_home_landing()
+        self._build_result_card_shell()
 
         from semblon.canvas import CanvasWorkspace
 
@@ -722,13 +792,14 @@ class HomeApp:
         # Inspector — Evidence (machine) | Proposed action (human). R3-BRIEF §4.
         insp = ttk.LabelFrame(body, text="INSPECTOR", padding=6)
         insp.grid(row=0, column=2, sticky="nsew")
+        self._inspector_frame = insp
         self._inspector_title = tk.StringVar(value="Home")
-        ttk.Label(insp, textvariable=self._inspector_title, font=("Segoe UI", 10, "bold")).pack(
+        ttk.Label(insp, textvariable=self._inspector_title, font=BODY_STRONG).pack(
             anchor=tk.W
         )
 
         # Selection list (multi-select clusters/faces for Merge / Split).
-        ttk.Label(insp, text="Selection", font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(6, 0))
+        ttk.Label(insp, text="Selection", font=CAPTION).pack(anchor=tk.W, pady=(6, 0))
         sel_frame = ttk.Frame(insp)
         sel_frame.pack(fill=tk.X, pady=(2, 4))
         self._sel_list = tk.Listbox(
@@ -740,7 +811,7 @@ class HomeApp:
         sel_sb.pack(side=tk.LEFT, fill=tk.Y)
         self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
 
-        ttk.Label(insp, text="Evidence relationship (machine)", font=("Segoe UI", 9)).pack(
+        ttk.Label(insp, text="Details", font=CAPTION).pack(
             anchor=tk.W, pady=(4, 0)
         )
         evid_frame = ttk.Frame(insp)
@@ -751,13 +822,14 @@ class HomeApp:
         self._inspector.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb.pack(side=tk.LEFT, fill=tk.Y)
 
-        ttk.Label(insp, text="Proposed action (human)", font=("Segoe UI", 9)).pack(
+        ttk.Label(insp, text="Proposed action (human)", font=CAPTION).pack(
             anchor=tk.W, pady=(4, 0)
         )
         ttk.Label(
             insp,
             text="Merge observations ≠ Assign to person",
-            font=("Segoe UI", 8),
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
         ).pack(anchor=tk.W)
 
         actions = ttk.Frame(insp)
@@ -812,7 +884,17 @@ class HomeApp:
         for line in lines:
             self._inspector.insert(tk.END, line)
         # Non-selection views keep verb disable reasons honest.
-        if title in {"Home", "Canvas", "Photos", "Videos", "Activity", "Settings", "Search"}:
+        if title in {
+            "Home",
+            "Canvas",
+            "Photos",
+            "Videos",
+            "Activity",
+            "Recent activity",
+            "Settings",
+            "Search",
+            "To review",
+        }:
             self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
             if title != "Canvas":
                 self._insp_available = []
@@ -1092,13 +1174,287 @@ class HomeApp:
             preselect_all=len(available) <= 2,
         )
 
+    def _build_home_landing(self) -> None:
+        """Cold-launch hero (UX Rescue §2). No engineering strings on this surface."""
+        for child in self._landing.winfo_children():
+            child.destroy()
+        hero = ttk.Frame(self._landing, padding=(SP_24, SP_32))
+        hero.pack(expand=True)
+        ttk.Label(hero, text="Semblon", font=DISPLAY).pack(pady=(0, SP_8))
+        ttk.Label(
+            hero,
+            text="Find the people in your photos.",
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+            wraplength=420,
+            justify=tk.CENTER,
+        ).pack()
+        ttk.Label(
+            hero,
+            text=(
+                "Semblon looks through your photo folder, finds faces, "
+                "groups faces that appear to belong together, and lets you "
+                "decide who those people are."
+            ),
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+            wraplength=480,
+            justify=tk.CENTER,
+        ).pack(pady=(SP_8, 0))
+        self.btn_landing_cta = ttk.Button(
+            hero, text="Add a photo folder", command=self._choose_folder
+        )
+        self.btn_landing_cta.pack(pady=(SP_24, 0), ipady=6, ipadx=12)
+        self._landing_return_var = tk.StringVar(value="")
+        self._landing_return = ttk.Label(
+            hero,
+            textvariable=self._landing_return_var,
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+            wraplength=480,
+            justify=tk.CENTER,
+        )
+        self._landing_return.pack(pady=(SP_8, 0))
+        self.btn_landing_review = ttk.Button(
+            hero, text="Review", command=self._open_review_ui
+        )
+        # Packed only when returning-user hint is shown.
+
+        steps = ttk.Frame(hero)
+        steps.pack(pady=(SP_32, 0))
+        for num, title, desc in (
+            ("1", "Add your photos", "Choose the folder you want Semblon to examine."),
+            ("2", "Semblon finds people", "Your photos are analysed and similar faces are grouped."),
+            ("3", "Review and name", "Review the groups and tell Semblon who you recognise."),
+        ):
+            col = ttk.Frame(steps, padding=(SP_12, 0))
+            col.pack(side=tk.LEFT, fill=tk.Y, padx=(0, SP_24))
+            ttk.Label(col, text=num, font=H2).pack(anchor=tk.W)
+            ttk.Label(col, text=title, font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_8, 0))
+            ttk.Label(
+                col,
+                text=desc,
+                font=BODY,
+                foreground=TEXT_SECONDARY,
+                wraplength=160,
+                justify=tk.LEFT,
+            ).pack(anchor=tk.W)
+
+        ttk.Label(
+            hero,
+            text="Everything stays on this computer. Nothing is uploaded.",
+            font=CAPTION,
+            foreground=TEXT_DISABLED,
+        ).pack(pady=(SP_24, 0))
+
+    def _build_result_card_shell(self) -> None:
+        """Result summary card shell (UX Rescue §11); content filled on completion."""
+        for child in self._result_card.winfo_children():
+            child.destroy()
+        outer = tk.Frame(
+            self._result_card,
+            bg=SURFACE_SECONDARY,
+            highlightbackground=BORDER_SUBTLE,
+            highlightthickness=1,
+            padx=SP_24,
+            pady=SP_24,
+        )
+        outer.pack(expand=True, pady=SP_32)
+        self._result_headline = tk.StringVar(value="Your photos are ready")
+        self._result_body = tk.StringVar(value="")
+        ttk.Label(outer, textvariable=self._result_headline, font=H1).pack(anchor=tk.W)
+        ttk.Label(
+            outer,
+            textvariable=self._result_body,
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+            wraplength=432,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(SP_8, SP_16))
+        btns = ttk.Frame(outer)
+        btns.pack(anchor=tk.W)
+        self.btn_result_primary = ttk.Button(
+            btns, text="Review people", command=self._open_review_ui
+        )
+        self.btn_result_primary.pack(side=tk.LEFT, padx=(0, SP_8), ipady=4, ipadx=8)
+        self.btn_result_secondary = ttk.Button(
+            btns, text="Add another folder", command=self._choose_folder
+        )
+        self.btn_result_secondary.pack(side=tk.LEFT, ipady=2, ipadx=6)
+        self.btn_result_continue = ttk.Button(
+            btns, text="Continue", command=self._resume
+        )
+        self.btn_result_start_over = ttk.Button(
+            btns, text="Start over", command=self._choose_folder
+        )
+
+    def _hide_workspace_panes(self) -> None:
+        self._canvas_ws.pack_forget()
+        self._welcome.pack_forget()
+        self._landing.pack_forget()
+        self._result_card.pack_forget()
+
+    def _show_home_landing(self) -> None:
+        """Home route: hero or §11 result card — never Canvas + engineering dump."""
+        self._hide_workspace_panes()
+        if self._completion_kind in {"done", "cancelled"} and self._completion is not None:
+            self._fill_result_card()
+            self._result_card.pack(fill=tk.BOTH, expand=True)
+        else:
+            self._refresh_landing_hint()
+            self._landing.pack(fill=tk.BOTH, expand=True)
+        self._set_inspector_collapsed(True)
+        self._set_inspector("Home", list(INSPECTOR_HOME_EMPTY))
+
+    def _refresh_landing_hint(self) -> None:
+        """Returning-user line when a store exists but no completion card yet."""
+        has_store = self.store.is_file()
+        self.btn_landing_review.pack_forget()
+        if has_store and self._completion_kind is None:
+            self._landing_return_var.set(
+                "You have previously added photos. Add another folder, or open "
+                "Review to name the people Semblon already found."
+            )
+            self.btn_landing_review.pack(pady=(SP_8, 0))
+        else:
+            self._landing_return_var.set("")
+
+    def _fill_result_card(self) -> None:
+        kind = self._completion_kind
+        data = self._completion or {}
+        # Reset button packing
+        for b in (
+            self.btn_result_primary,
+            self.btn_result_secondary,
+            self.btn_result_continue,
+            self.btn_result_start_over,
+        ):
+            b.pack_forget()
+        if kind == "cancelled":
+            self._result_headline.set("Processing stopped")
+            done = data.get("files_processed")
+            total = data.get("files_total")
+            if done is not None and total is not None:
+                body = (
+                    f"Semblon checked {done} of {total} photos before you cancelled."
+                )
+            elif done is not None:
+                body = f"Semblon checked {done} photos before you cancelled."
+            else:
+                body = "Processing stopped before Semblon finished this folder."
+            self._result_body.set(body)
+            self.btn_result_continue.pack(side=tk.LEFT, padx=(0, SP_8), ipady=4, ipadx=8)
+            self.btn_result_start_over.pack(side=tk.LEFT, ipady=2, ipadx=6)
+            return
+        # done
+        photos = int(data.get("photos") or 0)
+        faces = int(data.get("faces") or 0)
+        groups = int(data.get("groups") or 0)
+        self._result_headline.set("Your photos are ready")
+        if faces <= 0:
+            self._result_body.set(
+                f"Semblon checked {photos} photos but didn't find any faces to group."
+                if photos
+                else "Semblon finished this folder but didn't find any faces to group."
+            )
+            self.btn_result_secondary.pack(side=tk.LEFT, ipady=4, ipadx=8)
+        else:
+            self._result_body.set(
+                f"Semblon checked {photos} photos and found {faces} faces "
+                f"across {groups} groups."
+                if photos
+                else f"Semblon found {faces} faces across {groups} groups."
+            )
+            self.btn_result_primary.pack(side=tk.LEFT, padx=(0, SP_8), ipady=4, ipadx=8)
+            self.btn_result_secondary.pack(side=tk.LEFT, ipady=2, ipadx=6)
+
+    @staticmethod
+    def _counts_from_done_payload(payload: dict) -> dict[str, int]:
+        ing = payload.get("ingest") if isinstance(payload.get("ingest"), dict) else {}
+        clu = payload.get("cluster") if isinstance(payload.get("cluster"), dict) else {}
+        photos = int(ing.get("files") or ing.get("new_media") or payload.get("files") or 0)
+        faces = int(ing.get("faces") or payload.get("faces") or 0)
+        groups = int(clu.get("clusters") or payload.get("clusters") or 0)
+        return {"photos": photos, "faces": faces, "groups": groups}
+
+    def _set_inspector_collapsed(self, collapsed: bool) -> None:
+        """Collapse Inspector column on cold home; expand for other routes."""
+        self._inspector_collapsed = collapsed
+        if collapsed:
+            self._inspector_frame.grid_remove()
+            self._body.columnconfigure(2, weight=0, minsize=0)
+            self._body.columnconfigure(1, weight=5)
+        else:
+            self._inspector_frame.grid()
+            self._body.columnconfigure(2, weight=2)
+            self._body.columnconfigure(1, weight=3)
+
+    def _mark_nav_active(self, nav_id: str) -> None:
+        """Best-effort active nav styling in ttk (underline / state)."""
+        for nid, btn in self._nav_buttons.items():
+            try:
+                if nid == nav_id:
+                    btn.state(["pressed"])
+                else:
+                    btn.state(["!pressed"])
+            except tk.TclError:
+                pass
+
+    def _sync_chrome_for_route(self) -> None:
+        """Demote job bar on home; restore contextual controls elsewhere (§3)."""
+        # Clear job frame children packing
+        for w in (
+            self.btn_folder,
+            self.btn_review,
+            self.btn_html,
+            self.btn_live,
+            self.btn_canvas,
+            self._overflow,
+        ):
+            try:
+                w.pack_forget()
+            except tk.TclError:
+                pass
+        busy = bool(getattr(self, "engine", None) and self.engine.busy)
+        on_home = self._nav == "home"
+        if on_home:
+            # Primary CTA lives on landing/card. Overflow keeps Live / html / Canvas.
+            self._overflow.pack(side=tk.LEFT)
+            if self._completion_kind == "done" and not busy:
+                self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
+        else:
+            self.btn_folder.pack(side=tk.LEFT)
+            self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
+            self._overflow.pack(side=tk.LEFT, padx=(SP_8, 0))
+            # Canvas button also direct when not on home (overflow still has it).
+            self.btn_canvas.pack(side=tk.LEFT, padx=(SP_8, 0))
+        # Pause toggle + Cancel sit next to the progress bar when busy.
+        if busy:
+            self.btn_pause_toggle.pack(side=tk.LEFT, padx=(SP_8, 0))
+            self.btn_cancel_prog.pack(side=tk.LEFT, padx=(SP_8, 0))
+        else:
+            self.btn_pause_toggle.pack_forget()
+            self.btn_cancel_prog.pack_forget()
+
+    def _toggle_pause_resume(self) -> None:
+        """Single Pause/Resume control adjacent to the progress bar."""
+        if self.engine.paused:
+            self._resume()
+            return
+        if self.engine.busy:
+            self._request_pause()
+            return
+        # Idle resume-after-cancel
+        self._resume()
+
     def _show_workspace_canvas(
         self,
         *,
         reload: bool = True,
         source_types: tuple[str, ...] | None = None,
     ) -> None:
-        self._welcome.pack_forget()
+        self._hide_workspace_panes()
+        self._set_inspector_collapsed(False)
         self._canvas_ws.pack(fill=tk.BOTH, expand=True)
         if reload:
             try:
@@ -1109,64 +1465,77 @@ class HomeApp:
                 self._set_inspector("Canvas", [f"Canvas unavailable: {e}"])
 
     def _show_workspace_welcome(self) -> None:
-        self._canvas_ws.pack_forget()
+        self._hide_workspace_panes()
+        self._set_inspector_collapsed(False)
         self._welcome.pack(fill=tk.BOTH, expand=True, anchor=tk.NW)
 
     def _navigate(self, nav_id: str) -> None:
         self._nav = nav_id
-        if nav_id in {"home", "canvas"}:
+        self._mark_nav_active(nav_id)
+        if nav_id == "home":
+            self._show_home_landing()
+            self._sync_chrome_for_route()
+            self._refresh_job_controls()
+            return
+        if nav_id == "canvas":
             self._show_workspace_canvas(reload=True, source_types=None)
-            self._set_inspector(
-                "Home" if nav_id == "home" else "Canvas",
-                [
-                    "Library is the source-media layer.",
-                    "People/Unknown is the identity-observation layer.",
-                    "Canvas overlays boxes/tracks — never writes faces.person_id.",
-                    "Display states: Unknown · Possible · Confirmed · Ruled out · Ignored",
-                    f"Product observers: {resolve_home_observers()}",
-                    f"GPU product path prefer={resolve_home_prefer_gpu()}",
-                    "Open Review to name people (cluster → review → person → name).",
-                    "Tk Home is a compatibility frontend — not the permanent AppShell.",
-                    *format_library_lines(self.store)[:6],
-                ],
-            )
+            self._set_inspector("Canvas", list(INSPECTOR_EMPTY))
+            self._sync_chrome_for_route()
+            self._refresh_job_controls()
             return
         if nav_id == "photos":
             # Stills are typically source_type=folder; exclude video assets.
             self._show_workspace_canvas(reload=True, source_types=("folder",))
             lib = format_library_lines(self.store, source_type="folder")
-            self._set_inspector(
-                "Photos",
-                [
-                    "Source-media layer. Zero-face files stay here.",
-                    "Select a row in Canvas to inspect observation overlays.",
-                    *lib,
-                ],
-            )
+            if not library_has_media_lines(lib):
+                self._set_inspector("Photos", photos_empty().as_lines())
+            else:
+                intro = photos_videos_nothing_selected(kind="photo").as_lines()
+                body = [
+                    ln
+                    for ln in lib
+                    if "source-media" not in ln.lower() and "state=" not in ln.lower()
+                ]
+                self._set_inspector("Photos", [*intro, *body])
+            self._sync_chrome_for_route()
+            self._refresh_job_controls()
             return
         if nav_id == "videos":
             self._show_workspace_canvas(reload=True, source_types=("video",))
             lib = format_library_lines(self.store, source_type="video")
-            self._set_inspector(
-                "Videos",
-                [
-                    "One video asset, many observations. Track ≠ person.",
-                    "Select a row in Canvas to inspect observation overlays.",
-                    *lib,
-                ],
-            )
+            if not library_has_media_lines(lib):
+                self._set_inspector("Videos", videos_empty().as_lines())
+            else:
+                intro = photos_videos_nothing_selected(kind="video").as_lines()
+                body = [
+                    ln
+                    for ln in lib
+                    if "source-media" not in ln.lower()
+                    and "state=" not in ln.lower()
+                    and "track ≠ person" not in ln.lower()
+                    and "track != person" not in ln.lower()
+                ]
+                self._set_inspector("Videos", [*intro, *body])
+            self._sync_chrome_for_route()
+            self._refresh_job_controls()
             return
         if nav_id == "people":
             self._show_workspace_welcome()
             self._show_people()
+            self._sync_chrome_for_route()
+            self._refresh_job_controls()
             return
         if nav_id == "unknown":
             self._show_workspace_welcome()
             self._show_unknown()
+            self._sync_chrome_for_route()
+            self._refresh_job_controls()
             return
         if nav_id == "activity":
             self._show_workspace_welcome()
             self._show_activity()
+            self._sync_chrome_for_route()
+            self._refresh_job_controls()
             return
 
     def _set_busy(self, busy: bool) -> None:
@@ -1181,11 +1550,21 @@ class HomeApp:
             job_paused=self.engine.paused,
             resume_ready=self._resume_ready,
         )
+        # Pause + Resume share one toggle widget adjacent to the progress bar.
+        if busy:
+            if self.engine.paused:
+                self.btn_pause_toggle.configure(text="Resume", state=tk.NORMAL)
+            else:
+                self.btn_pause_toggle.configure(text="Pause", state=tk.NORMAL)
+            self.btn_cancel.configure(state=tk.NORMAL)
+        else:
+            if self._resume_ready:
+                self.btn_pause_toggle.configure(text="Resume", state=tk.NORMAL)
+            else:
+                self.btn_pause_toggle.configure(text="Pause", state=tk.DISABLED)
+            self.btn_cancel.configure(state=tk.DISABLED)
         buttons = {
             "folder": self.btn_folder,
-            "pause": self.btn_pause,
-            "resume": self.btn_resume,
-            "cancel": self.btn_cancel,
             "review": self.btn_review,
             "html": self.btn_html,
             "people": self.btn_people,
@@ -1198,6 +1577,12 @@ class HomeApp:
         }
         for key, btn in buttons.items():
             btn.configure(state=tk.NORMAL if states[key] == "normal" else tk.DISABLED)
+        # Landing CTA tracks folder availability.
+        if hasattr(self, "btn_landing_cta"):
+            self.btn_landing_cta.configure(
+                state=tk.NORMAL if states["folder"] == "normal" else tk.DISABLED
+            )
+        self._sync_chrome_for_route()
 
     def _request_pause(self) -> None:
         if not self.engine.busy or self.engine.paused:
@@ -1213,18 +1598,26 @@ class HomeApp:
         self.status.set("Cancelling…")
         self._refresh_job_controls()
 
+    def _effective_prefer_gpu(self) -> bool:
+        if self._prefer_gpu_user is not None:
+            return bool(self._prefer_gpu_user)
+        return resolve_home_prefer_gpu()
+
     def _start_process(self, path: Path, *, resume: bool) -> None:
         self._last_folder = path
         self._exit_after_cancel = False
         self._wd = Watchdog(stall_s=120.0)
         self._resume_ready = False
+        self._completion = None
+        self._completion_kind = None
+        self._last_progress_files = (None, None)
         self.bar.reset()
         self.clock.set("")
         queued = make_event(STAGE_PROCESS, KIND_QUEUED, path=str(path), outcome="resumed" if resume else None)
         self.status.set(status_text(queued))
         self._set_busy(True)
         observers = resolve_home_observers()
-        prefer_gpu = resolve_home_prefer_gpu()
+        prefer_gpu = self._effective_prefer_gpu()
 
         def on_event(ev: ProgressEvent) -> None:
             self._wd.note(ev)
@@ -1279,6 +1672,10 @@ class HomeApp:
                 elif kind == "event":
                     self.status.set(status_text(payload))
                     self.bar.set_from_event(payload)
+                    self._last_progress_files = (
+                        payload.files_processed,
+                        payload.files_total,
+                    )
                     bits = []
                     if payload.clock:
                         bits.append(payload.clock)
@@ -1295,8 +1692,13 @@ class HomeApp:
                     self._last_review_html = Path(out) if out else None
                     self._resume_ready = False
                     self._set_busy(False)
-                    rid = self._last_run_id or "?"
-                    self.status.set(f"Done. run_id={rid}  Open Review to name people.")
+                    counts = self._counts_from_done_payload(
+                        payload if isinstance(payload, dict) else {}
+                    )
+                    self._completion = counts
+                    self._completion_kind = "done"
+                    # §10/§11 — status stays plain; card owns messaging (no run_id).
+                    self.status.set("Your photos are ready.")
                     self.bar.set_from_event(
                         make_event(
                             STAGE_PROCESS,
@@ -1307,7 +1709,10 @@ class HomeApp:
                             files_total=1,
                         )
                     )
-                    if self._nav in {"home", "canvas", "photos", "videos"}:
+                    if self._nav == "home":
+                        self._show_home_landing()
+                        self._sync_chrome_for_route()
+                    elif self._nav in {"canvas", "photos", "videos"}:
                         types = None
                         if self._nav == "photos":
                             types = ("folder",)
@@ -1317,10 +1722,19 @@ class HomeApp:
                 elif kind == "cancelled":
                     self._resume_ready = self._last_folder is not None
                     self._set_busy(False)
-                    extra = f" run_id={payload}" if payload else ""
+                    done, total = self._last_progress_files
+                    self._completion = {
+                        "files_processed": done,
+                        "files_total": total,
+                        "run_id": payload or None,
+                    }
+                    self._completion_kind = "cancelled"
                     self.status.set(
-                        f"Cancelled.{extra} Any partial results have been retained. Resume continues from the next unfinished stage."
+                        "Processing stopped. Any partial results have been retained."
                     )
+                    if self._nav == "home":
+                        self._show_home_landing()
+                        self._sync_chrome_for_route()
                     if self._exit_after_cancel and self.root.winfo_exists():
                         self.root.destroy()
                         return
@@ -1328,9 +1742,10 @@ class HomeApp:
                     self._resume_ready = self._last_folder is not None
                     self._set_busy(False)
                     if isinstance(payload, BaseException):
-                        user, detail = friendly_exception(payload)
-                        self.status.set(user.replace("\n", " "))
-                        messagebox.showerror("Semblon", f"{user}\n\n{detail}" if detail else user)
+                        if is_expected_condition(payload):
+                            self.status.set("Processing stopped.")
+                        else:
+                            self._show_failure(payload)
                     else:
                         self.status.set(f"Couldn't finish. {payload}")
                         messagebox.showerror("Semblon", str(payload))
@@ -1349,6 +1764,12 @@ class HomeApp:
         if self.root.winfo_exists():
             self.root.after(100, self._drain_queue)
 
+    def _show_failure(self, exc: BaseException) -> None:
+        """§17 — friendly failure dialog; never title the dialog bare 'Error'."""
+        dialog = failure_dialog_for(exc)
+        self.status.set(dialog.headline)
+        show_failure_dialog(self.root, exc, tk_mod=tk, ttk_mod=ttk)
+
     def _open_review_ui(self) -> None:
         from semblon.review_ui import ReviewUiError, run_review_ui
 
@@ -1362,7 +1783,18 @@ class HomeApp:
             )
         except ReviewUiError as e:
             # Expected empty (no store / no runs) is handled inside run_review_ui.
-            messagebox.showerror("Couldn't open Review", str(e))
+            if is_expected_condition(e, has_store=self.store.is_file()):
+                if not self.store.is_file():
+                    self._set_inspector(
+                        "To review", to_review_empty(has_store=False).as_lines()
+                    )
+                else:
+                    self._set_inspector(
+                        "To review",
+                        to_review_empty(has_store=True, has_faces=False).as_lines(),
+                    )
+                return
+            self._show_failure(e)
 
     def _open_html(self) -> None:
         path = self._last_review_html
@@ -1371,7 +1803,9 @@ class HomeApp:
 
             path = default_review_out(self.store)
         if not path.is_file():
-            messagebox.showinfo("Semblon", f"No review.html yet:\n{path}")
+            messagebox.showinfo(
+                "Semblon", "No review page yet. Add a photo folder first."
+            )
             return
         webbrowser.open(path.resolve().as_uri())
 
@@ -1388,14 +1822,17 @@ class HomeApp:
                 run_id=None,
                 media_id=None,
                 available=[],
-                evidence_lines=[f"No store yet:\n{self.store}"],
+                evidence_lines=people_empty().as_lines(),
                 title="People",
             )
             return
         try:
             rec = search_people(self.store)
         except SearchError as e:
-            messagebox.showerror("Semblon", str(e))
+            if is_expected_condition(e):
+                self._set_inspector("People", people_empty().as_lines())
+            else:
+                self._show_failure(e)
             return
         # People rows are assign targets, not Merge observations.
         people_items = []
@@ -1408,11 +1845,23 @@ class HomeApp:
                     "faces": i.get("faces"),
                 }
             )
+        if not people_items:
+            self._set_inspector_selection(
+                run_id=self._last_run_id,
+                media_id=None,
+                available=[],
+                evidence_lines=people_empty().as_lines(),
+                title="People",
+            )
+            return
         # Selecting a person sets Assign target; observations come from Unknown/Canvas.
         self._insp_available = []
         self._sel_list.delete(0, tk.END)
         for p in people_items:
-            label = f"person {p.get('display_name') or p.get('person_id')}  ({p.get('faces', 0)} faces)"
+            label = (
+                f"person {p.get('display_name') or p.get('person_id')}  "
+                f"({p.get('faces', 0)} photos)"
+            )
             self._sel_list.insert(tk.END, label)
         self._people_items = people_items
         self._sel_list.bind("<<ListboxSelect>>", self._on_people_sel_change)
@@ -1422,7 +1871,10 @@ class HomeApp:
             board_lines=format_people_lines(rec),
             candidate_person=self._insp_target_person_name,
         )
-        evid.insert(1, "Select a person here, then a cluster/face on Unknown or Canvas to Assign.")
+        evid.insert(
+            1,
+            "Select a person here, then a cluster/face on To review or Canvas to Assign.",
+        )
         self._insp_run_id = self._last_run_id
         self._insp_selected = []
         self._set_inspector("People", evid)
@@ -1446,13 +1898,15 @@ class HomeApp:
         from semblon.process import latest_run_id
         from semblon.review_ui import load_board
 
+        # Display label "To review"; route id remains ``unknown``.
+        title = "To review"
         if not self.store.is_file():
             self._set_inspector_selection(
                 run_id=None,
                 media_id=None,
                 available=[],
-                evidence_lines=[f"No store yet:\n{self.store}"],
-                title="Unknown",
+                evidence_lines=to_review_empty(has_store=False).as_lines(),
+                title=title,
             )
             return
         rid = latest_run_id(self.store, with_faces=True)
@@ -1461,14 +1915,22 @@ class HomeApp:
                 run_id=None,
                 media_id=None,
                 available=[],
-                evidence_lines=["Store has no runs with faces."],
-                title="Unknown",
+                evidence_lines=to_review_empty(
+                    has_store=True, has_faces=False
+                ).as_lines(),
+                title=title,
             )
             return
         try:
             rec = inbox(self.store, rid)
         except InboxError as e:
-            messagebox.showerror("Semblon", str(e))
+            if is_expected_condition(e):
+                self._set_inspector(
+                    title,
+                    to_review_empty(has_store=True, has_faces=False).as_lines(),
+                )
+            else:
+                self._show_failure(e)
             return
         # Restore selection binding (People overrides it).
         self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
@@ -1497,37 +1959,96 @@ class HomeApp:
             media_id=None,
             available=available,
             evidence_lines=evid,
-            title="Unknown",
+            title=title,
             preselect_all=False,
         )
 
-    def _show_activity(self) -> None:
-        from semblon.process import empty_state_line, latest_run_id
-        from semblon.store import integrity_report
+    def _activity_soft_stats(self, run_id: str) -> dict:
+        """Plain-language counts for Recent activity rows (no integrity jargon)."""
+        conn = sqlite3.connect(f"file:{self.store.resolve()}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
+        try:
+            photos = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM media "
+                    "WHERE source_type != 'video' OR source_type IS NULL"
+                ).fetchone()[0]
+            )
+            run_media = conn.execute(
+                """
+                SELECT COUNT(DISTINCT o.media_id) AS n
+                FROM observations o
+                WHERE o.run_id=?
+                """,
+                (run_id,),
+            ).fetchone()
+            if run_media and int(run_media["n"] or 0) > 0:
+                photos = int(run_media["n"])
+            faces = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM faces WHERE run_id=?", (run_id,)
+                ).fetchone()[0]
+            )
+            groups = int(
+                conn.execute(
+                    """
+                    SELECT COUNT(*) FROM clusters
+                    WHERE run_id=? AND (status IS NULL OR status != 'ignored')
+                    """,
+                    (run_id,),
+                ).fetchone()[0]
+            )
+            unnamed = int(
+                conn.execute(
+                    """
+                    SELECT COUNT(*) FROM clusters c
+                    WHERE c.run_id=?
+                      AND NOT EXISTS (
+                        SELECT 1 FROM faces f
+                        WHERE f.cluster_id = c.cluster_id AND f.person_id IS NOT NULL
+                      )
+                    """,
+                    (run_id,),
+                ).fetchone()[0]
+            )
+            row = conn.execute(
+                "SELECT finished_at, started_at FROM runs WHERE run_id=?",
+                (run_id,),
+            ).fetchone()
+            stamped = None
+            if row is not None:
+                stamped = row["finished_at"] or row["started_at"]
+                if stamped:
+                    stamped = str(stamped)[:10]
+        except sqlite3.OperationalError:
+            return {
+                "photos": None,
+                "faces": None,
+                "groups": None,
+                "has_unnamed": False,
+                "stamped": None,
+            }
+        finally:
+            conn.close()
+        return {
+            "photos": photos,
+            "faces": faces,
+            "groups": groups,
+            "has_unnamed": unnamed > 0,
+            "stamped": stamped,
+        }
 
+    def _show_activity(self) -> None:
+        from semblon.process import latest_run_id
+
+        title = "Recent activity"
         if not self.store.is_file():
-            self._set_inspector("Activity", [f"No store yet:\n{self.store}"])
+            self._set_inspector(title, activity_empty().as_lines())
             return
         rid = latest_run_id(self.store)
-        line = empty_state_line(self.store, rid) if rid else "no runs"
-        try:
-            integ = integrity_report(self.store)
-            extra = f"integrity ok={integ['ok']} unfinished={len(integ['unfinished_runs'])}"
-        except OSError as e:
-            extra = f"integrity unavailable: {e}"
-
         if not rid:
-            self._set_inspector(
-                "Activity",
-                format_activity_lines(
-                    run_line=line,
-                    integrity_line=extra,
-                    groups=[],
-                    relationships=[],
-                    events=[],
-                    track_count=0,
-                ),
-            )
+            self._set_inspector(title, activity_empty().as_lines())
             return
 
         try:
@@ -1535,17 +2056,28 @@ class HomeApp:
 
             rec = activity(self.store, rid)
         except (sqlite3.DatabaseError, OSError, ValueError) as e:
-            self._set_inspector("Activity", [line, extra, f"activity unavailable: {e}"])
+            if is_expected_condition(e):
+                self._set_inspector(title, activity_empty().as_lines())
+            else:
+                self._show_failure(e)
             return
+
+        stats = self._activity_soft_stats(rid)
         self._set_inspector(
-            "Activity",
+            title,
             format_activity_lines(
-                run_line=line,
-                integrity_line=extra,
+                run_line="Recent run",
+                integrity_line="",
                 groups=rec.get("groups") or [],
                 relationships=rec.get("relationships") or [],
                 events=rec.get("events") or [],
                 track_count=int(rec.get("track_count") or 0),
+                photos=stats.get("photos"),
+                faces=stats.get("faces"),
+                stamped=stats.get("stamped"),
+                has_unnamed=bool(stats.get("has_unnamed")),
+                group_count=stats.get("groups"),
+                advanced=False,
             ),
         )
 
@@ -1555,19 +2087,33 @@ class HomeApp:
 
     def _search_person(self) -> None:
         from semblon.gates import MODALITY_PRODUCT, enabled
-        from semblon.search import SearchError, search_person, search_text
+        from semblon.search import SearchError, search_people, search_person, search_text
 
         q = (self.search_var.get() or "").strip()
         if not q:
-            messagebox.showinfo("Semblon", "Type a person name or OCR text.")
+            messagebox.showinfo("Semblon", "Type a person name or text to search.")
             return
         if not self.store.is_file():
-            messagebox.showinfo("Semblon", f"No store yet:\n{self.store}")
+            self._set_inspector("Search", search_no_store().as_lines())
+            return
+        try:
+            named = search_people(self.store)
+        except SearchError as e:
+            if is_expected_condition(e):
+                self._set_inspector("Search", search_no_store().as_lines())
+            else:
+                self._show_failure(e)
+            return
+        if not (named.get("items") or []):
+            self._set_inspector("Search", search_no_named_people().as_lines())
             return
         try:
             rec = search_person(self.store, q)
         except SearchError as e:
-            messagebox.showerror("Semblon", str(e))
+            if is_expected_condition(e):
+                self._set_inspector("Search", search_no_matches(q).as_lines())
+            else:
+                self._show_failure(e)
             return
         lines = format_search_lines(rec)
         if enabled(MODALITY_PRODUCT) and int(rec.get("count") or 0) == 0:
@@ -1581,34 +2127,140 @@ class HomeApp:
         self._set_inspector("Search", lines)
 
     def _show_settings(self) -> None:
-        from semblon.engine import format_execution_status_lines
-        from semblon.observers import modality_product_settings_lines
-        from semblon.providers import weights_status
+        """User Settings panel (UX Rescue §6). Diagnostics live in Advanced."""
+        if self._settings_win is not None:
+            try:
+                if self._settings_win.winfo_exists():
+                    self._settings_win.lift()
+                    self._settings_win.focus_force()
+                    return
+            except tk.TclError:
+                self._settings_win = None
 
-        w = weights_status()
-        lines = [
-            f"Store: {self.store}",
-            "Shell: Library | Workspace/Canvas | Inspector (compatibility Tk; toolkit unnamed)",
-            "R3 chrome: five display states + processing ring grammar (shape, not hue).",
-            "Ingest is a JobEngine job, not an application lock. Review/People/Search stay usable.",
-            "Pause: cooperative between files (not mid-file); Resume while paused continues the same job",
-            "Cancel: between files (not mid-file)",
-            "Resume when idle: continues cancelled/interrupted run from next unfinished stage",
-            "Stills bar: real files done / files total, climbs to 100%",
-            f"Home observers (base): {HOME_OBSERVERS}",
-            f"Home observers (product): {resolve_home_observers()}",
-            f"Weights dir: {w['dir']}",
-            f"onnx files: {w['onnx_count']}  bundled={w['bundled']}",
-            w["note"],
-        ]
-        lines.extend(format_execution_status_lines())
-        lines.extend(modality_product_settings_lines())
-        self._set_inspector("Settings", lines)
+        win = tk.Toplevel(self.root)
+        self._settings_win = win
+        win.title("Settings")
+        win.geometry("360x480")
+        win.minsize(320, 360)
+        try:
+            win.transient(self.root)
+            win.configure(bg=SURFACE_PRIMARY)
+        except tk.TclError:
+            pass
 
-    # UX-RESCUE S7 — Settings (§6) wires the button later; keep import-safe entry.
+        pad = ttk.Frame(win, padding=(SP_16, SP_16))
+        pad.pack(fill=tk.BOTH, expand=True)
+
+        head = ttk.Frame(pad)
+        head.pack(fill=tk.X)
+        ttk.Label(head, text="Settings", font=H2).pack(side=tk.LEFT)
+        ttk.Button(head, text="Close", command=win.destroy).pack(side=tk.RIGHT)
+
+        # Library
+        ttk.Label(pad, text="Library", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_16, SP_8))
+        ttk.Label(pad, text="Library location", font=BODY).pack(anchor=tk.W)
+        loc_row = ttk.Frame(pad)
+        loc_row.pack(fill=tk.X, pady=(SP_8, 0))
+        self._settings_lib_var = tk.StringVar(value=str(self.store))
+        ttk.Label(
+            loc_row,
+            textvariable=self._settings_lib_var,
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+            wraplength=240,
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(loc_row, text="Change…", command=self._settings_change_library).pack(
+            side=tk.RIGHT
+        )
+
+        # Processing — GPU toggle (session prefer path; no engine redesign)
+        ttk.Label(pad, text="Processing", font=BODY_STRONG).pack(
+            anchor=tk.W, pady=(SP_24, SP_8)
+        )
+        gpu_available = False
+        try:
+            from semblon.engine import select_execution_provider
+
+            gpu_available = bool(select_execution_provider(prefer_gpu=True).get("gpu"))
+        except Exception:  # noqa: BLE001 — display-only
+            gpu_available = False
+        if gpu_available:
+            initial = (
+                self._prefer_gpu_user
+                if self._prefer_gpu_user is not None
+                else resolve_home_prefer_gpu()
+            )
+            self._gpu_var = tk.BooleanVar(value=bool(initial))
+
+            def _on_gpu() -> None:
+                self._prefer_gpu_user = bool(self._gpu_var.get())
+
+            ttk.Checkbutton(
+                pad,
+                text="Use GPU when available",
+                variable=self._gpu_var,
+                command=_on_gpu,
+            ).pack(anchor=tk.W)
+        else:
+            ttk.Label(
+                pad,
+                text="Processing on this computer.",
+                font=CAPTION,
+                foreground=TEXT_SECONDARY,
+            ).pack(anchor=tk.W)
+
+        # About
+        ttk.Label(pad, text="About", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_24, SP_8))
+        try:
+            from semblon import __version__ as _ver
+        except Exception:  # noqa: BLE001
+            _ver = "1.4.0"
+        ttk.Label(pad, text="Semblon", font=H2).pack(anchor=tk.W)
+        ttk.Label(
+            pad, text=f"Version {_ver}", font=CAPTION, foreground=TEXT_SECONDARY
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+        ttk.Label(
+            pad,
+            text="All processing stays on this computer. Nothing is uploaded.",
+            font=BODY,
+            wraplength=300,
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+        ttk.Button(
+            pad,
+            text="Advanced diagnostics…",
+            command=self._open_advanced_diagnostics,
+        ).pack(anchor=tk.W, pady=(SP_16, 0))
+
+        def _on_close() -> None:
+            self._settings_win = None
+            win.destroy()
+
+        win.protocol("WM_DELETE_WINDOW", _on_close)
+
+    def _settings_change_library(self) -> None:
+        """Pick an existing store.sqlite — presentation path only; no ingest change."""
+        if self.engine.busy:
+            messagebox.showinfo("Semblon", "Finish or cancel processing before changing the library.")
+            return
+        path = filedialog.askopenfilename(
+            title="Choose Semblon library (store.sqlite)",
+            filetypes=[("SQLite", "*.sqlite"), ("All files", "*.*")],
+            parent=self.root,
+        )
+        if not path:
+            return
+        self.store = Path(path)
+        self.engine = JobEngine(self.store)
+        if hasattr(self, "_settings_lib_var"):
+            self._settings_lib_var.set(str(self.store))
+
+    # UX-RESCUE S7 — Settings (§6) wires Advanced diagnostics entry.
     def _open_advanced_diagnostics(self) -> None:
-        from semblon.advanced_diagnostics import open_advanced_diagnostics
-
+        try:
+            from semblon.advanced_diagnostics import open_advanced_diagnostics
+        except ImportError:
+            messagebox.showinfo("Semblon", "Advanced diagnostics is not available yet.")
+            return
         open_advanced_diagnostics(self.root, self.store)
 
     def _open_live_overlay(self) -> None:

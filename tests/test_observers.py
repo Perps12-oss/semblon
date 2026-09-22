@@ -334,9 +334,10 @@ def test_home_list_formatters():
     people = format_people_lines({"items": [{"display_name": "Alice", "faces": 3}]})
     assert "Alice" in people[0]
     empty = format_people_lines({"items": []})
-    assert "No named people" in empty[0]
+    assert "No people yet" in empty[0]
     unk = format_unknown_lines({"counts": {"KNOWN": 1, "UNKNOWN": 4}}, "r1")
-    assert "UNKNOWN=4" in unk[1]
+    assert "4 groups waiting to be named" in unk[0]
+    assert "UNKNOWN=" not in "\n".join(unk)
     sim = format_search_lines(
         {
             "kind": "similar",
@@ -348,8 +349,8 @@ def test_home_list_formatters():
             "note": "Similarity is not identity.",
         }
     )
-    assert "appearance" in sim[0]
-    assert "not a person" in sim[2]
+    assert "modality=" not in "\n".join(sim)
+    assert "Similar results" in sim[0]
     text_lines = format_search_lines(
         {
             "kind": "text",
@@ -359,5 +360,5 @@ def test_home_list_formatters():
             "note": "OCR text lookup is observation evidence only; not identity.",
         }
     )
-    assert "OCR text" in text_lines[0]
-    assert "hello world" in text_lines[2]
+    assert "hello" in text_lines[0].lower() or "Text matches" in text_lines[0]
+    assert "hello world" in "\n".join(text_lines)
