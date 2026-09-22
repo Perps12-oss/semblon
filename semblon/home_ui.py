@@ -51,6 +51,11 @@ __all__ = [
     "resolve_home_observers",
     "run_home_ui",
 ]
+
+# Re-export verb policy helpers for tests / application façade consumers.
+from semblon.inspector_verbs import (  # noqa: E402
+    inspector_verb_states as inspector_verb_states,
+)
 from semblon.watchdog import Watchdog
 
 # Base Home observers (always). Product path may append OCR/CLIP/pose when ready.
@@ -402,6 +407,23 @@ def json_fallback(rec: dict) -> str:
     return json.dumps(rec, indent=2)[:4000]
 
 
+def _format_sel_item(it: dict) -> str:
+    """One-line label for Inspector Selection listbox."""
+    kind = it.get("kind")
+    if kind == "cluster":
+        cid = (it.get("cluster_id") or "")[:12]
+        n = it.get("face_count")
+        named = ""
+        if it.get("named") and it.get("person_names"):
+            named = f"  named:{','.join(it['person_names'][:2])}"
+        return f"cluster {cid}  faces={n}{named}"
+    fid = (it.get("face_id") or "")[:12]
+    cid = it.get("cluster_id")
+    if cid:
+        return f"face {fid}  in cluster {(cid or '')[:12]}"
+    return f"face {fid}  unassigned"
+
+
 class HomeApp:
     """Production Home shell: sidebar Library + Canvas workspace + Inspector."""
 
@@ -460,8 +482,6 @@ class HomeApp:
         # Canvas stays first-class; button focuses Home workspace canvas.
         self.btn_canvas = ttk.Button(jobs, text="Canvas", command=lambda: self._navigate("canvas"))
         self.btn_canvas.pack(side=tk.LEFT, padx=(8, 0))
-        self.btn_live = ttk.Button(row2, text="Live…", command=self._open_live_overlay)
-        self.btn_live.pack(side=tk.LEFT, padx=(8, 0))
 
         # Aliases kept for control-state map (People/Unknown/Activity are sidebar).
         self.btn_people = self.btn_canvas  # placeholder; rebound after sidebar build
@@ -538,20 +558,88 @@ class HomeApp:
             show_chrome=True,
         )
 
-        # Inspector
+        # Inspector — Evidence (machine) | Proposed action (human). R3-BRIEF §4.
         insp = ttk.LabelFrame(body, text="INSPECTOR", padding=6)
         insp.grid(row=0, column=2, sticky="nsew")
         self._inspector_title = tk.StringVar(value="Home")
         ttk.Label(insp, textvariable=self._inspector_title, font=("Segoe UI", 10, "bold")).pack(
             anchor=tk.W
         )
-        insp_body = ttk.Frame(insp)
-        insp_body.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
-        self._inspector = tk.Listbox(insp_body, exportselection=False)
-        sb = ttk.Scrollbar(insp_body, orient=tk.VERTICAL, command=self._inspector.yview)
+
+        # Selection list (multi-select clusters/faces for Merge / Split).
+        ttk.Label(insp, text="Selection", font=("Segoe UI", 9)).pack(anchor=tk.W, pady=(6, 0))
+        sel_frame = ttk.Frame(insp)
+        sel_frame.pack(fill=tk.X, pady=(2, 4))
+        self._sel_list = tk.Listbox(
+            sel_frame, exportselection=False, selectmode=tk.EXTENDED, height=5
+        )
+        sel_sb = ttk.Scrollbar(sel_frame, orient=tk.VERTICAL, command=self._sel_list.yview)
+        self._sel_list.configure(yscrollcommand=sel_sb.set)
+        self._sel_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sel_sb.pack(side=tk.LEFT, fill=tk.Y)
+        self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
+
+        ttk.Label(insp, text="Evidence relationship (machine)", font=("Segoe UI", 9)).pack(
+            anchor=tk.W, pady=(4, 0)
+        )
+        evid_frame = ttk.Frame(insp)
+        evid_frame.pack(fill=tk.BOTH, expand=True, pady=(2, 4))
+        self._inspector = tk.Listbox(evid_frame, exportselection=False, height=8)
+        sb = ttk.Scrollbar(evid_frame, orient=tk.VERTICAL, command=self._inspector.yview)
         self._inspector.configure(yscrollcommand=sb.set)
         self._inspector.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb.pack(side=tk.LEFT, fill=tk.Y)
+
+        ttk.Label(insp, text="Proposed action (human)", font=("Segoe UI", 9)).pack(
+            anchor=tk.W, pady=(4, 0)
+        )
+        ttk.Label(
+            insp,
+            text="Merge observations ≠ Assign to person",
+            font=("Segoe UI", 8),
+        ).pack(anchor=tk.W)
+
+        actions = ttk.Frame(insp)
+        actions.pack(fill=tk.X, pady=(4, 0))
+        self._verb_reason = tk.StringVar(value="")
+        self.btn_merge = ttk.Button(
+            actions, text="Merge observations", command=self._inspector_merge
+        )
+        self.btn_merge.pack(fill=tk.X, pady=1)
+        self.btn_assign = ttk.Button(
+            actions, text="Assign to person", command=self._inspector_assign
+        )
+        self.btn_assign.pack(fill=tk.X, pady=1)
+        self.btn_split = ttk.Button(actions, text="Split", command=self._inspector_split)
+        self.btn_split.pack(fill=tk.X, pady=1)
+
+        name_row = ttk.Frame(actions)
+        name_row.pack(fill=tk.X, pady=1)
+        ttk.Label(name_row, text="Name").pack(side=tk.LEFT)
+        self._name_var = tk.StringVar()
+        self._name_entry = ttk.Entry(name_row, textvariable=self._name_var)
+        self._name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
+        self._name_entry.bind("<Return>", lambda _e: self._inspector_name_commit())
+        self._name_entry.bind("<Escape>", lambda _e: self._inspector_name_cancel())
+
+        self.btn_rule_out = ttk.Button(
+            actions, text="Rule out", command=self._inspector_rule_out
+        )
+        self.btn_rule_out.pack(fill=tk.X, pady=1)
+        self.btn_ignore = ttk.Button(actions, text="Ignore", command=self._inspector_ignore)
+        self.btn_ignore.pack(fill=tk.X, pady=1)
+        ttk.Label(insp, textvariable=self._verb_reason, wraplength=260).pack(
+            anchor=tk.W, pady=(4, 0)
+        )
+
+        # Selection context for Inspector verbs (not identity).
+        self._insp_run_id: str | None = None
+        self._insp_media_id: str | None = None
+        self._insp_available: list[dict] = []
+        self._insp_selected: list[dict] = []
+        self._insp_target_person_id: str | None = None
+        self._insp_target_person_name: str | None = None
+        self._verb_states: dict = {}
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._drain_queue)
@@ -562,10 +650,281 @@ class HomeApp:
         self._inspector.delete(0, tk.END)
         for line in lines:
             self._inspector.insert(tk.END, line)
+        # Non-selection views keep verb disable reasons honest.
+        if title in {"Home", "Canvas", "Photos", "Videos", "Activity", "Settings", "Search"}:
+            self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
+            if title != "Canvas":
+                self._insp_available = []
+                self._insp_selected = []
+                self._insp_media_id = None
+                self._sel_list.delete(0, tk.END)
+        self._refresh_inspector_verbs()
+
+    def _set_inspector_selection(
+        self,
+        *,
+        run_id: str | None,
+        media_id: str | None,
+        available: list[dict],
+        evidence_lines: list[str],
+        title: str,
+        target_person_id: str | None = None,
+        target_person_name: str | None = None,
+        preselect_all: bool = False,
+    ) -> None:
+        self._insp_run_id = run_id
+        self._insp_media_id = media_id
+        self._insp_available = list(available)
+        if target_person_id is not None:
+            self._insp_target_person_id = target_person_id
+            self._insp_target_person_name = target_person_name
+        self._sel_list.delete(0, tk.END)
+        for it in self._insp_available:
+            self._sel_list.insert(tk.END, _format_sel_item(it))
+        if preselect_all and self._insp_available:
+            self._sel_list.selection_set(0, tk.END)
+        elif len(self._insp_available) == 1:
+            self._sel_list.selection_set(0)
+        self._on_inspector_sel_change()
+        self._set_inspector(title, evidence_lines)
+
+    def _on_inspector_sel_change(self) -> None:
+        idxs = list(self._sel_list.curselection())
+        self._insp_selected = [
+            self._insp_available[i] for i in idxs if 0 <= i < len(self._insp_available)
+        ]
+        self._refresh_inspector_verbs()
+
+    def _refresh_inspector_verbs(self) -> None:
+        from semblon.inspector_verbs import inspector_verb_states
+
+        self._verb_states = inspector_verb_states(
+            self._insp_selected,
+            run_id=self._insp_run_id or self._last_run_id,
+            target_person_id=self._insp_target_person_id,
+        )
+        buttons = {
+            "merge": self.btn_merge,
+            "assign": self.btn_assign,
+            "split": self.btn_split,
+            "rule_out": self.btn_rule_out,
+            "ignore": self.btn_ignore,
+        }
+        reasons: list[str] = []
+        for key, btn in buttons.items():
+            st = self._verb_states.get(key) or {}
+            enabled = bool(st.get("enabled"))
+            btn.configure(state=tk.NORMAL if enabled else tk.DISABLED)
+            if not enabled and st.get("reason"):
+                reasons.append(f"{btn.cget('text')}: {st['reason']}")
+        name_st = self._verb_states.get("name") or {}
+        name_on = bool(name_st.get("enabled"))
+        self._name_entry.configure(state=tk.NORMAL if name_on else tk.DISABLED)
+        if not name_on:
+            self._name_var.set("")
+            if name_st.get("reason"):
+                reasons.append(f"Name: {name_st['reason']}")
+        self._verb_reason.set(" · ".join(reasons[:3]) if reasons else "")
+
+    def _inspector_run_id(self) -> str | None:
+        return self._insp_run_id or self._last_run_id
+
+    def _inspector_after_mutation(self) -> None:
+        """Refresh Canvas / Unknown after a successful Inspector verb."""
+        rid = self._inspector_run_id()
+        if self._nav in {"home", "canvas", "photos", "videos"}:
+            types = None
+            if self._nav == "photos":
+                types = ("folder",)
+            elif self._nav == "videos":
+                types = ("video",)
+            self._show_workspace_canvas(reload=True, source_types=types)
+        elif self._nav == "unknown":
+            self._show_unknown()
+        elif self._nav == "people":
+            self._show_people()
+        else:
+            self._refresh_inspector_verbs()
+        if rid:
+            self._last_run_id = rid
+
+    def _inspector_merge(self) -> None:
+        from semblon.inspector_verbs import apply_inspector_merge
+        from semblon.review import ReviewError
+        from semblon.review_ui import ReviewUiError
+
+        st = self._verb_states.get("merge") or {}
+        if not st.get("enabled"):
+            messagebox.showinfo("Semblon", st.get("reason") or "Merge unavailable")
+            return
+        rid = self._inspector_run_id()
+        if not rid:
+            return
+        try:
+            apply_inspector_merge(self.store, rid, list(st.get("cluster_ids") or []))
+        except (ReviewError, ReviewUiError) as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        self.status.set("Merged observations (clusters). Not a person assign.")
+        self._inspector_after_mutation()
+
+    def _inspector_assign(self) -> None:
+        from semblon.inspector_verbs import apply_inspector_assign
+        from semblon.review import ReviewError
+        from semblon.review_ui import ReviewUiError
+
+        st = self._verb_states.get("assign") or {}
+        if not st.get("enabled"):
+            messagebox.showinfo("Semblon", st.get("reason") or "Assign unavailable")
+            return
+        rid = self._inspector_run_id()
+        item = st.get("item")
+        pid = st.get("person_id") or self._insp_target_person_id
+        if not rid or item is None or not pid:
+            return
+        display = self._insp_target_person_name or pid
+        try:
+            apply_inspector_assign(
+                self.store, rid, item, person_id=pid, display_name=display
+            )
+        except (ReviewError, ReviewUiError) as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        self.status.set(f"Assigned to person {display!r}. Not Merge observations.")
+        self._inspector_after_mutation()
+
+    def _inspector_split(self) -> None:
+        from semblon.inspector_verbs import apply_inspector_split
+        from semblon.review import ReviewError
+        from semblon.review_ui import ReviewUiError
+
+        st = self._verb_states.get("split") or {}
+        if not st.get("enabled"):
+            messagebox.showinfo("Semblon", st.get("reason") or "Split unavailable")
+            return
+        rid = self._inspector_run_id()
+        cid = st.get("cluster_id")
+        face_ids = list(st.get("face_ids") or [])
+        if not rid or not cid:
+            return
+        if not face_ids:
+            messagebox.showinfo(
+                "Semblon",
+                "Select faces within the cluster to split (Ctrl+click in Selection).",
+            )
+            return
+        try:
+            apply_inspector_split(self.store, rid, cid, face_ids)
+        except (ReviewError, ReviewUiError) as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        self.status.set("Split cluster faces.")
+        self._inspector_after_mutation()
+
+    def _inspector_name_commit(self) -> None:
+        from semblon.inspector_verbs import apply_inspector_name
+        from semblon.review import ReviewError
+        from semblon.review_ui import ReviewUiError
+
+        st = self._verb_states.get("name") or {}
+        if not st.get("enabled"):
+            return
+        rid = self._inspector_run_id()
+        item = st.get("item")
+        name = (self._name_var.get() or "").strip()
+        if not rid or item is None or not name:
+            return
+        try:
+            apply_inspector_name(self.store, rid, item, name)
+        except (ReviewError, ReviewUiError) as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        self._name_var.set("")
+        self.status.set(f"Named {name!r}.")
+        self._inspector_after_mutation()
+
+    def _inspector_name_cancel(self) -> None:
+        self._name_var.set("")
+        self._name_entry.selection_clear()
+        self.root.focus_set()
+
+    def _inspector_ignore(self) -> None:
+        from semblon.inspector_verbs import apply_inspector_ignore
+        from semblon.review import ReviewError
+        from semblon.review_ui import ReviewUiError
+
+        st = self._verb_states.get("ignore") or {}
+        item = st.get("item")
+        rid = self._inspector_run_id()
+        if not rid or item is None:
+            messagebox.showinfo("Semblon", "Select a cluster or face to Ignore.")
+            return
+        if not messagebox.askyesno(
+            "Ignore",
+            "Mark as ignore / not a person? Writes a decision (deferral).",
+            parent=self.root,
+        ):
+            return
+        try:
+            apply_inspector_ignore(self.store, rid, item)
+        except (ReviewError, ReviewUiError) as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        self.status.set("Ignored (deferral). Not Rule out.")
+        self._inspector_after_mutation()
+
+    def _inspector_rule_out(self) -> None:
+        from semblon.inspector_verbs import apply_inspector_rule_out
+        from semblon.review import ReviewError
+        from semblon.review_ui import ReviewUiError
+
+        st = self._verb_states.get("rule_out") or {}
+        if not st.get("enabled"):
+            messagebox.showinfo("Semblon", st.get("reason") or "Rule out unavailable")
+            return
+        rid = self._inspector_run_id()
+        item = st.get("item")
+        if not rid or item is None:
+            return
+        if not messagebox.askyesno(
+            "Rule out",
+            "Record durable Ruled out? This is not Ignore.",
+            parent=self.root,
+        ):
+            return
+        try:
+            apply_inspector_rule_out(self.store, rid, item)
+        except (ReviewError, ReviewUiError) as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        self.status.set("Ruled out (durable reject). Not Ignore.")
+        self._inspector_after_mutation()
 
     def _on_canvas_select(self, media_id: str | None, lines: list[str]) -> None:
+        from semblon.inspector_verbs import (
+            evidence_lines_for_selection,
+            items_from_media_board,
+        )
+
         title = "Selection" if media_id else "Canvas"
-        self._set_inspector(title, lines)
+        board = getattr(self._canvas_ws, "board", None) or {}
+        run_id = board.get("run_id") or self._last_run_id
+        available = items_from_media_board(board, media_id) if media_id else []
+        evid = evidence_lines_for_selection(
+            run_id=run_id,
+            media_id=media_id,
+            selected=available,
+            board_lines=lines,
+            candidate_person=self._insp_target_person_name,
+        )
+        self._set_inspector_selection(
+            run_id=run_id,
+            media_id=media_id,
+            available=available,
+            evidence_lines=evid,
+            title=title,
+            preselect_all=len(available) <= 2,
+        )
 
     def _show_workspace_canvas(
         self,
@@ -847,35 +1206,126 @@ class HomeApp:
         self._set_inspector(title, lines)
 
     def _show_people(self) -> None:
+        from semblon.inspector_verbs import evidence_lines_for_selection
         from semblon.search import SearchError, search_people
 
         if not self.store.is_file():
-            self._set_inspector("People", [f"No store yet:\n{self.store}"])
+            self._set_inspector_selection(
+                run_id=None,
+                media_id=None,
+                available=[],
+                evidence_lines=[f"No store yet:\n{self.store}"],
+                title="People",
+            )
             return
         try:
             rec = search_people(self.store)
         except SearchError as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self._set_inspector("People", format_people_lines(rec))
+        # People rows are assign targets, not Merge observations.
+        people_items = []
+        for i in rec.get("items") or []:
+            people_items.append(
+                {
+                    "kind": "person",
+                    "person_id": i.get("person_id"),
+                    "display_name": i.get("display_name"),
+                    "faces": i.get("faces"),
+                }
+            )
+        # Selecting a person sets Assign target; observations come from Unknown/Canvas.
+        self._insp_available = []
+        self._sel_list.delete(0, tk.END)
+        for p in people_items:
+            label = f"person {p.get('display_name') or p.get('person_id')}  ({p.get('faces', 0)} faces)"
+            self._sel_list.insert(tk.END, label)
+        self._people_items = people_items
+        self._sel_list.bind("<<ListboxSelect>>", self._on_people_sel_change)
+        evid = evidence_lines_for_selection(
+            run_id=self._last_run_id,
+            selected=[],
+            board_lines=format_people_lines(rec),
+            candidate_person=self._insp_target_person_name,
+        )
+        evid.insert(1, "Select a person here, then a cluster/face on Unknown or Canvas to Assign.")
+        self._insp_run_id = self._last_run_id
+        self._insp_selected = []
+        self._set_inspector("People", evid)
+
+    def _on_people_sel_change(self, _event=None) -> None:
+        idxs = list(self._sel_list.curselection())
+        people = getattr(self, "_people_items", None) or []
+        if len(idxs) == 1 and 0 <= idxs[0] < len(people):
+            p = people[idxs[0]]
+            self._insp_target_person_id = p.get("person_id")
+            self._insp_target_person_name = p.get("display_name") or p.get("person_id")
+            self.status.set(
+                f"Assign target: {self._insp_target_person_name!r}  "
+                "(Merge observations is a separate verb)"
+            )
+        self._refresh_inspector_verbs()
 
     def _show_unknown(self) -> None:
         from semblon.inbox import InboxError, inbox
+        from semblon.inspector_verbs import evidence_lines_for_selection
         from semblon.process import latest_run_id
+        from semblon.review_ui import load_board
 
         if not self.store.is_file():
-            self._set_inspector("Unknown", [f"No store yet:\n{self.store}"])
+            self._set_inspector_selection(
+                run_id=None,
+                media_id=None,
+                available=[],
+                evidence_lines=[f"No store yet:\n{self.store}"],
+                title="Unknown",
+            )
             return
         rid = latest_run_id(self.store, with_faces=True)
         if rid is None:
-            self._set_inspector("Unknown", ["Store has no runs with faces."])
+            self._set_inspector_selection(
+                run_id=None,
+                media_id=None,
+                available=[],
+                evidence_lines=["Store has no runs with faces."],
+                title="Unknown",
+            )
             return
         try:
             rec = inbox(self.store, rid)
         except InboxError as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self._set_inspector("Unknown", format_unknown_lines(rec, rid))
+        # Restore selection binding (People overrides it).
+        self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
+        available: list[dict] = []
+        try:
+            from semblon.inspector_verbs import flatten_board_items_for_inspector
+
+            board = load_board(self.store, rid)
+            raw = []
+            for it in board.get("items") or []:
+                if it.get("kind") == "cluster" and not it.get("named"):
+                    raw.append(it)
+                elif it.get("kind") == "face":
+                    raw.append(it)
+            available = flatten_board_items_for_inspector(raw)
+        except Exception:  # noqa: BLE001 — Unknown still shows inbox counts
+            available = []
+        evid = evidence_lines_for_selection(
+            run_id=rid,
+            selected=available,
+            board_lines=format_unknown_lines(rec, rid),
+            candidate_person=self._insp_target_person_name,
+        )
+        self._set_inspector_selection(
+            run_id=rid,
+            media_id=None,
+            available=available,
+            evidence_lines=evid,
+            title="Unknown",
+            preselect_all=False,
+        )
 
     def _show_activity(self) -> None:
         from semblon.process import empty_state_line, latest_run_id

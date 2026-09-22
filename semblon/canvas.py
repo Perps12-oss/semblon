@@ -173,12 +173,19 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
 
 
 def media_inspector_lines(board: dict, media_id: str | None) -> list[str]:
-    """Inspector evidence lines for one media selection. Group ≠ person."""
+    """Inspector evidence lines for one media selection. Group ≠ person.
+
+    Labels distinguish Evidence (machine) from Proposed action (human).
+    Actual verb buttons live on Home Inspector; this is read-only chrome.
+    """
     if not media_id:
         return [
+            "Evidence relationship (machine)",
             board.get("note") or CANVAS_NOTE,
             f"run={board.get('run_id')}",
             f"media={len(board.get('media') or [])}  faces={len(board.get('faces') or [])}",
+            "Proposed action (human): use Home Inspector verbs",
+            "Merge observations ≠ Assign to person",
         ]
     media = next((m for m in (board.get("media") or []) if m.get("media_id") == media_id), None)
     faces = [f for f in (board.get("faces") or []) if f.get("media_id") == media_id]
@@ -186,17 +193,21 @@ def media_inspector_lines(board: dict, media_id: str | None) -> list[str]:
     tracks = [t for t in (board.get("tracks") or []) if t.get("media_id") == media_id]
     clustered = sum(1 for f in faces if f.get("cluster_id"))
     unassigned = sum(1 for f in faces if not f.get("cluster_id"))
+    cluster_ids = sorted({f.get("cluster_id") for f in faces if f.get("cluster_id")})
     lines = [
+        "Evidence relationship (machine)",
         f"path={media.get('path') if media else '?'}",
         f"source_type={media.get('source_type') if media else '?'}",
         f"faces={len(faces)}  clustered={clustered}  unassigned={unassigned}",
+        f"cluster membership: {', '.join(c[:12] for c in cluster_ids) or 'none'}",
         f"items={len(items)}  tracks={len(tracks)}  (track ≠ person)",
-        "Evidence: boxes/tracks only. Group ≠ person. Name happens in Review.",
-        "Actions: Open Review · Merge observations ≠ Assign to person",
+        "Boxes/tracks only. Group ≠ person. Similarity is not identity.",
+        "Proposed action (human): Home Inspector — Merge · Assign · Split · Name · Rule out · Ignore",
+        "Merge observations ≠ Assign to person",
         CANVAS_NOTE,
     ]
     if not faces:
-        lines.insert(3, "Zero faces — still Library (not failed ingest)")
+        lines.insert(4, "Zero faces — still Library (not failed ingest)")
     return lines
 
 
