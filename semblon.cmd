@@ -1,10 +1,13 @@
 @echo off
 setlocal
-rem Repo-root launcher: double-click = tk Home; args = power-user CLI.
+rem Repo-root / MSI-install launcher: double-click = tk Home; args = power-user CLI.
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "VENV_PY=%ROOT%\.venv\Scripts\python.exe"
 set "INTERACTIVE=%ROOT%\tools\semblon-interactive.ps1"
+set "MSI_MARKER=%ROOT%\.semblon-msi-install"
+set "MSI_BOOTSTRAP=%ROOT%\tools\msi\bootstrap-install.ps1"
+set "INSTALL_PS1=%ROOT%\tools\install-windows.ps1"
 
 if "%~1"=="" (
   if not exist "%INTERACTIVE%" (
@@ -45,6 +48,30 @@ if exist "%VENV_PY%" (
   )
   "%VENV_PY%" -m semblon %*
   exit /b %ERRORLEVEL%
+)
+
+rem MSI / first-run: create .venv before CLI args.
+if exist "%MSI_MARKER%" if exist "%MSI_BOOTSTRAP%" (
+  echo Semblon MSI: bootstrapping .venv (code only; no buffalo_l^)...
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%MSI_BOOTSTRAP%" -Root "%ROOT%"
+  if errorlevel 1 (
+    echo MSI bootstrap failed. Install Python 3.12 ^(py launcher^), then retry.
+    exit /b 1
+  )
+  if exist "%VENV_PY%" (
+    "%VENV_PY%" -m semblon %*
+    exit /b %ERRORLEVEL%
+  )
+)
+
+if exist "%INSTALL_PS1%" (
+  echo Semblon: .venv missing — running install-windows.ps1...
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_PS1%" -Root "%ROOT%"
+  if errorlevel 1 exit /b 1
+  if exist "%VENV_PY%" (
+    "%VENV_PY%" -m semblon %*
+    exit /b %ERRORLEVEL%
+  )
 )
 
 set "ALT_ROOT=%ROOT%\semblon"
