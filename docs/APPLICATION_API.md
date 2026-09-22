@@ -27,9 +27,8 @@ Home button  →  Home-owned worker  →  Tk callback chain  →  ingest
 | Pause | Cooperative; same job stays claimed; not consuming ingest work | `JobEngine.pause` / `unpause` |
 | Application state | store path, latest run with faces | `default_store_path`, `latest_run_id` |
 | Review state | board items (cluster / track / unassigned) | `load_board` |
-| Person operations | Name / Merge / Split / Ignore / Note / Rule out (gate default ON; ship claim CLOSED / DONE §I.5) | `apply_*` → `review.py` |
-| Search / read snapshots | people, unknown, activity, person query, canvas overlay | `search_*`, `inbox`, `activity` / Home `read_activity_snapshot`, `load_canvas` |
-| Observation overlay | `path` + `frame_id` + `bbox` + optional track lane | `load_canvas` / `overlay_boxes` |
+| Person operations | Name / Merge / Split / Ignore / Note / Rule out (gate default ON; ship claim CLOSED / DONE §I.5) | `apply_*` → `review.py` (Home Inspector + review-ui) |
+| Search / read snapshots | people, unknown, activity, person query, canvas overlay | `search_*`, `inbox`, `activity` / Home `read_activity_snapshot`, `load_canvas` || Observation overlay | `path` + `frame_id` + `bbox` + optional track lane | `load_canvas` / `overlay_boxes` |
 
 CONTRACTS family this maps onto: Media, Observation, Face, Embedding, Track, Episode (not a first-class UI command yet), Person, Decision, SearchResult, Job, Progress, Cancellation.
 
@@ -60,12 +59,11 @@ Mutations (one writer: Python domain ops):
 | `apply_split` | `apply_split` | Faces leave the cluster |
 | `apply_ignore` | `apply_ignore` | Hide from board |
 | `apply_note` | `apply_note` | `decisions.kind=note` |
-| `apply_rule_out` | `apply_rule_out` | Durable reject (`action=rule_out`); gate default **ON** (`semblon.gates.RULED_OUT`); opt out `SEMBLON_RULED_OUT=0`. **Ship claim CLOSED / DONE** (§I.5). See `docs/CONTRACTS-RULED-OUT.md` |
+| `apply_rule_out` | `apply_rule_out` | Durable reject (`action=rule_out`); gate default **ON** (`semblon.gates.RULED_OUT`); opt out `SEMBLON_RULED_OUT=0`. Home Inspector **Rule out** + review-ui. **Ship claim CLOSED / DONE** (§I.5). See `docs/CONTRACTS-RULED-OUT.md` |
 
 Named later, not implemented as Job types in this slice: `watch`, `live`. The API must not assume stills-only.
 
-**Ruled out gate:** code path + review chrome default ON; product-wire **ship claim CLOSED / DONE** by owner 2026-09-21 (`docs/CONTRACTS-RULED-OUT.md` · SEM-ARCH §I.5).
-
+**Ruled out:** product-wire ship claim **CLOSED / DONE** by owner 2026-09-21 (`docs/CONTRACTS-RULED-OUT.md` · SEM-ARCH §I.5). Chrome on Home Inspector + review-ui when gate ON.
 ## Job states (V1.4 C.2)
 
 ```
@@ -112,10 +110,11 @@ Library sidebar │ Workspace / Intelligence Canvas │ Inspector
 
 - Library nav: Home · Photos · Videos · People · Unknown · Activity
 - Workspace embeds `CanvasWorkspace` (observation overlays for selected media)
-- Inspector shows evidence lines for the selection; mutations stay in Review
+- Inspector: evidence (machine) ≠ proposed action (human). Verbs wired to `apply_*` / `review.py`: Merge observations · Assign to person · Split · Name · Rule out · Ignore (`semblon/inspector_verbs.py`). Merge ≠ Assign.
+- Standalone `review-ui` remains available; Open Review is still a Toplevel on Home’s root
 - Canvas/UI overlays **never** write `faces.person_id`
 
-`load_canvas` / `overlay_boxes` / `media_inspector_lines` / `CanvasWorkspace` are the read surface. JobEngine remains the ingest door.
+`load_canvas` / `overlay_boxes` / `media_inspector_lines` / `CanvasWorkspace` are the read surface. `activity()` / `board()` / `search_*` are the RO façade. JobEngine remains the ingest door.
 
 ## Home controls during a job (Track-1)
 

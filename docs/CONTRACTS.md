@@ -79,8 +79,8 @@ Docs/conceptual only. No new columns. Map of SEM-ARCH nouns onto today's store:
 **Named slice:** `docs/CONTRACTS-RULED-OUT.md`. Durable negative identity decision, distinct from Ignore/deferred.
 
 - **Store:** no new columns. `decisions.kind=reject` + `policy_json.action=rule_out` (Ignore remains `action=ignore`).
-- **Code:** `rule_out_subject` / `apply_rule_out` behind env `SEMBLON_RULED_OUT=1` (default OFF; canonical gate: `semblon.gates.RULED_OUT`).
-- **Product wire:** **CLOSED / DONE** by owner 2026-09-21 (`SEM-ARCH-V1.4` §I.5). Default verb available when gate ON.
+- **Code:** `rule_out_subject` / `apply_rule_out` gated by `SEMBLON_RULED_OUT` (default **ON**; opt out `=0`; canonical gate: `semblon.gates.RULED_OUT`). Home Inspector + review-ui expose **Rule out**.
+- **Product wire:** **CLOSED / DONE** by owner 2026-09-21 (`SEM-ARCH-V1.4` §I.5).
 - **PROPOSED only (not landed):** dedicated `decisions.kind='rule_out'` CHECK expansion if policy discrimination proves insufficient.
 
 Frozen rule: detector → observation; grouping → hypothesis; human → decision. `cluster ≠ person`. `group ≠ entity`. Unknown is valid.

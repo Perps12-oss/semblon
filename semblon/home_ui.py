@@ -1456,8 +1456,10 @@ class HomeApp:
             return
 
         try:
-            rec = read_activity_snapshot(self.store, rid)
-        except (sqlite3.DatabaseError, OSError) as e:
+            from semblon.application import activity
+
+            rec = activity(self.store, rid)
+        except (sqlite3.DatabaseError, OSError, ValueError) as e:
             self._set_inspector("Activity", [line, extra, f"activity unavailable: {e}"])
             return
         self._set_inspector(
