@@ -31,6 +31,7 @@ def test_native_shell_uses_application_pause_commands():
     assert "submit_ingest" in src
     assert "apply_inspector_name" in src
     assert "apply_inspector_rule_out" in src
+    assert "session.canvas" in src or "overlay_boxes" in src
     assert "from semblon.process import process_folder" not in src
 
 

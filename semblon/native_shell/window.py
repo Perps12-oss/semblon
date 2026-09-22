@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from semblon.application import Application, JobBusy
+from semblon.canvas import overlay_boxes
 from semblon.inspector_verbs import (
     VERB_IGNORE,
     VERB_MERGE,
@@ -50,6 +51,7 @@ from semblon.inspector_verbs import (
 )
 from semblon.progress import KIND_QUEUED, STAGE_PROCESS, ProgressEvent, make_event
 from semblon.review_ui import ReviewUiError
+from semblon.state_triple import format_media_card_label, media_inspector_triple_line, triples_for_board
 from semblon.ui_copy import status_text
 
 
@@ -65,6 +67,8 @@ class ShellWindow(QMainWindow):
         self._board_items: list[dict] = []
         self._run_id: str | None = None
         self._selected: list[dict] = []
+        self._canvas: dict | None = None
+        self._canvas_media_id: str | None = None
         self.setWindowTitle("Semblon")
         self.resize(1280, 800)
 
@@ -311,9 +315,74 @@ class ShellWindow(QMainWindow):
             )
             self.board_list.clear()
             self.evidence.setText("Activity is observation-graph RO.")
+        elif name in {"Photos", "Videos", "Home"}:
+            self._load_canvas_media(source_type="video" if name == "Videos" else None)
         else:
             self._load_library_home()
             self._reload_board()
+
+    def _load_canvas_media(self, *, source_type: str | None = None) -> None:
+        """Observation overlay list via Application.canvas — never writes person_id."""
+        try:
+            board = self.session.canvas()
+        except Exception as e:  # noqa: BLE001
+            self.workspace_hint.setText(f"Canvas unavailable: {e}")
+            self.board_list.clear()
+            return
+        self._canvas = board
+        self._run_id = board.get("run_id")
+        triples = triples_for_board(
+            board,
+            job_state=self.session.state,
+            run_finished=board.get("run_finished"),
+        )
+        media_rows = board.get("media") or []
+        if source_type:
+            media_rows = [m for m in media_rows if m.get("source_type") == source_type]
+        self.workspace_hint.setText(
+            f"Canvas — run={self._run_id} media={len(media_rows)} "
+            f"boxes never write person_id. {board.get('note') or ''}"
+        )
+        self.board_list.clear()
+        for m in media_rows:
+            mid = str(m.get("media_id") or "")
+            triple = triples.get(mid)
+            label = format_media_card_label(m, triple) if triple else (m.get("path") or mid)
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, {"kind": "media", "media_id": mid, **m})
+            self.board_list.addItem(item)
+        self.evidence.setText(
+            "Library is the source-media layer.\n"
+            "Canvas overlays boxes/tracks — never writes faces.person_id.\n"
+            "Group ≠ person. Track ≠ person."
+        )
+
+    def _show_canvas_selection(self, media_id: str) -> None:
+        if not self._canvas:
+            return
+        boxes = overlay_boxes(self._canvas, media_id)
+        triples = triples_for_board(
+            self._canvas,
+            job_state=self.session.state,
+            run_finished=self._canvas.get("run_finished"),
+            current_media_id=media_id,
+        )
+        triple = triples.get(media_id)
+        lines = [
+            f"media={media_id}",
+            f"boxes={len(boxes)} (no person_id in overlay payload)",
+        ]
+        if triple is not None:
+            lines.append(media_inspector_triple_line(triple))
+        for b in boxes[:12]:
+            kind = b.get("kind") or "box"
+            tag = b.get("tag") or b.get("id") or ""
+            lines.append(f"  {kind} {tag}".rstrip())
+        if len(boxes) > 12:
+            lines.append(f"  … +{len(boxes) - 12} more")
+        lines.append("Canvas never writes faces.person_id.")
+        self.evidence.setText("\n".join(lines))
+        self._canvas_media_id = media_id
 
     def _load_library_home(self) -> None:
         self.workspace_hint.setText(
@@ -349,6 +418,13 @@ class ShellWindow(QMainWindow):
             if isinstance(data, dict):
                 selected.append(data)
         self._selected = selected
+        if (
+            len(selected) == 1
+            and selected[0].get("kind") == "media"
+            and selected[0].get("media_id")
+        ):
+            self._show_canvas_selection(str(selected[0]["media_id"]))
+            return
         self._refresh_inspector()
 
     def _refresh_inspector(self) -> None:

@@ -14,7 +14,7 @@
 | R2 IPC probe | Loopback probe on main | `semblon/ipc_probe.py`, `semblon lab ipc-probe`, `tests/test_ipc_probe.py` | Not product IPC (named pipes / WinUI host later if needed) | **COMPLETE** (probe) |
 | R3 Artifacts 1–4 | Canonical | `docs/r3-artifacts/` | Use as acceptance while implementing shell | **COMPLETE** (spec) |
 | Bake-off / §8.7 / Ruled-out ship | CLOSED / DONE | SEM-ARCH §I.5 | Do not reopen | **OWNER-AUTHORIZED / CLOSED** |
-| Native production shell | Slice 1 + Inspector verbs | `semblon/native_shell/`; Application API; inspector_verbs → apply_* | Canvas compositor / state-triple cards / default entry swap | **IN PROGRESS** |
+| Native production shell | Slice 1 + Inspector + Canvas RO list | `semblon/native_shell/`; Application.canvas + overlay_boxes + state-triple labels | Pixel compositor / default entry swap | **IN PROGRESS** |
 | Tk Home | Compatibility frontend | `semblon home` | Keep until native shell replaces default entry | **KEEP** |
 | `review.html` as UX | Engineering export only | export path | Must not become default workflow | **SUPERSEDED as UX** |
 | PERF ARM64 OpenCV | Load hang | `docs/PERF-P1-ARM64.md` | Owner/machine native load when unblocked | **BLOCKED** (perf track; not APP-1) |
