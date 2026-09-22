@@ -13,7 +13,7 @@ $Root = $Root.TrimEnd('\', '/')
 
 $InstallScript = Join-Path $Root "tools\install-windows.ps1"
 if (-not (Test-Path -LiteralPath $InstallScript)) {
-    Write-Error "Missing $InstallScript — MSI payload incomplete."
+    Write-Error "Missing $InstallScript - MSI payload incomplete."
 }
 
 Write-Host "Semblon MSI bootstrap (code only; no buffalo_l weights)..."
@@ -24,4 +24,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Store remains at %LOCALAPPDATA%\Semblon (not removed on uninstall)."
-Write-Host "Weights: UNAVAILABLE for redistribution — docs\licenses.md"
+Write-Host "Weights: UNAVAILABLE for redistribution - docs\licenses.md"
