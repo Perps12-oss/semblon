@@ -2,7 +2,8 @@
 
 Pipeline: one-pass discover → bounded hash → skip → decode/embed (one FaceAnalysis) →
 batched SQLite writer. Video frames stream; never materialize all samples.
-Experimental --workers > 1 parallelizes hashing only. No --batch until batched inference exists.
+Opt-in --workers > 1 parallelizes hashing only (product default 1; cap MAX_WORKERS).
+No --batch until batched inference exists.
 Does not change detection/quality thresholds or pack/provider.
 """
 
@@ -61,6 +62,10 @@ CancelCallback = Callable[[], bool] | None
 COMMIT_EVERY_N = 32
 COMMIT_EVERY_S = 0.1
 PROGRESS_THROTTLE_S = 0.1
+# Hard cap: hash-phase ThreadPool only. Product default remains 1.
+MAX_WORKERS = 32
+# Re-check cancel/pause while a slow hash is in flight (JobEngine._gate).
+_HASH_WAIT_S = 0.05
 
 
 class CancelledError(Exception):
@@ -252,7 +257,13 @@ def _iter_hash_results(
     workers: int,
     want_cancel: Callable[[], bool],
 ) -> Iterator[dict]:
-    """Yield hash records with bounded in-flight futures (max workers*4)."""
+    """Yield hash records with bounded in-flight futures (max workers*4).
+
+    Cancel/pause is polled on a short wait timeout so JobEngine._gate is not
+    stuck behind a single slow SHA-256. On cancel, pending futures are cancelled
+    and the pool shuts down with cancel_futures=True (no second SQLite writer —
+    hash workers never touch the store).
+    """
     if not files:
         return
     if workers == 1:
@@ -265,8 +276,9 @@ def _iter_hash_results(
     limit = max(workers * 4, workers)
     pending: set = set()
     it = iter(enumerate(files, start=1))
+    pool = ThreadPoolExecutor(max_workers=workers)
 
-    def _submit(pool: ThreadPoolExecutor) -> bool:
+    def _submit() -> bool:
         try:
             index, path = next(it)
         except StopIteration:
@@ -274,23 +286,35 @@ def _iter_hash_results(
         pending.add(pool.submit(_hash_path, path, index))
         return True
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        while len(pending) < limit and _submit(pool):
+    def _cancel_pending() -> None:
+        for fut in list(pending):
+            fut.cancel()
+        pending.clear()
+
+    try:
+        while len(pending) < limit and _submit():
             pass
         while pending:
             if want_cancel():
-                for fut in pending:
-                    fut.cancel()
+                _cancel_pending()
                 return
-            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            done, pending = wait(
+                pending,
+                timeout=_HASH_WAIT_S,
+                return_when=FIRST_COMPLETED,
+            )
+            if not done:
+                continue
             for fut in done:
                 if want_cancel():
-                    for rest in pending:
-                        rest.cancel()
+                    _cancel_pending()
                     return
                 yield fut.result()
-                while len(pending) < limit and _submit(pool):
+                while len(pending) < limit and _submit():
                     pass
+    finally:
+        _cancel_pending()
+        pool.shutdown(wait=False, cancel_futures=True)
 
 
 def ingest(
@@ -310,6 +334,8 @@ def ingest(
         raise FileNotFoundError(folder)
     if workers < 1:
         raise ValueError("workers must be >= 1")
+    if workers > MAX_WORKERS:
+        raise ValueError(f"workers must be <= {MAX_WORKERS}")
     observer_list = tuple(x.strip() for x in str(observers).split(",") if x.strip()) or ("face",)
     extra_observers = tuple(x for x in observer_list if x != "face")
 

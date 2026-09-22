@@ -12,7 +12,7 @@
 | 4 | OCR / CLIP / pose honesty | Code wired (Settings notes when `MODALITY_PRODUCT` on) |
 | 5 | APP-1 C.3 Windows live | **VERIFIED ON WINDOWS** (2026-09-22) · prior CLOSED / DONE |
 | 6 | R2 IPC probe | Probe on `main` (boundary only) |
-| 7 | PERF workers | Harness exists; product default remains `workers=1` |
+| 7 | PERF workers | Engineering COMPLETE; default remains `workers=1` until owner `default_gate` PASS (`docs/PERF-WORKERS-HARNESS.md`) |
 | 8 | Hierarchy frames | TEST frames (not SPEC) |
 | 9 | Named §8.7 shell decision | **CLOSED / DONE** (owner) — see `07-shell-decision.md` |
 
@@ -318,36 +318,34 @@ Then a JSON-lines client on the printed port: `ping` → `submit_ingest` → pro
 | Piece | Path |
 |---|---|
 | Flag | `semblon ingest FOLDER --store PATH --workers N` (default **1**) |
-| Evidence doc | `docs/PERF-WORKERS.md` |
+| Evidence doc | `docs/PERF-WORKERS-HARNESS.md` (current); `docs/PERF-WORKERS.md` (historical multi-session) |
 | Related baselines | `docs/PERF-P0-BASELINE.md`, `docs/PERF-P1-ARM64.md` |
 
 Current design: `--workers` parallelizes **hash** only; single FaceAnalysis on the writer path. Historical multi-session design was slower at w=2/4 on emulated x64 — do not default from that evidence.
 
 ### How to verify
 
-Fresh stores; quote paths; prefer **native** host (record arch / emulated honestly):
+Prefer the harness (machine-readable `default_gate`). Quote paths; prefer **native** host:
 
 ```text
 set FOLDER=<your library folder>
-set PERF=%LOCALAPPDATA%\Semblon\perf-workers
-.\.venv\Scripts\python.exe -m semblon ingest "%FOLDER%" --store "%PERF%\w1.sqlite" --workers 1
-.\.venv\Scripts\python.exe -m semblon ingest "%FOLDER%" --store "%PERF%\w2.sqlite" --workers 2
-.\.venv\Scripts\python.exe -m semblon ingest "%FOLDER%" --store "%PERF%\w4.sqlite" --workers 4
+set OUT=%LOCALAPPDATA%\Semblon\perf-workers-harness\results.json
+.\.venv\Scripts\python.exe tools\perf_workers_harness.py --folder "%FOLDER%" --out "%OUT%" --execute
 ```
 
-Compare wall time, face/status counts (must match), SQLite errors (must be none). Append results to `docs/PERF-WORKERS.md` (or a dated addendum). Record machine, arch, EP.
+Require `face_count_equal: true` and inspect `default_gate.verdict` / `runs[].speedup_vs_w1`. Record machine, arch, EP.
 
-| workers | ingest_s | faces | Result notes |
-|---|---|---|---|
-| 1 | | | |
-| 2 | | | |
-| 4 | | | |
-| Default change justified? | | | |
+| workers | ingest_s | faces | speedup_vs_w1 | Result notes |
+|---|---|---|---|---|
+| 1 | | | 1.00 | |
+| 2 | | | | |
+| 4 | | | | |
+| default_gate.verdict | | | | PASS only *considers* a separate default PR |
 
 ### Wire after PASS
 
-1. **Only if** measured speedup is real on the target native host **and** counts match: consider raising product default — still a separate explicit PR, not silent.
-2. Until then: keep default `workers=1`; leave `--workers N` experimental.
+1. **Only if** harness `default_gate.verdict=PASS` on the target native host: consider raising product default — still a separate explicit PR, not silent.
+2. Until then: keep default `workers=1`; `--workers N` remains opt-in.
 3. Do not retune identity thresholds or enable video DBSCAN to shrink `unassigned`.
 
 ---

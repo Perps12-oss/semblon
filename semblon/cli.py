@@ -181,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
         "--workers",
         type=int,
         default=1,
-        help="experimental bounded hash workers (default 1; single FaceAnalysis; single SQLite writer)",
+        help="bounded hash workers (default 1; single FaceAnalysis; single SQLite writer; raise default only after harness default_gate PASS)",
     )
     ing.add_argument(
         "--observers",
