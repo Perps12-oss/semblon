@@ -8,42 +8,33 @@
 |---|---|---|---|---|
 | Identity FACE-001→005 | Closed | `docs/FACE-GATES.md`, S1 golden | None (do not retune) | **COMPLETE** |
 | APP-1 JobEngine door | Merged | `semblon/jobs.py`, Home/IPC clients | None | **COMPLETE** |
-| APP-1 C.2 pause/unpause | Implemented + unit-tested | `JobEngine.pause/unpause/_gate`; `Application.pause_job/unpause_job`; Home + shell controls; `tests/test_jobs.py`, `tests/test_application.py`, `tests/test_ipc_probe.py` | None | **COMPLETE** |
-| APP-1 C.3 Windows live | Live evidence 2026-09-22 + prior §I.5 | Owner Windows: `20 passed` jobs/application/ipc; `semblon home` live ingest (Pause on / Resume off while running; progress 11/32193; Canvas usable during ingest) | None — gate closed | **VERIFIED ON WINDOWS** · APP-1 **CLOSED** |
-| Application API façade | Named commands on `Application` | `semblon/application.py`, `docs/APPLICATION_API.md` | Grow clients as shell deepens | **COMPLETE** (boundary) |
-| R2 IPC probe | Loopback probe on main | `semblon/ipc_probe.py`, `semblon lab ipc-probe`, `tests/test_ipc_probe.py` | Not product IPC (named pipes / WinUI host later if needed) | **COMPLETE** (probe) |
-| R3 Artifacts 1–4 | Canonical | `docs/r3-artifacts/` | Use as acceptance while implementing shell | **COMPLETE** (spec) |
-| Bake-off / §8.7 / Ruled-out ship | CLOSED / DONE | SEM-ARCH §I.5 | Do not reopen | **OWNER-AUTHORIZED / CLOSED** |
-| Native production shell | Slice 1 + Inspector + Canvas RO list | `semblon/native_shell/`; Application.canvas + overlay_boxes + state-triple labels | Pixel compositor / default entry swap | **IN PROGRESS** |
-| Tk Home | Compatibility frontend | `semblon home` | Keep until native shell replaces default entry | **KEEP** |
+| APP-1 C.2 pause/unpause | Implemented + unit-tested | `JobEngine.pause/unpause/_gate`; `Application.pause_job/unpause_job`; Home controls; tests | None | **COMPLETE** |
+| APP-1 C.3 Windows live | Live evidence 2026-09-22 + prior §I.5 | Owner Windows pytest 20 passed; `semblon home` live ingest | None | **VERIFIED ON WINDOWS** · APP-1 **CLOSED** |
+| Application API façade | Named commands on `Application` | `semblon/application.py`; Activity via `application.activity` (**#65**) | None | **COMPLETE** |
+| **Production GUI shell** | **One shipping GUI: tk Home + review-ui** | **#54** one-GUI; **#63** Inspector verbs; **#64** state-triple cards; **#65** Rule out WIRED + Activity façade; **#66** Canvas init race | None — not “native shell still open” | **COMPLETE** |
+| R2 IPC probe | Loopback probe on main | `semblon/ipc_probe.py` | Not product IPC | **COMPLETE** (probe) |
+| R3 Artifacts 1–4 / bake-off / §8.7 / Ruled-out | CLOSED / DONE | SEM-ARCH §I.5; #65 ship claim WIRED | Do not reopen | **OWNER-AUTHORIZED / CLOSED** |
+| Optional Qt `semblon shell` | Optional `[gui]` client of Application API | `semblon/native_shell/` (#67) | KEEP optional; **not** a second product Home; **not** a mapped blocker | **KEEP (optional)** |
 | `review.html` as UX | Engineering export only | export path | Must not become default workflow | **SUPERSEDED as UX** |
-| PERF ARM64 OpenCV | Load hang | `docs/PERF-P1-ARM64.md` | Owner/machine native load when unblocked | **BLOCKED** (perf track; not APP-1) |
-| Multi-worker default | Experimental | workers default 1 | Measure before product default | **EXPERIMENTAL** |
-| MSI + weights | Unavailable | licenses | Legal + packaging | **UNAVAILABLE** |
+| PERF ARM64 OpenCV | Load hang (historical) | `docs/PERF-P1-ARM64.md` | Agent track: unblock / probe / owner Windows measure | **IN FLIGHT** |
+| Multi-worker / scale | Hash workers experimental; default 1 | harness + ingest `--workers` | Agent track: harden + measure honesty; default stays 1 until evidence | **IN FLIGHT** |
+| MSI (code, no weights) | Install scripts exist; MSI engineering incomplete | `docs/PACKAGING.md` | Agent track: WiX/MSI without buffalo_l | **IN FLIGHT** |
+| buffalo_l redistribution | Legal | `docs/licenses.md` | Pack licence — not an engineering fake | **UNAVAILABLE** |
 
-## Status vocabulary (this completion drive)
+## Production shell — corrected (PR #54 + #65)
 
-- **COMPLETE** — implemented and auto-verified where claimed.
-- **OWNER-AUTHORIZED / CLOSED** — owner closed the gate; do not reopen as stop-work.
-- **VERIFIED AUTOMATICALLY** — portable pytest / source contracts.
-- **VERIFIED ON WINDOWS** — owner machine evidence recorded.
-- **IN PROGRESS** — planned item partially shipped.
-- **SUPERSEDED / HISTORICAL** — keep evidence; not current queue.
-- **BLOCKED** — real technical blocker (cite path).
+Earlier matrix text claimed “native production shell IN PROGRESS / Tk Home is only compatibility.” That was **wrong** against shipped decisions:
 
-## APP-1 C.3 Windows live evidence (2026-09-22)
+1. **#54** — one shipping GUI: **tk Home + `review-ui`**; PySide product shell deleted.  
+2. **#63–#66** — Inspector verbs, state-triple cards, Canvas Home integration, init-race fix.  
+3. **#65** — closed leftover **UNWIRED** claim drift; Rule out **WIRED**; Activity via `application.activity`.
 
-**Machine:** owner Windows (`C:\Users\S8633\Documents\GITHUB\SEMBRON`, store `%LOCALAPPDATA%\Semblon\store.sqlite`).  
-**Owner directive:** mark C.3 **VERIFIED ON WINDOWS** (this packet). Prior §I.5 CLOSED / DONE (2026-09-21) retained.
+Mapped production shell = **Tk Home**. Optional Qt `semblon shell` (#67) is not a second product Home and is not an open stop-work item.
 
-| Check | Result |
-|---|---|
-| `pytest -q tests/test_jobs.py tests/test_application.py tests/test_ipc_probe.py` | **20 passed** in 3.15s |
-| `semblon home` live ingest | **PASS** — Reading photos 11/32193; elapsed/eta updating; Pause **enabled**, Resume **disabled** while running |
-| UI responsive during ingest | **PASS** — Canvas selected; face + object overlays; Library/Inspector usable |
-| Job door controls correct while running | **PASS** — Pause on, Resume off (unpause only when paused) |
-| Prior owner §I.5 ship closure | **CLOSED / DONE** 2026-09-21 |
+## Status vocabulary
 
-Screenshot artifact (this agent run): `/opt/cursor/artifacts/screenshots/app1-c3-windows-live-home.png`.
+- **COMPLETE** / **VERIFIED ON WINDOWS** / **OWNER-AUTHORIZED / CLOSED** / **KEEP** / **IN FLIGHT** / **UNAVAILABLE** / **SUPERSEDED**
 
-**APP-1 status:** **CLOSED** (C.2 COMPLETE + C.3 VERIFIED ON WINDOWS + prior owner authorization). Next planned work is deepen native shell — not reopen APP-1.
+## APP-1 C.3 evidence (retained)
+
+Owner Windows 2026-09-22: pytest jobs/application/ipc **20 passed**; live `semblon home` ingest with Pause/Resume control states + Canvas. APP-1 **CLOSED**.

@@ -42,15 +42,26 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 ## PARTIAL
 
-- **Native production shell** — slice 1 (`semblon shell`): IA chrome + JobEngine via Application; deepen Inspector verbs / Canvas / state-triple cards
-- Identify/inbox as dedicated full pages (lists today; deepen on native shell)
-- Canvas Tk PhotoImage compositor (production Home-integrated overlay; pixel compositor still provisional)
+- Identify/inbox as dedicated full pages (Inspector lists today)
+- Canvas Tk PhotoImage compositor (Home-integrated overlay; pixel compositor may improve)
 - OCR/CLIP/pose: product path ON when probes ready; not in `requirements.txt`; CLIP/pose may fail without local weights (recorded as error/unavailable items, not crashes)
 - GPU: honest EP detection + product `prefer_gpu` when CUDA/DirectML/TensorRT listed; listed ≠ smoke-tested
 
+## COMPLETE — production GUI shell
+
+- **One shipping GUI:** tk Home + `review-ui` (**#54**)
+- Inspector verbs wired (**#63**); state-triple media cards (**#64**); Rule out WIRED + Activity via `application.activity` (**#65**); Canvas init race fixed (**#66**)
+- Optional Qt `semblon shell` (#67) is KEEP optional — **not** a second product Home and **not** an open mapped blocker
+
+## IN FLIGHT (delegated engineering tracks)
+
+- PERF ARM64 OpenCV load path
+- Multi-worker / scale harden (product default remains 1 until measured)
+- MSI code packaging without buffalo_l
+
 ## COMPLETE — ENVIRONMENT-LIMITED
 
-- ARM64 native OpenCV ingest (binary exists; load hang)
+- ARM64 native OpenCV ingest (binary exists; load hang) — see IN FLIGHT
 - x64 native FACE-000 (no x64 PC here)
 - Video tracking quality on real camera motion (synthetic tests only)
 - Webcam/RTSP hardware validation on real devices is pending; live engine is seam-tested in portable CI
@@ -61,13 +72,13 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 ## DEFERRED
 
-Identify/inbox as dedicated full pages; vector DB; native shell as sole default entry (slice 1 present; Tk Home still compatibility).
+Identify/inbox as dedicated full pages; vector DB.
 
 ## UNAVAILABLE
 
 - buffalo_l redistribution / frozen installer with weights
 - Legal licence sign-off
-- Clean-machine MSI
+- Clean-machine MSI (engineering IN FLIGHT; weights still UNAVAILABLE)
 
 ## OWNER-AUTHORIZED / VERIFIED ON WINDOWS
 

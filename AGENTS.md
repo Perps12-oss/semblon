@@ -20,7 +20,7 @@ S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do
 
 **Authorized now:** full-stack on `main` — schema v2 write-through, watch/live/canvas, optional extra observers that **must not** vote on identity; APP-1 C.2 COMPLETE; native shell slice 1 (`semblon shell`). FaceKit remains the only identity engine. Production status: `docs/PRODUCTION-STATUS.md`. Completion matrix: `docs/COMPLETION-MATRIX.md`. Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical); addendum there tracks later main.
 
-**Human ship gates CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5): APP-1 C.3 (**VERIFIED ON WINDOWS** 2026-09-22 — APP-1 **CLOSED**), bake-off/§8.7, Ruled-out product-wire claim. Native production shell slice 1 shipped — deepen next. Still refuse Electron/Tauri/permanent Tk AppShell/CustomTkinter; do not invent DDL or reopen identity thresholds.
+**Human ship gates CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5): APP-1 C.3 (**VERIFIED ON WINDOWS** 2026-09-22 — APP-1 **CLOSED**), bake-off/§8.7, Ruled-out product-wire claim (**WIRED** #65). Production GUI shell = **tk Home** (**COMPLETE** — #54 one-GUI · #63–#66 · #65). Optional Qt `semblon shell` is KEEP, not a second product Home. Still refuse Electron/Tauri/permanent Tk AppShell/CustomTkinter; do not invent DDL or reopen identity thresholds.
 
 **KEEP (not the plan):** `semblon review-ui`; S7a sampled-video holdout (`docs/S7A.md`); S8 toolkit spike (`docs/S8-TOOLKIT.md`); PERF P0 baseline frozen as evidence (`docs/PERF-P0-BASELINE.md`). PERF P1 ARM64 OpenCV hang is historical evidence (`docs/PERF-P1-ARM64.md`), **not** a stop-work order on ingest workers / EP / commit policy. Do **not** retune eps or enable video DBSCAN to shrink `unassigned`.
 
