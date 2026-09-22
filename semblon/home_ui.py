@@ -1292,9 +1292,15 @@ class HomeApp:
 
         try:
             # Toplevel on Home's root. Home keeps pumping events. No nested mainloop.
-            run_review_ui(store=self.store, run_id=self._last_run_id, parent=self.root)
+            run_review_ui(
+                store=self.store,
+                run_id=self._last_run_id,
+                parent=self.root,
+                on_add_folder=self._choose_folder,
+            )
         except ReviewUiError as e:
-            messagebox.showerror("Semblon", str(e))
+            # Expected empty (no store / no runs) is handled inside run_review_ui.
+            messagebox.showerror("Couldn't open Review", str(e))
 
     def _open_html(self) -> None:
         path = self._last_review_html
@@ -1536,6 +1542,12 @@ class HomeApp:
         lines.extend(format_execution_status_lines())
         lines.extend(modality_product_settings_lines())
         self._set_inspector("Settings", lines)
+
+    # UX-RESCUE S7 — Settings (§6) wires the button later; keep import-safe entry.
+    def _open_advanced_diagnostics(self) -> None:
+        from semblon.advanced_diagnostics import open_advanced_diagnostics
+
+        open_advanced_diagnostics(self.root, self.store)
 
     def _open_live_overlay(self) -> None:
         from semblon.gates import WIRE_HOME_LIVE, enabled, require_human_note
