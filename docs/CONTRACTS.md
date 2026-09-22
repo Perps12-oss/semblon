@@ -4,7 +4,7 @@
 **Note:** 2026-09-13 — staging pointer and CLI surface clarified. No column changes.
 
 This file is the only schema authority.  
-Planned work is `docs/SEM-ARCH.md`. There is no `SEMBLON_IMPLEMENTATION_PLAN.md` and no OBS / SIM / FACE-n successor clock.  
+Planned work is `docs/SEM-ARCH-V1.4.md`. Status: `docs/COMPLETION-MATRIX.md`. There is no `SEMBLON_IMPLEMENTATION_PLAN.md` and no OBS / SIM / FACE-n successor clock.  
 The plan does not invent columns.  
 Do not invent columns. Do not implement the pre-correction V1.1 draft.
 

@@ -29,4 +29,4 @@ Bake-off runners and CI must never write `SEMBLON_BAKEOFF_WINNER`. Human still n
 - `require_human_note(name) -> str` — wiring note; unknown raises `KeyError`.
 - `wired_default() -> bool` — always True after human wire.
 
-See `docs/HUMAN-VERIFY-THEN-WIRE.md` for the verify record.
+See `docs/SEM-ARCH-V1.4.md` §I.5 and `docs/COMPLETION-MATRIX.md` for the closed ship-gate record.

@@ -78,4 +78,4 @@ Owner closed the product-wire ship claim 2026-09-21 (`SEM-ARCH-V1.4` §I.5). Opt
 2. Optional `person_id` attachment for “Possible: Maya → Ruled out”.
 3. Board/export should **show** Ruled out (not hide like Ignore).
 
-See also: `docs/APPLICATION_API.md`, `docs/r3-packets/06-ruled-out-wiring.md`.
+See also: `docs/APPLICATION_API.md`, `docs/GATES.md`, `docs/COMPLETION-MATRIX.md`.

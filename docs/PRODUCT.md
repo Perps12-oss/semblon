@@ -4,7 +4,7 @@ Semblon v1 is a **personal, local-first** Windows CLI. One user. No cloud. No AC
 
 **Successful day:** drop a folder of stills → conservative face groups → review and name people you care about → those people become a gallery for later identification.
 
-The long-term north star is `docs/SEM-ARCH.md`. It does **not** redefine this v1. Folder-first, face-first, local-first remains the current product. Future observers, spaces, sources, and integrations stay out until this file is explicitly amended.
+The long-term north star is `docs/SEM-ARCH-V1.4.md`. It does **not** redefine this v1. Folder-first, face-first, local-first remains the current product. Future observers, spaces, sources, and integrations stay out until this file is explicitly amended.
 
 ## v1 in
 

@@ -41,7 +41,7 @@ Ingest pipeline work (bounded hash workers, skip-before-embed, streamed video, b
 
 ## After FACE gates
 
-This file is a validation index, not the plan. **Planned work:** `docs/SEM-ARCH.md`.
+This file is a validation index, not the plan. **Planned work:** `docs/SEM-ARCH-V1.4.md`. **Status:** `docs/COMPLETION-MATRIX.md`.
 
 `review-ui` + `export` video face inspectability: `docs/S8-REVIEW-UI.md` (on `main`, PR #28; `review.html` uses the same seek/crop).  
 Sampled video evidence: `docs/S7A.md` (run `20260917T161452Z-a012c0fe`).  

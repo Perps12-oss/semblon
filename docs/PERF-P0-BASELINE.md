@@ -31,5 +31,5 @@ P1  Native ARM64 measure — open gap (docs/PERF-P1-ARM64.md); not an ingest sto
 Ingest pipeline  hash→skip→decode/embed→batched writer (no fake --batch knob)
 ```
 
-Standing pointers: `docs/SEM-ARCH.md` (planned work), `docs/runtime.md`, `docs/PERF-P1-ARM64.md`.  
+Standing pointers: `docs/SEM-ARCH-V1.4.md` (planned work), `docs/runtime.md`, `docs/PERF-P1-ARM64.md`.  
 Product parallel: review `7225de9d` (130 faces, min_intra 0.129) via `review-ui` — not a clustering retune.

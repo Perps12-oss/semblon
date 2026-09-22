@@ -38,3 +38,7 @@ Mapped production shell = **Tk Home**. Optional Qt `semblon shell` (#67) is not 
 ## APP-1 C.3 evidence (retained)
 
 Owner Windows 2026-09-22: pytest jobs/application/ipc **20 passed**; live `semblon home` ingest with Pause/Resume control states + Canvas. APP-1 **CLOSED**.
+
+## Retired docs (2026-09-22)
+
+Deleted superseded parallel / historical plan files that competed with this matrix + `SEM-ARCH-V1.4`: `SEM-ARCH.md`, `SEMBLON_MATURITY_BLUEPRINT.md`, `ROADMAP-RECONCILE.md`, `PRODUCTION-AUDIT.md`, `PRODUCTION-READINESS-2026-09-22.md`, `HUMAN-VERIFY-THEN-WIRE.md`, `CURSOR_INSTRUCTION.txt`, stub discovery/backlog/references, `CRITIQUE-P0.md`, historical `PERF-WORKERS.md`, redundant `docs/r3-packets/` (Ruled-out note lives in `CONTRACTS-RULED-OUT.md`; Artifacts stay under `docs/r3-artifacts/`). Git history retains them.

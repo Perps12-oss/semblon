@@ -32,7 +32,7 @@ Artifact 4 criteria remain for optional regression; **ship gate CLOSED / DONE** 
 
 Keep `02-interaction-cross-product.md` as the related identity×processing cross-product (not deleted; not renumbered as Artifact 2 — that slot is the state triple).
 
-Master human-verify playbook: [`docs/HUMAN-VERIFY-THEN-WIRE.md`](../HUMAN-VERIFY-THEN-WIRE.md) (§I.5 gates CLOSED).
+Human ship gates CLOSED / DONE: [`docs/SEM-ARCH-V1.4.md`](../SEM-ARCH-V1.4.md) §I.5 · [`docs/GATES.md`](../GATES.md).
 
 Shared visual tokens (CSS): inlined in each HTML file from the brief’s grammar (notch + stroke texture; processing = shape, not hue).
 

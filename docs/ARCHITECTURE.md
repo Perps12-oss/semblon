@@ -1,13 +1,18 @@
 # Architecture
 
-**Source of truth:** `docs/SEM-ARCH-V1.4.md`.
+**Source of truth:** `docs/SEM-ARCH-V1.4.md`.  
+**Current status:** `docs/COMPLETION-MATRIX.md`.
 
-This file is a pointer. Do not keep a second architecture here.
+This file is a pointer only. Do not keep a second architecture or roadmap here.
 
-`docs/SEM-ARCH.md` is retained as a historical snapshot.  
-`docs/PRODUCT.md` is frozen v1. `docs/CONTRACTS.md` is schema / CLI / runtime.  
-`docs/SEMBLON_MATURITY_BLUEPRINT.md` is earned history + absorb + measure.  
-`docs/R3-BRIEF.md` is the approved visual/interaction contract for the native shell (R3); it does not replace SEM-ARCH-V1.4 sequencing.  
-Human ship gates (APP-1 C.3, bake-off, §8.7, Ruled-out ship claim) are **CLOSED / DONE** — `SEM-ARCH-V1.4` §I.5.  
-Native shell slice 1: `semblon shell` (`semblon/native_shell/`). Completion matrix: `docs/COMPLETION-MATRIX.md`.  
-Native systems and Windows-shell decisions live in `docs/SEM-ARCH-V1.4.md`. Do not revive companion plan files.
+| File | Job |
+|---|---|
+| `docs/PRODUCT.md` | Frozen product contract + amendments |
+| `docs/CONTRACTS.md` | Schema / CLI / runtime authority |
+| `docs/SEM-ARCH-V1.4.md` | Architecture + planned-work authority |
+| `docs/COMPLETION-MATRIX.md` | Authoritative completion / status matrix |
+| `docs/PRODUCTION-STATUS.md` | Production capability classification |
+| `docs/FACE-GATES.md` | Closed FACE validation index |
+| `docs/R3-BRIEF.md` | Visual/interaction contract (R3) |
+
+Human ship gates are **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5). Production GUI = **tk Home** (**COMPLETE**). Optional Qt `semblon shell` is KEEP, not a second product Home.

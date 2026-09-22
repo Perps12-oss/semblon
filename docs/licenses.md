@@ -17,6 +17,6 @@ Do not bundle buffalo_l into a frozen installer until that decision exists. `too
 | pytest | dev | MIT | not shipped |
 | PySide6 | optional `.[gui]` — native `semblon shell` + S8 spike reference | LGPL; not required for Tk Home/review-ui | optional extra only |
 
-Future candidates (MediaPipe, CLIP/successors, other packs) need a separate code **and** model licence check before they enter the plan as more than a name. A licence veto beats a technically attractive model. See `docs/SEMBLON_MATURITY_BLUEPRINT.md` §1.3.
+Future candidates (MediaPipe, CLIP/successors, other packs) need a separate code **and** model licence check before they enter the plan as more than a name. A licence veto beats a technically attractive model.
 
 PySide6 / Qt 6: **LGPL**. Dynamic link from optional extra `.[gui]` (native production shell `semblon shell`; S8 spike remains reference). Not a core dependency. Do not statically link Qt without a separate licence pass. See `docs/S8-TOOLKIT.md`, `docs/APPLICATION_API.md`.

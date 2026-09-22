@@ -6,7 +6,7 @@
 
 Authority: `docs/PRODUCT.md` (v1 + 2026-09-19 production amendment), `docs/CONTRACTS.md`, `docs/SEM-ARCH-V1.4.md`.  
 **Completion matrix (current):** `docs/COMPLETION-MATRIX.md`.  
-Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical freeze at `8403292`). Addendum below that file records later main.
+Authoritative status: `docs/COMPLETION-MATRIX.md`.
 
 Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-ARCH-V1.4.md`.
 
@@ -68,7 +68,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 ## COMPLETE — MEASUREMENT-GATED DEFAULT
 
-- `ingest --workers` / `process --workers` — **engineering COMPLETE**: bounded hash-phase ThreadPool (cap 32); single FaceAnalysis; single SQLite writer; cooperative cancel/pause; portable regression tests; harness emits machine-readable `default_gate` (`docs/PERF-WORKERS-HARNESS.md`). **Product default remains `workers=1`.** Raising the default requires owner Windows harness `default_gate.verdict=PASS` and a separate explicit PR — not authorized from Linux CI or historical multi-session evidence (`docs/PERF-WORKERS.md`).
+- `ingest --workers` / `process --workers` — **engineering COMPLETE**: bounded hash-phase ThreadPool (cap 32); single FaceAnalysis; single SQLite writer; cooperative cancel/pause; portable regression tests; harness emits machine-readable `default_gate` (`docs/PERF-WORKERS-HARNESS.md`). **Product default remains `workers=1`.** Raising the default requires owner Windows harness `default_gate.verdict=PASS` and a separate explicit PR — not authorized from Linux CI or superseded multi-session evidence.
 
 ## DEFERRED
 

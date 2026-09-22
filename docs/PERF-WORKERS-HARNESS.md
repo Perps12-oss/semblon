@@ -3,7 +3,7 @@
 **Measurement only.** Does not retune identity (eps, min_samples, pack, det_size, CPU EP).  
 **Product default remains `workers=1`.** This harness never flips that default. A `default_gate.verdict=PASS` only means it is *safe to consider* a separate, explicit default-change PR after owner review.
 
-Historical multi-session ORT numbers (workers 2/4 slower than 1 on x64-emulated SKY) live in [`docs/PERF-WORKERS.md`](PERF-WORKERS.md). That design is **superseded**; re-measure hash-only workers with this harness before citing any throughput claim.
+Historical multi-session ORT design (workers 2/4 slower than 1 on x64-emulated SKY) is **superseded and retired**. Re-measure hash-only workers with this harness before citing any throughput claim.
 
 ## What workers do (product)
 

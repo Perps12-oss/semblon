@@ -3,7 +3,7 @@
 **Status:** implemented as derived evidence with persisted snapshot (`tracks` + `track_members`).  
 **Depends on:** S7a sampled observations (`frame_id`, `t_ms`); S8 inspectability (`path`+`frame_id`+`bbox`).  
 **Does not depend on:** schema columns, ByteTrack / parked §20 libraries, video DBSCAN, S7c webcam, S7d RTSP, Canvas.  
-**Planned work:** `docs/SEM-ARCH.md`.
+**Planned work:** `docs/SEM-ARCH-V1.4.md`.
 
 ## What this slice is
 

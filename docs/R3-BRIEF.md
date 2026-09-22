@@ -233,7 +233,7 @@ Rejected still: Electron, Tauri, permanent Tk AppShell, CustomTkinter.
 6. ~~**Clickable hierarchy frames** — test, not spec.~~ **DONE (TEST)** — `docs/r3-artifacts/06-hierarchy-frames.html` (Library / Workspace / Inspector IA from §4; not a product shell)
 7. ~~**Shell decision packet.**~~ **CLOSED / DONE** — `docs/r3-artifacts/07-shell-decision.md` — native production shell authorized.
 
-Index: `docs/r3-artifacts/README.md`. Human verify → wire (all gates): `docs/HUMAN-VERIFY-THEN-WIRE.md`.
+Index: `docs/r3-artifacts/README.md`. Human ship gates CLOSED / DONE: `docs/SEM-ARCH-V1.4.md` §I.5 · `docs/GATES.md`.
 
 ---
 
@@ -256,6 +256,6 @@ Index: `docs/r3-artifacts/README.md`. Human verify → wire (all gates): `docs/H
 |---|---|---|
 | v2.5 | 2026-09-21 | Owner closed C.3 / bake-off / §8.7 / Ruled-out ship claim (SEM-ARCH §I.5 CLOSED / DONE). Native shell authorized. |
 | v2.3 | 2026-09-21 | Human bake-off / winner / live gates deferred to last per SEM-ARCH §I.5; development continues. |
-| v2.2 | 2026-09-21 | §8.6 hierarchy test frames at `docs/r3-artifacts/06-hierarchy-frames.html` (TEST not SPEC). Master human-verify playbook: `docs/HUMAN-VERIFY-THEN-WIRE.md`. |
+| v2.2 | 2026-09-21 | §8.6 hierarchy test frames at `docs/r3-artifacts/06-hierarchy-frames.html` (TEST not SPEC). Human ship gates CLOSED via `docs/SEM-ARCH-V1.4.md` §I.5. |
 | v2.1 | 2026-09-21 | §8.1–§8.4 artifacts landed under `docs/r3-artifacts/` (matrix, cross-product, 15 collision frames, 30-card state-triple grid). Human bake-off checklist at `05-bake-off-checklist.md` (no measurements). Next = toolkit bake-off runs. |
 | v2 | 2026-09-21 | Owner-approved after critique. Two-axis identity; Ruled out; state matrix seed; processing grammar; adaptive overlays; evidence-ack Enter; Compare progressive entry; Group Inspector split; transactional undo; Library/observation split; toolkit bake-off criteria. |

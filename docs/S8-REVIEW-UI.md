@@ -2,7 +2,7 @@
 
 **Status:** shipping vertical on main-line work; **S8 Reviewability** (video face thumbs) is on `main` (PR #28). Static `review.html` (`export`) uses the same `path`+`frame_id`+`bbox` seek/crop.  
 **This is** the beginning of S8 (smallest interactive vertical).  
-**Design target** for the broader canvas: `docs/SEM-ARCH.md`. This file is the shipping review slice, not the plan.  
+**Design target** for the broader canvas: `docs/SEM-ARCH-V1.4.md` / `docs/R3-BRIEF.md`. This file is the shipping review slice, not the plan.  
 **Not yet:** full shell, Intelligence Canvas, identify/inbox UI, search. S7b derived tracks are rendered here; the engine stays in `semblon tracks`.
 
 ## What this slice is
@@ -67,4 +67,4 @@ Both surfaces show a one-line empty state (`this run: N faces; store has M on ru
 
 ## Next
 
-This file is the shipping review vertical, not the plan. **Planned work:** `docs/SEM-ARCH.md`. Do not grow a full shell or a second identity path from this file.
+This file is the shipping review vertical, not the plan. **Planned work:** `docs/SEM-ARCH-V1.4.md`. Do not grow a full shell or a second identity path from this file.

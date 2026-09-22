@@ -7,7 +7,7 @@ Audit date: 2026-09-16. Dump store `semblon/s1-90-store` is local/gitignored.
 
 ## Contract (minimum)
 
-From `docs/SEMBLON_MATURITY_BLUEPRINT.md` S3 / 0.4:
+From the closed FACE-003 review gate (`docs/FACE-GATES.md`):
 
 | Required | Meaning |
 |---|---|

@@ -2,7 +2,7 @@
 
 **Status:** gate open 2026-09-17. Dump evidence on owner machine (run `20260917T161452Z-a012c0fe`).  
 **This is** the first S7 engine slice: video *files* as temporal sources.  
-**Design (historical S7 note):** `docs/SEMBLON_MATURITY_BLUEPRINT.md` §S7. **Planned work:** `docs/SEM-ARCH.md`.  
+**Design (historical S7 note):** sampled-video holdout. **Planned work:** `docs/SEM-ARCH-V1.4.md`.  
 **Not yet:** S7c webcam, S7d RTSP, Canvas(Video), JPEG-per-frame dumps. S7b derived tracks: `docs/S7B.md`.
 
 ## What this slice is
@@ -62,4 +62,4 @@ Run `20260917T161452Z-a012c0fe`: 2 videos → 231 samples @1 Hz → 434 ok faces
 
 ## Next
 
-This file is the sampled-video evidence record, not the plan. **S7b derived tracks:** `docs/S7B.md`. **Planned work:** `docs/SEM-ARCH.md`. Do not open webcam / RTSP from this file.
+This file is the sampled-video evidence record, not the plan. **S7b derived tracks:** `docs/S7B.md`. **Planned work:** `docs/SEM-ARCH-V1.4.md`. Do not open webcam / RTSP from this file.

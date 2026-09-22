@@ -8,7 +8,7 @@ Audit date: 2026-09-16. Dump store `semblon/s1-90-store` is local/gitignored.
 
 ## Contract (minimum)
 
-From `docs/SEMBLON_MATURITY_BLUEPRINT.md` S4 / 1.0 and v1 ship test:
+From the closed FACE-004 identify gate (`docs/FACE-GATES.md`) and v1 ship test:
 
 | Required | Meaning |
 |---|---|

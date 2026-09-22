@@ -16,7 +16,7 @@ Usage:
         images/sec, faces/sec, peak_rss_mb, speedup_vs_w1, default_gate
 
 See docs/PERF-WORKERS-HARNESS.md. Historical multi-session numbers live in
-docs/PERF-WORKERS.md (superseded design).
+Superseded multi-session worker design retired; this harness is authoritative.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def pending_record(*, out: Path | None = None, folder: Path | None = None) -> di
         "status": "pending_human",
         "note": (
             "Default product workers remain 1. No speedup claimed. "
-            "docs/PERF-WORKERS.md is historical (superseded multi-session design). "
+            "Superseded multi-session worker design is retired. "
             "Human must supply --folder and --execute for verified=true."
         ),
         "workers_sweep": list(SWEEP_WORKERS),

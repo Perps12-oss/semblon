@@ -348,7 +348,7 @@ Still forbidden: inventing DDL, skipping the identity firewall, or picking Elect
 | Toolkit bake-off §8.5 / Artifact 4 | §D.2 · `05-bake-off-checklist.md` | **CLOSED / DONE** |
 | Named shell decision §8.7 | `07-shell-decision.md` | **CLOSED / DONE** — native shell authorized |
 | CONTRACTS durable **Ruled out** product wire | `CONTRACTS-RULED-OUT.md` | **CLOSED / DONE** |
-| Other owner human-verify rows | `HUMAN-VERIFY-THEN-WIRE.md` | **CLOSED / DONE** for ship-gate purposes |
+| Other owner human-verify rows | `docs/GATES.md` · SEM-ARCH §I.5 | **CLOSED / DONE** for ship-gate purposes |
 
 ---
 
@@ -385,8 +385,8 @@ PERF: ARM64 + workers + provider + scale
 ## K) Governance and document precedence
 
 1. This file is the only architecture/roadmap authority.
-2. `docs/ARCHITECTURE.md` and `docs/ROADMAP-RECONCILE.md` are pointers only.
-3. `docs/SEMBLON_MATURITY_BLUEPRINT.md` remains historical maturity evidence, not a forward queue.
+2. `docs/ARCHITECTURE.md` is a pointer only.
+3. `docs/COMPLETION-MATRIX.md` is the authoritative completion / status matrix.
 4. FACE gate docs remain closed validation evidence, not active work tickets.
 5. Draft architecture text is not implementation evidence by itself.
 
@@ -396,7 +396,7 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
-| V1.4.10 | 2026-09-22 | Correct production shell status: Tk Home COMPLETE (#54/#65); optional Qt shell is KEEP not mapped blocker; next = PERF/MSI/workers. |
+| V1.4.11 | 2026-09-22 | Retire superseded parallel docs (historical SEM-ARCH / maturity / audit / verify playbook); COMPLETION-MATRIX is status authority. |
 | V1.4.9 | 2026-09-22 | APP-1 C.3 **VERIFIED ON WINDOWS** (owner live evidence); APP-1 **CLOSED**; next = deepen native shell. |
 | V1.4.8 | 2026-09-22 | APP-1 C.2 COMPLETE (`Application` pause/unpause); completion matrix; native shell slice 1 (`semblon shell`); next = deepen shell. |
 | V1.4.7 | 2026-09-21 | Plan-gaps productization on `main`: status table Home sidebar + CanvasWorkspace + GPU PRODUCTIZED + optional observers (`product_prefer_gpu` / `resolve_product_observers`). |

@@ -18,7 +18,7 @@ Unknown is valid. False merge > false split. Wrong identity > unknown.
 
 S1 identity-quality PASS is closed on golden run `20260913T153515Z-1e915abe`. Do not retune clustering. Do not re-ingest that dump. FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue.
 
-**Authorized now:** full-stack on `main` — schema v2 write-through, watch/live/canvas, optional extra observers that **must not** vote on identity; APP-1 C.2 COMPLETE; native shell slice 1 (`semblon shell`). FaceKit remains the only identity engine. Production status: `docs/PRODUCTION-STATUS.md`. Completion matrix: `docs/COMPLETION-MATRIX.md`. Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical); addendum there tracks later main.
+**Authorized now:** full-stack on `main` — schema v2 write-through, watch/live/canvas, optional extra observers that **must not** vote on identity; APP-1 C.2 COMPLETE; native shell slice 1 (`semblon shell`). FaceKit remains the only identity engine. Production status: `docs/PRODUCTION-STATUS.md`. Completion matrix: `docs/COMPLETION-MATRIX.md` (authoritative).
 
 **Human ship gates CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5): APP-1 C.3 (**VERIFIED ON WINDOWS** 2026-09-22 — APP-1 **CLOSED**), bake-off/§8.7, Ruled-out product-wire claim (**WIRED** #65). Production GUI shell = **tk Home** (**COMPLETE** — #54 one-GUI · #63–#66 · #65). Optional Qt `semblon shell` is KEEP, not a second product Home. Still refuse Electron/Tauri/permanent Tk AppShell/CustomTkinter; do not invent DDL or reopen identity thresholds.
 
