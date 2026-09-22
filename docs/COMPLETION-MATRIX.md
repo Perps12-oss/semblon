@@ -8,8 +8,8 @@
 |---|---|---|---|---|
 | Identity FACE-001→005 | Closed | `docs/FACE-GATES.md`, S1 golden | None (do not retune) | **COMPLETE** |
 | APP-1 JobEngine door | Merged | `semblon/jobs.py`, Home/IPC clients | None | **COMPLETE** |
-| APP-1 C.2 pause/unpause | Implemented + unit-tested | `JobEngine.pause/unpause/_gate`; `Application.pause_job/unpause_job`; Home + shell controls; `tests/test_jobs.py`, `tests/test_application.py`, `tests/test_ipc_probe.py` | Optional owner Windows live re-proof (procedure below) | **COMPLETE (auto)** |
-| APP-1 C.3 Windows live | Owner CLOSED 2026-09-21 (§I.5) | Prior owner declaration in SEM-ARCH §I.5 / HUMAN-VERIFY | Owner may return today's live evidence packet for production-readiness report | **OWNER-AUTHORIZED / CLOSED** — live re-verify optional for evidence pack |
+| APP-1 C.2 pause/unpause | Implemented + unit-tested | `JobEngine.pause/unpause/_gate`; `Application.pause_job/unpause_job`; Home + shell controls; `tests/test_jobs.py`, `tests/test_application.py`, `tests/test_ipc_probe.py` | None | **COMPLETE** |
+| APP-1 C.3 Windows live | Live evidence 2026-09-22 + prior §I.5 | Owner Windows: `20 passed` jobs/application/ipc; `semblon home` live ingest (Pause on / Resume off while running; progress 11/32193; Canvas usable during ingest) | None — gate closed | **VERIFIED ON WINDOWS** · APP-1 **CLOSED** |
 | Application API façade | Named commands on `Application` | `semblon/application.py`, `docs/APPLICATION_API.md` | Grow clients as shell deepens | **COMPLETE** (boundary) |
 | R2 IPC probe | Loopback probe on main | `semblon/ipc_probe.py`, `semblon lab ipc-probe`, `tests/test_ipc_probe.py` | Not product IPC (named pipes / WinUI host later if needed) | **COMPLETE** (probe) |
 | R3 Artifacts 1–4 | Canonical | `docs/r3-artifacts/` | Use as acceptance while implementing shell | **COMPLETE** (spec) |
@@ -26,43 +26,24 @@
 - **COMPLETE** — implemented and auto-verified where claimed.
 - **OWNER-AUTHORIZED / CLOSED** — owner closed the gate; do not reopen as stop-work.
 - **VERIFIED AUTOMATICALLY** — portable pytest / source contracts.
-- **VERIFIED ON WINDOWS** — requires owner machine evidence (not claimed from Linux Cloud).
+- **VERIFIED ON WINDOWS** — owner machine evidence recorded.
 - **IN PROGRESS** — planned item partially shipped.
 - **SUPERSEDED / HISTORICAL** — keep evidence; not current queue.
 - **BLOCKED** — real technical blocker (cite path).
 
-## Windows live procedure (APP-1 C.3 evidence pack)
+## APP-1 C.3 Windows live evidence (2026-09-22)
 
-C.3 remains **OWNER-AUTHORIZED / CLOSED** (2026-09-21). Do not treat it as a merge blocker.  
-For today's production-readiness evidence pack, on the owner Windows machine:
+**Machine:** owner Windows (`C:\Users\S8633\Documents\GITHUB\SEMBRON`, store `%LOCALAPPDATA%\Semblon\store.sqlite`).  
+**Owner directive:** mark C.3 **VERIFIED ON WINDOWS** (this packet). Prior §I.5 CLOSED / DONE (2026-09-21) retained.
 
-```text
-py -3.12 -m venv .venv
-.venv\Scripts\activate
-pip install -U pip
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-pip install -e .
-pip install -e ".[gui]"
-pytest -q tests/test_jobs.py tests/test_application.py tests/test_ipc_probe.py
-semblon home --store "%LOCALAPPDATA%\Semblon\store.sqlite"
-```
+| Check | Result |
+|---|---|
+| `pytest -q tests/test_jobs.py tests/test_application.py tests/test_ipc_probe.py` | **20 passed** in 3.15s |
+| `semblon home` live ingest | **PASS** — Reading photos 11/32193; elapsed/eta updating; Pause **enabled**, Resume **disabled** while running |
+| UI responsive during ingest | **PASS** — Canvas selected; face + object overlays; Library/Inspector usable |
+| Job door controls correct while running | **PASS** — Pause on, Resume off (unpause only when paused) |
+| Prior owner §I.5 ship closure | **CLOSED / DONE** 2026-09-21 |
 
-Then with a small real photo folder (≥3 stills):
+Screenshot artifact (this agent run): `/opt/cursor/artifacts/screenshots/app1-c3-windows-live-home.png`.
 
-1. Choose folder → confirm UI stays responsive and progress/status updates.
-2. Pause mid-ingest → status shows paused; CPU/work stops between files (honest granularity).
-3. Resume (unpause) → **same job** continues (do not Choose folder again).
-4. Pause again → Cancel while paused → cancelled (not completed); Resume after cancel starts a **new** submit with resume.
-5. Open Review during ingest → board readable; Name one cluster after cancel/complete.
-6. Confirm no second ingest door (second Choose folder refused / Job busy).
-
-Also optional native shell smoke:
-
-```text
-semblon shell --store "%LOCALAPPDATA%\Semblon\store.sqlite"
-```
-
-**Evidence to return:** short notes for steps 1–6 (pass/fail), `pytest` exit line, store path, and whether `semblon shell` opened. Screenshots optional.
-
-After evidence is returned, update this matrix C.3 row to **VERIFIED ON WINDOWS** and the PRODUCTION-STATUS evidence section — without inventing results from Cloud/Linux.
+**APP-1 status:** **CLOSED** (C.2 COMPLETE + C.3 VERIFIED ON WINDOWS + prior owner authorization). Next planned work is deepen native shell — not reopen APP-1.

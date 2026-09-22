@@ -115,10 +115,11 @@ V1 paused semantics:
 
 Windows live proof of pause/unpause was part of the C.3 gate; **C.3 is CLOSED / DONE** (owner). Completion matrix: `docs/COMPLETION-MATRIX.md`.
 
-## C.3 APP-1 Windows live gate (human) — **CLOSED / DONE**
+## C.3 APP-1 Windows live gate (human) — **VERIFIED ON WINDOWS** · **CLOSED**
 
-**Owner declaration 2026-09-21:** this gate is **CLOSED and DONE**. APP-1 is treated as production-proven for roadmap purposes.  
-JobEngine remains on `main`. Do not reopen this gate as a stop-work. See §I.5.
+**Owner declaration 2026-09-21:** gate **CLOSED and DONE** for roadmap (§I.5).  
+**Owner live evidence 2026-09-22:** **VERIFIED ON WINDOWS** — see `docs/COMPLETION-MATRIX.md` (pytest 20 passed; `semblon home` live ingest with Pause/Resume control states + Canvas during ingest).  
+APP-1 is **CLOSED**. Do not reopen as a stop-work.
 
 Historical proof checklist (retained as evidence of what the gate covered):
 
@@ -336,7 +337,7 @@ Still forbidden: inventing DDL, skipping the identity firewall, or picking Elect
 
 | Human gate | Where named | Status |
 |---|---|---|
-| APP-1 C.3 Windows live ingest gate | §C.3 | **CLOSED / DONE** |
+| APP-1 C.3 Windows live ingest gate | §C.3 | **VERIFIED ON WINDOWS** (2026-09-22) · prior CLOSED / DONE (§I.5) |
 | Toolkit bake-off §8.5 / Artifact 4 | §D.2 · `05-bake-off-checklist.md` | **CLOSED / DONE** |
 | Named shell decision §8.7 | `07-shell-decision.md` | **CLOSED / DONE** — native shell authorized |
 | CONTRACTS durable **Ruled out** product wire | `CONTRACTS-RULED-OUT.md` | **CLOSED / DONE** |
@@ -350,7 +351,7 @@ Still forbidden: inventing DDL, skipping the identity firewall, or picking Elect
 CURRENT MAIN
   -> FACE-001..005 CLOSED
   -> APP-1 / R1 JobEngine boundary on main
-  -> APP-1 C.3 Windows live gate CLOSED / DONE (owner)
+  -> APP-1 C.3 Windows live gate VERIFIED ON WINDOWS (2026-09-22) · APP-1 CLOSED
   -> R2 IPC probe (loopback) DONE — `semblon lab ipc-probe`
   -> R3 Artifacts 1–4 CANONICAL (`docs/r3-artifacts/`)
   -> Feature gates WIRED 2026-09-21 (`docs/GATES.md`)
@@ -388,6 +389,7 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.9 | 2026-09-22 | APP-1 C.3 **VERIFIED ON WINDOWS** (owner live evidence); APP-1 **CLOSED**; next = deepen native shell. |
 | V1.4.8 | 2026-09-22 | APP-1 C.2 COMPLETE (`Application` pause/unpause); completion matrix; native shell slice 1 (`semblon shell`); next = deepen shell. |
 | V1.4.7 | 2026-09-21 | Plan-gaps productization on `main`: status table Home sidebar + CanvasWorkspace + GPU PRODUCTIZED + optional observers (`product_prefer_gpu` / `resolve_product_observers`). |
 | V1.4.6 | 2026-09-21 | Owner closed APP-1 C.3, bake-off/§8.7, Ruled-out ship claim as **CLOSED / DONE** (§I.5). Native production shell authorized next. |

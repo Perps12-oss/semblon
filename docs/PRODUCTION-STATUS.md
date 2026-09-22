@@ -69,11 +69,15 @@ Identify/inbox as dedicated full pages; vector DB; native shell as sole default 
 - Legal licence sign-off
 - Clean-machine MSI
 
-## OWNER-AUTHORIZED (human ship gates — not reopen)
+## OWNER-AUTHORIZED / VERIFIED ON WINDOWS
 
-APP-1 C.3 Windows live · toolkit bake-off · §8.7 shell decision · Ruled-out product wire — **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5). Optional live re-proof: `docs/COMPLETION-MATRIX.md`.
+- APP-1 C.3 Windows live — **VERIFIED ON WINDOWS** 2026-09-22 (owner: pytest 20 passed; `semblon home` live ingest Pause/Resume states + Canvas during ingest). Prior §I.5 CLOSED retained. **APP-1 CLOSED.**
+- Toolkit bake-off · §8.7 shell decision · Ruled-out product wire — **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5).
+
+Evidence detail: `docs/COMPLETION-MATRIX.md`.
 
 ## Evidence
 
 Portable: `python -m pytest -q` (no InsightFace download).  
-Live dump / 10k / GPU / real webcam: not executed this Cloud run — owner Windows actions required where noted.
+Windows APP-1 C.3: owner 2026-09-22 packet recorded in COMPLETION-MATRIX.  
+Live 10k / GPU smoke / real webcam: environment-limited where not yet run.

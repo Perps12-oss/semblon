@@ -10,7 +10,7 @@
 | 2 | Ruled out **ship claim** | **CLOSED / DONE** (owner) |
 | 3 | Live overlay | Code wired (lab + Home **Live…**) |
 | 4 | OCR / CLIP / pose honesty | Code wired (Settings notes when `MODALITY_PRODUCT` on) |
-| 5 | APP-1 C.3 Windows live | **CLOSED / DONE** (owner) |
+| 5 | APP-1 C.3 Windows live | **VERIFIED ON WINDOWS** (2026-09-22) · prior CLOSED / DONE |
 | 6 | R2 IPC probe | Probe on `main` (boundary only) |
 | 7 | PERF workers | Harness exists; product default remains `workers=1` |
 | 8 | Hierarchy frames | TEST frames (not SPEC) |
@@ -241,7 +241,7 @@ Missing → `false` + `notes[<key>]` starting with `unavailable:`. Optional smok
 | Contract | `docs/APPLICATION_API.md` |
 | Roadmap gate text | `docs/SEM-ARCH-V1.4.md` §C.3 |
 
-**Merge status note:** JobEngine is on `main`. APP-1 **C.3 Windows live ship proof** is **CLOSED / DONE** (`docs/SEM-ARCH-V1.4.md` §I.5 / §C.3). Historical verify steps below are retained as reference only — do not reopen this gate as DEFERRED.
+**Merge status note:** JobEngine is on `main`. APP-1 **C.3** is **VERIFIED ON WINDOWS** (owner 2026-09-22 evidence in `docs/COMPLETION-MATRIX.md`) and prior **CLOSED / DONE** (§I.5 / §C.3). APP-1 is **CLOSED**. Historical verify steps below are retained as reference only — do not reopen this gate as DEFERRED.
 
 ### How to verify
 
@@ -266,7 +266,7 @@ Real Windows, live folder ingest via Home (unit tests alone insufficient). Proof
 
 ### Wire after PASS
 
-1. C.3 is **CLOSED / DONE** on `main` (owner §I.5) — do not reopen as DEFERRED.
+1. C.3 is **VERIFIED ON WINDOWS** (2026-09-22) and prior **CLOSED / DONE** — do not reopen as DEFERRED. APP-1 is **CLOSED**.
 2. APP-1 JobEngine is already the ingest door; do not open another APP-1 feature merge.
 3. No product-default change required for JobEngine.
 
