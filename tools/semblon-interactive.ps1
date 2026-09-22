@@ -53,12 +53,14 @@ function Get-SemblonLaunch {
         if (Repair-SemblonInstall -PythonExe $c.Py -RepoRoot $c.Repo) {
             return @{ Kind = "py"; Path = $c.Py }
         }
-        Write-Error @"
-Semblon package still missing after reinstall under $($c.Repo).
-From that folder run:
-  powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
-Then double-click semblon.cmd again.
-"@
+        # No @" here-strings — a broken terminator makes "From ..." parse as code (PS 5.1).
+        $msg = @(
+            "Semblon package still missing after reinstall under $($c.Repo)."
+            "From that folder run:"
+            "  powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1"
+            "Then double-click semblon.cmd again."
+        ) -join [Environment]::NewLine
+        Write-Error $msg
         exit 1
     }
     $msiMarker = Join-Path $Root ".semblon-msi-install"
@@ -90,12 +92,13 @@ Then double-click semblon.cmd again.
             return @{ Kind = "py"; Path = $py }
         }
     }
-    Write-Error @"
-Semblon: repo .venv not found under $Root.
-From this folder, once:
-  powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
-Then double-click semblon.cmd.
-"@
+    $msg = @(
+        "Semblon: repo .venv not found under $Root."
+        "From this folder, once:"
+        "  powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1"
+        "Then double-click semblon.cmd."
+    ) -join [Environment]::NewLine
+    Write-Error $msg
     exit 1
 }
 
