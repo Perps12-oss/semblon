@@ -11,6 +11,12 @@ import sqlite3
 from pathlib import Path
 
 from semblon.process import default_store_path, latest_run_id
+from semblon.state_triple import (
+    format_media_card_label,
+    library_include_media,
+    media_inspector_triple_line,
+    triples_for_board,
+)
 
 try:
     import tkinter as tk
@@ -26,7 +32,8 @@ class CanvasError(ValueError):
 
 CANVAS_NOTE = (
     "Canvas overlays observations. Face identity stays FaceKit. "
-    "Canvas never writes faces.person_id. Track ≠ person. Cluster ≠ person."
+    "Canvas never writes faces.person_id. Track ≠ person. Cluster ≠ person. "
+    "Media cards expose Artifact 2 state triple (Ingest, Analysis, Identity)."
 )
 
 
@@ -103,6 +110,38 @@ def load_canvas(store: Path, run_id: str | None = None) -> dict:
         ).fetchall()
     except sqlite3.OperationalError as e:
         warnings.append(f"track memberships unavailable: {e}")
+    decisions: list[dict] = []
+    clusters: list[dict] = []
+    run_finished = None
+    try:
+        decisions = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT kind, face_id, person_id, cluster_id, policy_json, run_id "
+                "FROM decisions WHERE run_id=?",
+                (rid,),
+            ).fetchall()
+        ]
+    except sqlite3.OperationalError as e:
+        warnings.append(f"decisions unavailable: {e}")
+    try:
+        clusters = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT cluster_id, status FROM clusters WHERE run_id=?",
+                (rid,),
+            ).fetchall()
+        ]
+    except sqlite3.OperationalError as e:
+        warnings.append(f"clusters unavailable: {e}")
+    try:
+        run_row = conn.execute(
+            "SELECT finished_at FROM runs WHERE run_id=?", (rid,)
+        ).fetchone()
+        if run_row is not None:
+            run_finished = run_row["finished_at"] is not None
+    except sqlite3.OperationalError as e:
+        warnings.append(f"run status unavailable: {e}")
     conn.close()
     lane_by_face: dict[str, str] = {}
     lane_by_item: dict[str, str] = {}
@@ -126,6 +165,9 @@ def load_canvas(store: Path, run_id: str | None = None) -> dict:
         "track_members": [dict(r) for r in track_members],
         "track_lane_by_face": lane_by_face,
         "track_lane_by_item": lane_by_item,
+        "decisions": decisions,
+        "clusters": clusters,
+        "run_finished": run_finished,
         "note": note,
     }
 
@@ -172,6 +214,26 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
     return boxes
 
 
+def _cluster_status_map(board: dict) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for c in board.get("clusters") or []:
+        cid = c.get("cluster_id")
+        if cid:
+            out[str(cid)] = str(c.get("status") or "auto")
+    return out
+
+
+def media_state_triples(board: dict, media_rows: list[dict] | None = None) -> dict:
+    """Artifact 2 triples for board media. Read-only; never writes person_id."""
+    return triples_for_board(
+        board,
+        media_rows=media_rows,
+        decisions=board.get("decisions"),
+        cluster_status=_cluster_status_map(board),
+        run_finished=board.get("run_finished"),
+    )
+
+
 def media_inspector_lines(board: dict, media_id: str | None) -> list[str]:
     """Inspector evidence lines for one media selection. Group ≠ person.
 
@@ -194,6 +256,8 @@ def media_inspector_lines(board: dict, media_id: str | None) -> list[str]:
     clustered = sum(1 for f in faces if f.get("cluster_id"))
     unassigned = sum(1 for f in faces if not f.get("cluster_id"))
     cluster_ids = sorted({f.get("cluster_id") for f in faces if f.get("cluster_id")})
+    triples = media_state_triples(board, [media] if media else [])
+    triple = triples.get(media_id) if media_id else None
     lines = [
         "Evidence relationship (machine)",
         f"path={media.get('path') if media else '?'}",
@@ -206,8 +270,13 @@ def media_inspector_lines(board: dict, media_id: str | None) -> list[str]:
         "Merge observations ≠ Assign to person",
         CANVAS_NOTE,
     ]
+    if triple is not None:
+        # After source_type (index 2): Evidence, path, source, then triple.
+        lines.insert(3, media_inspector_triple_line(triple))
     if not faces:
-        lines.insert(4, "Zero faces — still Library (not failed ingest)")
+        # After faces= line: index 4 without triple; index 5 when triple shifted faces.
+        insert_at = 5 if triple is not None else 4
+        lines.insert(insert_at, "Zero faces — still Library (not failed ingest)")
     return lines
 
 
@@ -324,15 +393,31 @@ else:
                 face_by[f["media_id"]] = face_by.get(f["media_id"], 0) + 1
             for it in board.get("items") or []:
                 item_by[it["media_id"]] = item_by.get(it["media_id"], 0) + 1
+            triples = media_state_triples(board, self._media)
+            kept: list[dict] = []
             for m in self._media:
                 mid = m["media_id"]
+                triple = triples.get(mid)
+                if triple is not None and not library_include_media(triple):
+                    # Failed ingest → Activity, never invent a Library card.
+                    continue
+                kept.append(m)
                 nface = face_by.get(mid, 0)
                 nitem = item_by.get(mid, 0)
-                z = " zero-face" if nface == 0 else ""
-                self._listbox.insert(
-                    tk.END,
-                    f"{m.get('source_type')}  faces={nface} items={nitem}{z}  {m.get('path')}",
-                )
+                if triple is None:
+                    z = " zero-face" if nface == 0 else ""
+                    self._listbox.insert(
+                        tk.END,
+                        f"{m.get('source_type')}  faces={nface} items={nitem}{z}  {m.get('path')}",
+                    )
+                else:
+                    self._listbox.insert(
+                        tk.END,
+                        format_media_card_label(
+                            m, triple, face_count=nface, item_count=nitem
+                        ),
+                    )
+            self._media = kept
             self.status.set(
                 f"run={board.get('run_id')}  media={len(self._media)}  "
                 f"faces={len(board.get('faces') or [])}  "

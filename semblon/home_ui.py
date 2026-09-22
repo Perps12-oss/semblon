@@ -29,6 +29,11 @@ except ModuleNotFoundError:  # pragma: no cover - depends on host Python build
 from semblon.ui_copy import friendly_exception, status_text
 from semblon.jobs import JobBusy, JobEngine
 from semblon.process import default_store_path
+from semblon.state_triple import (
+    format_media_card_label,
+    library_include_media,
+    triples_for_board,
+)
 from semblon.progress import (
     KIND_QUEUED,
     KIND_STALLED,
@@ -290,7 +295,11 @@ def format_activity_lines(
 
 
 def format_library_lines(store: Path, *, source_type: str | None = None) -> list[str]:
-    """Library rows: source-media layer (includes zero-face files when present)."""
+    """Library rows: source-media layer with Artifact 2 state-triple channels.
+
+    Channels (must not collide): identity=notch · analysis=ring · ingest=glyph.
+    Failed ingest is excluded (belongs in Activity, not Library cards).
+    """
     if not store.is_file():
         return [f"No store yet: {store}"]
     conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
@@ -318,6 +327,54 @@ def format_library_lines(store: Path, *, source_type: str | None = None) -> list
                 """
             ).fetchall()
         total = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+        from semblon.process import latest_run_id
+
+        rid = latest_run_id(Path(store), with_faces=True) or latest_run_id(Path(store))
+        faces: list[dict] = []
+        decisions: list[dict] = []
+        clusters: list[dict] = []
+        observed: set[str] = set()
+        run_finished = None
+        if rid:
+            faces = [
+                dict(r)
+                for r in conn.execute(
+                    """
+                    SELECT f.face_id, f.cluster_id, f.person_id, f.status, o.media_id
+                    FROM faces f
+                    JOIN observations o ON o.observation_id = f.observation_id
+                    WHERE f.run_id=?
+                    """,
+                    (rid,),
+                ).fetchall()
+            ]
+            decisions = [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT kind, face_id, person_id, cluster_id, policy_json "
+                    "FROM decisions WHERE run_id=?",
+                    (rid,),
+                ).fetchall()
+            ]
+            clusters = [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT cluster_id, status FROM clusters WHERE run_id=?",
+                    (rid,),
+                ).fetchall()
+            ]
+            observed = {
+                str(r[0])
+                for r in conn.execute(
+                    "SELECT DISTINCT media_id FROM observations WHERE run_id=?",
+                    (rid,),
+                ).fetchall()
+            }
+            fin = conn.execute(
+                "SELECT finished_at FROM runs WHERE run_id=?", (rid,)
+            ).fetchone()
+            if fin is not None:
+                run_finished = fin["finished_at"] is not None
     except sqlite3.OperationalError as e:
         conn.close()
         return [f"Library unavailable: {e}"]
@@ -325,9 +382,49 @@ def format_library_lines(store: Path, *, source_type: str | None = None) -> list
     label = source_type or "all"
     if not rows:
         return [f"Library ({label}): no media yet. Choose a folder to ingest."]
-    lines = [f"Library ({label}): showing {len(rows)} of {total}  (source-media layer)"]
-    for r in rows:
-        lines.append(f"  {r['source_type']}  {r['path']}")
+
+    media_rows = [dict(r) for r in rows]
+    cluster_status = {
+        str(c["cluster_id"]): str(c.get("status") or "auto") for c in clusters
+    }
+    face_counts: dict[str, int] = {}
+    for f in faces:
+        mid = str(f.get("media_id") or "")
+        face_counts[mid] = face_counts.get(mid, 0) + 1
+    board = {"media": media_rows, "faces": faces, "decisions": decisions, "items": []}
+    triples = triples_for_board(
+        board,
+        media_rows=media_rows,
+        decisions=decisions,
+        cluster_status=cluster_status,
+        run_finished=run_finished,
+        observed_media_ids=observed,
+    )
+    lines = [
+        f"Library ({label}): showing {len(rows)} of {total}  "
+        f"(source-media · state=(Ingest, Analysis, Identity))"
+    ]
+    shown = 0
+    for m in media_rows:
+        mid = str(m["media_id"])
+        triple = triples.get(mid)
+        if triple is not None and not library_include_media(triple):
+            continue
+        shown += 1
+        if triple is None:
+            lines.append(f"  {m['source_type']}  {m['path']}")
+        else:
+            lines.append(
+                "  "
+                + format_media_card_label(
+                    m, triple, face_count=face_counts.get(mid, 0)
+                )
+            )
+    if shown != len(rows):
+        lines[0] = (
+            f"Library ({label}): showing {shown} of {total}  "
+            f"(source-media · state triple; failed ingest omitted)"
+        )
     return lines
 
 
