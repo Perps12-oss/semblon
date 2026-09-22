@@ -241,7 +241,7 @@ Missing → `false` + `notes[<key>]` starting with `unavailable:`. Optional smok
 | Contract | `docs/APPLICATION_API.md` |
 | Roadmap gate text | `docs/SEM-ARCH-V1.4.md` §C.3 |
 
-**Merge status note:** JobEngine is on `main`. APP-1 **C.3 Windows live ship proof** is **DEFERRED TO LAST** (`docs/SEM-ARCH-V1.4.md` §I.5). Do **not** invent PASS from unit tests or from a side branch docs claim. Run the live gate below when human ship gates are executed last.
+**Merge status note:** JobEngine is on `main`. APP-1 **C.3 Windows live ship proof** is **CLOSED / DONE** (`docs/SEM-ARCH-V1.4.md` §I.5 / §C.3). Historical verify steps below are retained as reference only — do not reopen this gate as DEFERRED.
 
 ### How to verify
 
@@ -266,7 +266,7 @@ Real Windows, live folder ingest via Home (unit tests alone insufficient). Proof
 
 ### Wire after PASS
 
-1. Record C.3 evidence under §I.5 / this checklist — do not invent PASS earlier.
+1. C.3 is **CLOSED / DONE** on `main` (owner §I.5) — do not reopen as DEFERRED.
 2. APP-1 JobEngine is already the ingest door; do not open another APP-1 feature merge.
 3. No product-default change required for JobEngine.
 

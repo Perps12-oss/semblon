@@ -5,7 +5,9 @@ Consumable by Tk Home (compatibility frontend), future native shell, or tests.
 
 Does **not** name WinUI vs Qt. Does **not** promote PySide. Does **not** turn
 Tk Home into the permanent AppShell (SEM-ARCH §E).
-Shell winner naming stays `docs/r3-artifacts/07-shell-decision.md` (blank / OPEN).
+§8.7 shell decision is **CLOSED / DONE** (`docs/r3-artifacts/07-shell-decision.md`):
+native production shell authorized; Electron / Tauri / permanent Tk AppShell /
+CustomTkinter remain refused.
 """
 
 from __future__ import annotations
@@ -96,7 +98,8 @@ IA_SPLIT = f"{LIBRARY_LAYER} {OBSERVATION_LAYER}"
 SHELL_CHROME_NOTE = (
     "R3 chrome vocabulary is toolkit-agnostic. "
     "Tk Home is a compatibility frontend — not the permanent AppShell. "
-    "Shell toolkit winner is unnamed until §I.5 / 07-shell-decision."
+    "§8.7 CLOSED / DONE: native production shell authorized "
+    "(refuse Electron · Tauri · permanent Tk AppShell · CustomTkinter)."
 )
 
 

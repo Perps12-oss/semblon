@@ -57,7 +57,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 ## DEFERRED
 
-Identify/inbox as dedicated full pages; vector DB; a second native shell as default Home (R3 toolkit winner still human-named).
+Identify/inbox as dedicated full pages; vector DB; native production shell as default Home (authorized §I.5 / §8.7 — not yet shipped as replacement for Tk Home).
 
 ## UNAVAILABLE
 

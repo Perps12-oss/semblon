@@ -77,13 +77,14 @@ def test_process_snapshot_includes_processing_glyph():
     assert "Qt" not in snap["headline"]
 
 
-def test_shell_decision_packet_stays_unnamed():
+def test_shell_decision_packet_closed_native_authorized():
     from pathlib import Path
 
     path = Path(__file__).resolve().parents[1] / "docs" / "r3-artifacts" / "07-shell-decision.md"
     text = path.read_text(encoding="utf-8")
-    assert "Winner | _none yet_" in text or "Winner | `_none yet_`" in text or "_none yet_" in text
-    # Decision record must not claim a toolkit.
+    assert "CLOSED / DONE" in text
+    assert "native" in text.lower()
+    # Still refuse naming a specific toolkit winner row.
     assert "Winner | WinUI" not in text
     assert "Winner | Qt" not in text
     assert "Winner | PySide" not in text
