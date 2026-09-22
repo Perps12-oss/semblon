@@ -1,11 +1,11 @@
 # Application API (APP-1 / R1)
 
 **Status:** extracted from existing Python. Not a framework. Not WinUI.  
-**Date:** 2026-09-21  
-**Code:** `semblon/jobs.py`, `semblon/application.py`, Home control policy in `semblon/home_ui.py`  
+**Date:** 2026-09-22  
+**Code:** `semblon/application.py` (`Application` façade), `semblon/jobs.py`, Home control policy in `semblon/home_ui.py`, native shell in `semblon/native_shell/`  
 **Authority:** `docs/CONTRACTS.md`, `docs/SEM-ARCH-V1.4.md`. This page names UI-visible capabilities. It does not add columns.
 
-A future native client consumes this surface. Home is a client of it. Tk is not the architecture.
+A future native client consumes this surface. Home is a client of it. The Qt/PySide `semblon shell` is the authorized production shell path (R3). Tk is not the architecture.
 
 ```
 UI  →  Application / Job boundary  →  existing Python implementation
@@ -23,12 +23,12 @@ Home button  →  Home-owned worker  →  Tk callback chain  →  ingest
 |---|---|---|
 | Job | One bounded unit of work (today: ingest/process) | `JobHandle` while running; `JobResult` when done |
 | Progress | Honest counts and stage/kind; no invented percent | `ProgressEvent` via `on_event` |
-| Cancellation | Cooperative; cancelled ≠ completed; partial retained | `JobEngine.cancel` → ingest `cancel` |
-| Pause | Cooperative; same job stays claimed; not consuming ingest work | `JobEngine.pause` / `unpause` |
+| Cancellation | Cooperative; cancelled ≠ completed; partial retained | `JobEngine.cancel` / `Application.cancel_job` → ingest `cancel` |
+| Pause | Cooperative; same job stays claimed; not consuming ingest work | `JobEngine.pause` / `unpause` · `Application.pause_job` / `unpause_job` |
 | Application state | store path, latest run with faces | `default_store_path`, `latest_run_id` |
-| Review state | board items (cluster / track / unassigned) | `load_board` |
+| Review state | board items (cluster / track / unassigned) | `load_board` / `Application.board` |
 | Person operations | Name / Merge / Split / Ignore / Note / Rule out (gate default ON; ship claim CLOSED / DONE §I.5) | `apply_*` → `review.py` (Home Inspector + review-ui) |
-| Search / read snapshots | people, unknown, activity, person query, canvas overlay | `search_*`, `inbox`, `activity` / Home `read_activity_snapshot`, `load_canvas` || Observation overlay | `path` + `frame_id` + `bbox` + optional track lane | `load_canvas` / `overlay_boxes` |
+| Search / read snapshots | people, unknown, activity, person query, canvas overlay | `search_*`, `inbox`, `activity` / Home `read_activity_snapshot`, `load_canvas` |
 
 CONTRACTS family this maps onto: Media, Observation, Face, Embedding, Track, Episode (not a first-class UI command yet), Person, Decision, SearchResult, Job, Progress, Cancellation.
 
@@ -38,22 +38,22 @@ Reads:
 
 | Command | Existing call | Notes |
 |---|---|---|
-| `board(store, run_id?)` | `resolve_run_id` + `load_board` | Default run is latest with faces |
-| `people(store)` | `search_people` | Named persons only |
+| `board(store, run_id?)` | `resolve_run_id` + `load_board` · `Application.board` | Default run is latest with faces |
+| `people(store)` | `search_people` · `Application.people` | Named persons only |
 | `search_person(store, query)` | `search_person` | Lookup, not identity |
-| `inbox(store, run_id)` | `inbox` | UNKNOWN is valid |
+| `inbox(store, run_id)` | `inbox` · `Application.inbox` | UNKNOWN is valid |
 | `activity(store, run_id?)` | `application.activity` → Home `read_activity_snapshot` | groups / relationships / events; track ≠ person |
-| `canvas(store, run_id?)` | `load_canvas` | Overlay payload. Cluster ≠ person |
-| `job_current()` | `JobEngine.current` / `busy` / `state` / `paused` | Handle while running; None when idle |
+| `canvas(store, run_id?)` | `load_canvas` · `Application.canvas` | Overlay payload. Cluster ≠ person |
+| `job_current()` | `Application.job_current` / `busy` / `state` / `paused` | Handle while running; None when idle |
 
 Mutations (one writer: Python domain ops):
 
 | Command | Existing call | Notes |
 |---|---|---|
-| `submit_ingest(folder, resume?)` | `JobEngine.submit_ingest` → `process_folder` | Engine owns the store. One ingest at a time. Second submit is `JobBusy` |
-| `pause_job()` | `JobEngine.pause` | Cooperative at file/stage gates |
-| `unpause_job()` | `JobEngine.unpause` | Continues the **same** in-flight job |
-| `cancel_job()` | `JobEngine.cancel` | Cooperative at file boundaries; works while paused |
+| `submit_ingest(folder, resume?)` | `Application.submit_ingest` → `JobEngine` → `process_folder` | Engine owns the store. One ingest at a time. Second submit is `JobBusy` |
+| `pause_job()` | `Application.pause_job` → `JobEngine.pause` | Cooperative at file/stage gates |
+| `unpause_job()` | `Application.unpause_job` → `JobEngine.unpause` | Continues the **same** in-flight job |
+| `cancel_job()` | `Application.cancel_job` → `JobEngine.cancel` | Cooperative at file boundaries; works while paused |
 | `apply_name` | `review_ui.apply_name` | Cluster / track members / unassigned face |
 | `apply_merge` | `apply_merge` | Clusters only |
 | `apply_split` | `apply_split` | Faces leave the cluster |
@@ -64,7 +64,8 @@ Mutations (one writer: Python domain ops):
 Named later, not implemented as Job types in this slice: `watch`, `live`. The API must not assume stills-only.
 
 **Ruled out:** product-wire ship claim **CLOSED / DONE** by owner 2026-09-21 (`docs/CONTRACTS-RULED-OUT.md` · SEM-ARCH §I.5). Chrome on Home Inspector + review-ui when gate ON.
-## Job states (V1.4 C.2)
+
+## Job states (V1.4 C.2) — COMPLETE
 
 ```
 idle → running → paused → running → completed
@@ -73,8 +74,10 @@ paused → cancelling → cancelled
 running/paused → failed
 ```
 
-`JobEngine.state` reports `idle` | `running` | `paused` | `cancelling`.  
+`JobEngine.state` / `Application.state` reports `idle` | `running` | `paused` | `cancelling`.  
 `JobResult.status` is terminal only: `completed` | `cancelled` | `failed`.
+
+**Queued:** `ProgressEvent` kind `queued` (presentation / Home status). It is **not** a `JobEngine.state` value. Claiming a job moves state to `running` when the worker starts.
 
 ### Pause semantics
 
@@ -82,7 +85,7 @@ running/paused → failed
 
 **Granularity (honest):** cooperative **between files** and at the same stage checks where cancel is already polled inside `process_folder` → `ingest`. Mid-decode / mid-embed pause is **not** claimed.
 
-`unpause` continues the same claimed job. It is not the same as Home **Resume** after cancel (that is a new `submit_ingest(..., resume=True)`).
+`unpause` / `unpause_job` continues the same claimed job. It is not the same as Home / shell **Resume** after cancel (that is a new `submit_ingest(..., resume=True)`).
 
 ## Job result status
 
@@ -90,40 +93,36 @@ running/paused → failed
 completed | cancelled | failed
 ```
 
-`JobEngine.busy` is true while a handle is claimed (including while paused). `JobResult.status` is the terminal outcome delivered to `on_done`.
+`JobEngine.busy` / `Application.busy` is true while a handle is claimed (including while paused). `JobResult.status` is the terminal outcome delivered to `on_done`.
 
 Progress stays on `ProgressEvent` (None means unknown — do not invent). Percent belongs to the presentation of an event that already has a denominator (`stills_percent`).
 
-Callbacks on `JobEngine.submit_ingest` are a Python convenience, not the IPC. R2 will serialize handle/result fields, not widgets.
+Callbacks on `submit_ingest` are a Python convenience, not the IPC. R2 serializes handle/result fields, not widgets.
 
 ## What the contract must not expose
 
 Tk objects · Tk event-loop · Qt objects · FaceKit · Python UI callbacks as the public shape · SQLite connection objects · worker threads · InsightFace / ORT sessions · clusterer internals.
 
-## Home shell (Track-1 Tk)
+## Production shell (R3 native) vs Track-1 Tk
 
-Tk Home implements R3-BRIEF §4 IA as a **compatibility frontend** (not the final native shell; no PySide product Home):
+| Surface | Command | Role |
+|---|---|---|
+| **Native production shell** | `semblon shell` | Authorized R3 path (`semblon/native_shell/`). Qt/PySide via optional `[gui]`. Talks only through `Application`. |
+| Tk Home | `semblon home` | Compatibility frontend (Library \| Workspace/Canvas \| Inspector). Still JobEngine door. Not permanent AppShell. |
+| `review-ui` | `semblon review-ui` | KEEP evidence vertical (Toplevel on Home or standalone). |
+| `review.html` | export | Engineering / forensic artifact — **not** the normal user workflow. |
+| S8 toolkit spike | `tools/s8_toolkit_spike` | Reference only. Do not auto-promote. |
+
+Native shell IA (R3-BRIEF §4):
 
 ```text
 Library sidebar │ Workspace / Intelligence Canvas │ Inspector
 ```
 
-- Library nav: Home · Photos · Videos · People · Unknown · Activity
-- Workspace embeds `CanvasWorkspace` (observation overlays for selected media)
-- Inspector: evidence (machine) ≠ proposed action (human). Verbs wired to `apply_*` / `review.py`: Merge observations · Assign to person · Split · Name · Rule out · Ignore (`semblon/inspector_verbs.py`). Merge ≠ Assign.
-- Standalone `review-ui` remains available; Open Review is still a Toplevel on Home’s root
-- Canvas/UI overlays **never** write `faces.person_id`
-
-`load_canvas` / `overlay_boxes` / `media_inspector_lines` / `CanvasWorkspace` are the read surface. `activity()` / `board()` / `search_*` are the RO façade. JobEngine remains the ingest door.
-
-## Home controls during a job (Track-1)
-
-Enabled while ingest runs: Review, review.html, People, Unknown, Activity, Settings, Canvas, Search.  
-Disabled while running: Choose folder.  
+Job controls: Choose folder / Pause / Resume / Cancel.  
 While running (not paused): Pause on, Resume off, Cancel on.  
-While paused: Pause off, Resume on (unpause), Cancel on.  
+While paused: Pause off, Resume on (`unpause_job`), Cancel on.  
 While idle with a cancelled/interrupted folder: Resume on (resume-after-cancel).  
-Cancel: always available while a job is claimed.
 
 | Operation | During ingest | Actual dependency |
 |---|---|---|
@@ -135,9 +134,7 @@ Cancel: always available while a job is claimed.
 | Cancel | allowed | cooperative cancel (also from paused) |
 | Resume after cancel | idle only | new submit with `resume=True` |
 
-Review opens as a `Toplevel` on Home's root so Home keeps pumping job events. Standalone `run_review_ui()` still owns its own loop when there is no parent.
-
-`JobEngine` is the only ingest door for Home / Review / IPC probe. Headless CLI `semblon process` / `ingest` may call `process_folder` directly — that is not a second Tk application door. Home and Review must never import or call `process_folder`.
+`JobEngine` is the only ingest door for Home / native shell / Review / IPC probe. Headless CLI `semblon process` / `ingest` may call `process_folder` directly — that is not a second application door. Home, Review, and `semblon shell` must never import or call `process_folder`.
 
 ## Identity firewall
 

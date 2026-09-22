@@ -36,11 +36,11 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 | Live | **EXISTS / hardware proof pending** |
 | Canvas | **EXISTS — Home-integrated Tk production overlay** (renderer still provisional vs native shell) |
 | Search | **EXISTS** |
-| Home | **SHIPPED — sidebar shell (Library \| Workspace/Canvas \| Inspector)**; R3 native shell still open |
+| Home | **SHIPPED — sidebar shell (Library \| Workspace/Canvas \| Inspector)**; Tk = compatibility; native `semblon shell` slice 1 |
 | Review UI | **SHIPPED, legacy Tk surface** |
-| Native application shell | **NOT decided/implemented** |
+| Native application shell | **SLICE 1 SHIPPED** (`semblon shell` / `semblon/native_shell/` via Application API; deepen Canvas/Inspector; Tk Home = compatibility) |
 | APP-1 JobEngine boundary | **MERGED** (`main`) |
-| APP-1 C.2 paused / unpause | **IMPLEMENTED** (code+unit tests; Windows live gate still required) |
+| APP-1 C.2 paused / unpause | **COMPLETE** (JobEngine + `Application.pause_job`/`unpause_job` + Home/shell/IPC; unit tests) |
 | IPC boundary | **PROBE** (`semblon/ipc_probe.py` loopback JSON-lines; not product IPC) |
 | Native ARM64 performance | **BLOCKED** |
 | Multi-worker ingest | **EXPERIMENTAL / not default** |
@@ -92,30 +92,34 @@ Critical rule:
 - Do not merge historical APP-1 drafts wholesale.
 - Prior drafts (for example #48 / #50) are reference material only; selectively recover validated pieces.
 
-## C.2 `paused` contract must be made real now
+## C.2 `paused` contract — **COMPLETE**
 
 Job states:
 
 ```text
-queued -> running -> paused -> running -> completed
+idle -> running -> paused -> running -> completed
 running -> cancelling -> cancelled
+paused -> cancelling -> cancelled
 running/paused -> failed
 ```
+
+(`queued` is a `ProgressEvent` kind for UI status, not `JobEngine.state`.)
 
 V1 paused semantics:
 
 > `paused` means resumable and not currently consuming ingest processing resources.
 
-**Implementation (code on this branch):** `JobEngine.pause` / `unpause` / `state` / `paused`. The ingest gate blocks in `JobEngine._gate` (passed as `cancel=` into `process_folder`).  
+**Implementation:** `JobEngine.pause` / `unpause` / `state` / `paused` and `Application.pause_job` / `unpause_job` / `cancel_job`. The ingest gate blocks in `JobEngine._gate` (passed as `cancel=` into `process_folder`). Home Pause/Resume and `semblon shell` use the same door.  
 
 **Granularity (honest):** cooperative **between files** and at the same stage polls where cancel already runs. Mid-decode / mid-embed pause is **not** claimed.
 
-Windows live proof of pause/unpause was part of the C.3 gate; **C.3 is CLOSED / DONE** (owner).
+Windows live proof of pause/unpause was part of the C.3 gate; **C.3 is CLOSED / DONE** (owner). Completion matrix: `docs/COMPLETION-MATRIX.md`.
 
-## C.3 APP-1 Windows live gate (human) — **CLOSED / DONE**
+## C.3 APP-1 Windows live gate (human) — **VERIFIED ON WINDOWS** · **CLOSED**
 
-**Owner declaration 2026-09-21:** this gate is **CLOSED and DONE**. APP-1 is treated as production-proven for roadmap purposes.  
-JobEngine remains on `main`. Do not reopen this gate as a stop-work. See §I.5.
+**Owner declaration 2026-09-21:** gate **CLOSED and DONE** for roadmap (§I.5).  
+**Owner live evidence 2026-09-22:** **VERIFIED ON WINDOWS** — see `docs/COMPLETION-MATRIX.md` (pytest 20 passed; `semblon home` live ingest with Pause/Resume control states + Canvas during ingest).  
+APP-1 is **CLOSED**. Do not reopen as a stop-work.
 
 Historical proof checklist (retained as evidence of what the gate covered):
 
@@ -292,17 +296,17 @@ Track at each size:
 
 ## I.1 Do now
 
-1. APP-1 boundary already on `main` — keep strengthening Application API / JobEngine clients
-2. formalize app boundary contract (docs + tests)
-3. **Native production shell** against Artifacts 1–4 + R3-BRIEF (Inspector verbs · state-triple media cards · IA)
-4. unified Home/Review/Canvas toward the future shell **without** expanding Tk Home into permanent AppShell (§E)
-5. single authoritative architecture documentation (this file)
+1. ~~APP-1 boundary / C.2 pause~~ **COMPLETE** — `Application` + JobEngine + Home/shell/IPC
+2. ~~formalize app boundary contract~~ **DONE** (`docs/APPLICATION_API.md` + tests)
+3. **Deepen native production shell** (`semblon shell` slice 1 on main) against Artifacts 1–4 + R3-BRIEF (Inspector verbs · state-triple media cards · Canvas)
+4. unified Home/Review/Canvas toward the native shell **without** expanding Tk Home into permanent AppShell (§E)
+5. single authoritative architecture documentation (this file) + `docs/COMPLETION-MATRIX.md`
 
 ## I.2 Immediately after APP-1 (code track)
 
 - ~~R2 IPC probe~~ **DONE** (loopback probe in `semblon/ipc_probe.py`; not product IPC)
 - ~~Artifact 4 / §8.7 / C.3 / Ruled-out ship claim~~ **CLOSED / DONE** (owner §I.5)
-- Native production shell implementation (authorized)
+- ~~Native production shell first slice~~ **SHIPPED** (`semblon/native_shell/` · `semblon shell`) — deepen next
 
 ## I.3 Parallel experimental track
 
@@ -333,7 +337,7 @@ Still forbidden: inventing DDL, skipping the identity firewall, or picking Elect
 
 | Human gate | Where named | Status |
 |---|---|---|
-| APP-1 C.3 Windows live ingest gate | §C.3 | **CLOSED / DONE** |
+| APP-1 C.3 Windows live ingest gate | §C.3 | **VERIFIED ON WINDOWS** (2026-09-22) · prior CLOSED / DONE (§I.5) |
 | Toolkit bake-off §8.5 / Artifact 4 | §D.2 · `05-bake-off-checklist.md` | **CLOSED / DONE** |
 | Named shell decision §8.7 | `07-shell-decision.md` | **CLOSED / DONE** — native shell authorized |
 | CONTRACTS durable **Ruled out** product wire | `CONTRACTS-RULED-OUT.md` | **CLOSED / DONE** |
@@ -347,14 +351,15 @@ Still forbidden: inventing DDL, skipping the identity firewall, or picking Elect
 CURRENT MAIN
   -> FACE-001..005 CLOSED
   -> APP-1 / R1 JobEngine boundary on main
-  -> APP-1 C.3 Windows live gate CLOSED / DONE (owner)
+  -> APP-1 C.3 Windows live gate VERIFIED ON WINDOWS (2026-09-22) · APP-1 CLOSED
   -> R2 IPC probe (loopback) DONE — `semblon lab ipc-probe`
   -> R3 Artifacts 1–4 CANONICAL (`docs/r3-artifacts/`)
   -> Feature gates WIRED 2026-09-21 (`docs/GATES.md`)
   -> Artifact 4 bake-off + §8.7 shell decision CLOSED / DONE (owner)
   -> Ruled out product-wire claim CLOSED / DONE (owner)
-  -> NEXT: Native production shell (R3-BRIEF + Artifacts 1–4 look-and-feel)
-  -> unified Home/Review/Canvas experiences
+  -> Native production shell slice 1 SHIPPED (`semblon shell`)
+  -> NEXT: deepen native shell (Inspector verbs · Canvas · state-triple cards)
+  -> unified Home/Review/Canvas experiences (Tk remains compatibility)
   -> video/live UX expansion
   -> multimodal retrieval expansion
   -> scale/performance hardening
@@ -384,6 +389,8 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.9 | 2026-09-22 | APP-1 C.3 **VERIFIED ON WINDOWS** (owner live evidence); APP-1 **CLOSED**; next = deepen native shell. |
+| V1.4.8 | 2026-09-22 | APP-1 C.2 COMPLETE (`Application` pause/unpause); completion matrix; native shell slice 1 (`semblon shell`); next = deepen shell. |
 | V1.4.7 | 2026-09-21 | Plan-gaps productization on `main`: status table Home sidebar + CanvasWorkspace + GPU PRODUCTIZED + optional observers (`product_prefer_gpu` / `resolve_product_observers`). |
 | V1.4.6 | 2026-09-21 | Owner closed APP-1 C.3, bake-off/§8.7, Ruled-out ship claim as **CLOSED / DONE** (§I.5). Native production shell authorized next. |
 | V1.4.5 | 2026-09-21 | Fuller R3 Artifact 1–4 pack landed (`01-state-matrix`, `02-state-triple`, `03-collision-ledger`, `05-bake-off-checklist` criteria); abbreviated brief §3 seed superseded. Bake-off measures / §8.7 winner still §I.5 last. |

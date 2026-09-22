@@ -382,9 +382,20 @@ def main(argv: list[str] | None = None) -> int:
 
     home = sub.add_parser(
         "home",
-        help="tk Home: Choose folder, Pause/Cancel/Resume, Open Review (JobEngine)",
+        help="tk Home (compatibility): Choose folder, Pause/Cancel/Resume, Open Review (JobEngine)",
     )
     home.add_argument(
+        "--store",
+        default=None,
+        type=Path,
+        help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
+    )
+
+    shell = sub.add_parser(
+        "shell",
+        help="native production shell (Qt/PySide; Application API -> JobEngine; requires PySide6)",
+    )
+    shell.add_argument(
         "--store",
         default=None,
         type=Path,
@@ -976,6 +987,11 @@ def main(argv: list[str] | None = None) -> int:
         from semblon.home_ui import run_home_ui
 
         return run_home_ui(store=args.store)
+
+    if args.cmd == "shell":
+        from semblon.native_shell import run_native_shell
+
+        return run_native_shell(store=args.store)
 
     if args.cmd == "stats":
         from semblon.stats import StatsError, stats as run_stats

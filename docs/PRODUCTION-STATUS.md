@@ -1,10 +1,11 @@
 # Semblon production status
 
-**Date:** 2026-09-21  
-**Version:** 1.4.0 (`main` @ observation-table write-through / store `SCHEMA_VERSION=4` + optional observers; ARCH-011 / APP-1 job door)  
+**Date:** 2026-09-22  
+**Version:** 1.4.0 (`main` + this slice: Application façade, APP-1 C.2 COMPLETE, native shell slice 1)  
 **Branch intent:** full-stack architecture on the frozen identity contract.
 
 Authority: `docs/PRODUCT.md` (v1 + 2026-09-19 production amendment), `docs/CONTRACTS.md`, `docs/SEM-ARCH-V1.4.md`.  
+**Completion matrix (current):** `docs/COMPLETION-MATRIX.md`.  
 Freeze audit: `docs/PRODUCTION-AUDIT.md` (historical freeze at `8403292`). Addendum below that file records later main.
 
 Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-ARCH-V1.4.md`.
@@ -12,7 +13,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 ## Hierarchy
 
 1. **Identity contract** — immutable. Unknown valid; cluster ≠ person; no silent auto-ID; native/emulated honesty. FaceKit is the only identity engine.
-2. **Production capabilities** — Home/review-ui, cancel, backup, integrity, person search, Canvas overlay, observation-table write-through (“schema v2” / `SCHEMA_VERSION=4`), stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks.
+2. **Production capabilities** — Home/review-ui, native shell slice 1, cancel/pause, backup, integrity, person search, Canvas overlay, observation-table write-through (“schema v2” / `SCHEMA_VERSION=4`), stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks.
 3. **Experimental / unavailable** — product-default `workers>1`, GPU when no EP, MSI+weights, 10k run. OCR/CLIP/pose are **PRODUCTIZED (optional)** when honesty probes pass (`docs/OPTIONAL-MODALITY-STATUS.md`); still non-identity.
 
 ## COMPLETE (verified in portable pytest)
@@ -20,7 +21,8 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 - Identity loop, FACE-002→005 evidence, S1 golden frozen
 - Incremental ingest, inbox (RO), identify vs persons
 - Home + review-ui; empty states; file missing; **Home sidebar shell** (Library | Workspace/Canvas | Inspector per R3 §4 IA); person search field
-- ARCH-011 / APP-1: `JobEngine` is the ingest door; second submit is `JobBusy`; Home job-control (folder/Resume off, Cancel on) does not lock Review / People / Search; Review is a Toplevel on Home’s root; Review reads use `busy_timeout=5000`
+- ARCH-011 / APP-1: `JobEngine` is the ingest door; second submit is `JobBusy`; Home job-control (folder/Pause/Resume/Cancel) does not lock Review / People / Search; Review is a Toplevel on Home’s root; Review reads use `busy_timeout=5000`
+- **APP-1 C.2:** real paused state; `pause`/`unpause`; cancel while paused; unpause continues same job; honest between-files granularity; `Application.pause_job`/`unpause_job`; Home + IPC + native shell controls
 - Cancel (GUI + SIGINT at file boundaries); cancelled ≠ completed; partial then cancelled
 - Backup/restore; integrity report; unfinished runs stamped interrupted (not completed)
 - `FaceKitProvider.load()` is the ingest load path (`ingest.load_app` wraps it)
@@ -35,11 +37,13 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 - GPU product path: `product_prefer_gpu` / Settings status from ORT EP listing (no fake GPU claims)
 - S7a/S7b; S6 memory
 - Process callback emits `KIND_QUEUED` before `KIND_STARTED`
+- R2 IPC probe (`semblon lab ipc-probe`)
 - Portable CI workflow (no weight download)
 
 ## PARTIAL
 
-- Identify/inbox as dedicated full pages (Inspector lists today; native shell pending R3 toolkit winner)
+- **Native production shell** — slice 1 (`semblon shell`): IA chrome + JobEngine via Application; deepen Inspector verbs / Canvas / state-triple cards
+- Identify/inbox as dedicated full pages (lists today; deepen on native shell)
 - Canvas Tk PhotoImage compositor (production Home-integrated overlay; pixel compositor still provisional)
 - OCR/CLIP/pose: product path ON when probes ready; not in `requirements.txt`; CLIP/pose may fail without local weights (recorded as error/unavailable items, not crashes)
 - GPU: honest EP detection + product `prefer_gpu` when CUDA/DirectML/TensorRT listed; listed ≠ smoke-tested
@@ -57,7 +61,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 ## DEFERRED
 
-Identify/inbox as dedicated full pages; vector DB; native production shell as default Home (authorized §I.5 / §8.7 — not yet shipped as replacement for Tk Home).
+Identify/inbox as dedicated full pages; vector DB; native shell as sole default entry (slice 1 present; Tk Home still compatibility).
 
 ## UNAVAILABLE
 
@@ -65,7 +69,15 @@ Identify/inbox as dedicated full pages; vector DB; native production shell as de
 - Legal licence sign-off
 - Clean-machine MSI
 
+## OWNER-AUTHORIZED / VERIFIED ON WINDOWS
+
+- APP-1 C.3 Windows live — **VERIFIED ON WINDOWS** 2026-09-22 (owner: pytest 20 passed; `semblon home` live ingest Pause/Resume states + Canvas during ingest). Prior §I.5 CLOSED retained. **APP-1 CLOSED.**
+- Toolkit bake-off · §8.7 shell decision · Ruled-out product wire — **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5).
+
+Evidence detail: `docs/COMPLETION-MATRIX.md`.
+
 ## Evidence
 
 Portable: `python -m pytest -q` (no InsightFace download).  
-Live dump / 10k / GPU / real webcam: not executed this run — human verification required.
+Windows APP-1 C.3: owner 2026-09-22 packet recorded in COMPLETION-MATRIX.  
+Live 10k / GPU smoke / real webcam: environment-limited where not yet run.

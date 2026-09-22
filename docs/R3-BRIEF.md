@@ -2,8 +2,8 @@
 
 **Status:** APPROVED (owner review 2026-09-21)  
 **Authority:** visual / interaction language for the future native shell. Does **not** replace `docs/SEM-ARCH-V1.4.md` as roadmap.  
-**Sequencing:** R2 IPC probe DONE · Artifacts 1–4 CANONICAL · human gates (C.3 / bake-off / §8.7 / Ruled-out) **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5) → **native production shell** against this brief.  
-**Still refused:** schema columns from this brief alone; Electron / Tauri / permanent Tk AppShell / CustomTkinter; second product Home.
+**Sequencing:** R2 IPC probe DONE · Artifacts 1–4 CANONICAL · human gates (C.3 / bake-off / §8.7 / Ruled-out) **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5) → native production shell **slice 1 shipped** (`semblon shell`); deepen against this brief.  
+**Still refused:** schema columns from this brief alone; Electron / Tauri / permanent Tk AppShell / CustomTkinter; promoting `review.html` to product UX; auto-promoting `tools/s8_toolkit_spike`.
 
 Governing constraints:
 
