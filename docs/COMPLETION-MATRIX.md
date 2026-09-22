@@ -23,10 +23,16 @@
 | buffalo_l redistribution | Legal | `docs/licenses.md` | Pack licence — not an engineering fake | **UNAVAILABLE** |
 =======
 | PERF ARM64 OpenCV | Load hang | `docs/PERF-P1-ARM64.md` | Owner/machine native load when unblocked | **BLOCKED** (perf track; not APP-1) |
+<<<<<<< HEAD
 | Multi-worker default | Experimental | workers default 1 | Measure before product default | **EXPERIMENTAL** |
 | MSI code (no weights) | WiX project + stage/build/bootstrap + docs/tests | `packaging/msi/`, `tools/msi/`, `docs/PACKAGING.md` | Owner: `wix` + `tools\msi\build-msi.ps1` on Windows; smoke `packaging/msi/smoke-checklist.md` | **PARTIAL** — engineering complete; Windows `wix build`/sign not run in this agent |
 | buffalo_l in MSI / redistribution | Legal block | `docs/licenses.md` | Pack licence — do not fake | **UNAVAILABLE** |
 >>>>>>> ba19528 (feat(packaging): WiX code MSI without buffalo_l weights)
+=======
+| Multi-worker / scale | Hash workers hardened; default **1**; harness `default_gate` | `docs/PERF-WORKERS-HARNESS.md`; `tests/test_ingest_workers.py`; cancel/pause + integrity tests | Raise product default only after owner Windows `default_gate.verdict=PASS` + separate PR | **COMPLETE** (default=1) |
+| MSI + weights | Unavailable | licenses | Legal + packaging | **UNAVAILABLE** |
+>>>>>>> cf6ba88 (feat(ingest): complete hash workers path with default_gate honesty)
+>>>>>>> 9413d34 (feat(ingest): complete hash workers path with default_gate honesty)
 
 ## Production shell — corrected (PR #54 + #65)
 
