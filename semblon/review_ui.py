@@ -1,7 +1,9 @@
-"""S8 Interactive Review slice — tkinter over existing review APIs.
+"""Interactive Review — tkinter over existing review APIs.
 
 Clusters are evidence. People exist only after an explicit Name action.
 Does not retune clustering. Does not identify. Static review.html stays read-only.
+
+UX presentation only (Rescue §§8–9). Identity / apply_* semantics unchanged.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ import json
 import sqlite3
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
 
 from semblon.export import STRONG_MIN_INTRA
@@ -32,7 +35,24 @@ THUMB_MAX = 96
 _FRAME_CACHE_MAX = 64
 _CROP_CACHE_MAX = 256
 
-tk = ttk = messagebox = simpledialog = None
+# semblon.ui_tokens not present yet — Segoe UI sizes match Home / UX Rescue spec.
+_FONT_UI = ("Segoe UI", 10)
+_FONT_UI_BOLD = ("Segoe UI", 10, "bold")
+_FONT_HEADLINE = ("Segoe UI", 14, "bold")
+_FONT_BANNER = ("Segoe UI", 10)
+
+REVIEW_WINDOW_TITLE = "Review faces"
+REVIEW_BANNER = (
+    "Semblon has grouped faces it thinks belong to the same person. "
+    "You decide the name."
+)
+EMPTY_ENTRY_HEADLINE = "Nothing to review yet"
+EMPTY_ENTRY_BODY = (
+    "Add a photo folder first. Semblon will find and group faces for you to review here."
+)
+NAME_SUCCESS_STATUS = "Named. Semblon will remember this face."
+
+tk = ttk = messagebox = simpledialog = filedialog = None
 
 # Bounded LRU caches for decoded frames and PNG crops (process-local).
 _frame_cache: OrderedDict[tuple, object] = OrderedDict()
@@ -42,10 +62,11 @@ _frame_lock = threading.Lock()
 
 def _ensure_tk() -> None:
     """Load tkinter only when the window runs. Board/API stay headless."""
-    global tk, ttk, messagebox, simpledialog
+    global tk, ttk, messagebox, simpledialog, filedialog
     if tk is not None:
         return
     import tkinter as _tk
+    from tkinter import filedialog as _fd
     from tkinter import messagebox as _mb
     from tkinter import simpledialog as _sd
     from tkinter import ttk as _ttk
@@ -54,10 +75,19 @@ def _ensure_tk() -> None:
     ttk = _ttk
     messagebox = _mb
     simpledialog = _sd
+    filedialog = _fd
 
 
 class ReviewUiError(ValueError):
     pass
+
+
+class ReviewExpectedEmpty(ReviewUiError):
+    """No store or no runs yet — coaching empty state, not an Error dialog."""
+
+    def __init__(self, reason: str):
+        self.reason = reason  # "no_store" | "no_runs"
+        super().__init__(reason)
 
 
 def _ro_connect(store: Path) -> sqlite3.Connection:
@@ -82,20 +112,27 @@ def resolve_run_id(store: Path, run_id: str | None) -> str:
     """Use --run when given; otherwise the latest run that still has faces.
 
     Empty incremental runs (FACE-005 skip-all) must not hide a prior populated run.
+    Expected empty (no store / no runs) raises ReviewExpectedEmpty — not a hard Error.
     """
     store = Path(store)
     if not store.is_file():
-        raise ReviewUiError(f"store not found: {store}")
+        raise ReviewExpectedEmpty("no_store")
     if run_id:
-        conn = _ro_connect(store)
-        row = conn.execute("SELECT 1 FROM runs WHERE run_id=?", (run_id,)).fetchone()
-        conn.close()
+        try:
+            conn = _ro_connect(store)
+            row = conn.execute("SELECT 1 FROM runs WHERE run_id=?", (run_id,)).fetchone()
+            conn.close()
+        except sqlite3.Error as e:
+            raise ReviewUiError(f"couldn't read the library: {e}") from e
         if row is None:
             raise ReviewUiError(f"unknown run: {run_id}")
         return run_id
-    rid = latest_run_id(store, with_faces=True) or latest_run_id(store)
+    try:
+        rid = latest_run_id(store, with_faces=True) or latest_run_id(store)
+    except sqlite3.Error as e:
+        raise ReviewUiError(f"couldn't read the library: {e}") from e
     if rid is None:
-        raise ReviewUiError("store has no runs")
+        raise ReviewExpectedEmpty("no_runs")
     return rid
 
 
@@ -571,8 +608,42 @@ def apply_note(store: Path, run_id: str, item: dict, text: str) -> dict:
     return note_subject(store, run_id, face_id=fid, text=text)
 
 
-def item_label(item: dict) -> str:
+def _photo_count_phrase(n: int) -> str:
+    return f"{n} photo" if n == 1 else f"{n} photos"
+
+
+def item_label(item: dict, *, detail: bool = False) -> str:
+    """List label for a board item. Soft by default; detail keeps STRONG/ids/min_intra."""
     note_tag = " [note]" if item.get("has_note") else ""
+    if detail:
+        return _item_label_detail(item, note_tag=note_tag)
+    return _item_label_soft(item, note_tag=note_tag)
+
+
+def _item_label_soft(item: dict, *, note_tag: str = "") -> str:
+    if item["kind"] == "track":
+        name = _basename(item.get("path") or "") or "video"
+        named = (
+            f" — {', '.join(item['person_names'])}"
+            if item["named"]
+            else ""
+        )
+        return (
+            f"Video group · {name} · {_photo_count_phrase(item['face_count'])}"
+            f"{named}{note_tag}"
+        )
+    if item["kind"] == "unassigned":
+        if item["named"]:
+            return f"Single face — {item['person_names'][0]}{note_tag}"
+        return f"Single face · needs a name{note_tag}"
+    # cluster — hide band / id / min_intra in normal view
+    photos = _photo_count_phrase(item["face_count"])
+    if item["named"]:
+        return f"{', '.join(item['person_names'])} · {photos}{note_tag}"
+    return f"Likely the same person · {photos}{note_tag}"
+
+
+def _item_label_detail(item: dict, *, note_tag: str = "") -> str:
     if item["kind"] == "track":
         name = _basename(item.get("path") or "")
         tag = f" named:{','.join(item['person_names'])}" if item["named"] else " unnamed"
@@ -592,6 +663,30 @@ def item_label(item: dict) -> str:
     )
     mi = "—" if item["min_intra"] is None else f"{item['min_intra']:.3f}"
     return f"{band} {cid}  n={item['face_count']}  min_intra={mi}{named}{note_tag}"
+
+
+def review_status_text(board: dict, *, detail: bool = False) -> str:
+    """Primary status for the Review banner area."""
+    clusters = [it for it in board.get("items") or [] if it["kind"] == "cluster"]
+    n = len(clusters)
+    named = sum(1 for it in clusters if it.get("named"))
+    if detail:
+        c = board.get("counts") or {}
+        run_id = board.get("run_id") or ""
+        store = board.get("store") or ""
+        return (
+            f"store={store}  run={run_id}  "
+            f"review={c.get('review_required', 0)} strong={c.get('strong', 0)} "
+            f"unassigned={c.get('unassigned', 0)} tracks={c.get('tracks', 0)} "
+            f"untracked={c.get('untracked', 0)} "
+            f"persons={c.get('named_persons', 0)} "
+            f"decisions={c.get('decisions', 0)}"
+        )
+    if n == 0:
+        return "No groups to review yet."
+    if named == 0:
+        return f"{n} groups to review. None named yet."
+    return f"{named} of {n} groups named."
 
 
 def _actions_for_kind(kind: str) -> dict[str, bool]:
@@ -637,33 +732,119 @@ def _actions_for_kind(kind: str) -> dict[str, bool]:
 class ReviewApp:
     """Minimal tkinter surface. All mutations go through review.py."""
 
-    def __init__(self, store: Path, run_id: str, *, parent=None):
+    def __init__(
+        self,
+        store: Path,
+        run_id: str | None,
+        *,
+        parent=None,
+        empty_reason: str | None = None,
+        on_add_folder: Callable[[], None] | None = None,
+    ):
         _ensure_tk()
         self.store = Path(store)
         self.run_id = run_id
+        self.empty_reason = empty_reason
+        self.on_add_folder = on_add_folder
         self._tracks_cache: dict | None = None
-        self.board = load_board(self.store, self.run_id)
-        self._tracks_cache = self.board.get("_tracks_cache")
         self._photos: list = []
         self._selected_faces: set[str] = set()
         self._draw_gen = 0
+        self._detail_mode = False
+        self.board: dict = {
+            "items": [],
+            "counts": {},
+            "empty_state": "",
+            "store": str(self.store),
+            "run_id": run_id or "",
+        }
 
         self.root, self._owns_loop = make_review_root(parent)
-        self.root.title(f"Semblon Review — {self.run_id}")
+        self.root.title(REVIEW_WINDOW_TITLE)
         self.root.geometry("980x640")
 
+        if empty_reason is not None or run_id is None:
+            self._build_entry_empty()
+            return
+
+        self.board = load_board(self.store, self.run_id)
+        self._tracks_cache = self.board.get("_tracks_cache")
+        self._build_review_chrome()
+        self.reload()
+
+    def _build_entry_empty(self) -> None:
+        """§8 — coaching empty state when there is no store / no runs."""
+        frame = ttk.Frame(self.root, padding=28)
+        frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(
+            frame, text=EMPTY_ENTRY_HEADLINE, font=_FONT_HEADLINE
+        ).pack(anchor=tk.W)
+        ttk.Label(
+            frame,
+            text=EMPTY_ENTRY_BODY,
+            font=_FONT_UI,
+            wraplength=560,
+        ).pack(anchor=tk.W, pady=(10, 20))
+        row = ttk.Frame(frame)
+        row.pack(anchor=tk.W)
+        ttk.Button(
+            row, text="Add a photo folder", command=self._do_add_folder
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(row, text="Close", command=self.root.destroy).pack(side=tk.LEFT)
+
+    def _do_add_folder(self) -> None:
+        cb = self.on_add_folder
+        if cb is None:
+            master = getattr(self.root, "master", None)
+            attached = getattr(master, "semblon_add_folder", None) if master else None
+            if callable(attached):
+                cb = attached
+        if cb is not None:
+            self.root.destroy()
+            cb()
+            return
+        folder = filedialog.askdirectory(
+            title="Choose a folder of photos for Semblon", parent=self.root
+        )
+        if folder:
+            messagebox.showinfo(
+                REVIEW_WINDOW_TITLE,
+                (
+                    f"Folder selected:\n{folder}\n\n"
+                    "Open Semblon Home and add this folder to process photos, "
+                    "then reopen Review."
+                ),
+                parent=self.root,
+            )
+        else:
+            messagebox.showinfo(
+                REVIEW_WINDOW_TITLE,
+                "Add a photo folder from Semblon Home, then open Review again.",
+                parent=self.root,
+            )
+        self.root.destroy()
+
+    def _build_review_chrome(self) -> None:
         top = ttk.Frame(self.root, padding=6)
         top.pack(fill=tk.X)
+        ttk.Label(top, text=REVIEW_BANNER, font=_FONT_BANNER, wraplength=900).pack(
+            anchor=tk.W
+        )
+        run_line = ttk.Frame(top)
+        run_line.pack(anchor=tk.W, fill=tk.X, pady=(4, 0))
         ttk.Label(
-            top,
-            text=(
-                "S8 Interactive Review. Clusters are evidence. "
-                "STRONG is not a person until you Name."
-            ),
-        ).pack(anchor=tk.W)
-        self.empty_state = ttk.Label(top, text="")
+            run_line, text=f"Run {self.run_id}", font=_FONT_UI
+        ).pack(side=tk.LEFT)
+        self._detail_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            run_line,
+            text="Details",
+            variable=self._detail_var,
+            command=self._toggle_details,
+        ).pack(side=tk.RIGHT)
+        self.empty_state = ttk.Label(top, text="", font=_FONT_UI)
         self.empty_state.pack(anchor=tk.W)
-        self.status = ttk.Label(top, text="")
+        self.status = ttk.Label(top, text="", font=_FONT_UI_BOLD)
         self.status.pack(anchor=tk.W)
 
         body = ttk.Panedwindow(self.root, orient=tk.HORIZONTAL)
@@ -674,12 +855,14 @@ class ReviewApp:
         body.add(left, weight=1)
         body.add(right, weight=3)
 
-        ttk.Label(left, text="Clusters / tracks / unassigned").pack(anchor=tk.W)
+        ttk.Label(left, text="Groups", font=_FONT_UI).pack(anchor=tk.W)
         self.listbox = tk.Listbox(left, exportselection=False)
         self.listbox.pack(fill=tk.BOTH, expand=True)
         self.listbox.bind("<<ListboxSelect>>", self._on_select)
 
-        ttk.Label(right, text="Faces (click to toggle for Split)").pack(anchor=tk.W)
+        ttk.Label(right, text="Faces (click to toggle for Split)", font=_FONT_UI).pack(
+            anchor=tk.W
+        )
         self.canvas = tk.Canvas(right, background="#222", height=420)
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.canvas.bind("<Button-1>", self._on_canvas_click)
@@ -701,7 +884,9 @@ class ReviewApp:
         )
         self.btn_rule_out.pack(side=tk.LEFT, padx=2)
         ttk.Button(actions, text="Reload", command=self.reload).pack(side=tk.LEFT, padx=2)
-        ttk.Button(actions, text="Close", command=self.root.destroy).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(actions, text="Close", command=self.root.destroy).pack(
+            side=tk.RIGHT, padx=2
+        )
         self._btn_map = {
             "name": self.btn_name,
             "merge": self.btn_merge,
@@ -719,36 +904,44 @@ class ReviewApp:
         self.root.bind("s", lambda _e: self._do_split())
         self.root.bind("S", lambda _e: self._do_split())
 
-        self.reload()
+    def _toggle_details(self) -> None:
+        self._detail_mode = bool(self._detail_var.get())
+        self._refresh_list_and_status()
+
+    def _refresh_list_and_status(self) -> None:
+        sel = self.listbox.curselection()
+        self.listbox.delete(0, tk.END)
+        for item in self.board["items"]:
+            self.listbox.insert(tk.END, item_label(item, detail=self._detail_mode))
+        if sel:
+            try:
+                self.listbox.selection_set(sel[0])
+            except tk.TclError:
+                pass
+        detail_bits = []
+        if self._detail_mode and self.board.get("empty_state"):
+            detail_bits.append(self.board["empty_state"])
+        self.empty_state.config(text="  ".join(detail_bits))
+        self.status.config(
+            text=review_status_text(self.board, detail=self._detail_mode)
+        )
 
     def reload(self, *, invalidate_tracks: bool = True) -> None:
+        if self.empty_reason is not None or self.run_id is None:
+            return
         if invalidate_tracks:
             self._tracks_cache = None
         self.board = load_board(
             self.store, self.run_id, tracks_cache=self._tracks_cache
         )
         self._tracks_cache = self.board.get("_tracks_cache")
-        self.listbox.delete(0, tk.END)
-        for item in self.board["items"]:
-            self.listbox.insert(tk.END, item_label(item))
-        c = self.board["counts"]
-        self.empty_state.config(text=self.board.get("empty_state") or "")
-        self.status.config(
-            text=(
-                f"store={self.store}  run={self.run_id}  "
-                f"review={c['review_required']} strong={c['strong']} "
-                f"unassigned={c['unassigned']} tracks={c.get('tracks', 0)} "
-                f"untracked={c.get('untracked', 0)} "
-                f"persons={c['named_persons']} "
-                f"decisions={c['decisions']}"
-            )
-        )
+        self._refresh_list_and_status()
         self._selected_faces.clear()
         self._update_action_buttons()
         self._set_empty_canvas(
-            "Nothing to review on this run. Open a populated run or process a folder."
+            "Nothing to review on this run. Add a photo folder, then open Review again."
             if not self.board["items"]
-            else "Select a cluster, track, or unassigned face."
+            else "Select a group, track, or single face."
         )
 
     def _set_empty_canvas(self, text: str) -> None:
@@ -762,7 +955,13 @@ class ReviewApp:
             flags = _actions_for_kind("")
             if self.board["items"]:
                 # No selection: Name/Merge may still open dialogs that pick items.
-                flags = {"name": False, "merge": True, "split": False, "ignore": False, "note": False}
+                flags = {
+                    "name": False,
+                    "merge": True,
+                    "split": False,
+                    "ignore": False,
+                    "note": False,
+                }
         else:
             flags = _actions_for_kind(item["kind"])
         for key, btn in self._btn_map.items():
@@ -779,7 +978,7 @@ class ReviewApp:
         self._selected_faces.clear()
         self._update_action_buttons()
         if item is None:
-            self._set_empty_canvas("Select a cluster, track, or unassigned face.")
+            self._set_empty_canvas("Select a group, track, or single face.")
             return
         self._draw_faces(item["members"])
 
@@ -789,7 +988,7 @@ class ReviewApp:
         self.canvas.delete("all")
         self._photos = []
         if not members:
-            self._set_empty_canvas("Select a cluster, track, or unassigned face.")
+            self._set_empty_canvas("Select a group, track, or single face.")
             return
         # Placeholders first; fill crops asynchronously.
         x, y = 8, 8
@@ -867,7 +1066,7 @@ class ReviewApp:
                     return
 
     def _err(self, e: Exception) -> None:
-        messagebox.showerror("Semblon Review", str(e), parent=self.root)
+        messagebox.showerror("Couldn't do that", str(e), parent=self.root)
 
     def _item_for_face_action(self) -> dict | None:
         item = self._current_item()
@@ -886,12 +1085,7 @@ class ReviewApp:
         if item is None:
             self._err(ReviewUiError("select a cluster or unassigned face"))
             return
-        prompt = "Display name (creates a new person; STRONG is not auto-named):"
-        if item["kind"] == "cluster" and item["band"] == "strong" and not item["named"]:
-            prompt = (
-                "STRONG cluster — Name creates a person (not automatic).\n"
-                "Display name:"
-            )
+        prompt = "What do you call this person?"
         name = simpledialog.askstring("Name person", prompt, parent=self.root)
         if not name:
             return
@@ -901,24 +1095,27 @@ class ReviewApp:
             self._err(e)
             return
         self.reload(invalidate_tracks=False)
+        self.status.config(text=NAME_SUCCESS_STATUS)
 
     def _do_merge(self) -> None:
         clusters = [it for it in self.board["items"] if it["kind"] == "cluster"]
         if len(clusters) < 2:
             self._err(ReviewUiError("need at least two clusters to merge"))
             return
-        labels = [item_label(it) for it in clusters]
+        labels = [item_label(it, detail=self._detail_mode) for it in clusters]
         dlg = tk.Toplevel(self.root)
-        dlg.title("Merge clusters")
+        dlg.title("Merge groups")
         dlg.transient(self.root)
-        ttk.Label(dlg, text="Survivor (kept cluster id):").pack(anchor=tk.W, padx=6, pady=4)
+        ttk.Label(dlg, text="Keep this group:", font=_FONT_UI).pack(
+            anchor=tk.W, padx=6, pady=4
+        )
         survivor_var = tk.StringVar(value=labels[0])
         ttk.Combobox(
             dlg, textvariable=survivor_var, values=labels, state="readonly", width=80
         ).pack(fill=tk.X, padx=6, pady=2)
-        ttk.Label(dlg, text="Donors (Ctrl+click multi-select):").pack(
-            anchor=tk.W, padx=6, pady=4
-        )
+        ttk.Label(
+            dlg, text="Merge this into it (Ctrl+click multi-select):", font=_FONT_UI
+        ).pack(anchor=tk.W, padx=6, pady=4)
         lb = tk.Listbox(dlg, selectmode=tk.EXTENDED, width=80, height=14)
         for lab in labels:
             lb.insert(tk.END, lab)
@@ -927,12 +1124,18 @@ class ReviewApp:
         def ok():
             survivor_label = survivor_var.get()
             if survivor_label not in labels:
-                messagebox.showerror("Merge", "pick a survivor", parent=dlg)
+                messagebox.showerror(
+                    "Couldn't merge", "Pick the group to keep.", parent=dlg
+                )
                 return
             survivor_i = labels.index(survivor_label)
             sel = [i for i in lb.curselection() if i != survivor_i]
             if not sel:
-                messagebox.showerror("Merge", "select at least one donor", parent=dlg)
+                messagebox.showerror(
+                    "Couldn't merge",
+                    "Select at least one group to merge into it.",
+                    parent=dlg,
+                )
                 return
             ids = [clusters[survivor_i]["cluster_id"]] + [
                 clusters[i]["cluster_id"] for i in sel
@@ -940,13 +1143,15 @@ class ReviewApp:
             try:
                 apply_merge(self.store, self.run_id, ids)
             except ReviewError as e:
-                messagebox.showerror("Merge", str(e), parent=dlg)
+                messagebox.showerror("Couldn't merge", str(e), parent=dlg)
                 return
             dlg.destroy()
             self.reload(invalidate_tracks=True)
 
         ttk.Button(dlg, text="Merge", command=ok).pack(side=tk.LEFT, padx=6, pady=6)
-        ttk.Button(dlg, text="Cancel", command=dlg.destroy).pack(side=tk.RIGHT, padx=6, pady=6)
+        ttk.Button(dlg, text="Cancel", command=dlg.destroy).pack(
+            side=tk.RIGHT, padx=6, pady=6
+        )
 
     def _do_split(self) -> None:
         item = self._current_item()
@@ -1054,9 +1259,27 @@ def run_review_ui(
     run_id: str | None = None,
     *,
     parent=None,
+    on_add_folder: Callable[[], None] | None = None,
 ) -> dict:
+    """Open Review. Expected empty (no store / no runs) shows coaching UI, not Error."""
     store_path = Path(store) if store is not None else default_store_path()
-    rid = resolve_run_id(store_path, run_id)
-    app = ReviewApp(store_path, rid, parent=parent)
+    try:
+        rid = resolve_run_id(store_path, run_id)
+    except ReviewExpectedEmpty as empty:
+        app = ReviewApp(
+            store_path,
+            None,
+            parent=parent,
+            empty_reason=empty.reason,
+            on_add_folder=on_add_folder,
+        )
+        app.run()
+        store_out = (
+            str(store_path.resolve()) if store_path.exists() else str(store_path)
+        )
+        return {"store": store_out, "run_id": None, "empty": True, "reason": empty.reason}
+    app = ReviewApp(
+        store_path, rid, parent=parent, on_add_folder=on_add_folder
+    )
     app.run()
     return {"store": str(store_path.resolve()), "run_id": rid}

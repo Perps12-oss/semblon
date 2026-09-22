@@ -11,14 +11,18 @@ import pytest
 from semblon.cluster import cluster_run
 from semblon.identify import identify_face
 from semblon.review_ui import (
+    ReviewExpectedEmpty,
     ReviewUiError,
     apply_ignore,
     apply_merge,
     apply_name,
     apply_split,
     crop_png_b64,
+    item_label,
     load_board,
     resolve_run_id,
+    review_status_text,
+    run_review_ui,
 )
 from semblon.store import init_db
 
@@ -77,6 +81,127 @@ def test_resolve_run_defaults_to_latest(tmp_path):
     assert resolve_run_id(store, "r1") == "r1"
     with pytest.raises(ReviewUiError, match="unknown run"):
         resolve_run_id(store, "nope")
+
+
+def test_resolve_run_expected_empty_no_store(tmp_path):
+    missing = tmp_path / "missing.sqlite"
+    with pytest.raises(ReviewExpectedEmpty) as ei:
+        resolve_run_id(missing, None)
+    assert ei.value.reason == "no_store"
+
+
+def test_resolve_run_expected_empty_no_runs(tmp_path):
+    store = tmp_path / "s.sqlite"
+    conn = sqlite3.connect(str(store))
+    conn.execute("PRAGMA foreign_keys=ON")
+    init_db(conn)
+    conn.commit()
+    conn.close()
+    with pytest.raises(ReviewExpectedEmpty) as ei:
+        resolve_run_id(store, None)
+    assert ei.value.reason == "no_runs"
+
+
+def test_run_review_ui_expected_empty_opens_coaching_not_error(tmp_path, monkeypatch):
+    """§8 — no store → Review window with empty coach, not Error dialog."""
+
+    created = {}
+
+    class FakeApp:
+        def __init__(self, store, run_id, *, parent=None, empty_reason=None, on_add_folder=None):
+            created["store"] = store
+            created["run_id"] = run_id
+            created["empty_reason"] = empty_reason
+            created["on_add_folder"] = on_add_folder
+
+        def run(self):
+            created["ran"] = True
+
+    monkeypatch.setattr("semblon.review_ui.ReviewApp", FakeApp)
+    missing = tmp_path / "gone.sqlite"
+    out = run_review_ui(store=missing)
+    assert out["empty"] is True
+    assert out["run_id"] is None
+    assert out["reason"] == "no_store"
+    assert created["empty_reason"] == "no_store"
+    assert created["run_id"] is None
+    assert created["ran"] is True
+
+
+def test_run_review_ui_with_runs_uses_resolved_id(tmp_path, monkeypatch):
+    store = tmp_path / "s.sqlite"
+    _seed(store)
+    created = {}
+
+    class FakeApp:
+        def __init__(self, store, run_id, *, parent=None, empty_reason=None, on_add_folder=None):
+            created["run_id"] = run_id
+            created["empty_reason"] = empty_reason
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr("semblon.review_ui.ReviewApp", FakeApp)
+    out = run_review_ui(store=store)
+    assert out.get("empty") is not True
+    assert out["run_id"] == "r1"
+    assert created["run_id"] == "r1"
+    assert created["empty_reason"] is None
+
+
+def test_item_label_soft_hides_strong_and_ids():
+    cluster = {
+        "kind": "cluster",
+        "cluster_id": "abcdef12-zzzz",
+        "band": "strong",
+        "face_count": 3,
+        "min_intra": 0.62,
+        "named": False,
+        "person_names": [],
+        "has_note": False,
+    }
+    soft = item_label(cluster)
+    assert "Likely the same person" in soft
+    assert "3 photos" in soft
+    assert "STRONG" not in soft
+    assert "abcdef12" not in soft
+    assert "min_intra" not in soft
+    detail = item_label(cluster, detail=True)
+    assert detail.startswith("STRONG")
+    assert "min_intra=0.620" in detail
+
+
+def test_review_status_text_named_progress():
+    board = {
+        "store": "/x",
+        "run_id": "r1",
+        "items": [
+            {"kind": "cluster", "named": False},
+            {"kind": "cluster", "named": True},
+            {"kind": "unassigned", "named": False},
+        ],
+        "counts": {
+            "review_required": 1,
+            "strong": 1,
+            "unassigned": 1,
+            "tracks": 0,
+            "untracked": 0,
+            "named_persons": 1,
+            "decisions": 0,
+        },
+    }
+    assert review_status_text(board) == "1 of 2 groups named."
+    none_named = {
+        **board,
+        "items": [
+            {"kind": "cluster", "named": False},
+            {"kind": "cluster", "named": False},
+        ],
+    }
+    assert review_status_text(none_named) == "2 groups to review. None named yet."
+    detail = review_status_text(board, detail=True)
+    assert "strong=" in detail
+    assert "unassigned=" in detail
 
 
 def test_empty_state_line_names_populated_run(tmp_path):
@@ -409,7 +534,10 @@ def test_board_renders_derived_tracks_not_media_bags(tmp_path):
     assert {it["face_id"] for it in singles} == {"fv3", "fs1"}
     from semblon.review_ui import apply_name, item_label
 
-    assert item_label(track).startswith("TRACK")
+    soft = item_label(track)
+    assert "Video group" in soft
+    assert "TRACK" not in soft
+    assert item_label(track, detail=True).startswith("TRACK")
     named = apply_name(store, "rg", track, "Ada")
     assert named["display_name"] == "Ada"
     assert named["faces_named"] == 2

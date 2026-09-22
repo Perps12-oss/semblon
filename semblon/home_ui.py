@@ -45,6 +45,67 @@ from semblon.progress import (
     stills_percent,
 )
 
+# UX Rescue §1 tokens — soft import so Home ships if Foundation lands later.
+try:
+    from semblon.ui_tokens import (
+        ACCENT,
+        BODY,
+        BODY_STRONG,
+        BORDER_SUBTLE,
+        CAPTION,
+        DISPLAY,
+        H1,
+        H2,
+        PRIMARY_HEIGHT,
+        SECONDARY_HEIGHT,
+        SP_8,
+        SP_12,
+        SP_16,
+        SP_24,
+        SP_32,
+        SURFACE_PRIMARY,
+        SURFACE_SECONDARY,
+        TEXT_DISABLED,
+        TEXT_PRIMARY,
+        TEXT_SECONDARY,
+        TERTIARY_HEIGHT,
+    )
+except ImportError:  # pragma: no cover - mid-merge stub
+    ACCENT = "#0A6CFF"
+    BODY = ("Segoe UI", 11)
+    BODY_STRONG = ("Segoe UI", 11, "bold")
+    BORDER_SUBTLE = "#E0E0E0"
+    CAPTION = ("Segoe UI", 9)
+    DISPLAY = ("Segoe UI", 28, "bold")
+    H1 = ("Segoe UI", 20, "bold")
+    H2 = ("Segoe UI", 16, "bold")
+    PRIMARY_HEIGHT = 40
+    SECONDARY_HEIGHT = 32
+    SP_8 = 8
+    SP_12 = 12
+    SP_16 = 16
+    SP_24 = 24
+    SP_32 = 32
+    SURFACE_PRIMARY = "#FFFFFF"
+    SURFACE_SECONDARY = "#F5F5F5"
+    TEXT_DISABLED = "#A0A0A0"
+    TEXT_PRIMARY = "#1A1A1A"
+    TEXT_SECONDARY = "#6B6B6B"
+    TERTIARY_HEIGHT = 28
+
+# Idle status (UX Rescue §10) — no Store: path.
+HOME_IDLE_STATUS = "Ready — choose a folder of photos to begin."
+
+# Soft Inspector defaults (UX Rescue §5) — architecture strings live in Advanced.
+INSPECTOR_HOME_EMPTY = (
+    "Your results will appear here",
+    "Add a photo folder to get started.",
+)
+INSPECTOR_EMPTY = (
+    "Nothing selected",
+    "Select a photo, person, or result to see more details.",
+)
+
 # Tests and callers import the status line from home_ui.
 __all__ = [
     "HOME_NAV",
@@ -66,11 +127,12 @@ from semblon.watchdog import Watchdog
 # Base Home observers (always). Product path may append OCR/CLIP/pose when ready.
 HOME_OBSERVERS = "face,color,object"
 
-# R3-BRIEF §4 information architecture (nav ids → label).
+# R3-BRIEF §4 information architecture (nav ids → display label).
+# Route IDs unchanged; UX Rescue §4 renames Unknown / Activity for users.
 HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ("LIBRARY", (("home", "Home"), ("photos", "Photos"), ("videos", "Videos"))),
-    ("PEOPLE", (("people", "People"), ("unknown", "Unknown"))),
-    ("WORK", (("activity", "Activity"),)),
+    ("PEOPLE", (("people", "People"), ("unknown", "To review"))),
+    ("ACTIVITY", (("activity", "Recent activity"),)),
 )
 
 # Job control, not an application lock. These stay usable while ingest runs.
@@ -1292,15 +1354,9 @@ class HomeApp:
 
         try:
             # Toplevel on Home's root. Home keeps pumping events. No nested mainloop.
-            run_review_ui(
-                store=self.store,
-                run_id=self._last_run_id,
-                parent=self.root,
-                on_add_folder=self._choose_folder,
-            )
+            run_review_ui(store=self.store, run_id=self._last_run_id, parent=self.root)
         except ReviewUiError as e:
-            # Expected empty (no store / no runs) is handled inside run_review_ui.
-            messagebox.showerror("Couldn't open Review", str(e))
+            messagebox.showerror("Semblon", str(e))
 
     def _open_html(self) -> None:
         path = self._last_review_html
