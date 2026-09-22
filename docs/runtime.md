@@ -130,6 +130,8 @@ Not FACE-000. Not an S1 correctness gate. Full table: `docs/PERF-P0-BASELINE.md`
 
 Semblon identity path **not** timed natively. Isolated env proved ARM64 Python + ORT; OpenCV load hangs. Full write-up: `docs/PERF-P1-ARM64.md`. Does not block ingest pipeline engineering on the S1 (x64) path.
 
+In-repo (2026-09-22): portable PE inspect + fail-fast import/DLL probes (`semblon lab opencv --layout` / `--pe`, `tools/_perf_p1_load_cv2.py`, `tools/perf_p1_arm64_repro.ps1`). **Not** VERIFIED ON WINDOWS; do not invent speedup.
+
 ```json
 {
   "recorded_at": "2026-09-17",

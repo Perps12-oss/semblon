@@ -77,8 +77,34 @@ def main(argv: list[str] | None = None) -> int:
     integ.add_argument("--store", required=True, type=Path)
     mods = lab_sub.add_parser("models", help="report local buffalo_l weights (does not download)")
     lab_sub.add_parser("providers", help="list observation providers and availability")
-    oc = lab_sub.add_parser("opencv", help="timed OpenCV import probe (does not hang the suite)")
-    oc.add_argument("--timeout", type=float, default=8.0)
+    oc = lab_sub.add_parser(
+        "opencv",
+        help="timed OpenCV import / PE layout probe (fail-fast; does not hang the suite)",
+    )
+    oc.add_argument("--timeout", type=float, default=8.0, help="import timeout seconds (fail-fast)")
+    oc.add_argument(
+        "--pe",
+        type=Path,
+        default=None,
+        help="PE-only inspect of a .pyd/.dll (no import / LoadLibrary)",
+    )
+    oc.add_argument(
+        "--layout",
+        action="store_true",
+        help="PE-check default ARM64 OpenCV build layout (no LoadLibrary)",
+    )
+    oc.add_argument(
+        "--bin",
+        type=Path,
+        default=None,
+        help="with --layout: OpenCV DLL directory (or SEMBLON_ARM64_OPENCV_BIN)",
+    )
+    oc.add_argument(
+        "--pyd",
+        type=Path,
+        default=None,
+        help="with --layout: cv2 .pyd path (or SEMBLON_ARM64_OPENCV_PYD)",
+    )
     lov = lab_sub.add_parser(
         "live-overlay",
         help="Tk live multi-person overlay (WIRED; never assigns person_id; Home has Live…)",
@@ -554,10 +580,25 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "lab" and args.labcmd == "opencv":
-        from semblon.opencv_probe import probe_opencv
+        from semblon.opencv_probe import (
+            inspect_arm64_opencv_layout,
+            inspect_opencv_binding,
+            probe_opencv,
+        )
 
-        rec = probe_opencv(timeout_s=args.timeout)
+        if args.pe is not None:
+            rec = inspect_opencv_binding(args.pe)
+        elif args.layout:
+            rec = inspect_arm64_opencv_layout(
+                bin_dir=args.bin,
+                pyd_path=args.pyd,
+            )
+        else:
+            rec = probe_opencv(timeout_s=args.timeout)
         print(json.dumps(rec, indent=2))
+        # layout/pe-only: exit 0 when the probe itself ran (missing files are data)
+        if args.pe is not None or args.layout:
+            return 0 if rec.get("status") in {"ok", "layout", "error"} else 2
         return 0 if rec.get("ok") else 2
 
     if args.cmd == "lab" and args.labcmd == "live-overlay":
