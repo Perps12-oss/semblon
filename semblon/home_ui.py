@@ -647,10 +647,12 @@ class HomeApp:
 
         from semblon.canvas import CanvasWorkspace
 
+        # Defer store load: CanvasWorkspace.reload → on_select must not run before
+        # Inspector widgets exist, and before this attribute assignment completes.
         self._canvas_ws = CanvasWorkspace(
             work,
-            store=self.store,
-            run_id=self._last_run_id,
+            store=None,
+            run_id=None,
             on_select=self._on_canvas_select,
             show_chrome=True,
         )
@@ -1003,8 +1005,13 @@ class HomeApp:
             items_from_media_board,
         )
 
+        # Guard init race: Canvas may fire on_select during construction / early reload
+        # before Inspector widgets and _canvas_ws assignment are ready.
+        if not hasattr(self, "_sel_list") or not hasattr(self, "_inspector"):
+            return
         title = "Selection" if media_id else "Canvas"
-        board = getattr(self._canvas_ws, "board", None) or {}
+        ws = getattr(self, "_canvas_ws", None)
+        board = (getattr(ws, "board", None) or {}) if ws is not None else {}
         run_id = board.get("run_id") or self._last_run_id
         available = items_from_media_board(board, media_id) if media_id else []
         evid = evidence_lines_for_selection(
