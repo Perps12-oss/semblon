@@ -1,10 +1,19 @@
-# Remove the repo venv. Does NOT delete %LOCALAPPDATA%\Semblon unless -DeleteStore.
+# Remove the install-root .venv. Does NOT delete %LOCALAPPDATA%\Semblon unless -DeleteStore.
+# For MSI installs, prefer Apps & Features uninstall (removes Programs\Semblon code);
+# this script is for checkout / payload .venv cleanup. Store path is never the MSI code root.
 param(
+    [string]$Root = "",
     [switch]$DeleteStore
 )
 
 $ErrorActionPreference = "Stop"
-$Root = Split-Path -Parent $PSScriptRoot
+
+if ($Root) {
+    $Root = $Root.TrimEnd('\', '/')
+} else {
+    $Root = Split-Path -Parent $PSScriptRoot
+}
+
 $Venv = Join-Path $Root ".venv"
 if (Test-Path $Venv) {
     Remove-Item -Recurse -Force $Venv

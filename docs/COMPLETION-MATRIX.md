@@ -19,7 +19,8 @@
 | `review.html` as UX | Engineering export only | export path | Must not become default workflow | **SUPERSEDED as UX** |
 | PERF ARM64 OpenCV | Load hang | `docs/PERF-P1-ARM64.md` | Owner/machine native load when unblocked | **BLOCKED** (perf track; not APP-1) |
 | Multi-worker default | Experimental | workers default 1 | Measure before product default | **EXPERIMENTAL** |
-| MSI + weights | Unavailable | licenses | Legal + packaging | **UNAVAILABLE** |
+| MSI code (no weights) | WiX project + stage/build/bootstrap + docs/tests | `packaging/msi/`, `tools/msi/`, `docs/PACKAGING.md` | Owner: `wix` + `tools\msi\build-msi.ps1` on Windows; smoke `packaging/msi/smoke-checklist.md` | **PARTIAL** — engineering complete; Windows `wix build`/sign not run in this agent |
+| buffalo_l in MSI / redistribution | Legal block | `docs/licenses.md` | Pack licence — do not fake | **UNAVAILABLE** |
 
 ## Status vocabulary (this completion drive)
 

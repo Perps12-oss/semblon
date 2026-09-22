@@ -61,6 +61,35 @@ Then double-click semblon.cmd again.
 "@
         exit 1
     }
+    $msiMarker = Join-Path $Root ".semblon-msi-install"
+    $bootstrap = Join-Path $Root "tools\msi\bootstrap-install.ps1"
+    $install = Join-Path $Root "tools\install-windows.ps1"
+    if ((Test-Path -LiteralPath $msiMarker) -and (Test-Path -LiteralPath $bootstrap)) {
+        Write-Host "MSI code install: bootstrapping .venv (no buffalo_l weights)..." -ForegroundColor Yellow
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Root $Root
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "MSI bootstrap failed. Install Python 3.12 (py launcher), then re-run Semblon."
+            exit 1
+        }
+        $py = Join-Path $Root ".venv\Scripts\python.exe"
+        if ((Test-Path -LiteralPath $py) -and (Test-SemblonImport -PythonExe $py)) {
+            return @{ Kind = "py"; Path = $py }
+        }
+        Write-Error "MSI bootstrap finished but semblon import failed under $Root"
+        exit 1
+    }
+    if (Test-Path -LiteralPath $install) {
+        Write-Host "Semblon: .venv missing — running install-windows.ps1 once..." -ForegroundColor Yellow
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $install -Root $Root
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "install-windows.ps1 failed under $Root"
+            exit 1
+        }
+        $py = Join-Path $Root ".venv\Scripts\python.exe"
+        if ((Test-Path -LiteralPath $py) -and (Test-SemblonImport -PythonExe $py)) {
+            return @{ Kind = "py"; Path = $py }
+        }
+    }
     Write-Error @"
 Semblon: repo .venv not found under $Root.
 From this folder, once:

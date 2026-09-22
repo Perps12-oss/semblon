@@ -1,0 +1,7 @@
+# MSI build outputs — regenerate on Windows via tools/msi/build-msi.ps1
+payload/
+dist/
+PayloadComponents.wxs
+*.msi
+*.wixpdb
+*.wixobj
