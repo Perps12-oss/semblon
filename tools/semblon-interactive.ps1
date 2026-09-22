@@ -38,7 +38,7 @@ function Repair-SemblonInstall {
 
 function Get-SemblonLaunch {
     # Prefer python -m semblon. Never run a stale semblon.exe when python exists
-    # but import fails — that is the ModuleNotFoundError path after package moves.
+    # but import fails - that is the ModuleNotFoundError path after package moves.
     $candidates = @(
         @{ Py = Join-Path $Root ".venv\Scripts\python.exe"; Repo = $Root },
         @{ Py = Join-Path $Root "semblon\.venv\Scripts\python.exe"; Repo = (Join-Path $Root "semblon") }
@@ -53,7 +53,8 @@ function Get-SemblonLaunch {
         if (Repair-SemblonInstall -PythonExe $c.Py -RepoRoot $c.Repo) {
             return @{ Kind = "py"; Path = $c.Py }
         }
-        # No @" here-strings — a broken terminator makes "From ..." parse as code (PS 5.1).
+        # ASCII-only file: Windows PowerShell 5.1 often reads UTF-8 as CP1252;
+        # an em-dash (U+2014) becomes a stray quote and breaks string parsing.
         $msg = @(
             "Semblon package still missing after reinstall under $($c.Repo)."
             "From that folder run:"
@@ -81,7 +82,7 @@ function Get-SemblonLaunch {
         exit 1
     }
     if (Test-Path -LiteralPath $install) {
-        Write-Host "Semblon: .venv missing — running install-windows.ps1 once..." -ForegroundColor Yellow
+        Write-Host "Semblon: .venv missing - running install-windows.ps1 once..." -ForegroundColor Yellow
         & powershell -NoProfile -ExecutionPolicy Bypass -File $install -Root $Root
         if ($LASTEXITCODE -ne 0) {
             Write-Error "install-windows.ps1 failed under $Root"
