@@ -16,23 +16,10 @@
 | R3 Artifacts 1–4 / bake-off / §8.7 / Ruled-out | CLOSED / DONE | SEM-ARCH §I.5; #65 ship claim WIRED | Do not reopen | **OWNER-AUTHORIZED / CLOSED** |
 | Optional Qt `semblon shell` | Optional `[gui]` client of Application API | `semblon/native_shell/` (#67) | KEEP optional; **not** a second product Home; **not** a mapped blocker | **KEEP (optional)** |
 | `review.html` as UX | Engineering export only | export path | Must not become default workflow | **SUPERSEDED as UX** |
-<<<<<<< HEAD
-| PERF ARM64 OpenCV | Load hang (historical) | `docs/PERF-P1-ARM64.md` | Agent track: unblock / probe / owner Windows measure | **IN FLIGHT** |
-| Multi-worker / scale | Hash workers experimental; default 1 | harness + ingest `--workers` | Agent track: harden + measure honesty; default stays 1 until evidence | **IN FLIGHT** |
-| MSI (code, no weights) | Install scripts exist; MSI engineering incomplete | `docs/PACKAGING.md` | Agent track: WiX/MSI without buffalo_l | **IN FLIGHT** |
-| buffalo_l redistribution | Legal | `docs/licenses.md` | Pack licence — not an engineering fake | **UNAVAILABLE** |
-=======
-| PERF ARM64 OpenCV | Load hang | `docs/PERF-P1-ARM64.md` | Owner/machine native load when unblocked | **BLOCKED** (perf track; not APP-1) |
-<<<<<<< HEAD
-| Multi-worker default | Experimental | workers default 1 | Measure before product default | **EXPERIMENTAL** |
-| MSI code (no weights) | WiX project + stage/build/bootstrap + docs/tests | `packaging/msi/`, `tools/msi/`, `docs/PACKAGING.md` | Owner: `wix` + `tools\msi\build-msi.ps1` on Windows; smoke `packaging/msi/smoke-checklist.md` | **PARTIAL** — engineering complete; Windows `wix build`/sign not run in this agent |
-| buffalo_l in MSI / redistribution | Legal block | `docs/licenses.md` | Pack licence — do not fake | **UNAVAILABLE** |
->>>>>>> ba19528 (feat(packaging): WiX code MSI without buffalo_l weights)
-=======
-| Multi-worker / scale | Hash workers hardened; default **1**; harness `default_gate` | `docs/PERF-WORKERS-HARNESS.md`; `tests/test_ingest_workers.py`; cancel/pause + integrity tests | Raise product default only after owner Windows `default_gate.verdict=PASS` + separate PR | **COMPLETE** (default=1) |
-| MSI + weights | Unavailable | licenses | Legal + packaging | **UNAVAILABLE** |
->>>>>>> cf6ba88 (feat(ingest): complete hash workers path with default_gate honesty)
->>>>>>> 9413d34 (feat(ingest): complete hash workers path with default_gate honesty)
+| PERF ARM64 OpenCV | Load hang; PE/timed probes shipped | `docs/PERF-P1-ARM64.md`; `semblon/opencv_probe.py`; `tools/_perf_p1_load_cv2.py` | Owner Windows ARM64: `tools\perf_p1_arm64_repro.ps1`; fix/replace `opencv_geometry500.dll`; then P0 timing | **BLOCKED** (native load) · probe **COMPLETE** |
+| Multi-worker / scale | Hash workers hardened; default **1**; harness `default_gate` | `docs/PERF-WORKERS-HARNESS.md`; ingest worker tests | Raise default only after owner Windows `default_gate.verdict=PASS` + separate PR | **COMPLETE** (default=1) |
+| MSI code (no weights) | WiX project + stage/build/bootstrap + docs/tests | `packaging/msi/`, `tools/msi/`, `docs/PACKAGING.md` | Owner: `wix` + `tools\msi\build-msi.ps1`; smoke checklist | **PARTIAL** — engineering complete; Windows `wix build`/sign not run here |
+| buffalo_l redistribution | Legal | `docs/licenses.md` | Pack licence — do not fake | **UNAVAILABLE** |
 
 ## Production shell — corrected (PR #54 + #65)
 
@@ -46,7 +33,7 @@ Mapped production shell = **Tk Home**. Optional Qt `semblon shell` (#67) is not 
 
 ## Status vocabulary
 
-- **COMPLETE** / **VERIFIED ON WINDOWS** / **OWNER-AUTHORIZED / CLOSED** / **KEEP** / **IN FLIGHT** / **UNAVAILABLE** / **SUPERSEDED**
+- **COMPLETE** / **VERIFIED ON WINDOWS** / **OWNER-AUTHORIZED / CLOSED** / **KEEP** / **PARTIAL** / **BLOCKED** / **UNAVAILABLE** / **SUPERSEDED**
 
 ## APP-1 C.3 evidence (retained)
 
