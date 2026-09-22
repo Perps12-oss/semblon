@@ -1,18 +1,28 @@
-# One-time Windows install for this repository.
-# Creates .venv at the repo root and installs Semblon editable.
+# One-time Windows install for this repository or MSI install root.
+# Creates .venv and installs Semblon editable.
 # Does not bundle buffalo_l weights (internal evaluation only; first ingest may download them).
 param(
+    [string]$Root = "",
     [string]$PythonLauncher = "py",
     [string]$PythonVersion = "-3.12"
 )
 
 $ErrorActionPreference = "Stop"
-$Root = Split-Path -Parent $PSScriptRoot
-if (-not (Test-Path (Join-Path $Root "pyproject.toml"))) {
-    $Root = $PSScriptRoot
+
+if ($Root) {
+    $Root = $Root.TrimEnd('\', '/')
+} else {
+    $Root = Split-Path -Parent $PSScriptRoot
     if (-not (Test-Path (Join-Path $Root "pyproject.toml"))) {
-        Write-Error "Run this script from a Semblon checkout (pyproject.toml not found)."
+        $Root = $PSScriptRoot
+        if (-not (Test-Path (Join-Path $Root "pyproject.toml"))) {
+            Write-Error "Run this script from a Semblon checkout (pyproject.toml not found)."
+        }
     }
+}
+
+if (-not (Test-Path (Join-Path $Root "pyproject.toml"))) {
+    Write-Error "pyproject.toml not found under $Root"
 }
 
 Set-Location $Root
@@ -43,4 +53,4 @@ Write-Host "  .\semblon.cmd home"
 Write-Host "Store default: %LOCALAPPDATA%\Semblon\store.sqlite"
 Write-Host "Upgrade preserves that store. Uninstall: tools\uninstall-windows.ps1 (keeps store)."
 Write-Host "buffalo_l is internal evaluation only — see docs/licenses.md"
-Write-Host "MSI/bundled weights: engineering packaging exists; redistribution UNAVAILABLE until licence."
+Write-Host "MSI code packaging: packaging\msi (weights UNAVAILABLE for redistribution)."
