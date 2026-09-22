@@ -18,7 +18,7 @@
 | Tk Home | Compatibility frontend | `semblon home` | Keep until native shell replaces default entry | **KEEP** |
 | `review.html` as UX | Engineering export only | export path | Must not become default workflow | **SUPERSEDED as UX** |
 | PERF ARM64 OpenCV | Load hang | `docs/PERF-P1-ARM64.md` | Owner/machine native load when unblocked | **BLOCKED** (perf track; not APP-1) |
-| Multi-worker default | Experimental | workers default 1 | Measure before product default | **EXPERIMENTAL** |
+| Multi-worker / scale | Hash workers hardened; default **1**; harness `default_gate` | `docs/PERF-WORKERS-HARNESS.md`; `tests/test_ingest_workers.py`; cancel/pause + integrity tests | Raise product default only after owner Windows `default_gate.verdict=PASS` + separate PR | **COMPLETE** (default=1) |
 | MSI + weights | Unavailable | licenses | Legal + packaging | **UNAVAILABLE** |
 
 ## Status vocabulary (this completion drive)

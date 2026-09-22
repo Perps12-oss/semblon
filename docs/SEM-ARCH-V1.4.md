@@ -311,7 +311,7 @@ Track at each size:
 ## I.3 Parallel experimental track
 
 - native ARM64 perf investigation — **OpenCV load still BLOCKED** (`docs/PERF-P1-ARM64.md`); no fake speedup
-- multi-worker headless benchmark — harness dry-run OK; product default **workers=1** (`docs/PERF-WORKERS-HARNESS.md`)
+- multi-worker ingest — engineering COMPLETE (hash workers + cancel/pause + harness `default_gate`); product default **workers=1** until owner Windows PASS (`docs/PERF-WORKERS-HARNESS.md`)
 - provider benchmark — EP listing harness (`docs/PERF-PROVIDER-HARNESS.md`); listed ≠ smoke-tested; Azure ≠ GPU
 - 1k/5k/10k scale testing
 - webcam/RTSP real-hardware tests when available

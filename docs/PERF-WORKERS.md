@@ -3,7 +3,7 @@
 **Not an S1 correctness change.** Thresholds, pack, det_size, CPU EP, and clustering unchanged.  
 Default product path remains `workers=1`. Flag: `semblon ingest FOLDER --store PATH --workers N`.
 
-**Superseded for re-measurement.** Current hash-only workers sweep: [`docs/PERF-WORKERS-HARNESS.md`](PERF-WORKERS-HARNESS.md) (`tools/perf_workers_harness.py`). Do not cite the tables below as evidence for today’s pipeline.
+**Superseded for re-measurement and product status.** Current hash-only workers + `default_gate`: [`docs/PERF-WORKERS-HARNESS.md`](PERF-WORKERS-HARNESS.md) (`tools/perf_workers_harness.py`). Engineering completion tracked in `docs/COMPLETION-MATRIX.md`. Do not cite the tables below as evidence for today’s pipeline or for raising the product default.
 
 Current implementation: `--workers` parallelizes the **hash** phase only (bounded in-flight futures). Decode + FaceKit embed + SQLite write use **one** `FaceAnalysis` session on the writer/main path. Skip decisions run before embed.
 

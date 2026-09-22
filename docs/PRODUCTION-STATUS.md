@@ -14,7 +14,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 1. **Identity contract** — immutable. Unknown valid; cluster ≠ person; no silent auto-ID; native/emulated honesty. FaceKit is the only identity engine.
 2. **Production capabilities** — Home/review-ui, native shell slice 1, cancel/pause, backup, integrity, person search, Canvas overlay, observation-table write-through (“schema v2” / `SCHEMA_VERSION=4`), stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks.
-3. **Experimental / unavailable** — product-default `workers>1`, GPU when no EP, MSI+weights, 10k run. OCR/CLIP/pose are **PRODUCTIZED (optional)** when honesty probes pass (`docs/OPTIONAL-MODALITY-STATUS.md`); still non-identity.
+3. **Experimental / unavailable** — product-default `workers>1` (opt-in CLI exists; raise default only on owner measure PASS), GPU when no EP, MSI+weights, 10k run. OCR/CLIP/pose are **PRODUCTIZED (optional)** when honesty probes pass (`docs/OPTIONAL-MODALITY-STATUS.md`); still non-identity.
 
 ## COMPLETE (verified in portable pytest)
 
@@ -55,9 +55,9 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 - Video tracking quality on real camera motion (synthetic tests only)
 - Webcam/RTSP hardware validation on real devices is pending; live engine is seam-tested in portable CI
 
-## EXPERIMENTAL
+## COMPLETE — MEASUREMENT-GATED DEFAULT
 
-- `ingest --workers` (default 1; hash-phase parallelism; single FaceAnalysis; product default stays 1 until measured)
+- `ingest --workers` / `process --workers` — **engineering COMPLETE**: bounded hash-phase ThreadPool (cap 32); single FaceAnalysis; single SQLite writer; cooperative cancel/pause; portable regression tests; harness emits machine-readable `default_gate` (`docs/PERF-WORKERS-HARNESS.md`). **Product default remains `workers=1`.** Raising the default requires owner Windows harness `default_gate.verdict=PASS` and a separate explicit PR — not authorized from Linux CI or historical multi-session evidence (`docs/PERF-WORKERS.md`).
 
 ## DEFERRED
 
