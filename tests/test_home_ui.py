@@ -72,3 +72,6 @@ def test_home_is_a_job_client():
     assert "CanvasWorkspace" in src
     assert "INSPECTOR" in src
     assert "faces.person_id" in src or "person_id" in src
+    # Activity reads go through Application façade (APP-1), not a Home-owned SQL path.
+    assert "from semblon.application import activity" in src
+    assert "inspector_verbs" in src or "Merge observations" in src

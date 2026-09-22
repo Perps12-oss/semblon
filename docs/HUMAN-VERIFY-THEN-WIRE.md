@@ -112,7 +112,7 @@ Or `tools/r3-bakeoff/Invoke-Bakeoff.ps1`. Follow `human_steps` in any `pending_h
 | Wiring note | `docs/r3-packets/06-ruled-out-wiring.md` |
 | Writer | `semblon/review.py` → `rule_out_subject` |
 | UI wrapper | `semblon/review_ui.py` → `apply_rule_out` |
-| Gate | `SEMBLON_RULED_OUT` (`semblon.gates.RULED_OUT`) — default **OFF** |
+| Gate | `SEMBLON_RULED_OUT` (`semblon.gates.RULED_OUT`) — default **ON**; opt out `=0` |
 
 Store mapping (no new columns): `decisions.kind=reject` + `policy_json.action=rule_out`.
 
@@ -140,10 +140,10 @@ Confirm against `docs/CONTRACTS-RULED-OUT.md` human checklist:
 
 ### Wire after PASS
 
-1. Expose Rule out on review-ui / Home / future shell (visual: R3 §1 dashed + `≠`).
+1. ~~Expose Rule out on review-ui / Home / future shell (visual: R3 §1 dashed + `≠`).~~ **Done** — review-ui + Home Inspector (native shell later).
 2. Keep Ignore as deferred; do not collapse the two verbs.
-3. Remove **UNWIRED** labels from product docs once chrome ships.
-4. Leave product default OFF until that chrome lands; then treat as a normal review verb (still FaceKit-only).
+3. ~~Remove **UNWIRED** labels from product docs once chrome ships.~~ **Done** (see `06-ruled-out-wiring.md`, `APPLICATION_API.md`).
+4. ~~Leave product default OFF until that chrome lands.~~ Gate default **ON**; opt out `SEMBLON_RULED_OUT=0`.
 5. Dedicated `decisions.kind='rule_out'` remains PROPOSED only — land only with an explicit CONTRACTS migration if policy discrimination proves insufficient.
 
 ---
