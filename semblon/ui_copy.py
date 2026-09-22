@@ -26,6 +26,7 @@ from semblon.progress import (
     ProgressEvent,
     ratio_percent,
 )
+from semblon.r3_chrome import processing_glyph
 
 STAGE_LABELS = {
     STAGE_PROCESS: "Processing",
@@ -177,7 +178,8 @@ def status_text(ev: ProgressEvent) -> str:
 
 
 def process_event_snapshot(ev: ProgressEvent) -> dict:
-    """Dict the Qt banner can consume. No invented percent."""
+    """Dict any shell can consume. No invented percent. No toolkit name."""
+    paused = False
     return {
         "state": user_state(ev),
         "headline": headline(ev),
@@ -186,6 +188,7 @@ def process_event_snapshot(ev: ProgressEvent) -> dict:
         "percent": percent_text(ev),
         "stage": ev.stage,
         "kind": ev.kind,
+        "processing_glyph": processing_glyph(ev.kind, paused=paused),
         "run_id": ev.run_id,
         "path": ev.path,
         "error": ev.error,

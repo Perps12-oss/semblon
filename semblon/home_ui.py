@@ -1053,9 +1053,11 @@ class HomeApp:
                     "Library is the source-media layer.",
                     "People/Unknown is the identity-observation layer.",
                     "Canvas overlays boxes/tracks — never writes faces.person_id.",
+                    "Display states: Unknown · Possible · Confirmed · Ruled out · Ignored",
                     f"Product observers: {resolve_home_observers()}",
                     f"GPU product path prefer={resolve_home_prefer_gpu()}",
                     "Open Review to name people (cluster → review → person → name).",
+                    "Tk Home is a compatibility frontend — not the permanent AppShell.",
                     *format_library_lines(self.store)[:6],
                 ],
             )
@@ -1509,7 +1511,8 @@ class HomeApp:
         w = weights_status()
         lines = [
             f"Store: {self.store}",
-            "Shell: Library | Workspace/Canvas | Inspector (Tk; R3 toolkit winner still human-named)",
+            "Shell: Library | Workspace/Canvas | Inspector (compatibility Tk; toolkit unnamed)",
+            "R3 chrome: five display states + processing ring grammar (shape, not hue).",
             "Ingest is a JobEngine job, not an application lock. Review/People/Search stay usable.",
             "Pause: cooperative between files (not mid-file); Resume while paused continues the same job",
             "Cancel: between files (not mid-file)",

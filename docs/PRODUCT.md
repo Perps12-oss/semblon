@@ -25,7 +25,7 @@ The long-term north star is `docs/SEM-ARCH.md`. It does **not** redefine this v1
 
 Public lookup · live CCTV · USB webcam · video files · ACC · mobile · multi-user · sharing · CustomTkinter · FastAPI · folder watcher (v1 “watchdog”) · automatic identity
 
-v1 **out** “watchdog” means **folder watcher**, not `semblon/watchdog.py` (stall detector; library only, not on the Home/`process` path).
+v1 **out** “watchdog” means **folder watcher**, not `semblon/watchdog.py` (stall detector). Home constructs `Watchdog` and may show `stalled` on status without killing the job.
 
 ## v1 ship test
 
@@ -57,12 +57,12 @@ This amendment does **not** erase frozen v1. It records what the shipping applic
 
 **Level 2 — production capabilities (shipping):** `process` / `home` / `review-ui` (KEEP GUI; v1 still “no GUI required”); incremental ingest; backup/restore; integrity report (orphans + `PRAGMA integrity_check`; missing originals counted, do not fail `ok`); cooperative cancel (GUI + SIGINT at file boundaries); FaceKit CPU **recorded** in `runtime_json` (ingest still `load_app()`); evidence-based `search` of named persons (RO) / identify; S7a sampled video + S7b derived tracks; S6 memory; portable CI without weight download.
 
-Stall watchdog is a **library** (`semblon/watchdog.py`), unit-tested, **not wired** into Home/`process`. It does not kill jobs. It is not a Level 2 shipping control.
+Stall watchdog (`semblon/watchdog.py`) is **wired on Home** status (`stalled` ≠ killed). It does not kill jobs. Folder watcher remains v1 **out**.
 
 **Level 3 — experimental / unavailable:** GPU when no EP is present; buffalo_l redistribution; MSI with bundled weights; 10k live library (harness exists); optional OCR/CLIP/MediaPipe extras when not installed.
 
 ## Full-stack acceleration (2026-09-19)
 
-The freeze boundary is kept as the identity contract. The architecture is expanded **in parallel**: schema v2 (items, embeddings, tracks, groups, relationships, events), folder `watch`, `live` sources, Canvas, modality-scoped search, GPU detection, configurable workers, migration engine. Extra observers (color/object always; OCR/CLIP/pose if installed) **must not** vote on identity.
+The freeze boundary is kept as the identity contract. The architecture is expanded **in parallel**: observation-table write-through (docs call this “schema v2”; store counter `SCHEMA_VERSION=4`), folder `watch`, `live` sources, Canvas, modality-scoped search, GPU detection, configurable workers, migration engine. Extra observers (color/object always; OCR/CLIP/pose if installed) **must not** vote on identity.
 
 Video files remain **out of frozen v1** and **in KEEP** as sampled holdout evidence. That is not a second identity engine.

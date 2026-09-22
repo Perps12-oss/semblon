@@ -543,7 +543,7 @@ def apply_rule_out(
     person_id: str | None = None,
     text: str | None = None,
 ) -> dict:
-    """Stub/API: durable Ruled out. Gated by SEMBLON_RULED_OUT (default OFF)."""
+    """Durable Ruled out. Gated by SEMBLON_RULED_OUT (default ON; opt out =0)."""
     if item["kind"] == "cluster":
         return rule_out_subject(
             store,

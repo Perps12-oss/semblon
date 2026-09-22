@@ -5,6 +5,8 @@ S1 / x64 correctness environment was **not** swapped.
 
 **Status 2026-09-20:** This file is **historical evidence** of the native ARM64 measurement gap. It is **not** a stop-work order on ingest pipeline work (bounded hash workers, skip-before-embed, streamed video, batched SQLite commits, EP recording). Do not silently swap S1's x64 `cv2`.
 
+**Status 2026-09-21 (shakedown slice 5):** ARM64 OpenCV ingest is **still BLOCKED**. No new native load proof. Do not invent an emulation speedup. Product `workers` default remains **1**. Provider/workers harnesses are usable as dry-run / listing tools (`docs/PERF-WORKERS-HARNESS.md`, `docs/PERF-PROVIDER-HARNESS.md`).
+
 ## What worked (isolated env)
 
 | Piece | Result |
