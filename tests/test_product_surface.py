@@ -42,9 +42,67 @@ def test_soft_canvas_status_purpose_line():
 
 
 def test_soft_progress_clock_is_counts_only():
-    assert soft_progress_clock(files_processed=734, files_total=1284) == "734 of 1284"
+    assert soft_progress_clock(files_processed=734, files_total=1284) == "734 of 1,284 photos"
     assert soft_progress_clock(files_processed=None, files_total=10) == ""
     assert "elapsed" not in soft_progress_clock(files_processed=1, files_total=2)
+    assert "eta" not in soft_progress_clock(files_processed=1, files_total=2).lower()
+
+
+def test_soft_eta_early_and_trustworthy():
+    from semblon.product_surface import (
+        eta_is_trustworthy,
+        format_soft_remaining,
+        soft_eta_line,
+    )
+
+    assert soft_eta_line(files_processed=10, files_total=24554, elapsed_s=5, eta_s=9999) == (
+        "Estimating time remaining…"
+    )
+    assert not eta_is_trustworthy(
+        files_processed=10, files_total=24554, elapsed_s=5, eta_s=9999
+    )
+    assert eta_is_trustworthy(
+        files_processed=500, files_total=24554, elapsed_s=120, eta_s=3600
+    )
+    assert soft_eta_line(
+        files_processed=500, files_total=24554, elapsed_s=120, eta_s=3600
+    ) == "About an hour left"
+    assert format_soft_remaining(60) == "About a minute left"
+    assert ":" not in (format_soft_remaining(4000) or "")
+    assert "elapsed" not in soft_eta_line(
+        files_processed=500, files_total=24554, elapsed_s=120, eta_s=3600
+    )
+
+
+def test_product_status_text_omits_current_filename():
+    from semblon.progress import KIND_PROGRESS, STAGE_INGEST, make_event
+    from semblon.product_surface import product_status_text, processing_home_snapshot
+
+    ev = make_event(
+        STAGE_INGEST,
+        KIND_PROGRESS,
+        files_processed=146,
+        files_total=24554,
+        faces_found=102,
+        path=r"C:\photos\-4972507827738356610_121.jpg",
+        elapsed_s=295,
+        eta_s=49250,
+        clock="15:16:59",
+    )
+    text = product_status_text(ev)
+    assert "Current:" not in text
+    assert "-4972507827738356610_121.jpg" not in text
+    assert "elapsed" not in text.lower()
+    assert "eta 13" not in text.lower()
+    assert "15:16:59" not in text
+    assert "146" in text and "24,554" in text
+    snap = processing_home_snapshot(ev)
+    assert "Building" in snap["headline"] or "library" in snap["headline"].lower()
+    assert "Finding people" in snap["activity"]
+    assert "102" in snap["faces"]
+    assert "people" not in snap["faces"].lower() or "faces" in snap["faces"].lower()
+    assert snap["faces"] == "102 faces found"
+    assert "Estimating" in snap["eta"] or "left" in snap["eta"]
 
 
 def test_soft_sel_item_never_uuid():

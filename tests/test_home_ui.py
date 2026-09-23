@@ -198,9 +198,71 @@ def test_home_done_status_clears_clock_telemetry():
 
     drain = inspect.getsource(home_ui.HomeApp._drain_queue)
     assert 'self.clock.set("")' in drain
-    assert "soft_progress_clock" in drain
+    assert "soft_progress_counts" in drain or "soft_progress_clock" in drain
+    assert "product_status_text" in drain
+    assert "current_item_line" not in drain
     assert 'bits.append(f"elapsed {elapsed}")' not in drain
     assert "Your photos are ready" in drain
+    assert "format_progress_line(" not in drain
+
+
+def test_home_processing_state_replaces_marketing_landing():
+    """PROCESSING Home is its own workspace — not landing + telemetry header."""
+    import semblon.home_ui as home_ui
+
+    src = inspect.getsource(home_ui.HomeApp)
+    assert "_build_processing_home" in src
+    assert "_home_state" in src
+    assert 'return "PROCESSING"' in inspect.getsource(home_ui.HomeApp._home_state)
+    show = inspect.getsource(home_ui.HomeApp._show_home_landing)
+    assert 'state == "PROCESSING"' in show
+    assert "_processing.pack" in show
+    sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
+    assert "processing_home" in sync
+    # Marketing CTA must not be the processing surface.
+    build = inspect.getsource(home_ui.HomeApp._build_processing_home)
+    assert "Add a photo folder" not in build
+    assert "Building your photo library" in build or "processing_home_headline" in build
+    assert "Cancel this job" in build
+    assert "Already discovered" in build
+    # Substantial bar — not hairline height=4 default.
+    assert "height=16" in build or "height=14" in inspect.getsource(home_ui.StillProgressBar.__init__)
+
+
+def test_home_landing_wraplength_avoids_clipping():
+    import semblon.home_ui as home_ui
+
+    build = inspect.getsource(home_ui.HomeApp._build_home_landing)
+    assert "wraplength=560" in build
+    assert "width=48" not in build
+    assert "width=18" not in build
+    assert "Review and name" in build
+
+
+def test_home_search_while_analysing_is_state_aware():
+    import semblon.home_ui as home_ui
+
+    search = inspect.getsource(home_ui.HomeApp._search_person)
+    assert "search_library_analysing" in search
+    from semblon.empty_states import search_library_analysing
+
+    st = search_library_analysing()
+    assert "analysing" in st.headline.lower()
+    assert "Error" not in st.headline
+
+
+def test_home_product_status_path_has_no_filename_leak():
+    import semblon.home_ui as home_ui
+    import re
+
+    drain = inspect.getsource(home_ui.HomeApp._drain_queue)
+    start = inspect.getsource(home_ui.HomeApp._start_process)
+    assert "product_status_text" in drain
+    assert "product_status_text" in start
+    # Must not call legacy ui_copy.status_text in the product path.
+    assert re.search(r"(?<![a-z_])status_text\(", drain) is None
+    assert re.search(r"(?<![a-z_])status_text\(", start) is None
+    assert "current_item_line" not in drain
 
 
 def test_home_inspector_uses_soft_verbs():

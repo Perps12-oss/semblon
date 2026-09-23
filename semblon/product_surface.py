@@ -96,6 +96,16 @@ def soft_sel_item_label(it: dict) -> str:
 
 def soft_progress_clock(*, files_processed: int | None, files_total: int | None) -> str:
     """Product progress fragment — never raw wall-clock / elapsed telemetry."""
+    return soft_progress_counts(files_processed=files_processed, files_total=files_total)
+
+
+def soft_progress_counts(
+    *,
+    files_processed: int | None,
+    files_total: int | None,
+    unit: str = "photos",
+) -> str:
+    """Human \"N of M photos\" — never Current:/elapsed/eta machine dump."""
     done = files_processed
     total = files_total
     if done is None or total is None:
@@ -106,7 +116,192 @@ def soft_progress_clock(*, files_processed: int | None, files_total: int | None)
         return ""
     if total_i <= 0:
         return ""
-    return f"{done_i} of {total_i}"
+    noun = unit if total_i != 1 else unit.rstrip("s")
+    return f"{done_i:,} of {total_i:,} {noun}"
+
+
+# Early ETA stays soft until enough real work has landed.
+_ETA_MIN_PROCESSED = 40
+_ETA_MIN_ELAPSED_S = 45.0
+_ETA_MIN_FRACTION = 0.02
+
+
+def format_soft_remaining(seconds: float | None) -> str | None:
+    """About-N wording for remaining time. Never H:MM:SS wall-clock."""
+    if seconds is None:
+        return None
+    try:
+        s = float(seconds)
+    except (TypeError, ValueError):
+        return None
+    if s <= 0 or s != s:  # NaN
+        return None
+    if s < 90:
+        return "About a minute left"
+    if s < 3600:
+        minutes = max(2, int(round(s / 60.0)))
+        return f"About {minutes} minutes left"
+    hours = s / 3600.0
+    if hours < 1.5:
+        return "About an hour left"
+    if hours < 48:
+        return f"About {int(round(hours))} hours left"
+    days = max(2, int(round(hours / 24.0)))
+    return f"About {days} days left"
+
+
+def eta_is_trustworthy(
+    *,
+    files_processed: int | None,
+    files_total: int | None,
+    elapsed_s: float | None,
+    eta_s: float | None,
+) -> bool:
+    """True only when a remaining-time guess is grounded in enough work."""
+    if eta_s is None or files_processed is None or files_total is None:
+        return False
+    try:
+        done = int(files_processed)
+        total = int(files_total)
+        elapsed = float(elapsed_s) if elapsed_s is not None else 0.0
+        eta = float(eta_s)
+    except (TypeError, ValueError):
+        return False
+    if done <= 0 or total <= done or eta <= 0 or elapsed < _ETA_MIN_ELAPSED_S:
+        return False
+    if done < _ETA_MIN_PROCESSED and (done / total) < _ETA_MIN_FRACTION:
+        return False
+    return True
+
+
+def soft_eta_line(
+    *,
+    files_processed: int | None = None,
+    files_total: int | None = None,
+    elapsed_s: float | None = None,
+    eta_s: float | None = None,
+    paused: bool = False,
+) -> str:
+    """Product ETA. Early jobs say Estimating… — never raw eta/elapsed clocks."""
+    if paused:
+        return "Paused — resume when you are ready"
+    if not eta_is_trustworthy(
+        files_processed=files_processed,
+        files_total=files_total,
+        elapsed_s=elapsed_s,
+        eta_s=eta_s,
+    ):
+        return "Estimating time remaining…"
+    human = format_soft_remaining(eta_s)
+    return human or "Estimating time remaining…"
+
+
+def soft_faces_found_line(faces_found: int | None) -> str:
+    """Faces are observations — never imply face count = people."""
+    if faces_found is None:
+        return ""
+    try:
+        n = int(faces_found)
+    except (TypeError, ValueError):
+        return ""
+    if n < 0:
+        return ""
+    if n == 0:
+        return "No faces found yet"
+    if n == 1:
+        return "1 face found"
+    return f"{n:,} faces found"
+
+
+def processing_home_headline(*, paused: bool = False, stage: str | None = None) -> str:
+    """Primary processing Home headline — results framing, not stage tokens."""
+    if paused:
+        return "Analysis paused"
+    # Cluster stage is still \"building the library\" for the user.
+    if stage == "cluster":
+        return "Grouping faces in your library"
+    if stage == "export":
+        return "Finishing your library"
+    if stage == "discover":
+        return "Looking through your folder"
+    return "Building your photo library"
+
+
+def processing_home_activity(*, paused: bool = False) -> str:
+    if paused:
+        return "Semblon stopped between files. Resume to continue this job."
+    return "Finding people and building your visual library."
+
+
+def product_status_text(
+    ev: Any,
+    *,
+    paused: bool = False,
+) -> str:
+    """Home / product chrome status. No Current: filename, no elapsed/eta dump."""
+    stage = getattr(ev, "stage", None)
+    kind = getattr(ev, "kind", None)
+    if paused:
+        return "Paused"
+    if kind == "stalled":
+        return "Still working — this is taking longer than usual"
+    if kind == "cancelled":
+        return "Cancelled"
+    if kind == "failed":
+        return "Couldn't finish"
+    headline = processing_home_headline(paused=False, stage=stage)
+    counts = soft_progress_counts(
+        files_processed=getattr(ev, "files_processed", None),
+        files_total=getattr(ev, "files_total", None),
+    )
+    faces = soft_faces_found_line(getattr(ev, "faces_found", None))
+    bits = [headline if headline.endswith("…") else f"{headline}…"]
+    if counts:
+        bits.append(counts)
+    if faces:
+        bits.append(faces)
+    return "  ·  ".join(bits)
+
+
+def processing_home_snapshot(
+    ev: Any | None = None,
+    *,
+    paused: bool = False,
+    files_processed: int | None = None,
+    files_total: int | None = None,
+    faces_found: int | None = None,
+    elapsed_s: float | None = None,
+    eta_s: float | None = None,
+    stage: str | None = None,
+) -> dict[str, str]:
+    """Structured copy for the processing Home workspace."""
+    if ev is not None:
+        files_processed = getattr(ev, "files_processed", files_processed)
+        files_total = getattr(ev, "files_total", files_total)
+        faces_found = getattr(ev, "faces_found", faces_found)
+        elapsed_s = getattr(ev, "elapsed_s", elapsed_s)
+        eta_s = getattr(ev, "eta_s", eta_s)
+        stage = getattr(ev, "stage", stage)
+    return {
+        "headline": processing_home_headline(paused=paused, stage=stage),
+        "activity": processing_home_activity(paused=paused),
+        "progress": soft_progress_counts(
+            files_processed=files_processed, files_total=files_total
+        ),
+        "faces": soft_faces_found_line(faces_found),
+        "eta": soft_eta_line(
+            files_processed=files_processed,
+            files_total=files_total,
+            elapsed_s=elapsed_s,
+            eta_s=eta_s,
+            paused=paused,
+        ),
+        "folder_note": (
+            "Semblon is analysing your library. You can add another folder when this finishes."
+            if not paused
+            else "Job paused. Resume to continue, or cancel to stop this job."
+        ),
+    }
 
 
 def soft_person_label(face: dict | None, *, board: dict | None = None) -> str:

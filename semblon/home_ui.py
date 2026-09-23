@@ -26,7 +26,7 @@ except ModuleNotFoundError:  # pragma: no cover - depends on host Python build
     tk = None
     filedialog = messagebox = simpledialog = ttk = None
 
-from semblon.ui_copy import friendly_exception, status_text
+from semblon.ui_copy import friendly_exception
 from semblon.jobs import JobBusy, JobEngine
 from semblon.process import default_store_path
 from semblon.state_triple import (
@@ -53,6 +53,7 @@ from semblon.empty_states import (
     library_has_media_lines,
     people_empty,
     photos_empty,
+    search_library_analysing,
     search_no_matches,
     search_no_named_people,
     search_no_store,
@@ -250,6 +251,9 @@ if tk is None:
         def set_from_event(self, _ev: ProgressEvent) -> None:  # pragma: no cover - stub
             return None
 
+        def set_percent(self, _pct: float | None) -> None:  # pragma: no cover - stub
+            return None
+
         def redraw(self) -> None:  # pragma: no cover - stub
             return None
 else:
@@ -261,13 +265,15 @@ else:
         TEXT = INK_TERTIARY
         EDGE = BG_SUBTLE
 
-        def __init__(self, master, width: int = 520, height: int = 4, **kw):
+        def __init__(self, master, width: int = 520, height: int = 14, **kw):
             from semblon.ui_theme import px
 
+            # Substantial track — not a hairline (product processing Home).
+            self._design_h = max(10, int(height))
             super().__init__(
                 master,
                 width=width,
-                height=px(master, height),
+                height=px(master, self._design_h),
                 highlightthickness=0,
                 bg=BG_CANVAS,
                 **kw,
@@ -291,10 +297,17 @@ else:
             self._label = ""
             self.redraw()
 
+        def set_percent(self, pct: float | None) -> None:
+            if pct is None:
+                return
+            self._percent = max(0.0, min(100.0, float(pct)))
+            self._label = ""
+            self.redraw()
+
         def redraw(self) -> None:
             self.delete("all")
             w = max(int(self.winfo_width() or 520), 8)
-            h = max(int(self.winfo_height() or 4), 4)
+            h = max(int(self.winfo_height() or self._design_h), self._design_h)
             radius = h / 2
             self._pill(0, 0, w, h, radius, fill=self.TRACK)
             fill_w = int(w * self._percent / 100.0)
@@ -303,7 +316,6 @@ else:
 
         def _pill(self, x1, y1, x2, y2, r, fill: str) -> None:
             self.create_rectangle(x1, y1, x2, y2, fill=fill, outline="")
-
 
 def format_people_lines(rec: dict) -> list[str]:
     items = rec.get("items") or []
@@ -636,6 +648,35 @@ def _format_sel_item(it: dict) -> str:
     return soft_sel_item_label(it)
 
 
+def _recent_face_paths(store: Path, *, limit: int = 8) -> list[tuple[str, tuple[float, float, float, float]]]:
+    """Cheap RO sample of recent ok faces with media paths. No identity writes."""
+    if limit <= 0 or not store.is_file():
+        return []
+    conn = sqlite3.connect(str(store))
+    try:
+        conn.execute("PRAGMA busy_timeout=2000")
+        rows = conn.execute(
+            """
+            SELECT m.path, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2
+            FROM faces f
+            JOIN observations o ON o.observation_id = f.observation_id
+            JOIN media m ON m.media_id = o.media_id
+            WHERE f.status = 'ok'
+            ORDER BY f.rowid DESC
+            LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+    finally:
+        conn.close()
+    out: list[tuple[str, tuple[float, float, float, float]]] = []
+    for path, x1, y1, x2, y2 in rows:
+        if not path or None in (x1, y1, x2, y2):
+            continue
+        out.append((str(path), (float(x1), float(y1), float(x2), float(y2))))
+    return out
+
+
 def _button(master, text, command, kind="secondary", icon=None, plate=None):
     """One button class. Falls back to ttk only if the canvas control is absent."""
     if Button is None or tk is None:
@@ -674,6 +715,8 @@ class HomeApp:
         self._completion: dict | None = None  # last done/cancelled summary for §11 card
         self._completion_kind: str | None = None  # "done" | "cancelled" | None
         self._last_progress_files: tuple[int | None, int | None] = (None, None)
+        self._last_faces_found: int | None = None
+        self._proc_thumbs_faces: int | None = None
         self._inspector_collapsed = False
         self._settings_win: tk.Toplevel | None = None
 
@@ -862,10 +905,12 @@ class HomeApp:
             foreground=TEXT_SECONDARY,
         ).pack(anchor=tk.W)
 
-        # Cold-launch landing (UX Rescue §2) — built once, shown via _show_home_landing.
+        # Cold-launch landing / processing / result (state machine — not stacked).
         self._landing = ttk.Frame(work)
+        self._processing = ttk.Frame(work)
         self._result_card = ttk.Frame(work)
         self._build_home_landing()
+        self._build_processing_home()
         self._build_result_card_shell()
 
         from semblon.canvas import CanvasWorkspace
@@ -1347,14 +1392,14 @@ class HomeApp:
         for child in self._landing.winfo_children():
             child.destroy()
         hero = ttk.Frame(self._landing, padding=(SP_24, SP_32))
-        hero.pack(expand=True)
+        hero.pack(expand=True, fill=tk.BOTH)
         ttk.Label(hero, text="Semblon", font=DISPLAY).pack(pady=(0, SP_8))
         ttk.Label(
             hero,
             text="Find the people in your photos.",
             font=H2,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
+            wraplength=560,
             justify=tk.CENTER,
         ).pack()
         ttk.Label(
@@ -1366,8 +1411,7 @@ class HomeApp:
             ),
             font=BODY,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
-            width=48,
+            wraplength=560,
             justify=tk.CENTER,
             anchor=tk.CENTER,
         ).pack(pady=(SP_8, 0))
@@ -1386,7 +1430,7 @@ class HomeApp:
             textvariable=self._landing_return_var,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
+            wraplength=560,
             justify=tk.CENTER,
         )
         self._landing_return.pack(pady=(SP_8, 0))
@@ -1403,15 +1447,14 @@ class HomeApp:
             ("3", "Review and name", "Review the groups and name the people."),
         ):
             col = tk.Frame(steps, bg=BG_CANVAS)
-            col.pack(side=tk.LEFT, anchor=tk.N, padx=(0, SP_16))
+            col.pack(side=tk.LEFT, anchor=tk.N, padx=(0, SP_24))
             tk.Label(
                 col,
                 text=title,
                 font=H3,
                 bg=BG_CANVAS,
                 fg=TEXT_PRIMARY,
-                wraplength=190,
-                width=18,
+                wraplength=200,
                 anchor="w",
                 justify=tk.LEFT,
             ).pack(anchor=tk.W)
@@ -1421,8 +1464,7 @@ class HomeApp:
                 font=BODY,
                 bg=BG_CANVAS,
                 fg=TEXT_SECONDARY,
-                wraplength=190,
-                width=22,
+                wraplength=200,
                 anchor="nw",
                 justify=tk.LEFT,
             ).pack(anchor=tk.W, pady=(SP_8, 0))
@@ -1432,7 +1474,131 @@ class HomeApp:
             text="Everything stays on this computer. Nothing is uploaded.",
             font=CAPTION,
             foreground=TEXT_DISABLED,
+            wraplength=560,
+            justify=tk.CENTER,
         ).pack(pady=(SP_24, 0))
+
+    def _build_processing_home(self) -> None:
+        """PROCESSING state — results framing while a job runs (not marketing + telemetry)."""
+        for child in self._processing.winfo_children():
+            child.destroy()
+        from semblon.product_surface import (
+            processing_home_activity,
+            processing_home_headline,
+        )
+
+        shell = ttk.Frame(self._processing, padding=(SP_32, SP_32))
+        shell.pack(expand=True, fill=tk.BOTH)
+        self._proc_headline = tk.StringVar(value=processing_home_headline())
+        self._proc_activity = tk.StringVar(value=processing_home_activity())
+        self._proc_progress = tk.StringVar(value="")
+        self._proc_faces = tk.StringVar(value="")
+        self._proc_eta = tk.StringVar(value="Estimating time remaining…")
+        self._proc_folder_note = tk.StringVar(
+            value=(
+                "Semblon is analysing your library. You can add another folder "
+                "when this finishes."
+            )
+        )
+        ttk.Label(
+            shell,
+            textvariable=self._proc_headline,
+            font=H1,
+            wraplength=640,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W)
+        ttk.Label(
+            shell,
+            textvariable=self._proc_activity,
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+            wraplength=640,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+        ttk.Label(
+            shell,
+            textvariable=self._proc_progress,
+            font=H2,
+            wraplength=640,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(SP_24, 0))
+        ttk.Label(
+            shell,
+            textvariable=self._proc_faces,
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+            wraplength=640,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+        ttk.Label(
+            shell,
+            textvariable=self._proc_eta,
+            font=CAPTION,
+            foreground=INK_TERTIARY,
+            wraplength=640,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(SP_8, SP_16))
+
+        self._proc_bar = StillProgressBar(shell, width=560, height=16)
+        self._proc_bar.pack(anchor=tk.W, fill=tk.X, pady=(0, SP_16))
+
+        controls = ttk.Frame(shell)
+        controls.pack(anchor=tk.W, pady=(0, SP_16))
+        self.btn_proc_pause = _button(
+            controls,
+            "Pause",
+            self._toggle_pause_resume,
+            kind="secondary",
+            icon="pause",
+            plate=BG_CANVAS,
+        )
+        self.btn_proc_pause.pack(side=tk.LEFT, padx=(0, SP_8))
+        self.btn_proc_cancel = _button(
+            controls,
+            "Cancel this job",
+            self._request_cancel,
+            kind="tertiary",
+            plate=BG_CANVAS,
+        )
+        self.btn_proc_cancel.pack(side=tk.LEFT)
+
+        discovered = ttk.Frame(shell)
+        discovered.pack(anchor=tk.W, fill=tk.X, pady=(SP_16, 0))
+        ttk.Label(
+            discovered,
+            text="Already discovered",
+            font=H3,
+        ).pack(anchor=tk.W)
+        self._proc_discovered = tk.StringVar(value="")
+        ttk.Label(
+            discovered,
+            textvariable=self._proc_discovered,
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+            wraplength=640,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+        # Optional live face strip — real faces only; filled when store has rows.
+        self._proc_thumbs = ttk.Frame(discovered)
+        self._proc_thumbs.pack(anchor=tk.W, pady=(SP_12, 0))
+        self._proc_thumb_images: list = []
+
+        ttk.Label(
+            shell,
+            textvariable=self._proc_folder_note,
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+            wraplength=640,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(SP_24, 0))
+        ttk.Label(
+            shell,
+            text="Everything stays on this computer. Nothing is uploaded.",
+            font=CAPTION,
+            foreground=TEXT_DISABLED,
+            wraplength=640,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
 
     def _build_result_card_shell(self) -> None:
         """Result summary card shell (UX Rescue §11); content filled on completion."""
@@ -1483,12 +1649,38 @@ class HomeApp:
         self._canvas_ws.pack_forget()
         self._welcome.pack_forget()
         self._landing.pack_forget()
+        self._processing.pack_forget()
         self._result_card.pack_forget()
 
-    def _show_home_landing(self) -> None:
-        """Home route: hero or §11 result card — never Canvas + engineering dump."""
-        self._hide_workspace_panes()
+    def _home_state(self) -> str:
+        """FIRST_RUN | PROCESSING | READY | EXPLORE — Home hierarchy gate."""
+        busy = bool(getattr(self, "engine", None) and self.engine.busy)
+        if busy:
+            return "PROCESSING"
         if self._completion_kind in {"done", "cancelled"} and self._completion is not None:
+            return "READY"
+        if self.store.is_file():
+            return "EXPLORE"
+        return "FIRST_RUN"
+
+    def _show_home_landing(self) -> None:
+        """Home route: processing workspace, result card, or marketing landing."""
+        self._hide_workspace_panes()
+        state = self._home_state()
+        if state == "PROCESSING":
+            self._refresh_processing_home()
+            self._processing.pack(fill=tk.BOTH, expand=True)
+            self._set_inspector_collapsed(True)
+            self._set_inspector(
+                "Home",
+                [
+                    "Semblon is analysing your photo library.",
+                    "Pause stops between files. Cancel stops this job.",
+                    "Results appear here when the job finishes.",
+                ],
+            )
+            return
+        if state == "READY":
             self._fill_result_card()
             self._result_card.pack(fill=tk.BOTH, expand=True)
         else:
@@ -1496,6 +1688,88 @@ class HomeApp:
             self._landing.pack(fill=tk.BOTH, expand=True)
         self._set_inspector_collapsed(True)
         self._set_inspector("Home", list(INSPECTOR_HOME_EMPTY))
+
+    def _refresh_processing_home(self, ev: ProgressEvent | None = None) -> None:
+        """Push soft processing copy into the PROCESSING workspace."""
+        from semblon.product_surface import processing_home_snapshot
+
+        paused = bool(getattr(self, "engine", None) and self.engine.paused)
+        snap = processing_home_snapshot(ev, paused=paused)
+        if hasattr(self, "_proc_headline"):
+            self._proc_headline.set(snap["headline"])
+            self._proc_activity.set(snap["activity"])
+            self._proc_progress.set(snap["progress"] or "Preparing your photos…")
+            self._proc_faces.set(snap["faces"])
+            self._proc_eta.set(snap["eta"])
+            self._proc_folder_note.set(snap["folder_note"])
+            faces_line = snap["faces"]
+            if faces_line:
+                self._proc_discovered.set(faces_line)
+            else:
+                self._proc_discovered.set("Faces will appear here as Semblon finds them.")
+            if ev is not None and hasattr(self, "_proc_bar"):
+                self._proc_bar.set_from_event(ev)
+            if hasattr(self, "btn_proc_pause"):
+                if paused:
+                    self.btn_proc_pause.configure(text="Resume", state=tk.NORMAL)
+                else:
+                    self.btn_proc_pause.configure(text="Pause", state=tk.NORMAL)
+            if hasattr(self, "btn_proc_cancel"):
+                self.btn_proc_cancel.configure(state=tk.NORMAL)
+            # Cheap live discovery count; thumbs refresh when face count jumps.
+            if faces_line:
+                faces_n = getattr(ev, "faces_found", None) if ev is not None else None
+                if faces_n is None:
+                    faces_n = self._last_faces_found
+                if faces_n != self._proc_thumbs_faces:
+                    self._proc_thumbs_faces = int(faces_n) if faces_n is not None else None
+                    self._refresh_processing_thumbs()
+            elif not getattr(self, "_proc_thumb_images", None):
+                self._refresh_processing_thumbs()
+
+    def _refresh_processing_thumbs(self) -> None:
+        """Optional real face strip from the store — skip silently when unavailable."""
+        frame = getattr(self, "_proc_thumbs", None)
+        if frame is None:
+            return
+        for child in frame.winfo_children():
+            child.destroy()
+        self._proc_thumb_images = []
+        store = getattr(self, "store", None)
+        if store is None or not Path(store).is_file():
+            return
+        try:
+            rows = _recent_face_paths(Path(store), limit=8)
+        except Exception:  # noqa: BLE001 — discovery strip is best-effort
+            return
+        if not rows:
+            return
+        try:
+            from semblon.review_ui import crop_png_b64
+        except Exception:  # noqa: BLE001
+            return
+
+        for media_path, bbox in rows:
+            try:
+                b64 = crop_png_b64(
+                    media_path,
+                    bbox,
+                    max_side=56,
+                    frame_id=None,
+                )
+            except Exception:  # noqa: BLE001
+                continue
+            if not b64:
+                continue
+            try:
+                img = tk.PhotoImage(data=b64)
+            except Exception:  # noqa: BLE001
+                continue
+            self._proc_thumb_images.append(img)
+            lbl = tk.Label(frame, image=img, bg=BG_CANVAS)
+            lbl.pack(side=tk.LEFT, padx=(0, SP_8))
+            if len(self._proc_thumb_images) >= 8:
+                break
 
     def _refresh_landing_hint(self) -> None:
         """Returning-user line when a store exists but no completion card yet."""
@@ -1648,8 +1922,10 @@ class HomeApp:
                 pass
         busy = bool(getattr(self, "engine", None) and self.engine.busy)
         on_home = self._nav == "home"
+        processing_home = on_home and busy
         if on_home:
             # Primary CTA lives on the landing. More stays in the top bar.
+            # PROCESSING Home owns Pause/Cancel inside the workspace — hide telemetry strip.
             self._jobs_frame.pack_forget()
             if self._completion_kind == "done" and not busy:
                 self._jobs_frame.pack(fill=tk.X, before=self._body)
@@ -1665,9 +1941,9 @@ class HomeApp:
                 self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
                 self.btn_canvas.pack(side=tk.LEFT, padx=(SP_8, 0))
             # else: browsing photos — no Review/Canvas escape hatch in the job bar.
-        # Pause toggle + Cancel sit next to the progress bar when busy.
-        # Idle home has no status strip. The bar is never shown at rest.
-        if busy:
+        # Pause toggle + Cancel sit next to the progress bar when busy off-Home.
+        # Idle home has no status strip. Processing Home replaces the strip entirely.
+        if busy and not processing_home:
             try:
                 self._prog_frame.pack(fill=tk.X, before=self._body)
             except tk.TclError:
@@ -1679,7 +1955,7 @@ class HomeApp:
             self.btn_pause_toggle.pack_forget()
             self.btn_cancel_prog.pack_forget()
             self.bar.pack_forget()
-            if self._nav == "home":
+            if on_home or not busy:
                 self._prog_frame.pack_forget()
             else:
                 try:
@@ -1814,18 +2090,37 @@ class HomeApp:
         }
         for key, btn in buttons.items():
             btn.configure(state=tk.NORMAL if states[key] == "normal" else tk.DISABLED)
-        # Landing CTA tracks folder availability.
+        # Landing CTA tracks folder availability; processing Home has no Add-folder CTA.
         if hasattr(self, "btn_landing_cta"):
             self.btn_landing_cta.configure(
                 state=tk.NORMAL if states["folder"] == "normal" else tk.DISABLED
             )
+        if hasattr(self, "btn_proc_pause"):
+            if busy:
+                if self.engine.paused:
+                    self.btn_proc_pause.configure(text="Resume", state=tk.NORMAL)
+                else:
+                    self.btn_proc_pause.configure(text="Pause", state=tk.NORMAL)
+            else:
+                self.btn_proc_pause.configure(text="Pause", state=tk.DISABLED)
+        if hasattr(self, "btn_proc_cancel"):
+            self.btn_proc_cancel.configure(
+                state=tk.NORMAL if busy else tk.DISABLED
+            )
         self._sync_chrome_for_route()
+        if self._nav == "home" and busy:
+            try:
+                mapped = bool(self._processing.winfo_ismapped())
+            except tk.TclError:
+                mapped = False
+            if not mapped:
+                self._show_home_landing()
 
     def _request_pause(self) -> None:
         if not self.engine.busy or self.engine.paused:
             return
         self.engine.pause()
-        self.status.set("Pausing… (stops between files; not mid-file)")
+        self.status.set("Pausing…")
         self._refresh_job_controls()
 
     def _request_cancel(self) -> None:
@@ -1848,11 +2143,24 @@ class HomeApp:
         self._completion = None
         self._completion_kind = None
         self._last_progress_files = (None, None)
+        self._last_faces_found = None
+        self._proc_thumbs_faces = None
         self.bar.reset()
+        if hasattr(self, "_proc_bar"):
+            self._proc_bar.reset()
         self.clock.set("")
+        from semblon.product_surface import product_status_text, processing_home_snapshot
+
         queued = make_event(STAGE_PROCESS, KIND_QUEUED, path=str(path), outcome="resumed" if resume else None)
-        self.status.set(status_text(queued))
+        self.status.set(product_status_text(queued))
         self._set_busy(True)
+        if self._nav == "home":
+            self._show_home_landing()
+            snap = processing_home_snapshot(queued, paused=False)
+            self._proc_headline.set(snap["headline"])
+            self._proc_activity.set(snap["activity"])
+            self._proc_eta.set(snap["eta"])
+            self._proc_folder_note.set(snap["folder_note"])
         observers = resolve_home_observers()
         prefer_gpu = self._effective_prefer_gpu()
 
@@ -1907,21 +2215,35 @@ class HomeApp:
                 if kind == "status":
                     self.status.set(payload)
                 elif kind == "event":
-                    self.status.set(status_text(payload))
+                    from semblon.product_surface import (
+                        product_status_text,
+                        soft_eta_line,
+                        soft_progress_counts,
+                    )
+
+                    paused = bool(self.engine.paused)
+                    self.status.set(product_status_text(payload, paused=paused))
                     self.bar.set_from_event(payload)
                     self._last_progress_files = (
                         payload.files_processed,
                         payload.files_total,
                     )
-                    # Soft progress — counts only. Wall-clock / elapsed stay out of product chrome.
-                    from semblon.product_surface import soft_progress_clock
-
-                    self.clock.set(
-                        soft_progress_clock(
-                            files_processed=payload.files_processed,
-                            files_total=payload.files_total,
-                        )
+                    self._last_faces_found = payload.faces_found
+                    # Soft progress — counts + trustworthy ETA. Never filename/elapsed dump.
+                    counts = soft_progress_counts(
+                        files_processed=payload.files_processed,
+                        files_total=payload.files_total,
                     )
+                    eta = soft_eta_line(
+                        files_processed=payload.files_processed,
+                        files_total=payload.files_total,
+                        elapsed_s=payload.elapsed_s,
+                        eta_s=payload.eta_s,
+                        paused=paused,
+                    )
+                    self.clock.set("  ·  ".join(p for p in (counts, eta) if p))
+                    if self._nav == "home":
+                        self._refresh_processing_home(payload)
                 elif kind == "done":
                     self._last_run_id = payload.get("run_id")
                     out = payload.get("out")
@@ -1975,6 +2297,7 @@ class HomeApp:
                     self.status.set(
                         "Processing stopped. Any partial results have been retained."
                     )
+                    self.clock.set("")
                     if self._nav == "home":
                         self._show_home_landing()
                         self._sync_chrome_for_route()
@@ -1984,6 +2307,7 @@ class HomeApp:
                 elif kind == "error":
                     self._resume_ready = self._last_folder is not None
                     self._set_busy(False)
+                    self.clock.set("")
                     if isinstance(payload, BaseException):
                         if is_expected_condition(payload):
                             self.status.set("Processing stopped.")
@@ -1999,10 +2323,14 @@ class HomeApp:
             pass
         if self.engine.busy:
             if self.engine.paused:
-                self.status.set("Paused — not processing; Resume continues this job (between-files pause)")
+                self.status.set("Paused")
+                if self._nav == "home":
+                    self._refresh_processing_home()
             stalled = self._wd.check()
             if stalled is not None and stalled.kind == KIND_STALLED and not self.engine.paused:
-                self.status.set(status_text(stalled))
+                from semblon.product_surface import product_status_text
+
+                self.status.set(product_status_text(stalled))
             self._refresh_job_controls()
         if self.root.winfo_exists():
             self.root.after(100, self._drain_queue)
@@ -2337,6 +2665,12 @@ class HomeApp:
         if not q:
             messagebox.showinfo("Semblon", "Type a person name or text to search.")
             return
+        if self.engine.busy:
+            # State-aware: library still analysing — don't fail silently.
+            self._set_inspector("Search", search_library_analysing().as_lines())
+            if not self.store.is_file():
+                return
+            # Fall through only when a store already has named people to try.
         if not self.store.is_file():
             self._set_inspector("Search", search_no_store().as_lines())
             return
@@ -2349,17 +2683,25 @@ class HomeApp:
                 self._show_failure(e)
             return
         if not (named.get("items") or []):
-            self._set_inspector("Search", search_no_named_people().as_lines())
+            if self.engine.busy:
+                self._set_inspector("Search", search_library_analysing().as_lines())
+            else:
+                self._set_inspector("Search", search_no_named_people().as_lines())
             return
         try:
             rec = search_person(self.store, q)
         except SearchError as e:
             if is_expected_condition(e):
-                self._set_inspector("Search", search_no_matches(q).as_lines())
+                lines = search_no_matches(q).as_lines()
+                if self.engine.busy:
+                    lines = search_library_analysing().as_lines() + [""] + lines
+                self._set_inspector("Search", lines)
             else:
                 self._show_failure(e)
             return
         lines = format_search_lines(rec)
+        if self.engine.busy and int(rec.get("count") or 0) == 0:
+            lines = search_library_analysing().as_lines() + [""] + lines
         if enabled(MODALITY_PRODUCT) and int(rec.get("count") or 0) == 0:
             try:
                 text_rec = search_text(self.store, q)

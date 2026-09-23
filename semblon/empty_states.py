@@ -164,6 +164,20 @@ def search_no_matches(query: str) -> EmptyState:
     )
 
 
+def search_library_analysing() -> EmptyState:
+    """Search while an ingest/process job is still building the library."""
+    return EmptyState(
+        headline="Still analysing your library",
+        description=(
+            "Semblon is still finding faces and building your photo library. "
+            "Search will work better when this finishes — or try a name you "
+            "have already reviewed."
+        ),
+        primary_action="Open Review",
+        action_id=ACTION_OPEN_REVIEW,
+    )
+
+
 def photos_videos_nothing_selected(*, kind: str = "photo") -> EmptyState:
     """§15 inspector with no selection (populated library)."""
     noun = "photo or video" if kind == "any" else kind
