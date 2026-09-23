@@ -39,13 +39,18 @@ _CROP_CACHE_MAX = 256
 try:
     from semblon.ui_theme import apply_theme, style_listbox
     from semblon.ui_tokens import (
+        ACCENT,
+        ACCENT_SUBTLE,
         BG_CANVAS,
         BG_DARK,
+        BG_SUBTLE,
         BODY,
         BODY_STRONG,
         H1,
         H2,
         INK_ON_DARK,
+        INK_PRIMARY,
+        INK_SECONDARY,
         SECONDARY_FONT,
     )
     from semblon.ui_widgets import Button as RoleButton
@@ -53,14 +58,27 @@ except ImportError:  # pragma: no cover
     apply_theme = None
     style_listbox = None
     RoleButton = None
+    ACCENT = "#4338CA"
+    ACCENT_SUBTLE = "#EEF0FB"
     BG_CANVAS = "#FBFAF7"
     BG_DARK = "#14130F"
+    BG_SUBTLE = "#F6F4EF"
     BODY = ("Segoe UI", 13)
     BODY_STRONG = ("Segoe UI", 13, "bold")
     H1 = ("Segoe UI", 24, "bold")
     H2 = ("Segoe UI", 18, "bold")
     INK_ON_DARK = "#B5B1A8"
+    INK_PRIMARY = "#1A1815"
+    INK_SECONDARY = "#5E5A52"
     SECONDARY_FONT = ("Segoe UI", 13)
+
+# Review visual chrome (presentation only — no identity / clustering changes).
+GROUP_THUMB = 40
+GROUP_ROW_H = 56
+GROUP_REPR_FACES = 3
+MERGE_THUMB = 72
+MERGE_REPR_FACES = 5
+FACE_GRID_WRAP = 720
 
 _FONT_UI = BODY
 _FONT_UI_BOLD = BODY_STRONG
@@ -721,6 +739,43 @@ def review_status_text(board: dict, *, detail: bool = False) -> str:
     return f"{named} of {n} groups named."
 
 
+def visible_review_items(
+    items: list[dict] | None, *, show_singles: bool = False
+) -> list[dict]:
+    """Filter board items for the Groups list. Singles hidden by default."""
+    rows = list(items or [])
+    if show_singles:
+        return rows
+    return [it for it in rows if it.get("kind") != "unassigned"]
+
+
+def representative_members(item: dict | None, limit: int = GROUP_REPR_FACES) -> list[dict]:
+    """First N face members for list / merge thumbnails."""
+    if not item:
+        return []
+    members = item.get("members") or []
+    n = max(0, int(limit))
+    return list(members[:n])
+
+
+def cluster_items_at_indices(items: list[dict], indices: list[int] | set[int]) -> list[dict]:
+    """Cluster rows at the given list indices (order preserved, de-duped)."""
+    out: list[dict] = []
+    seen: set[str] = set()
+    for i in sorted(indices):
+        if i < 0 or i >= len(items):
+            continue
+        it = items[i]
+        if it.get("kind") != "cluster":
+            continue
+        cid = it.get("cluster_id")
+        if not cid or cid in seen:
+            continue
+        seen.add(str(cid))
+        out.append(it)
+    return out
+
+
 def _actions_for_kind(kind: str) -> dict[str, bool]:
     """Which review buttons apply to the selected item kind."""
     rule_out = ruled_out_enabled()
@@ -780,9 +835,16 @@ class ReviewApp:
         self.on_add_folder = on_add_folder
         self._tracks_cache: dict | None = None
         self._photos: list = []
+        self._group_photos: list = []
+        self._merge_photos: list = []
         self._selected_faces: set[str] = set()
         self._draw_gen = 0
+        self._group_draw_gen = 0
         self._detail_mode = False
+        self._show_singles = False
+        self._visible_items: list[dict] = []
+        self._sel_indices: set[int] = set()
+        self._primary_index: int | None = None
         self.board: dict = {
             "items": [],
             "counts": {},
@@ -877,6 +939,13 @@ class ReviewApp:
             variable=self._detail_var,
             command=self._toggle_details,
         ).pack(side=tk.RIGHT)
+        self._singles_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            run_line,
+            text="Show single faces",
+            variable=self._singles_var,
+            command=self._toggle_singles,
+        ).pack(side=tk.RIGHT, padx=(0, 12))
         self.empty_state = ttk.Label(top, text="", font=_FONT_UI)
         self.empty_state.pack(anchor=tk.W)
         self.status = ttk.Label(top, text="", font=_FONT_UI_BOLD)
@@ -891,24 +960,63 @@ class ReviewApp:
         body.add(right, weight=3)
 
         ttk.Label(left, text="Groups", font=_FONT_UI).pack(anchor=tk.W)
-        self.listbox = tk.Listbox(left, exportselection=False)
-        if style_listbox is not None:
-            style_listbox(self.listbox)
-        self.listbox.pack(fill=tk.BOTH, expand=True)
-        self.listbox.bind("<<ListboxSelect>>", self._on_select)
-
-        ttk.Label(right, text="Faces (click to toggle for Split)", font=_FONT_UI).pack(
-            anchor=tk.W
+        ttk.Label(
+            left,
+            text="Ctrl+click to select several groups, then Merge selected.",
+            font=_FONT_BANNER,
+            foreground=INK_SECONDARY,
+            wraplength=280,
+        ).pack(anchor=tk.W, pady=(0, 4))
+        group_wrap = ttk.Frame(left)
+        group_wrap.pack(fill=tk.BOTH, expand=True)
+        self.group_canvas = tk.Canvas(
+            group_wrap,
+            background=BG_SUBTLE,
+            highlightthickness=0,
+            width=300,
         )
-        self.canvas = tk.Canvas(right, background=BG_DARK, height=420, highlightthickness=0)
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        group_sb = ttk.Scrollbar(
+            group_wrap, orient=tk.VERTICAL, command=self.group_canvas.yview
+        )
+        self.group_canvas.configure(yscrollcommand=group_sb.set)
+        self.group_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        group_sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self.group_canvas.bind("<Button-1>", self._on_group_click)
+        self.group_canvas.bind(
+            "<Control-Button-1>", lambda e: self._on_group_click(e, additive=True)
+        )
+        self.group_canvas.bind(
+            "<MouseWheel>",
+            lambda e: self.group_canvas.yview_scroll(int(-e.delta / 120), "units"),
+        )
+        # Compat alias: older helpers may still look for listbox.
+        self.listbox = self.group_canvas
+
+        ttk.Label(
+            right, text="Faces (click to mark for Split · scroll for all)", font=_FONT_UI
+        ).pack(anchor=tk.W)
+        face_wrap = ttk.Frame(right)
+        face_wrap.pack(fill=tk.BOTH, expand=True)
+        self.canvas = tk.Canvas(
+            face_wrap, background=BG_DARK, height=420, highlightthickness=0
+        )
+        face_sb = ttk.Scrollbar(face_wrap, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=face_sb.set)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        face_sb.pack(side=tk.RIGHT, fill=tk.Y)
         self.canvas.bind("<Button-1>", self._on_canvas_click)
+        self.canvas.bind(
+            "<MouseWheel>",
+            lambda e: self.canvas.yview_scroll(int(-e.delta / 120), "units"),
+        )
 
         actions = ttk.Frame(self.root, padding=6)
         actions.pack(fill=tk.X)
         self.btn_name = _review_button(actions, "Name", self._do_name, kind="primary")
         self.btn_name.pack(side=tk.LEFT, padx=2)
-        self.btn_merge = _review_button(actions, "Merge…", self._do_merge, kind="secondary")
+        self.btn_merge = _review_button(
+            actions, "Merge groups…", self._do_merge, kind="secondary"
+        )
         self.btn_merge.pack(side=tk.LEFT, padx=2)
         self.btn_split = _review_button(
             actions, "Split selected", self._do_split, kind="secondary"
@@ -942,28 +1050,201 @@ class ReviewApp:
         self.root.bind("M", lambda _e: self._do_merge())
         self.root.bind("s", lambda _e: self._do_split())
         self.root.bind("S", lambda _e: self._do_split())
+        self.root.bind("i", lambda _e: self._do_ignore())
+        self.root.bind("I", lambda _e: self._do_ignore())
 
     def _toggle_details(self) -> None:
         self._detail_mode = bool(self._detail_var.get())
         self._refresh_list_and_status()
 
+    def _toggle_singles(self) -> None:
+        self._show_singles = bool(self._singles_var.get())
+        self._refresh_list_and_status()
+
     def _refresh_list_and_status(self) -> None:
-        sel = self.listbox.curselection()
-        self.listbox.delete(0, tk.END)
-        for item in self.board["items"]:
-            self.listbox.insert(tk.END, item_label(item, detail=self._detail_mode))
-        if sel:
-            try:
-                self.listbox.selection_set(sel[0])
-            except tk.TclError:
-                pass
+        prev_keys = []
+        for i in sorted(self._sel_indices):
+            if 0 <= i < len(self._visible_items):
+                prev_keys.append(self._item_key(self._visible_items[i]))
+        primary_key = None
+        if self._primary_index is not None and 0 <= self._primary_index < len(
+            self._visible_items
+        ):
+            primary_key = self._item_key(self._visible_items[self._primary_index])
+
+        self._visible_items = visible_review_items(
+            self.board.get("items") or [], show_singles=self._show_singles
+        )
+        self._sel_indices = set()
+        self._primary_index = None
+        for i, it in enumerate(self._visible_items):
+            key = self._item_key(it)
+            if key in prev_keys:
+                self._sel_indices.add(i)
+            if primary_key is not None and key == primary_key:
+                self._primary_index = i
+        if self._primary_index is None and self._sel_indices:
+            self._primary_index = min(self._sel_indices)
+
+        self._redraw_group_list()
         detail_bits = []
         if self._detail_mode and self.board.get("empty_state"):
             detail_bits.append(self.board["empty_state"])
+        hidden = sum(
+            1
+            for it in (self.board.get("items") or [])
+            if it.get("kind") == "unassigned"
+        )
+        if not self._show_singles and hidden:
+            detail_bits.append(
+                f"{hidden} single face{'s' if hidden != 1 else ''} hidden — "
+                "enable Show single faces to review them."
+            )
         self.empty_state.config(text="  ".join(detail_bits))
         self.status.config(
             text=review_status_text(self.board, detail=self._detail_mode)
         )
+        self._update_action_buttons()
+
+    @staticmethod
+    def _item_key(item: dict) -> str:
+        kind = item.get("kind") or ""
+        if kind == "cluster":
+            return f"cluster:{item.get('cluster_id')}"
+        if kind == "track":
+            return f"track:{item.get('track_id')}"
+        return f"face:{item.get('face_id')}"
+
+    def _redraw_group_list(self) -> None:
+        self._group_draw_gen += 1
+        gen = self._group_draw_gen
+        self.group_canvas.delete("all")
+        self._group_photos = []
+        y = 4
+        slots: list[tuple] = []
+        for i, item in enumerate(self._visible_items):
+            selected = i in self._sel_indices
+            primary = i == self._primary_index
+            fill = ACCENT_SUBTLE if selected else BG_CANVAS
+            outline = ACCENT if primary else ("#C9C4B8" if selected else "#DDD8CE")
+            tag = f"group:{i}"
+            self.group_canvas.create_rectangle(
+                4,
+                y,
+                292,
+                y + GROUP_ROW_H - 4,
+                fill=fill,
+                outline=outline,
+                width=2 if primary else 1,
+                tags=(tag,),
+            )
+            label = item_label(item, detail=self._detail_mode)
+            self.group_canvas.create_text(
+                12 + GROUP_REPR_FACES * (GROUP_THUMB + 4),
+                y + 10,
+                anchor=tk.NW,
+                fill=INK_PRIMARY,
+                font=_FONT_UI,
+                text=label,
+                width=160,
+                tags=(tag,),
+            )
+            reps = representative_members(item, GROUP_REPR_FACES)
+            for j, m in enumerate(reps):
+                sx = 10 + j * (GROUP_THUMB + 4)
+                sy = y + 8
+                rect = self.group_canvas.create_rectangle(
+                    sx,
+                    sy,
+                    sx + GROUP_THUMB,
+                    sy + GROUP_THUMB,
+                    fill="#D8D3C8",
+                    outline="#B8B3A8",
+                    tags=(tag,),
+                )
+                slots.append((gen, m, sx, sy, rect, tag))
+            if not reps:
+                self.group_canvas.create_text(
+                    14,
+                    y + 18,
+                    anchor=tk.NW,
+                    fill=INK_SECONDARY,
+                    text="—",
+                    tags=(tag,),
+                )
+            y += GROUP_ROW_H
+        self.group_canvas.configure(scrollregion=(0, 0, 300, max(y + 8, 100)))
+
+        if not slots:
+            return
+
+        def worker() -> None:
+            results = []
+            for g, m, sx, sy, rect, tag in slots:
+                b64 = crop_png_b64(
+                    m["path"],
+                    m["bbox"],
+                    max_side=GROUP_THUMB,
+                    frame_id=m.get("frame_id"),
+                    source_type=m.get("source_type"),
+                )
+                results.append((g, sx, sy, rect, tag, b64))
+            self.root.after(0, lambda: self._apply_group_crops(results))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_group_crops(self, results) -> None:
+        for gen, x, y, rect, tag, b64 in results:
+            if gen != self._group_draw_gen:
+                continue
+            if b64 is None:
+                continue
+            try:
+                photo = tk.PhotoImage(data=b64)
+            except tk.TclError:
+                continue
+            self._group_photos.append(photo)
+            self.group_canvas.delete(rect)
+            self.group_canvas.create_image(x, y, anchor=tk.NW, image=photo, tags=(tag,))
+
+    def _on_group_click(self, event, *, additive: bool = False) -> None:
+        items = self.group_canvas.find_overlapping(
+            event.x - 1, event.y - 1, event.x + 1, event.y + 1
+        )
+        idx = None
+        for it in items:
+            for tag in self.group_canvas.gettags(it):
+                if tag.startswith("group:"):
+                    try:
+                        idx = int(tag.split(":", 1)[1])
+                    except ValueError:
+                        idx = None
+                    break
+            if idx is not None:
+                break
+        if idx is None:
+            return
+        if additive:
+            if idx in self._sel_indices:
+                self._sel_indices.discard(idx)
+                if self._primary_index == idx:
+                    self._primary_index = (
+                        min(self._sel_indices) if self._sel_indices else None
+                    )
+            else:
+                self._sel_indices.add(idx)
+                self._primary_index = idx
+        else:
+            self._sel_indices = {idx}
+            self._primary_index = idx
+        self._redraw_group_list()
+        self._selected_faces.clear()
+        self._update_action_buttons()
+        item = self._current_item()
+        if item is None:
+            self._set_empty_canvas("Select a group, track, or single face.")
+            return
+        self._draw_faces(item["members"])
 
     def reload(self, *, invalidate_tracks: bool = True) -> None:
         if self.empty_reason is not None or self.run_id is None:
@@ -974,52 +1255,61 @@ class ReviewApp:
             self.store, self.run_id, tracks_cache=self._tracks_cache
         )
         self._tracks_cache = self.board.get("_tracks_cache")
-        self._refresh_list_and_status()
         self._selected_faces.clear()
-        self._update_action_buttons()
-        self._set_empty_canvas(
-            "Nothing to review on this run. Add a photo folder, then open Review again."
-            if not self.board["items"]
-            else "Select a group, track, or single face."
-        )
+        self._refresh_list_and_status()
+        item = self._current_item()
+        if item is None:
+            self._set_empty_canvas(
+                "Nothing to review on this run. Add a photo folder, then open Review again."
+                if not self._visible_items
+                else "Select a group, track, or single face."
+            )
+        else:
+            self._draw_faces(item["members"])
 
     def _set_empty_canvas(self, text: str) -> None:
         self.canvas.delete("all")
         self._photos = []
-        self.canvas.create_text(24, 24, anchor=tk.NW, fill=INK_ON_DARK, text=text, font=_FONT_UI)
+        self.canvas.create_text(
+            24, 24, anchor=tk.NW, fill=INK_ON_DARK, text=text, font=_FONT_UI
+        )
+        self.canvas.configure(scrollregion=self.canvas.bbox("all") or (0, 0, 100, 100))
 
     def _update_action_buttons(self) -> None:
         item = self._current_item()
+        clusters = cluster_items_at_indices(self._visible_items, self._sel_indices)
         if item is None:
             flags = _actions_for_kind("")
-            if self.board["items"]:
-                # No selection: Name/Merge may still open dialogs that pick items.
+            if len(clusters) >= 2 or self.board["items"]:
                 flags = {
                     "name": False,
                     "merge": True,
                     "split": False,
                     "ignore": False,
                     "note": False,
+                    "rule_out": False,
                 }
         else:
             flags = _actions_for_kind(item["kind"])
+            if len(clusters) >= 2:
+                flags["merge"] = True
         for key, btn in self._btn_map.items():
             btn.configure(state=tk.NORMAL if flags.get(key) else tk.DISABLED)
+        if len(clusters) >= 2:
+            self.btn_merge.configure(text=f"Merge selected ({len(clusters)})")
+        else:
+            self.btn_merge.configure(text="Merge groups…")
 
     def _current_item(self) -> dict | None:
-        sel = self.listbox.curselection()
-        if not sel:
+        if self._primary_index is None:
             return None
-        return self.board["items"][sel[0]]
+        if self._primary_index < 0 or self._primary_index >= len(self._visible_items):
+            return None
+        return self._visible_items[self._primary_index]
 
     def _on_select(self, _event=None) -> None:
-        item = self._current_item()
-        self._selected_faces.clear()
-        self._update_action_buttons()
-        if item is None:
-            self._set_empty_canvas("Select a group, track, or single face.")
-            return
-        self._draw_faces(item["members"])
+        """Compat no-op — group selection is handled by _on_group_click."""
+        return
 
     def _draw_faces(self, members: list[dict]) -> None:
         self._draw_gen += 1
@@ -1029,28 +1319,32 @@ class ReviewApp:
         if not members:
             self._set_empty_canvas("Select a group, track, or single face.")
             return
-        # Placeholders first; fill crops asynchronously.
         x, y = 8, 8
         row_h = THUMB_MAX + 28
         slots = []
-        for m in members:
+        for n, m in enumerate(members, start=1):
             tw = th = THUMB_MAX
             tag = f"face:{m['face_id']}"
             rect = self.canvas.create_rectangle(
                 x, y, x + tw, y + th, fill="#444", outline="#888", tags=(tag,)
             )
-            mark = "*" if m["face_id"] in self._selected_faces else " "
-            label = f"{mark}{m['face_id'][:8]}"
-            if m.get("source_type") == "video":
-                label += f" f={m.get('frame_id')}"
+            mark = "✓ " if m["face_id"] in self._selected_faces else ""
+            if self._detail_mode:
+                label = f"{mark}{m['face_id'][:8]}"
+                if m.get("source_type") == "video":
+                    label += f" f={m.get('frame_id')}"
+            else:
+                label = f"{mark}Face {n}"
             self.canvas.create_text(
                 x, y + th + 2, anchor=tk.NW, fill="#eee", text=label, tags=(tag,)
             )
             slots.append((m, x, y, rect, tag))
             x += tw + 12
-            if x > 700:
+            if x > FACE_GRID_WRAP:
                 x = 8
                 y += row_h
+        bottom = y + row_h + 8
+        self.canvas.configure(scrollregion=(0, 0, FACE_GRID_WRAP + 40, bottom))
 
         def worker():
             results = []
@@ -1137,48 +1431,110 @@ class ReviewApp:
         self.status.config(text=NAME_SUCCESS_STATUS)
 
     def _do_merge(self) -> None:
-        clusters = [it for it in self.board["items"] if it["kind"] == "cluster"]
-        if len(clusters) < 2:
-            self._err(ReviewUiError("need at least two clusters to merge"))
+        clusters_all = [
+            it for it in (self.board.get("items") or []) if it["kind"] == "cluster"
+        ]
+        if len(clusters_all) < 2:
+            self._err(ReviewUiError("need at least two groups to merge"))
             return
-        labels = [item_label(it, detail=self._detail_mode) for it in clusters]
+        selected = cluster_items_at_indices(self._visible_items, self._sel_indices)
+        if len(selected) >= 2:
+            self._open_visual_merge_confirm(selected[0], selected[1:])
+            return
+        self._open_visual_merge_picker(clusters_all)
+
+    def _fill_merge_panel(
+        self, parent, item: dict, *, title: str, photos_bucket: list
+    ) -> None:
+        """Draw a titled face strip for one group inside a merge dialog."""
+        frame = ttk.Frame(parent, padding=8)
+        frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=6, pady=4)
+        ttk.Label(frame, text=title, font=_FONT_UI_BOLD).pack(anchor=tk.W)
+        ttk.Label(
+            frame,
+            text=item_label(item, detail=self._detail_mode),
+            font=_FONT_UI,
+            wraplength=260,
+            foreground=INK_SECONDARY,
+        ).pack(anchor=tk.W, pady=(2, 6))
+        strip = tk.Canvas(
+            frame, background=BG_DARK, height=MERGE_THUMB + 16, highlightthickness=0
+        )
+        strip.pack(fill=tk.X)
+        reps = representative_members(item, MERGE_REPR_FACES)
+        if not reps:
+            strip.create_text(
+                12, 12, anchor=tk.NW, fill=INK_ON_DARK, text="No faces", font=_FONT_UI
+            )
+            return
+        x = 8
+        placeholders = []
+        for m in reps:
+            rect = strip.create_rectangle(
+                x, 8, x + MERGE_THUMB, 8 + MERGE_THUMB, fill="#444", outline="#888"
+            )
+            placeholders.append((m, x, 8, rect))
+            x += MERGE_THUMB + 8
+        strip.configure(scrollregion=(0, 0, x + 8, MERGE_THUMB + 16))
+
+        def worker() -> None:
+            results = []
+            for m, sx, sy, rect in placeholders:
+                b64 = crop_png_b64(
+                    m["path"],
+                    m["bbox"],
+                    max_side=MERGE_THUMB,
+                    frame_id=m.get("frame_id"),
+                    source_type=m.get("source_type"),
+                )
+                results.append((sx, sy, rect, b64))
+
+            def apply() -> None:
+                for sx, sy, rect, b64 in results:
+                    if b64 is None:
+                        strip.create_text(
+                            sx + MERGE_THUMB / 2,
+                            sy + MERGE_THUMB / 2,
+                            text="?",
+                            fill="#ccc",
+                        )
+                        continue
+                    try:
+                        photo = tk.PhotoImage(data=b64)
+                    except tk.TclError:
+                        continue
+                    photos_bucket.append(photo)
+                    strip.delete(rect)
+                    strip.create_image(sx, sy, anchor=tk.NW, image=photo)
+
+            self.root.after(0, apply)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _open_visual_merge_confirm(self, keep: dict, others: list[dict]) -> None:
         dlg = tk.Toplevel(self.root)
         dlg.title("Merge groups")
         dlg.transient(self.root)
-        ttk.Label(dlg, text="Keep this group:", font=_FONT_UI).pack(
-            anchor=tk.W, padx=6, pady=4
-        )
-        survivor_var = tk.StringVar(value=labels[0])
-        ttk.Combobox(
-            dlg, textvariable=survivor_var, values=labels, state="readonly", width=80
-        ).pack(fill=tk.X, padx=6, pady=2)
+        dlg.minsize(640, 280)
+        self._merge_photos = []
         ttk.Label(
-            dlg, text="Merge this into it (Ctrl+click multi-select):", font=_FONT_UI
-        ).pack(anchor=tk.W, padx=6, pady=4)
-        lb = tk.Listbox(dlg, selectmode=tk.EXTENDED, width=80, height=14)
-        for lab in labels:
-            lb.insert(tk.END, lab)
-        lb.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
+            dlg,
+            text="Look at both sides. Merge only if these are the same person.",
+            font=_FONT_UI,
+            wraplength=600,
+        ).pack(anchor=tk.W, padx=12, pady=(12, 4))
+        panes = ttk.Frame(dlg)
+        panes.pack(fill=tk.BOTH, expand=True, padx=6)
+        self._fill_merge_panel(
+            panes, keep, title="Keep this group", photos_bucket=self._merge_photos
+        )
+        for o in others:
+            self._fill_merge_panel(
+                panes, o, title="Merge into it", photos_bucket=self._merge_photos
+            )
 
-        def ok():
-            survivor_label = survivor_var.get()
-            if survivor_label not in labels:
-                messagebox.showerror(
-                    "Couldn't merge", "Pick the group to keep.", parent=dlg
-                )
-                return
-            survivor_i = labels.index(survivor_label)
-            sel = [i for i in lb.curselection() if i != survivor_i]
-            if not sel:
-                messagebox.showerror(
-                    "Couldn't merge",
-                    "Select at least one group to merge into it.",
-                    parent=dlg,
-                )
-                return
-            ids = [clusters[survivor_i]["cluster_id"]] + [
-                clusters[i]["cluster_id"] for i in sel
-            ]
+        def ok() -> None:
+            ids = [keep["cluster_id"]] + [o["cluster_id"] for o in others]
             try:
                 apply_merge(self.store, self.run_id, ids)
             except ReviewError as e:
@@ -1187,10 +1543,88 @@ class ReviewApp:
             dlg.destroy()
             self.reload(invalidate_tracks=True)
 
-        _review_button(dlg, "Merge", ok, kind="primary").pack(side=tk.LEFT, padx=6, pady=6)
-        _review_button(dlg, "Cancel", dlg.destroy, kind="secondary").pack(
-            side=tk.RIGHT, padx=6, pady=6
-        )
+        btns = ttk.Frame(dlg, padding=12)
+        btns.pack(fill=tk.X)
+        _review_button(btns, "Merge groups", ok, kind="primary").pack(side=tk.LEFT)
+        _review_button(btns, "Cancel", dlg.destroy, kind="secondary").pack(side=tk.RIGHT)
+
+    def _open_visual_merge_picker(self, clusters: list[dict]) -> None:
+        """Pick keep + merge-ins with face strips (no text-only dropdown)."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Merge groups")
+        dlg.transient(self.root)
+        dlg.geometry("720x520")
+        dlg.minsize(640, 420)
+        self._merge_photos = []
+        ttk.Label(
+            dlg,
+            text="Choose the group to keep, then the group(s) to merge into it.",
+            font=_FONT_UI,
+            wraplength=680,
+        ).pack(anchor=tk.W, padx=12, pady=(12, 4))
+
+        keep_var = tk.IntVar(value=0)
+        merge_vars: list[tk.BooleanVar] = []
+
+        body = ttk.Frame(dlg)
+        body.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+        canvas = tk.Canvas(body, background=BG_SUBTLE, highlightthickness=0)
+        sb = ttk.Scrollbar(body, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        inner = ttk.Frame(canvas)
+        canvas.create_window((0, 0), window=inner, anchor=tk.NW)
+
+        def _on_inner_configure(_e=None) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        inner.bind("<Configure>", _on_inner_configure)
+
+        for i, cl in enumerate(clusters):
+            row = ttk.Frame(inner, padding=6)
+            row.pack(fill=tk.X, pady=2)
+            ttk.Radiobutton(row, text="Keep", variable=keep_var, value=i).pack(
+                side=tk.LEFT, padx=(0, 8)
+            )
+            mv = tk.BooleanVar(value=False)
+            merge_vars.append(mv)
+            ttk.Checkbutton(row, text="Merge in", variable=mv).pack(
+                side=tk.LEFT, padx=(0, 8)
+            )
+            self._fill_merge_panel(
+                row,
+                cl,
+                title=item_label(cl, detail=False),
+                photos_bucket=self._merge_photos,
+            )
+
+        def ok() -> None:
+            keep_i = int(keep_var.get())
+            if keep_i < 0 or keep_i >= len(clusters):
+                messagebox.showerror(
+                    "Couldn't merge", "Pick the group to keep.", parent=dlg
+                )
+                return
+            others = [
+                clusters[i]
+                for i, v in enumerate(merge_vars)
+                if v.get() and i != keep_i
+            ]
+            if not others:
+                messagebox.showerror(
+                    "Couldn't merge",
+                    "Select at least one group to merge into it.",
+                    parent=dlg,
+                )
+                return
+            dlg.destroy()
+            self._open_visual_merge_confirm(clusters[keep_i], others)
+
+        btns = ttk.Frame(dlg, padding=12)
+        btns.pack(fill=tk.X)
+        _review_button(btns, "Review merge…", ok, kind="primary").pack(side=tk.LEFT)
+        _review_button(btns, "Cancel", dlg.destroy, kind="secondary").pack(side=tk.RIGHT)
 
     def _do_split(self) -> None:
         item = self._current_item()
