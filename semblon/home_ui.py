@@ -39,7 +39,6 @@ from semblon.progress import (
     KIND_STALLED,
     STAGE_PROCESS,
     ProgressEvent,
-    format_duration,
     format_progress_line,
     make_event,
     stills_percent,
@@ -54,7 +53,6 @@ from semblon.empty_states import (
     library_has_media_lines,
     people_empty,
     photos_empty,
-    photos_videos_nothing_selected,
     search_no_matches,
     search_no_named_people,
     search_no_store,
@@ -178,10 +176,10 @@ from semblon.watchdog import Watchdog
 HOME_OBSERVERS = "face,color,object"
 
 # R3-BRIEF §4 information architecture (nav ids → display label).
-# Route IDs unchanged; UX Rescue §4 renames Unknown / Activity for users.
+# Route IDs unchanged; photo-intelligence softens Unknown / People wording.
 HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ("LIBRARY", (("home", "Home"), ("photos", "Photos"), ("videos", "Videos"))),
-    ("PEOPLE", (("people", "People"), ("unknown", "To review"))),
+    ("PEOPLE", (("people", "People"), ("unknown", "Needs attention"))),
     ("ACTIVITY", (("activity", "Recent activity"),)),
 )
 
@@ -632,20 +630,10 @@ def json_fallback(rec: dict) -> str:
 
 
 def _format_sel_item(it: dict) -> str:
-    """One-line label for Inspector Selection listbox."""
-    kind = it.get("kind")
-    if kind == "cluster":
-        cid = (it.get("cluster_id") or "")[:12]
-        n = it.get("face_count")
-        named = ""
-        if it.get("named") and it.get("person_names"):
-            named = f"  named:{','.join(it['person_names'][:2])}"
-        return f"cluster {cid}  faces={n}{named}"
-    fid = (it.get("face_id") or "")[:12]
-    cid = it.get("cluster_id")
-    if cid:
-        return f"face {fid}  in cluster {(cid or '')[:12]}"
-    return f"face {fid}  unassigned"
+    """One-line label for Inspector selection — soft product copy, never bare UUIDs."""
+    from semblon.product_surface import soft_sel_item_label
+
+    return soft_sel_item_label(it)
 
 
 def _button(master, text, command, kind="secondary", icon=None, plate=None):
@@ -760,10 +748,11 @@ class HomeApp:
         # Overflow keeps advanced callbacks reachable without equal-weight job bar.
         # The control itself is created on the top bar (a Menubutton cannot be reparented).
         self._overflow_menu = tk.Menu(self._overflow, tearoff=0)
+        self._overflow_menu.add_command(label="Open Review", command=self._open_review_ui)
         self._overflow_menu.add_command(label="Live…", command=self._open_live_overlay)
         self._overflow_menu.add_command(label="Open review.html", command=self._open_html)
         self._overflow_menu.add_command(
-            label="Canvas", command=lambda: self._navigate("canvas")
+            label="Explore workspace", command=lambda: self._navigate("canvas")
         )
         self._overflow.configure(menu=self._overflow_menu)
 
@@ -816,8 +805,8 @@ class HomeApp:
         body = ttk.Frame(self.root, padding=(8, 0, 8, 8))
         body.pack(fill=tk.BOTH, expand=True)
         self._body = body
-        body.columnconfigure(1, weight=3)
-        body.columnconfigure(2, weight=2)
+        body.columnconfigure(1, weight=5)
+        body.columnconfigure(2, weight=1)
         body.rowconfigure(0, weight=1)
 
         # Library sidebar — navigation, not a diagnostic listing.
@@ -891,7 +880,7 @@ class HomeApp:
             show_chrome=True,
         )
 
-        # Inspector — Evidence (machine) | Proposed action (human). R3-BRIEF §4.
+        # Inspector — contextual result for the current interaction.
         insp = ttk.Frame(body, padding=(SP_16, SP_16))
         insp.grid(row=0, column=2, sticky="nsew")
         self._inspector_frame = insp
@@ -900,8 +889,22 @@ class HomeApp:
             anchor=tk.W, pady=(0, SP_16)
         )
 
-        # Selection list (multi-select clusters/faces for Merge / Split).
-        ttk.Label(insp, text="Selection", font=CAPTION).pack(anchor=tk.W, pady=(6, 0))
+        from semblon.product_surface import (
+            DETAILS_HEADING,
+            SEL_HEADING_IDLE,
+            VERB_LABEL_ASSIGN,
+            VERB_LABEL_IGNORE,
+            VERB_LABEL_MERGE,
+            VERB_LABEL_NAME,
+            VERB_LABEL_RULE_OUT,
+            VERB_LABEL_SPLIT,
+        )
+
+        # Heading reflects what was selected — not "Selection" ontology.
+        self._sel_heading = tk.StringVar(value=SEL_HEADING_IDLE)
+        ttk.Label(insp, textvariable=self._sel_heading, font=CAPTION).pack(
+            anchor=tk.W, pady=(6, 0)
+        )
         sel_frame = ttk.Frame(insp)
         sel_frame.pack(fill=tk.X, pady=(2, 4))
         self._sel_list = tk.Listbox(
@@ -915,7 +918,7 @@ class HomeApp:
         sel_sb.pack(side=tk.LEFT, fill=tk.Y)
         self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
 
-        ttk.Label(insp, text="Details", font=CAPTION).pack(
+        ttk.Label(insp, text=DETAILS_HEADING, font=CAPTION).pack(
             anchor=tk.W, pady=(4, 0)
         )
         evid_frame = ttk.Frame(insp)
@@ -928,44 +931,51 @@ class HomeApp:
         self._inspector.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb.pack(side=tk.LEFT, fill=tk.Y)
 
-        ttk.Label(insp, text="Proposed action (human)", font=CAPTION).pack(
+        ttk.Label(insp, text="What you can do", font=CAPTION).pack(
             anchor=tk.W, pady=(4, 0)
         )
         ttk.Label(
             insp,
-            text="Merge observations ≠ Assign to person",
+            text="Name someone when you recognise them. Combining groups is separate from naming.",
             font=CAPTION,
             foreground=TEXT_SECONDARY,
+            wraplength=260,
         ).pack(anchor=tk.W)
 
         actions = ttk.Frame(insp)
         actions.pack(fill=tk.X, pady=(4, 0))
         self._verb_reason = tk.StringVar(value="")
-        self.btn_merge = _button(
-            actions, "Merge observations", self._inspector_merge, kind="secondary"
-        )
-        self.btn_merge.pack(fill=tk.X, pady=1)
-        self.btn_assign = _button(
-            actions, "Assign to person", self._inspector_assign, kind="primary"
-        )
-        self.btn_assign.pack(fill=tk.X, pady=1)
-        self.btn_split = _button(actions, "Split", self._inspector_split, kind="secondary")
-        self.btn_split.pack(fill=tk.X, pady=1)
 
+        # Primary action first: name the person you selected.
         name_row = ttk.Frame(actions)
         name_row.pack(fill=tk.X, pady=1)
-        ttk.Label(name_row, text="Name").pack(side=tk.LEFT)
+        ttk.Label(name_row, text=VERB_LABEL_NAME).pack(side=tk.LEFT)
         self._name_var = tk.StringVar()
         self._name_entry = ttk.Entry(name_row, textvariable=self._name_var)
         self._name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
         self._name_entry.bind("<Return>", lambda _e: self._inspector_name_commit())
         self._name_entry.bind("<Escape>", lambda _e: self._inspector_name_cancel())
 
+        self.btn_assign = _button(
+            actions, VERB_LABEL_ASSIGN, self._inspector_assign, kind="primary"
+        )
+        self.btn_assign.pack(fill=tk.X, pady=1)
+        self.btn_merge = _button(
+            actions, VERB_LABEL_MERGE, self._inspector_merge, kind="secondary"
+        )
+        self.btn_merge.pack(fill=tk.X, pady=1)
+        self.btn_split = _button(
+            actions, VERB_LABEL_SPLIT, self._inspector_split, kind="secondary"
+        )
+        self.btn_split.pack(fill=tk.X, pady=1)
+
         self.btn_rule_out = _button(
-            actions, "Rule out", self._inspector_rule_out, kind="destructive"
+            actions, VERB_LABEL_RULE_OUT, self._inspector_rule_out, kind="destructive"
         )
         self.btn_rule_out.pack(fill=tk.X, pady=1)
-        self.btn_ignore = _button(actions, "Ignore", self._inspector_ignore, kind="secondary")
+        self.btn_ignore = _button(
+            actions, VERB_LABEL_IGNORE, self._inspector_ignore, kind="secondary"
+        )
         self.btn_ignore.pack(fill=tk.X, pady=1)
         ttk.Label(insp, textvariable=self._verb_reason, wraplength=260).pack(
             anchor=tk.W, pady=(4, 0)
@@ -986,6 +996,22 @@ class HomeApp:
 
     def _set_inspector(self, title: str, lines: list[str]) -> None:
         self._inspector_title.set(title)
+        if hasattr(self, "_sel_heading") and title in {
+            "Home",
+            "Canvas",
+            "Photos",
+            "Videos",
+            "Activity",
+            "Recent activity",
+            "Settings",
+            "Search",
+            "To review",
+            "Needs attention",
+            "People",
+        }:
+            from semblon.product_surface import SEL_HEADING_IDLE
+
+            self._sel_heading.set(SEL_HEADING_IDLE)
         self._inspector.delete(0, tk.END)
         for line in lines:
             self._inspector.insert(tk.END, line)
@@ -1000,6 +1026,7 @@ class HomeApp:
             "Settings",
             "Search",
             "To review",
+            "Needs attention",
         }:
             self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
             if title != "Canvas":
@@ -1027,6 +1054,8 @@ class HomeApp:
         if target_person_id is not None:
             self._insp_target_person_id = target_person_id
             self._insp_target_person_name = target_person_name
+        if hasattr(self, "_sel_heading"):
+            self._sel_heading.set(title if available else title)
         self._sel_list.delete(0, tk.END)
         for it in self._insp_available:
             self._sel_list.insert(tk.END, _format_sel_item(it))
@@ -1036,6 +1065,8 @@ class HomeApp:
             self._sel_list.selection_set(0)
         self._on_inspector_sel_change()
         self._set_inspector(title, evidence_lines)
+        if hasattr(self, "_sel_heading"):
+            self._sel_heading.set(title)
 
     def _on_inspector_sel_change(self) -> None:
         idxs = list(self._sel_list.curselection())
@@ -1114,7 +1145,7 @@ class HomeApp:
         except (ReviewError, ReviewUiError) as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self.status.set("Merged observations (clusters). Not a person assign.")
+        self.status.set("Combined face groups.")
         self._inspector_after_mutation()
 
     def _inspector_assign(self) -> None:
@@ -1139,7 +1170,7 @@ class HomeApp:
         except (ReviewError, ReviewUiError) as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self.status.set(f"Assigned to person {display!r}. Not Merge observations.")
+        self.status.set(f"Added to {display!r}.")
         self._inspector_after_mutation()
 
     def _inspector_split(self) -> None:
@@ -1167,7 +1198,7 @@ class HomeApp:
         except (ReviewError, ReviewUiError) as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self.status.set("Split cluster faces.")
+        self.status.set("Split faces into a new group.")
         self._inspector_after_mutation()
 
     def _inspector_name_commit(self) -> None:
@@ -1219,7 +1250,7 @@ class HomeApp:
         except (ReviewError, ReviewUiError) as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self.status.set("Ignored (deferral). Not Rule out.")
+        self.status.set("Ignored.")
         self._inspector_after_mutation()
 
     def _inspector_rule_out(self) -> None:
@@ -1246,38 +1277,69 @@ class HomeApp:
         except (ReviewError, ReviewUiError) as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self.status.set("Ruled out (durable reject). Not Ignore.")
+        self.status.set("Marked as not this person.")
         self._inspector_after_mutation()
 
-    def _on_canvas_select(self, media_id: str | None, lines: list[str]) -> None:
-        from semblon.inspector_verbs import (
-            evidence_lines_for_selection,
-            items_from_media_board,
-        )
-
+    def _on_canvas_select(
+        self,
+        media_id: str | None,
+        lines: list[str],
+        selected_hit: dict | None = None,
+    ) -> None:
         # Guard init race: Canvas may fire on_select during construction / early reload
         # before Inspector widgets and _canvas_ws assignment are ready.
         if not hasattr(self, "_sel_list") or not hasattr(self, "_inspector"):
             return
-        title = "Selection" if media_id else "Canvas"
         ws = getattr(self, "_canvas_ws", None)
         board = (getattr(ws, "board", None) or {}) if ws is not None else {}
         run_id = board.get("run_id") or self._last_run_id
-        available = items_from_media_board(board, media_id) if media_id else []
-        evid = evidence_lines_for_selection(
-            run_id=run_id,
-            media_id=media_id,
-            selected=available,
-            board_lines=lines,
-            candidate_person=self._insp_target_person_name,
-        )
+        if selected_hit is None and ws is not None:
+            selected_hit = getattr(ws, "_selected", None)
+
+        # Soft title from interaction, not "Selection" ontology.
+        if selected_hit and selected_hit.get("kind") == "face":
+            title = selected_hit.get("label") or "Unknown person"
+            face = selected_hit.get("face") or {}
+            available = [
+                {
+                    "kind": "face",
+                    "face_id": selected_hit.get("id") or face.get("face_id"),
+                    "cluster_id": face.get("cluster_id"),
+                    "person_id": face.get("person_id"),
+                    "display_name": title if face.get("person_id") else None,
+                }
+            ]
+            preselect = True
+            self._set_inspector_collapsed(False)
+        elif selected_hit and selected_hit.get("kind") == "region":
+            title = "Looking here"
+            available = []
+            preselect = False
+            self._set_inspector_collapsed(False)
+        elif selected_hit and selected_hit.get("kind") != "face":
+            title = selected_hit.get("label") or "Something in the photo"
+            available = []
+            preselect = False
+            self._set_inspector_collapsed(False)
+        elif media_id:
+            title = "This photo"
+            available = []
+            preselect = False
+            # Photo open, nothing selected — keep inspector but soft.
+            self._set_inspector_collapsed(False)
+        else:
+            title = "Photos"
+            available = []
+            preselect = False
+
+        # Soft product lines from Canvas — do not re-wrap with engineering evidence.
         self._set_inspector_selection(
             run_id=run_id,
             media_id=media_id,
             available=available,
-            evidence_lines=evid,
+            evidence_lines=list(lines),
             title=title,
-            preselect_all=len(available) <= 2,
+            preselect_all=preselect,
         )
 
     def _build_home_landing(self) -> None:
@@ -1556,8 +1618,8 @@ class HomeApp:
             self._body.columnconfigure(1, weight=5)
         else:
             self._inspector_frame.grid()
-            self._body.columnconfigure(2, weight=2)
-            self._body.columnconfigure(1, weight=3)
+            self._body.columnconfigure(2, weight=1)
+            self._body.columnconfigure(1, weight=5)
 
     def _mark_nav_active(self, nav_id: str) -> None:
         """Best-effort active nav styling in ttk (underline / state)."""
@@ -1597,10 +1659,12 @@ class HomeApp:
                 self._jobs_frame.pack(fill=tk.X, before=self._body)
             except tk.TclError:
                 self._jobs_frame.pack(fill=tk.X)
+            # Photos/Videos: folder only — Review/Canvas live under More (not primary chrome).
             self.btn_folder.pack(side=tk.LEFT)
-            self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
-            # Canvas button also direct when not on home (overflow still has it).
-            self.btn_canvas.pack(side=tk.LEFT, padx=(SP_8, 0))
+            if self._nav not in {"photos", "videos"}:
+                self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
+                self.btn_canvas.pack(side=tk.LEFT, padx=(SP_8, 0))
+            # else: browsing photos — no Review/Canvas escape hatch in the job bar.
         # Pause toggle + Cancel sit next to the progress bar when busy.
         # Idle home has no status strip. The bar is never shown at rest.
         if busy:
@@ -1672,18 +1736,12 @@ class HomeApp:
             return
         if nav_id == "photos":
             # Stills are typically source_type=folder; exclude video assets.
+            # Canvas reload emits soft inspector via on_select — do not dump library log rows.
             self._show_workspace_canvas(reload=True, source_types=("folder",))
             lib = format_library_lines(self.store, source_type="folder")
             if not library_has_media_lines(lib):
                 self._set_inspector("Photos", photos_empty().as_lines())
-            else:
-                intro = photos_videos_nothing_selected(kind="photo").as_lines()
-                body = [
-                    ln
-                    for ln in lib
-                    if "source-media" not in ln.lower() and "state=" not in ln.lower()
-                ]
-                self._set_inspector("Photos", [*intro, *body])
+            # else: leave soft canvas inspector (photo / tip) in place
             self._sync_chrome_for_route()
             self._refresh_job_controls()
             return
@@ -1692,17 +1750,6 @@ class HomeApp:
             lib = format_library_lines(self.store, source_type="video")
             if not library_has_media_lines(lib):
                 self._set_inspector("Videos", videos_empty().as_lines())
-            else:
-                intro = photos_videos_nothing_selected(kind="video").as_lines()
-                body = [
-                    ln
-                    for ln in lib
-                    if "source-media" not in ln.lower()
-                    and "state=" not in ln.lower()
-                    and "track ≠ person" not in ln.lower()
-                    and "track != person" not in ln.lower()
-                ]
-                self._set_inspector("Videos", [*intro, *body])
             self._sync_chrome_for_route()
             self._refresh_job_controls()
             return
@@ -1714,7 +1761,7 @@ class HomeApp:
             self._refresh_job_controls()
             return
         if nav_id == "unknown":
-            self._welcome_title.set("To review")
+            self._welcome_title.set("Needs attention")
             self._show_workspace_welcome()
             self._show_unknown()
             self._sync_chrome_for_route()
@@ -1866,16 +1913,15 @@ class HomeApp:
                         payload.files_processed,
                         payload.files_total,
                     )
-                    bits = []
-                    if payload.clock:
-                        bits.append(payload.clock)
-                    elapsed = format_duration(payload.elapsed_s)
-                    if elapsed:
-                        bits.append(f"elapsed {elapsed}")
-                    eta = format_duration(payload.eta_s)
-                    if eta:
-                        bits.append(f"eta {eta}")
-                    self.clock.set("   ".join(bits))
+                    # Soft progress — counts only. Wall-clock / elapsed stay out of product chrome.
+                    from semblon.product_surface import soft_progress_clock
+
+                    self.clock.set(
+                        soft_progress_clock(
+                            files_processed=payload.files_processed,
+                            files_total=payload.files_total,
+                        )
+                    )
                 elif kind == "done":
                     self._last_run_id = payload.get("run_id")
                     out = payload.get("out")
@@ -1887,8 +1933,15 @@ class HomeApp:
                     )
                     self._completion = counts
                     self._completion_kind = "done"
-                    # §10/§11 — status stays plain; card owns messaging (no run_id).
-                    self.status.set("Your photos are ready.")
+                    # §10/§11 — status stays plain; card owns messaging (no run_id / elapsed).
+                    photos = int(counts.get("photos") or 0)
+                    if photos > 0:
+                        self.status.set(
+                            f"Your photos are ready. {photos} photo{'s' if photos != 1 else ''} added."
+                        )
+                    else:
+                        self.status.set("Your photos are ready.")
+                    self.clock.set("")
                     self.bar.set_from_event(
                         make_event(
                             STAGE_PROCESS,
@@ -1976,11 +2029,11 @@ class HomeApp:
             if is_expected_condition(e, has_store=self.store.is_file()):
                 if not self.store.is_file():
                     self._set_inspector(
-                        "To review", to_review_empty(has_store=False).as_lines()
+                        "Needs attention", to_review_empty(has_store=False).as_lines()
                     )
                 else:
                     self._set_inspector(
-                        "To review",
+                        "Needs attention",
                         to_review_empty(has_store=True, has_faces=False).as_lines(),
                     )
                 return
@@ -2063,7 +2116,7 @@ class HomeApp:
         )
         evid.insert(
             1,
-            "Select a person here, then a cluster/face on To review or Canvas to Assign.",
+            "Select a person here, then a face under Needs attention or in Photos to add them.",
         )
         self._insp_run_id = self._last_run_id
         self._insp_selected = []
@@ -2077,8 +2130,7 @@ class HomeApp:
             self._insp_target_person_id = p.get("person_id")
             self._insp_target_person_name = p.get("display_name") or p.get("person_id")
             self.status.set(
-                f"Assign target: {self._insp_target_person_name!r}  "
-                "(Merge observations is a separate verb)"
+                f"Ready to add faces to {self._insp_target_person_name!r}."
             )
         self._refresh_inspector_verbs()
 
@@ -2088,8 +2140,8 @@ class HomeApp:
         from semblon.process import latest_run_id
         from semblon.review_ui import load_board
 
-        # Display label "To review"; route id remains ``unknown``.
-        title = "To review"
+        # Display label "Needs attention"; route id remains ``unknown``.
+        title = "Needs attention"
         if not self.store.is_file():
             self._set_inspector_selection(
                 run_id=None,

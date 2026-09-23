@@ -89,7 +89,7 @@ def test_home_control_policy_does_not_lock_read_surfaces():
 def test_home_nav_labels_ux_rescue():
     """§4 — display labels change; route ids stay unknown / activity."""
     flat = {nav_id: label for _sec, items in HOME_NAV for nav_id, label in items}
-    assert flat["unknown"] == "To review"
+    assert flat["unknown"] == "Needs attention"
     assert flat["activity"] == "Recent activity"
     assert flat["home"] == "Home"
     assert flat["people"] == "People"
@@ -173,6 +173,47 @@ def test_home_defers_canvas_load_until_inspector_ready():
     sel_src = inspect.getsource(home_ui.HomeApp._on_canvas_select)
     assert 'getattr(self, "_canvas_ws"' in sel_src
     assert 'hasattr(self, "_sel_list")' in sel_src
+    # 3-arg callback accepts structured face/region hit from CanvasWorkspace.
+    assert "selected_hit" in sel_src
+
+
+def test_home_photos_chrome_demotes_review_and_canvas():
+    """Photos browse: Review/Canvas out of primary job bar; purpose is the photo."""
+    import semblon.home_ui as home_ui
+
+    sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
+    assert 'photos", "videos"' in sync or "photos" in sync
+    assert "Explore workspace" in inspect.getsource(home_ui.HomeApp.__init__) or (
+        "Open Review" in inspect.getsource(home_ui.HomeApp.__init__)
+    )
+    nav = inspect.getsource(home_ui.HomeApp._navigate)
+    # Must not dump faces=/items= library log into Photos inspector.
+    assert "photos_videos_nothing_selected" not in nav.split('nav_id == "photos"')[1].split(
+        'nav_id == "videos"'
+    )[0]
+
+
+def test_home_done_status_clears_clock_telemetry():
+    import semblon.home_ui as home_ui
+
+    drain = inspect.getsource(home_ui.HomeApp._drain_queue)
+    assert 'self.clock.set("")' in drain
+    assert "soft_progress_clock" in drain
+    assert 'bits.append(f"elapsed {elapsed}")' not in drain
+    assert "Your photos are ready" in drain
+
+
+def test_home_inspector_uses_soft_verbs():
+    import semblon.home_ui as home_ui
+
+    init = inspect.getsource(home_ui.HomeApp.__init__)
+    assert "Combine face groups" in init or "VERB_LABEL_MERGE" in init
+    assert "Name this person" in init or "VERB_LABEL_NAME" in init
+    assert "Nothing selected" in init or "SEL_HEADING_IDLE" in init
+    assert 'text="Selection"' not in init
+    fmt = inspect.getsource(home_ui._format_sel_item)
+    assert "soft_sel_item_label" in fmt
+    assert "unassigned" not in fmt
 
 
 def test_home_navigate_home_uses_landing_not_canvas_dump():
