@@ -48,6 +48,7 @@ try:
         BODY_STRONG,
         H1,
         H2,
+        INK_ON_ACCENT,
         INK_ON_DARK,
         INK_PRIMARY,
         INK_SECONDARY,
@@ -67,6 +68,7 @@ except ImportError:  # pragma: no cover
     BODY_STRONG = ("Segoe UI", 13, "bold")
     H1 = ("Segoe UI", 24, "bold")
     H2 = ("Segoe UI", 18, "bold")
+    INK_ON_ACCENT = "#FFFFFF"
     INK_ON_DARK = "#B5B1A8"
     INK_PRIMARY = "#1A1815"
     INK_SECONDARY = "#5E5A52"
@@ -79,6 +81,10 @@ GROUP_REPR_FACES = 3
 MERGE_THUMB = 72
 MERGE_REPR_FACES = 5
 FACE_GRID_WRAP = 720
+FACE_BORDER_MUTED = "#6B675F"
+FACE_BORDER_HOVER = "#9B96EC"
+FACE_CHECK_SIZE = 22
+FACE_DIM_FILL = "#000000"
 
 _FONT_UI = BODY
 _FONT_UI_BOLD = BODY_STRONG
@@ -776,6 +782,25 @@ def cluster_items_at_indices(items: list[dict], indices: list[int] | set[int]) -
     return out
 
 
+def split_button_label(n_selected: int) -> str:
+    """Live Split button copy. Zero stays generic (button may be disabled)."""
+    n = max(0, int(n_selected))
+    if n <= 0:
+        return "Split selected"
+    if n == 1:
+        return "Split 1 selected"
+    return f"Split {n} selected"
+
+
+def face_border_style(*, selected: bool, hovered: bool = False) -> tuple[str, int]:
+    """(outline_color, width) for a face crop frame."""
+    if selected:
+        return (ACCENT, 3)
+    if hovered:
+        return (FACE_BORDER_HOVER, 2)
+    return (FACE_BORDER_MUTED, 1)
+
+
 def _actions_for_kind(kind: str) -> dict[str, bool]:
     """Which review buttons apply to the selected item kind."""
     rule_out = ruled_out_enabled()
@@ -845,6 +870,8 @@ class ReviewApp:
         self._visible_items: list[dict] = []
         self._sel_indices: set[int] = set()
         self._primary_index: int | None = None
+        self._hover_face_id: str | None = None
+        self._face_slots: dict[str, dict] = {}
         self.board: dict = {
             "items": [],
             "counts": {},
@@ -929,9 +956,11 @@ class ReviewApp:
         )
         run_line = ttk.Frame(top)
         run_line.pack(anchor=tk.W, fill=tk.X, pady=(4, 0))
-        ttk.Label(
-            run_line, text=f"Run {self.run_id}", font=_FONT_UI
-        ).pack(side=tk.LEFT)
+        self._run_id_var = tk.StringVar(value="")
+        self._run_id_label = ttk.Label(
+            run_line, textvariable=self._run_id_var, font=_FONT_UI, foreground=INK_SECONDARY
+        )
+        # Packed only when Details is on — hide developer run id by default.
         self._detail_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             run_line,
@@ -1005,10 +1034,14 @@ class ReviewApp:
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         face_sb.pack(side=tk.RIGHT, fill=tk.Y)
         self.canvas.bind("<Button-1>", self._on_canvas_click)
+        self.canvas.bind("<Motion>", self._on_face_motion)
+        self.canvas.bind("<Leave>", self._on_face_leave)
         self.canvas.bind(
             "<MouseWheel>",
             lambda e: self.canvas.yview_scroll(int(-e.delta / 120), "units"),
         )
+        self._hover_face_id: str | None = None
+        self._face_slots: dict[str, dict] = {}
 
         actions = ttk.Frame(self.root, padding=6)
         actions.pack(fill=tk.X)
@@ -1030,7 +1063,9 @@ class ReviewApp:
             actions, "Rule out…", self._do_rule_out, kind="destructive"
         )
         self.btn_rule_out.pack(side=tk.LEFT, padx=2)
-        _review_button(actions, "Reload", self.reload, kind="tertiary").pack(side=tk.LEFT, padx=2)
+        _review_button(actions, "Refresh view", self.reload, kind="tertiary").pack(
+            side=tk.LEFT, padx=2
+        )
         _review_button(actions, "Close", self.root.destroy, kind="tertiary").pack(
             side=tk.RIGHT, padx=2
         )
@@ -1052,10 +1087,24 @@ class ReviewApp:
         self.root.bind("S", lambda _e: self._do_split())
         self.root.bind("i", lambda _e: self._do_ignore())
         self.root.bind("I", lambda _e: self._do_ignore())
+        self._sync_run_id_visibility()
 
     def _toggle_details(self) -> None:
         self._detail_mode = bool(self._detail_var.get())
+        self._sync_run_id_visibility()
         self._refresh_list_and_status()
+
+    def _sync_run_id_visibility(self) -> None:
+        """Show Run id only when Details is on (developer chrome demotion)."""
+        if not hasattr(self, "_run_id_label"):
+            return
+        if self._detail_mode and self.run_id:
+            self._run_id_var.set(f"Run {self.run_id}")
+            if not self._run_id_label.winfo_ismapped():
+                self._run_id_label.pack(side=tk.LEFT)
+        else:
+            self._run_id_var.set("")
+            self._run_id_label.pack_forget()
 
     def _toggle_singles(self) -> None:
         self._show_singles = bool(self._singles_var.get())
@@ -1139,14 +1188,36 @@ class ReviewApp:
                 tags=(tag,),
             )
             label = item_label(item, detail=self._detail_mode)
+            text_x = 12 + GROUP_REPR_FACES * (GROUP_THUMB + 4)
+            if item.get("named"):
+                # Named progress cue — accent check notch on the row.
+                cx = 292 - 18
+                cy = y + 12
+                self.group_canvas.create_oval(
+                    cx,
+                    cy,
+                    cx + 14,
+                    cy + 14,
+                    fill=ACCENT,
+                    outline=ACCENT,
+                    tags=(tag,),
+                )
+                self.group_canvas.create_text(
+                    cx + 7,
+                    cy + 7,
+                    text="✓",
+                    fill=INK_ON_ACCENT,
+                    font=("Segoe UI", 9, "bold"),
+                    tags=(tag,),
+                )
             self.group_canvas.create_text(
-                12 + GROUP_REPR_FACES * (GROUP_THUMB + 4),
+                text_x,
                 y + 10,
                 anchor=tk.NW,
                 fill=INK_PRIMARY,
                 font=_FONT_UI,
                 text=label,
-                width=160,
+                width=150 if item.get("named") else 160,
                 tags=(tag,),
             )
             reps = representative_members(item, GROUP_REPR_FACES)
@@ -1270,6 +1341,8 @@ class ReviewApp:
     def _set_empty_canvas(self, text: str) -> None:
         self.canvas.delete("all")
         self._photos = []
+        self._face_slots = {}
+        self._hover_face_id = None
         self.canvas.create_text(
             24, 24, anchor=tk.NW, fill=INK_ON_DARK, text=text, font=_FONT_UI
         )
@@ -1278,6 +1351,7 @@ class ReviewApp:
     def _update_action_buttons(self) -> None:
         item = self._current_item()
         clusters = cluster_items_at_indices(self._visible_items, self._sel_indices)
+        n_faces = len(self._selected_faces)
         if item is None:
             flags = _actions_for_kind("")
             if len(clusters) >= 2 or self.board["items"]:
@@ -1293,12 +1367,16 @@ class ReviewApp:
             flags = _actions_for_kind(item["kind"])
             if len(clusters) >= 2:
                 flags["merge"] = True
+            # Split only meaningful when faces are marked.
+            if flags.get("split") and n_faces <= 0:
+                flags["split"] = False
         for key, btn in self._btn_map.items():
             btn.configure(state=tk.NORMAL if flags.get(key) else tk.DISABLED)
         if len(clusters) >= 2:
             self.btn_merge.configure(text=f"Merge selected ({len(clusters)})")
         else:
             self.btn_merge.configure(text="Merge groups…")
+        self.btn_split.configure(text=split_button_label(n_faces))
 
     def _current_item(self) -> dict | None:
         if self._primary_index is None:
@@ -1316,6 +1394,8 @@ class ReviewApp:
         gen = self._draw_gen
         self.canvas.delete("all")
         self._photos = []
+        self._face_slots = {}
+        self._hover_face_id = None
         if not members:
             self._set_empty_canvas("Select a group, track, or single face.")
             return
@@ -1324,27 +1404,43 @@ class ReviewApp:
         slots = []
         for n, m in enumerate(members, start=1):
             tw = th = THUMB_MAX
-            tag = f"face:{m['face_id']}"
-            rect = self.canvas.create_rectangle(
-                x, y, x + tw, y + th, fill="#444", outline="#888", tags=(tag,)
+            fid = m["face_id"]
+            tag = f"face:{fid}"
+            selected = fid in self._selected_faces
+            ph = self.canvas.create_rectangle(
+                x, y, x + tw, y + th, fill="#444", outline="", tags=(tag, "face_ph")
             )
-            mark = "✓ " if m["face_id"] in self._selected_faces else ""
             if self._detail_mode:
-                label = f"{mark}{m['face_id'][:8]}"
+                label = f"{fid[:8]}"
                 if m.get("source_type") == "video":
                     label += f" f={m.get('frame_id')}"
             else:
-                label = f"{mark}Face {n}"
+                label = f"Face {n}"
             self.canvas.create_text(
                 x, y + th + 2, anchor=tk.NW, fill="#eee", text=label, tags=(tag,)
             )
-            slots.append((m, x, y, rect, tag))
+            self._face_slots[fid] = {
+                "x": x,
+                "y": y,
+                "tw": tw,
+                "th": th,
+                "tag": tag,
+                "selected": selected,
+                "ph": ph,
+                "border": None,
+                "dim": None,
+                "check_bg": None,
+                "check_txt": None,
+            }
+            self._paint_face_chrome(fid)
+            slots.append((m, x, y, ph, tag))
             x += tw + 12
             if x > FACE_GRID_WRAP:
                 x = 8
                 y += row_h
         bottom = y + row_h + 8
         self.canvas.configure(scrollregion=(0, 0, FACE_GRID_WRAP + 40, bottom))
+        self._update_action_buttons()
 
         def worker():
             results = []
@@ -1360,10 +1456,81 @@ class ReviewApp:
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _paint_face_chrome(self, face_id: str, *, hovered: bool | None = None) -> None:
+        """Accent border + corner check on the image; dim unselected faces."""
+        slot = self._face_slots.get(face_id)
+        if slot is None:
+            return
+        x, y, tw, th = slot["x"], slot["y"], slot["tw"], slot["th"]
+        tag = slot["tag"]
+        selected = face_id in self._selected_faces
+        slot["selected"] = selected
+        is_hover = (
+            hovered
+            if hovered is not None
+            else (face_id == getattr(self, "_hover_face_id", None))
+        )
+        outline, width = face_border_style(selected=selected, hovered=bool(is_hover))
+
+        for key in ("border", "dim", "check_bg", "check_txt"):
+            item_id = slot.get(key)
+            if item_id is not None:
+                try:
+                    self.canvas.delete(item_id)
+                except tk.TclError:
+                    pass
+                slot[key] = None
+
+        if not selected:
+            # Soften unselected so selected faces pop.
+            slot["dim"] = self.canvas.create_rectangle(
+                x,
+                y,
+                x + tw,
+                y + th,
+                fill=FACE_DIM_FILL,
+                stipple="gray50",
+                outline="",
+                tags=(tag, "face_dim"),
+            )
+
+        slot["border"] = self.canvas.create_rectangle(
+            x,
+            y,
+            x + tw,
+            y + th,
+            fill="",
+            outline=outline,
+            width=width,
+            tags=(tag, "face_border"),
+        )
+
+        if selected:
+            cs = FACE_CHECK_SIZE
+            slot["check_bg"] = self.canvas.create_rectangle(
+                x + 4,
+                y + 4,
+                x + 4 + cs,
+                y + 4 + cs,
+                fill=ACCENT,
+                outline=ACCENT,
+                tags=(tag, "face_check"),
+            )
+            slot["check_txt"] = self.canvas.create_text(
+                x + 4 + cs / 2,
+                y + 4 + cs / 2,
+                text="✓",
+                fill=INK_ON_ACCENT,
+                font=("Segoe UI", 11, "bold"),
+                tags=(tag, "face_check"),
+            )
+
     def _apply_crops(self, gen: int, results) -> None:
         if gen != self._draw_gen:
             return
         for m, x, y, rect, tag, b64 in results:
+            fid = m["face_id"]
+            slot = self._face_slots.get(fid)
             if b64 is None:
                 self.canvas.create_text(
                     x + THUMB_MAX / 2,
@@ -1372,31 +1539,70 @@ class ReviewApp:
                     fill="#ccc",
                     tags=(tag,),
                 )
+                if slot is not None:
+                    self._paint_face_chrome(fid)
                 continue
             try:
                 photo = tk.PhotoImage(data=b64)
             except tk.TclError:
                 continue
             self._photos.append(photo)
-            self.canvas.delete(rect)
-            self.canvas.create_image(x, y, anchor=tk.NW, image=photo, tags=(tag,))
+            # Remove placeholder only — keep selection chrome above the image.
+            try:
+                self.canvas.delete(rect)
+            except tk.TclError:
+                pass
+            if slot is not None and slot.get("ph") == rect:
+                slot["ph"] = None
+            img = self.canvas.create_image(x, y, anchor=tk.NW, image=photo, tags=(tag,))
+            # Image under dim/border/check.
+            try:
+                self.canvas.tag_lower(img)
+            except tk.TclError:
+                pass
+            if slot is not None:
+                self._paint_face_chrome(fid)
 
-    def _on_canvas_click(self, event) -> None:
+    def _face_id_at(self, event_x: int, event_y: int) -> str | None:
         items = self.canvas.find_overlapping(
-            event.x - 1, event.y - 1, event.x + 1, event.y + 1
+            event_x - 1, event_y - 1, event_x + 1, event_y + 1
         )
         for it in items:
             for tag in self.canvas.gettags(it):
                 if tag.startswith("face:"):
-                    fid = tag.split(":", 1)[1]
-                    if fid in self._selected_faces:
-                        self._selected_faces.discard(fid)
-                    else:
-                        self._selected_faces.add(fid)
-                    item = self._current_item()
-                    if item:
-                        self._draw_faces(item["members"])
-                    return
+                    return tag.split(":", 1)[1]
+        return None
+
+    def _on_face_motion(self, event) -> None:
+        fid = self._face_id_at(event.x, event.y)
+        prev = getattr(self, "_hover_face_id", None)
+        if fid == prev:
+            return
+        self._hover_face_id = fid
+        if prev and prev in self._face_slots:
+            self._paint_face_chrome(prev, hovered=False)
+        if fid and fid in self._face_slots:
+            self._paint_face_chrome(fid, hovered=True)
+
+    def _on_face_leave(self, _event=None) -> None:
+        prev = getattr(self, "_hover_face_id", None)
+        self._hover_face_id = None
+        if prev and prev in self._face_slots:
+            self._paint_face_chrome(prev, hovered=False)
+
+    def _on_canvas_click(self, event) -> None:
+        fid = self._face_id_at(event.x, event.y)
+        if fid is None:
+            return
+        if fid in self._selected_faces:
+            self._selected_faces.discard(fid)
+        else:
+            self._selected_faces.add(fid)
+        item = self._current_item()
+        if item:
+            self._draw_faces(item["members"])
+        else:
+            self._update_action_buttons()
 
     def _err(self, e: Exception) -> None:
         messagebox.showerror("Couldn't do that", str(e), parent=self.root)
@@ -1688,8 +1894,9 @@ class ReviewApp:
             return
         if not messagebox.askyesno(
             "Rule out",
-            "Record a durable Ruled out decision? This is not Ignore — "
-            "the observation stays visible as rejected.",
+            "Mark that this is not the suggested person?\n\n"
+            "This keeps the faces visible as rejected. "
+            "It is not the same as Ignore (which hides them as not a person).",
             parent=self.root,
         ):
             return

@@ -174,8 +174,12 @@ def test_item_label_soft_hides_strong_and_ids():
 def test_visible_review_items_hides_singles_by_default():
     from semblon.review_ui import (
         cluster_items_at_indices,
+        face_border_style,
         representative_members,
+        split_button_label,
         visible_review_items,
+        ACCENT,
+        FACE_BORDER_MUTED,
     )
 
     items = [
@@ -192,6 +196,13 @@ def test_visible_review_items_hides_singles_by_default():
     assert reps == [{"face_id": "a"}]
     assert cluster_items_at_indices(hidden, [0, 1]) == [items[0]]
     assert cluster_items_at_indices(items, [0, 2]) == [items[0]]
+    assert split_button_label(0) == "Split selected"
+    assert split_button_label(1) == "Split 1 selected"
+    assert split_button_label(3) == "Split 3 selected"
+    color, width = face_border_style(selected=True)
+    assert color == ACCENT and width == 3
+    color, width = face_border_style(selected=False, hovered=False)
+    assert color == FACE_BORDER_MUTED and width == 1
 
 
 def test_review_status_text_named_progress():
