@@ -31,10 +31,12 @@ try:
         BODY,
         CAPTION_STRONG,
         H2,
+        BG_INSET,
         MONO,
         SP_8,
         SP_12,
         SP_16,
+        SP_24,
         SURFACE_PRIMARY,
         TEXT_PRIMARY,
         TEXT_SECONDARY,
@@ -44,17 +46,19 @@ except ImportError:  # pragma: no cover
     BODY = ("Segoe UI", 11)
     CAPTION_STRONG = ("Segoe UI", 9, "bold")
     H2 = ("Segoe UI", 16, "bold")
-    MONO = ("Consolas", 10)
+    BG_INSET = "#F0EDE6"
+    MONO = ("Cascadia Code", 12)
     SP_8 = 8
     SP_12 = 12
     SP_16 = 16
+    SP_24 = 24
     SURFACE_PRIMARY = "#FFFFFF"
     TEXT_PRIMARY = "#1A1A1A"
     TEXT_SECONDARY = "#6B6B6B"
     TERTIARY_HEIGHT = 28
 
-_PANEL_WIDTH = 480
-_PANEL_HEIGHT = 560
+_PANEL_WIDTH = 720
+_PANEL_HEIGHT = 640
 _RECENT_RUN_LIMIT = 12
 
 __all__ = [
@@ -95,7 +99,10 @@ def open_advanced_diagnostics(parent: Any, store: Path | str | None) -> Any:
     lines = build_advanced_diagnostics_lines(store)
     text = "\n".join(lines)
 
+    from semblon.ui_theme import apply_theme
+
     win = tk.Toplevel(parent)
+    apply_theme(win)
     win.title("Advanced diagnostics")
     win.configure(bg=SURFACE_PRIMARY)
     win.geometry(f"{_PANEL_WIDTH}x{_PANEL_HEIGHT}")
@@ -142,7 +149,7 @@ def open_advanced_diagnostics(parent: Any, store: Path | str | None) -> Any:
         body,
         wrap=tk.WORD,
         font=MONO,
-        bg=SURFACE_PRIMARY,
+        bg=BG_INSET,
         fg=TEXT_PRIMARY,
         relief=tk.FLAT,
         highlightthickness=0,

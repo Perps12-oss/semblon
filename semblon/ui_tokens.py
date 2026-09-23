@@ -1,90 +1,152 @@
-"""UX Rescue §1 — global design tokens for tk/ttk Home.
+"""Visual design language for the Tk product surfaces.
 
-Additive vocabulary only. Does not construct widgets or change identity/ingest.
-Hex values match the Semblon UX Rescue specification (light chrome + dark canvas).
+One token module. Screens import these names; they do not invent a second
+palette. Appearance only — no widget trees and no identity or ingest behavior.
 
-Tk note: Segoe UI "Semibold" is expressed as weight ``bold`` in font tuples —
-ttk/Tk on Windows does not expose a portable ``semibold`` weight token.
+Tk has no semibold weight. Weight 600 in the design scale is ``bold``.
+Letter-spacing is not a Tk font attribute; overlines add tracking in the
+widget that draws them.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-# ── Type scale (Segoe UI) ───────────────────────────────────────────────────
-FONT_FAMILY = "Segoe UI"
-MONO_FAMILY = "Consolas"
+# Segoe UI Variable on Windows 11. Tk falls back to a default face if the
+# family is missing; ``ui_theme.apply_theme`` remaps styles when it can see
+# the installed families. Cascadia Code ships with Windows Terminal.
+FONT_TEXT = "Segoe UI Variable Text"
+FONT_DISPLAY_FAMILY = "Segoe UI Variable Display"
+FONT_MONO = "Cascadia Code"
+FONT_TEXT_FALLBACK = "Segoe UI"
+FONT_MONO_FALLBACK = "Consolas"
 
-# Role → tk font tuple. Sizes: Display 28 / H1 20 / H2 16 / Body 11 / Caption 9.
-DISPLAY: tuple[str, int, str] = (FONT_FAMILY, 28, "bold")
-H1: tuple[str, int, str] = (FONT_FAMILY, 20, "bold")  # Semibold in spec
-H2: tuple[str, int, str] = (FONT_FAMILY, 16, "bold")  # Semibold in spec
-BODY: tuple[str, int] = (FONT_FAMILY, 11)
-BODY_STRONG: tuple[str, int, str] = (FONT_FAMILY, 11, "bold")  # Semibold in spec
-CAPTION: tuple[str, int] = (FONT_FAMILY, 9)
-CAPTION_STRONG: tuple[str, int, str] = (FONT_FAMILY, 9, "bold")  # Semibold in spec
+FONT_FAMILY = FONT_TEXT
+MONO_FAMILY = FONT_MONO
 
-# Diagnostics / paths / IDs (UX Rescue §7 visual: Consolas 10).
-MONO: tuple[str, int] = (MONO_FAMILY, 10)
+# Role → tk font tuple. Sizes are points (Display 32 / H1 24 / H2 18 / Body 13).
+DISPLAY: tuple[str, int, str] = (FONT_DISPLAY_FAMILY, 32, "bold")
+H1: tuple[str, int, str] = (FONT_DISPLAY_FAMILY, 24, "bold")
+H2: tuple[str, int, str] = (FONT_TEXT, 18, "bold")
+H3: tuple[str, int, str] = (FONT_TEXT, 14, "bold")
+BODY: tuple[str, int] = (FONT_TEXT, 13)
+BODY_STRONG: tuple[str, int, str] = (FONT_TEXT, 13, "bold")
+BODY_SMALL: tuple[str, int] = (FONT_TEXT, 12)
+CAPTION: tuple[str, int] = (FONT_TEXT, 11)
+CAPTION_STRONG: tuple[str, int, str] = (FONT_TEXT, 11, "bold")
+OVERLINE: tuple[str, int, str] = (FONT_TEXT, 10, "bold")
+MONO: tuple[str, int] = (FONT_MONO, 12)
 
 FONT_ROLES: dict[str, tuple[Any, ...]] = {
     "display": DISPLAY,
     "h1": H1,
     "h2": H2,
+    "h3": H3,
     "body": BODY,
     "body_strong": BODY_STRONG,
+    "body_small": BODY_SMALL,
     "caption": CAPTION,
     "caption_strong": CAPTION_STRONG,
+    "overline": OVERLINE,
     "mono": MONO,
 }
 
-# ── Spacing rhythm (4px base) ───────────────────────────────────────────────
+# Spacing rhythm (4px base).
 SP_4 = 4
 SP_8 = 8
 SP_12 = 12
 SP_16 = 16
 SP_24 = 24
 SP_32 = 32
+SP_48 = 48
+SP_64 = 64
 
-# ── Color tokens (exact UX Rescue hex) ──────────────────────────────────────
-SURFACE_PRIMARY = "#FFFFFF"
-SURFACE_SECONDARY = "#F5F5F5"
-SURFACE_DARK = "#1A1A1A"
-TEXT_PRIMARY = "#1A1A1A"
-TEXT_SECONDARY = "#6B6B6B"
-TEXT_DISABLED = "#A0A0A0"
-ACCENT = "#0A6CFF"
-ACCENT_HOVER = "#0857CC"
-ACCENT_PRESSED = "#0645A0"
-BORDER_SUBTLE = "#E0E0E0"
-BORDER_FOCUS = "#0A6CFF"
-SUCCESS = "#0F7B3A"
-WARNING = "#B25000"
+# Light mode. Photographs are the only full-spectrum color.
+# ``bg.surface`` is the one pure white. Never pure black.
+BG_CANVAS = "#FBFAF7"
+BG_SURFACE = "#FFFFFF"
+BG_SUBTLE = "#F6F4EF"
+BG_PRESSED = "#EFEDE7"
+BG_INSET = "#F0EDE6"
+BG_DARK = "#14130F"
+BORDER_SUBTLE = "#E9E6DE"
+BORDER_DEFAULT = "#DCD8CE"
+BORDER_STRONG = "#C4BFB2"
+INK_PRIMARY = "#1A1815"
+INK_SECONDARY = "#5E5A52"
+INK_TERTIARY = "#8F8A80"
+INK_DISABLED = "#B8B3A8"
+INK_ON_ACCENT = "#FFFFFF"
+# Dark-canvas caption (Canvas / Review preview). Not a second accent.
+INK_ON_DARK = "#B5B1A8"
+ACCENT = "#4338CA"
+ACCENT_HOVER = "#3730A3"
+ACCENT_PRESSED = "#312E81"
+ACCENT_SUBTLE = "#EEF0FB"
+SUCCESS = "#15803D"
+WARNING = "#B45309"
+DANGER = "#B91C1C"
+INFO = "#0369A1"
 
-# ── Button geometry (three classes only) ────────────────────────────────────
-# Primary: height 40, pad 20×10, BODY_STRONG, accent bg / white text.
-# Secondary: height 32, pad 16×6, Segoe 10 regular, white bg + subtle border.
-# Tertiary: height 28, pad 12×4, Segoe 10 regular, no chrome; text-secondary.
+# Names already imported by Home, Review, diagnostics, and empty states.
+SURFACE_PRIMARY = BG_SURFACE
+SURFACE_SECONDARY = BG_SUBTLE
+SURFACE_DARK = BG_DARK
+TEXT_PRIMARY = INK_PRIMARY
+TEXT_SECONDARY = INK_SECONDARY
+TEXT_DISABLED = INK_DISABLED
+BORDER_FOCUS = ACCENT
+
+# Dark mode tokens. Stored so a later appearance switch does not invent a
+# second palette. Light mode is what the product applies today.
+DARK_BG_CANVAS = "#14130F"
+DARK_BG_SURFACE = "#1C1B17"
+DARK_BG_SUBTLE = "#232220"
+DARK_BG_PRESSED = "#2A2825"
+DARK_BG_INSET = "#1F1E1A"
+DARK_BORDER_SUBTLE = "#2E2D28"
+DARK_BORDER_DEFAULT = "#3A3833"
+DARK_BORDER_STRONG = "#4E4B43"
+DARK_INK_PRIMARY = "#F5F3EE"
+DARK_INK_SECONDARY = "#B5B1A8"
+DARK_INK_TERTIARY = "#807B72"
+DARK_INK_DISABLED = "#5A564E"
+DARK_ACCENT = "#818CF8"
+DARK_ACCENT_HOVER = "#A5B4FC"
+DARK_ACCENT_PRESSED = "#6366F1"
+DARK_ACCENT_SUBTLE = "#1E1B33"
+
+# Button geometry. Four classes, defined once.
 PRIMARY_HEIGHT = 40
-SECONDARY_HEIGHT = 32
+SECONDARY_HEIGHT = 36
 TERTIARY_HEIGHT = 28
+NAV_HEIGHT = 36
 
 PRIMARY_PAD_X = 20
 PRIMARY_PAD_Y = 10
 SECONDARY_PAD_X = 16
-SECONDARY_PAD_Y = 6
+SECONDARY_PAD_Y = 8
 TERTIARY_PAD_X = 12
 TERTIARY_PAD_Y = 4
 
-SECONDARY_FONT: tuple[str, int] = (FONT_FAMILY, 10)
-TERTIARY_FONT: tuple[str, int] = (FONT_FAMILY, 10)
+SECONDARY_FONT: tuple[str, int] = BODY
+TERTIARY_FONT: tuple[str, int] = BODY
 
-BUTTON_RADIUS_PX = 6  # Intent; ttk may approximate with flat + focus border.
+RADIUS_XS = 4
+RADIUS_SM = 6
+RADIUS_MD = 10
+RADIUS_LG = 14
+BUTTON_RADIUS_PX = RADIUS_SM
+
+WINDOW_MIN = (960, 640)
+WINDOW_DEFAULT = (1200, 780)
+SIDEBAR_WIDTH = 220
+INSPECTOR_WIDTH = 300
 
 
 def font(role: str) -> tuple[Any, ...]:
     """Return a tk font tuple for a named role (``display``, ``h1``, …, ``mono``)."""
-    key = role.strip().lower().replace("-", "_").replace(" ", "_")
+    key = role.strip().lower().replace("-", "_").replace(" ", "_").replace(".", "_")
     try:
         return FONT_ROLES[key]
     except KeyError as e:
@@ -120,3 +182,9 @@ def pad(
     if py is not None:
         out["pady"] = py
     return out
+
+
+def tracked(text: str) -> str:
+    """Approximate +0.08em overline tracking. Tk fonts cannot set letter-spacing."""
+    chars = [ch for ch in text.upper() if not ch.isspace()]
+    return " ".join(chars)

@@ -39,7 +39,6 @@ from semblon.progress import (
     KIND_STALLED,
     STAGE_PROCESS,
     ProgressEvent,
-    format_duration,
     format_progress_line,
     make_event,
     stills_percent,
@@ -54,7 +53,6 @@ from semblon.empty_states import (
     library_has_media_lines,
     people_empty,
     photos_empty,
-    photos_videos_nothing_selected,
     search_no_matches,
     search_no_named_people,
     search_no_store,
@@ -64,53 +62,81 @@ from semblon.empty_states import (
     videos_empty,
 )
 
-# UX Rescue §1 tokens — soft import so Home ships if Foundation lands later.
+# Visual design language — one token module. Soft import so Home still
+# constructs if a partial checkout is missing the foundation.
 try:
+    from semblon.ui_icons import NAV_ICONS
+    from semblon.ui_theme import apply_theme, style_listbox
     from semblon.ui_tokens import (
         ACCENT,
+        BG_CANVAS,
+        BG_DARK,
+        BG_SUBTLE,
+        BG_SURFACE,
         BODY,
+        BODY_SMALL,
         BODY_STRONG,
         BORDER_SUBTLE,
         CAPTION,
         DISPLAY,
         H1,
         H2,
-        PRIMARY_HEIGHT,
-        SECONDARY_HEIGHT,
+        H3,
+        INK_TERTIARY,
+        SIDEBAR_WIDTH,
+        SP_4,
         SP_8,
         SP_12,
         SP_16,
         SP_24,
         SP_32,
+        SP_48,
         SURFACE_PRIMARY,
-        SURFACE_SECONDARY,
         TEXT_DISABLED,
         TEXT_PRIMARY,
         TEXT_SECONDARY,
-        TERTIARY_HEIGHT,
+        WINDOW_DEFAULT,
+        WINDOW_MIN,
+        tracked,
     )
+    from semblon.ui_widgets import Button
 except ImportError:  # pragma: no cover - mid-merge stub
-    ACCENT = "#0A6CFF"
-    BODY = ("Segoe UI", 11)
-    BODY_STRONG = ("Segoe UI", 11, "bold")
-    BORDER_SUBTLE = "#E0E0E0"
-    CAPTION = ("Segoe UI", 9)
-    DISPLAY = ("Segoe UI", 28, "bold")
-    H1 = ("Segoe UI", 20, "bold")
-    H2 = ("Segoe UI", 16, "bold")
-    PRIMARY_HEIGHT = 40
-    SECONDARY_HEIGHT = 32
+    NAV_ICONS = {}
+    apply_theme = None
+    style_listbox = None
+    Button = None
+    ACCENT = "#4338CA"
+    BG_CANVAS = "#FBFAF7"
+    BG_DARK = "#14130F"
+    BG_SUBTLE = "#F6F4EF"
+    BG_SURFACE = "#FFFFFF"
+    BODY = ("Segoe UI", 13)
+    BODY_SMALL = ("Segoe UI", 12)
+    BODY_STRONG = ("Segoe UI", 13, "bold")
+    BORDER_SUBTLE = "#E9E6DE"
+    CAPTION = ("Segoe UI", 11)
+    DISPLAY = ("Segoe UI", 32, "bold")
+    H1 = ("Segoe UI", 24, "bold")
+    H2 = ("Segoe UI", 18, "bold")
+    H3 = ("Segoe UI", 14, "bold")
+    INK_TERTIARY = "#8F8A80"
+    SIDEBAR_WIDTH = 220
+    SP_4 = 4
     SP_8 = 8
     SP_12 = 12
     SP_16 = 16
     SP_24 = 24
     SP_32 = 32
+    SP_48 = 48
     SURFACE_PRIMARY = "#FFFFFF"
-    SURFACE_SECONDARY = "#F5F5F5"
-    TEXT_DISABLED = "#A0A0A0"
-    TEXT_PRIMARY = "#1A1A1A"
-    TEXT_SECONDARY = "#6B6B6B"
-    TERTIARY_HEIGHT = 28
+    TEXT_DISABLED = "#B8B3A8"
+    TEXT_PRIMARY = "#1A1815"
+    TEXT_SECONDARY = "#5E5A52"
+    WINDOW_DEFAULT = (1200, 780)
+    WINDOW_MIN = (960, 640)
+
+    def tracked(text: str) -> str:
+        return " ".join(text.upper())
 
 # Idle status (UX Rescue §10) — no Store: path.
 HOME_IDLE_STATUS = "Ready — choose a folder of photos to begin."
@@ -150,10 +176,10 @@ from semblon.watchdog import Watchdog
 HOME_OBSERVERS = "face,color,object"
 
 # R3-BRIEF §4 information architecture (nav ids → display label).
-# Route IDs unchanged; UX Rescue §4 renames Unknown / Activity for users.
+# Route IDs unchanged; photo-intelligence softens Unknown / People wording.
 HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ("LIBRARY", (("home", "Home"), ("photos", "Photos"), ("videos", "Videos"))),
-    ("PEOPLE", (("people", "People"), ("unknown", "To review"))),
+    ("PEOPLE", (("people", "People"), ("unknown", "Needs attention"))),
     ("ACTIVITY", (("activity", "Recent activity"),)),
 )
 
@@ -230,22 +256,24 @@ else:
     class StillProgressBar(tk.Canvas):
         """Determinate stills bar. Fills only when the event has a real percent."""
 
-        TRACK = "#1c1c1c"
-        FILL = "#3d8bfd"
-        TEXT = "#f4f4f4"
-        EDGE = "#3a3a3a"
+        TRACK = BG_SUBTLE
+        FILL = ACCENT
+        TEXT = INK_TERTIARY
+        EDGE = BG_SUBTLE
 
-        def __init__(self, master, width: int = 520, height: int = 28, **kw):
+        def __init__(self, master, width: int = 520, height: int = 4, **kw):
+            from semblon.ui_theme import px
+
             super().__init__(
                 master,
                 width=width,
-                height=height,
+                height=px(master, height),
                 highlightthickness=0,
-                bg="#121212",
+                bg=BG_CANVAS,
                 **kw,
             )
             self._percent = 0.0
-            self._label = "0%"
+            self._label = ""
             self.bind("<Configure>", lambda _e: self.redraw())
             self.redraw()
 
@@ -258,24 +286,23 @@ else:
             pct = stills_percent(ev)
             if pct is None:
                 return
-            bits = [f"{pct:g}%"]
-            if ev.files_processed is not None and ev.files_total is not None:
-                bits.append(f"{ev.files_processed}/{ev.files_total}")
             self._percent = pct
-            self._label = "  ".join(bits)
+            # Counts stay on the status line. The bar itself is only the fill.
+            self._label = ""
             self.redraw()
 
         def redraw(self) -> None:
             self.delete("all")
             w = max(int(self.winfo_width() or 520), 8)
-            h = max(int(self.winfo_height() or 28), 8)
-            pad = 2
-            self.create_rectangle(pad, pad, w - pad, h - pad, fill=self.TRACK, outline=self.EDGE)
-            inner = w - 2 * pad
-            fill_w = pad + int(inner * self._percent / 100.0)
-            if self._percent > 0:
-                self.create_rectangle(pad, pad, max(pad + 1, fill_w), h - pad, fill=self.FILL, outline="")
-            self.create_text(w / 2, h / 2, text=self._label, fill=self.TEXT, font=("Segoe UI", 10, "bold"))
+            h = max(int(self.winfo_height() or 4), 4)
+            radius = h / 2
+            self._pill(0, 0, w, h, radius, fill=self.TRACK)
+            fill_w = int(w * self._percent / 100.0)
+            if self._percent > 0 and fill_w > 1:
+                self._pill(0, 0, max(h, fill_w), h, radius, fill=self.FILL)
+
+        def _pill(self, x1, y1, x2, y2, r, fill: str) -> None:
+            self.create_rectangle(x1, y1, x2, y2, fill=fill, outline="")
 
 
 def format_people_lines(rec: dict) -> list[str]:
@@ -603,24 +630,30 @@ def json_fallback(rec: dict) -> str:
 
 
 def _format_sel_item(it: dict) -> str:
-    """One-line label for Inspector Selection listbox."""
-    kind = it.get("kind")
-    if kind == "cluster":
-        cid = (it.get("cluster_id") or "")[:12]
-        n = it.get("face_count")
-        named = ""
-        if it.get("named") and it.get("person_names"):
-            named = f"  named:{','.join(it['person_names'][:2])}"
-        return f"cluster {cid}  faces={n}{named}"
-    fid = (it.get("face_id") or "")[:12]
-    cid = it.get("cluster_id")
-    if cid:
-        return f"face {fid}  in cluster {(cid or '')[:12]}"
-    return f"face {fid}  unassigned"
+    """One-line label for Inspector selection — soft product copy, never bare UUIDs."""
+    from semblon.product_surface import soft_sel_item_label
+
+    return soft_sel_item_label(it)
+
+
+def _button(master, text, command, kind="secondary", icon=None, plate=None):
+    """One button class. Falls back to ttk only if the canvas control is absent."""
+    if Button is None or tk is None:
+        return ttk.Button(master, text=text, command=command)
+    return Button(
+        master, text=text, command=command, kind=kind, icon=icon, plate=plate or BG_CANVAS
+    )
 
 
 class HomeApp:
-    """Production Home shell: sidebar Library + Canvas workspace + Inspector."""
+    """Production Home shell: sidebar Library + Canvas workspace + Inspector.
+
+    Pane roles stay addressable for the shell layout. Visible chrome uses the
+    visual design language (no all-caps LabelFrame titles).
+    """
+
+    _PANE_WORKSPACE = "WORKSPACE / INTELLIGENCE CANVAS"
+    _PANE_INSPECTOR = "INSPECTOR"
 
     def __init__(self, store: Path | None = None):
         if tk is None or ttk is None or filedialog is None or messagebox is None:
@@ -646,50 +679,80 @@ class HomeApp:
 
         self.root = tk.Tk()
         self.root.title("Semblon")
-        self.root.minsize(900, 560)
-        self.root.geometry("1120x700")
+        from semblon.ui_theme import px
+
+        self.root.minsize(px(self.root, WINDOW_MIN[0]), px(self.root, WINDOW_MIN[1]))
+        self.root.geometry(
+            f"{px(self.root, WINDOW_DEFAULT[0])}x{px(self.root, WINDOW_DEFAULT[1])}"
+        )
+        if apply_theme is not None:
+            apply_theme(self.root)
         try:
-            self.root.configure(bg=SURFACE_PRIMARY)
+            self.root.configure(bg=BG_CANVAS)
         except tk.TclError:
             pass
+        self._workspace_role = self._PANE_WORKSPACE
+        self._inspector_role = self._PANE_INSPECTOR
 
         # ── Top chrome: brand · search · settings ──
-        top = ttk.Frame(self.root, padding=(12, 10, 12, 4))
+        top = ttk.Frame(self.root, padding=(SP_16, SP_12, SP_16, SP_8))
         top.pack(fill=tk.X)
-        ttk.Label(top, text="Semblon", font=H2).pack(side=tk.LEFT)
-        self.btn_settings = ttk.Button(top, text="⚙ Settings", command=self._show_settings)
+        self._top = top
+        ttk.Label(top, text="Semblon", font=H3).pack(side=tk.LEFT, padx=(SP_4, 0))
+        self.btn_settings = _button(
+            top, "Settings", self._show_settings, kind="tertiary", icon="settings"
+        )
         self.btn_settings.pack(side=tk.RIGHT)
+        self._overflow = ttk.Menubutton(top, text="More")
+        self._overflow.pack(side=tk.RIGHT, padx=(0, SP_8))
         search_row = ttk.Frame(top)
-        search_row.pack(side=tk.RIGHT, padx=(0, 12))
-        ttk.Label(search_row, text=SEARCH_PLACEHOLDER, font=BODY).pack(side=tk.LEFT)
+        search_row.pack(side=tk.RIGHT, padx=(0, SP_12))
         self.search_var = tk.StringVar()
-        ttk.Entry(search_row, textvariable=self.search_var, width=22).pack(side=tk.LEFT, padx=(6, 0))
-        self.btn_search = ttk.Button(search_row, text="Go", command=self._search_person)
-        self.btn_search.pack(side=tk.LEFT, padx=(6, 0))
+        self._search_entry = ttk.Entry(search_row, textvariable=self.search_var, width=28)
+        self._search_entry.pack(side=tk.LEFT)
+        self._search_entry.insert(0, SEARCH_PLACEHOLDER)
+        try:
+            self._search_entry.configure(foreground=INK_TERTIARY)
+        except tk.TclError:
+            pass
+        self._search_entry.bind("<FocusIn>", self._search_focus_in)
+        self._search_entry.bind("<FocusOut>", self._search_focus_out)
+        self.btn_search = _button(
+            search_row, "Search", self._search_person, kind="tertiary", icon="search"
+        )
+        self.btn_search.pack(side=tk.LEFT, padx=(SP_8, 0))
+        self.root.bind("<Control-f>", lambda _e: self._search_entry.focus_set())
 
         # ── Job controls (demoted on home — UX Rescue §3) ──
         jobs = ttk.Frame(self.root, padding=(12, 0, 12, 4))
         jobs.pack(fill=tk.X)
         self._jobs_frame = jobs
-        self.btn_folder = ttk.Button(jobs, text="Choose folder…", command=self._choose_folder)
-        # Pack later via _sync_chrome_for_route (hidden on cold home; CTA is on landing).
-        self.btn_review = ttk.Button(jobs, text="Open Review", command=self._open_review_ui)
-        self.btn_html = ttk.Button(jobs, text="Open review.html", command=self._open_html)
-        self.btn_cancel = ttk.Button(jobs, text="Cancel", command=self._request_cancel, state=tk.DISABLED)
-        # Pause/Resume live next to the progress bar as a single toggle (§3 / §10).
-        self.btn_pause = ttk.Button(
-            jobs, text="Pause", command=self._toggle_pause_resume, state=tk.DISABLED
+        self.btn_folder = _button(
+            jobs, "Choose folder…", self._choose_folder, kind="secondary", icon="folder-plus"
         )
+        # Pack later via _sync_chrome_for_route (hidden on cold home; CTA is on landing).
+        self.btn_review = _button(jobs, "Open Review", self._open_review_ui, kind="secondary")
+        self.btn_html = _button(jobs, "Open review.html", self._open_html, kind="tertiary")
+        self.btn_cancel = _button(jobs, "Cancel", self._request_cancel, kind="tertiary")
+        self.btn_cancel.configure(state=tk.DISABLED)
+        # Pause/Resume live next to the progress bar as a single toggle (§3 / §10).
+        self.btn_pause = _button(
+            jobs, "Pause", self._toggle_pause_resume, kind="tertiary", icon="pause"
+        )
+        self.btn_pause.configure(state=tk.DISABLED)
         self.btn_resume = self.btn_pause  # alias: one toggle control
-        self.btn_live = ttk.Button(jobs, text="Live…", command=self._open_live_overlay)
-        self.btn_canvas = ttk.Button(jobs, text="Canvas", command=lambda: self._navigate("canvas"))
+        self.btn_live = _button(jobs, "Live…", self._open_live_overlay, kind="tertiary")
+        self.btn_canvas = _button(
+            jobs, "Canvas", lambda: self._navigate("canvas"), kind="tertiary", icon="images"
+        )
         # Overflow keeps advanced callbacks reachable without equal-weight job bar.
-        self._overflow = ttk.Menubutton(jobs, text="⋯")
+        # The control itself is created on the top bar (a Menubutton cannot be reparented).
         self._overflow_menu = tk.Menu(self._overflow, tearoff=0)
+        self._overflow_menu.add_command(label="Open Review", command=self._open_review_ui)
         self._overflow_menu.add_command(label="Live…", command=self._open_live_overlay)
         self._overflow_menu.add_command(label="Open review.html", command=self._open_html)
         self._overflow_menu.add_command(
-            label="Canvas", command=lambda: self._navigate("canvas")
+            label="Explore workspace", command=lambda: self._navigate("canvas")
         )
         self._overflow.configure(menu=self._overflow_menu)
 
@@ -702,26 +765,39 @@ class HomeApp:
         prog.pack(fill=tk.X)
         self._prog_frame = prog
         self.status = tk.StringVar(value=HOME_IDLE_STATUS)
-        ttk.Label(
-            prog, textvariable=self.status, wraplength=900, justify=tk.LEFT, font=BODY
-        ).pack(anchor=tk.W, fill=tk.X)
+        self._status_label = ttk.Label(
+            prog,
+            textvariable=self.status,
+            wraplength=900,
+            justify=tk.LEFT,
+            font=BODY_SMALL,
+            foreground=TEXT_SECONDARY,
+        )
+        self._status_label.pack(anchor=tk.W, fill=tk.X)
         self.clock = tk.StringVar(value="")
-        ttk.Label(
-            prog, textvariable=self.clock, wraplength=900, justify=tk.LEFT, font=CAPTION
-        ).pack(anchor=tk.W, fill=tk.X, pady=(2, 2))
+        self._clock_label = ttk.Label(
+            prog,
+            textvariable=self.clock,
+            wraplength=900,
+            justify=tk.LEFT,
+            font=CAPTION,
+            foreground=INK_TERTIARY,
+        )
+        self._clock_label.pack(anchor=tk.W, fill=tk.X, pady=(2, SP_8))
         bar_row = ttk.Frame(prog)
         bar_row.pack(fill=tk.X)
+        self._bar_row = bar_row
         self.bar = StillProgressBar(bar_row)
         self.bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.btn_pause_toggle = ttk.Button(
-            bar_row, text="Pause", command=self._toggle_pause_resume, state=tk.DISABLED
+        self.btn_pause_toggle = _button(
+            bar_row, "Pause", self._toggle_pause_resume, kind="tertiary", icon="pause"
         )
+        self.btn_pause_toggle.configure(state=tk.DISABLED)
         # Keep btn_pause pointing at the visible toggle for control-state map.
         self.btn_pause = self.btn_pause_toggle
         self.btn_resume = self.btn_pause_toggle
-        self.btn_cancel_prog = ttk.Button(
-            bar_row, text="Cancel", command=self._request_cancel, state=tk.DISABLED
-        )
+        self.btn_cancel_prog = _button(bar_row, "Cancel", self._request_cancel, kind="tertiary")
+        self.btn_cancel_prog.configure(state=tk.DISABLED)
         # Prefer progress-adjacent Cancel when processing; job-bar Cancel unused on home.
         self.btn_cancel = self.btn_cancel_prog
 
@@ -729,21 +805,39 @@ class HomeApp:
         body = ttk.Frame(self.root, padding=(8, 0, 8, 8))
         body.pack(fill=tk.BOTH, expand=True)
         self._body = body
-        body.columnconfigure(1, weight=3)
-        body.columnconfigure(2, weight=2)
+        body.columnconfigure(1, weight=5)
+        body.columnconfigure(2, weight=1)
         body.rowconfigure(0, weight=1)
 
-        # Library sidebar
-        side = ttk.Frame(body, padding=(4, 4))
+        # Library sidebar — navigation, not a diagnostic listing.
+        side = tk.Frame(
+            body,
+            bg=BG_SUBTLE,
+            highlightthickness=1,
+            highlightbackground=BORDER_SUBTLE,
+            highlightcolor=BORDER_SUBTLE,
+        )
         side.grid(row=0, column=0, sticky="nsw")
+        self._body.columnconfigure(0, minsize=px(self.root, SIDEBAR_WIDTH), weight=0)
         self._sidebar = side
         for section, items in HOME_NAV:
-            ttk.Label(side, text=section, font=CAPTION).pack(
-                anchor=tk.W, pady=(SP_8 if section != "LIBRARY" else 0, 2)
-            )
+            tk.Label(
+                side,
+                text=tracked(section),
+                font=CAPTION,
+                bg=BG_SUBTLE,
+                fg=INK_TERTIARY,
+            ).pack(anchor=tk.W, pady=(SP_24 if section != "LIBRARY" else SP_8, SP_8), padx=(SP_16, SP_8))
             for nav_id, label in items:
-                btn = ttk.Button(side, text=label, command=lambda n=nav_id: self._navigate(n))
-                btn.pack(fill=tk.X, pady=1, ipady=2)
+                btn = _button(
+                    side,
+                    label,
+                    lambda n=nav_id: self._navigate(n),
+                    kind="nav",
+                    icon=NAV_ICONS.get(nav_id),
+                    plate=BG_SUBTLE,
+                )
+                btn.pack(fill=tk.X, pady=1, padx=SP_4)
                 self._nav_buttons[nav_id] = btn
 
         # Keep job-control map keys: people/unknown/activity point at sidebar buttons.
@@ -751,25 +845,22 @@ class HomeApp:
         self.btn_unknown = self._nav_buttons["unknown"]
         self.btn_activity = self._nav_buttons["activity"]
 
-        # Workspace (landing / Canvas / welcome)
-        work = ttk.LabelFrame(body, text="WORKSPACE", padding=6)
-        work.grid(row=0, column=1, sticky="nsew", padx=(8, 8))
+        # Workspace (landing / Canvas / welcome). Role: WORKSPACE / INTELLIGENCE CANVAS.
+        work = ttk.Frame(body, padding=(SP_16, SP_8))
+        work.grid(row=0, column=1, sticky="nsew", padx=(SP_8, SP_8))
         self._workspace = work
-        self._welcome = ttk.Frame(work)
+        self._welcome = ttk.Frame(work, padding=(SP_8, SP_16))
+        self._welcome_title = tk.StringVar(value="")
+        ttk.Label(self._welcome, textvariable=self._welcome_title, font=H1).pack(
+            anchor=tk.W, pady=(0, SP_8)
+        )
         ttk.Label(
             self._welcome,
-            text="Choose a photo folder to process, or open Review to name people.",
-            wraplength=420,
-            font=BODY,
-        ).pack(anchor=tk.W, pady=(4, 4))
-        # Deep empty-state copy for People/Unknown/Activity is owned by S12–16 agents.
-        ttk.Label(
-            self._welcome,
-            text="Open a sidebar item to continue.",
-            wraplength=420,
+            text="Details stay in the panel on the right.",
+            wraplength=480,
             font=BODY,
             foreground=TEXT_SECONDARY,
-        ).pack(anchor=tk.W, pady=(0, 8))
+        ).pack(anchor=tk.W)
 
         # Cold-launch landing (UX Rescue §2) — built once, shown via _show_home_landing.
         self._landing = ttk.Frame(work)
@@ -789,77 +880,102 @@ class HomeApp:
             show_chrome=True,
         )
 
-        # Inspector — Evidence (machine) | Proposed action (human). R3-BRIEF §4.
-        insp = ttk.LabelFrame(body, text="INSPECTOR", padding=6)
+        # Inspector — contextual result for the current interaction.
+        insp = ttk.Frame(body, padding=(SP_16, SP_16))
         insp.grid(row=0, column=2, sticky="nsew")
         self._inspector_frame = insp
         self._inspector_title = tk.StringVar(value="Home")
-        ttk.Label(insp, textvariable=self._inspector_title, font=BODY_STRONG).pack(
-            anchor=tk.W
+        ttk.Label(insp, textvariable=self._inspector_title, font=H3).pack(
+            anchor=tk.W, pady=(0, SP_16)
         )
 
-        # Selection list (multi-select clusters/faces for Merge / Split).
-        ttk.Label(insp, text="Selection", font=CAPTION).pack(anchor=tk.W, pady=(6, 0))
+        from semblon.product_surface import (
+            DETAILS_HEADING,
+            SEL_HEADING_IDLE,
+            VERB_LABEL_ASSIGN,
+            VERB_LABEL_IGNORE,
+            VERB_LABEL_MERGE,
+            VERB_LABEL_NAME,
+            VERB_LABEL_RULE_OUT,
+            VERB_LABEL_SPLIT,
+        )
+
+        # Heading reflects what was selected — not "Selection" ontology.
+        self._sel_heading = tk.StringVar(value=SEL_HEADING_IDLE)
+        ttk.Label(insp, textvariable=self._sel_heading, font=CAPTION).pack(
+            anchor=tk.W, pady=(6, 0)
+        )
         sel_frame = ttk.Frame(insp)
         sel_frame.pack(fill=tk.X, pady=(2, 4))
         self._sel_list = tk.Listbox(
             sel_frame, exportselection=False, selectmode=tk.EXTENDED, height=5
         )
+        if style_listbox is not None:
+            style_listbox(self._sel_list)
         sel_sb = ttk.Scrollbar(sel_frame, orient=tk.VERTICAL, command=self._sel_list.yview)
         self._sel_list.configure(yscrollcommand=sel_sb.set)
         self._sel_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sel_sb.pack(side=tk.LEFT, fill=tk.Y)
         self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
 
-        ttk.Label(insp, text="Details", font=CAPTION).pack(
+        ttk.Label(insp, text=DETAILS_HEADING, font=CAPTION).pack(
             anchor=tk.W, pady=(4, 0)
         )
         evid_frame = ttk.Frame(insp)
         evid_frame.pack(fill=tk.BOTH, expand=True, pady=(2, 4))
         self._inspector = tk.Listbox(evid_frame, exportselection=False, height=8)
+        if style_listbox is not None:
+            style_listbox(self._inspector)
         sb = ttk.Scrollbar(evid_frame, orient=tk.VERTICAL, command=self._inspector.yview)
         self._inspector.configure(yscrollcommand=sb.set)
         self._inspector.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb.pack(side=tk.LEFT, fill=tk.Y)
 
-        ttk.Label(insp, text="Proposed action (human)", font=CAPTION).pack(
+        ttk.Label(insp, text="What you can do", font=CAPTION).pack(
             anchor=tk.W, pady=(4, 0)
         )
         ttk.Label(
             insp,
-            text="Merge observations ≠ Assign to person",
+            text="Name someone when you recognise them. Combining groups is separate from naming.",
             font=CAPTION,
             foreground=TEXT_SECONDARY,
+            wraplength=260,
         ).pack(anchor=tk.W)
 
         actions = ttk.Frame(insp)
         actions.pack(fill=tk.X, pady=(4, 0))
         self._verb_reason = tk.StringVar(value="")
-        self.btn_merge = ttk.Button(
-            actions, text="Merge observations", command=self._inspector_merge
-        )
-        self.btn_merge.pack(fill=tk.X, pady=1)
-        self.btn_assign = ttk.Button(
-            actions, text="Assign to person", command=self._inspector_assign
-        )
-        self.btn_assign.pack(fill=tk.X, pady=1)
-        self.btn_split = ttk.Button(actions, text="Split", command=self._inspector_split)
-        self.btn_split.pack(fill=tk.X, pady=1)
 
+        # Primary action first: name the person you selected.
         name_row = ttk.Frame(actions)
         name_row.pack(fill=tk.X, pady=1)
-        ttk.Label(name_row, text="Name").pack(side=tk.LEFT)
+        ttk.Label(name_row, text=VERB_LABEL_NAME).pack(side=tk.LEFT)
         self._name_var = tk.StringVar()
         self._name_entry = ttk.Entry(name_row, textvariable=self._name_var)
         self._name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
         self._name_entry.bind("<Return>", lambda _e: self._inspector_name_commit())
         self._name_entry.bind("<Escape>", lambda _e: self._inspector_name_cancel())
 
-        self.btn_rule_out = ttk.Button(
-            actions, text="Rule out", command=self._inspector_rule_out
+        self.btn_assign = _button(
+            actions, VERB_LABEL_ASSIGN, self._inspector_assign, kind="primary"
+        )
+        self.btn_assign.pack(fill=tk.X, pady=1)
+        self.btn_merge = _button(
+            actions, VERB_LABEL_MERGE, self._inspector_merge, kind="secondary"
+        )
+        self.btn_merge.pack(fill=tk.X, pady=1)
+        self.btn_split = _button(
+            actions, VERB_LABEL_SPLIT, self._inspector_split, kind="secondary"
+        )
+        self.btn_split.pack(fill=tk.X, pady=1)
+
+        self.btn_rule_out = _button(
+            actions, VERB_LABEL_RULE_OUT, self._inspector_rule_out, kind="destructive"
         )
         self.btn_rule_out.pack(fill=tk.X, pady=1)
-        self.btn_ignore = ttk.Button(actions, text="Ignore", command=self._inspector_ignore)
+        self.btn_ignore = _button(
+            actions, VERB_LABEL_IGNORE, self._inspector_ignore, kind="secondary"
+        )
         self.btn_ignore.pack(fill=tk.X, pady=1)
         ttk.Label(insp, textvariable=self._verb_reason, wraplength=260).pack(
             anchor=tk.W, pady=(4, 0)
@@ -880,6 +996,22 @@ class HomeApp:
 
     def _set_inspector(self, title: str, lines: list[str]) -> None:
         self._inspector_title.set(title)
+        if hasattr(self, "_sel_heading") and title in {
+            "Home",
+            "Canvas",
+            "Photos",
+            "Videos",
+            "Activity",
+            "Recent activity",
+            "Settings",
+            "Search",
+            "To review",
+            "Needs attention",
+            "People",
+        }:
+            from semblon.product_surface import SEL_HEADING_IDLE
+
+            self._sel_heading.set(SEL_HEADING_IDLE)
         self._inspector.delete(0, tk.END)
         for line in lines:
             self._inspector.insert(tk.END, line)
@@ -894,6 +1026,7 @@ class HomeApp:
             "Settings",
             "Search",
             "To review",
+            "Needs attention",
         }:
             self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
             if title != "Canvas":
@@ -921,6 +1054,8 @@ class HomeApp:
         if target_person_id is not None:
             self._insp_target_person_id = target_person_id
             self._insp_target_person_name = target_person_name
+        if hasattr(self, "_sel_heading"):
+            self._sel_heading.set(title if available else title)
         self._sel_list.delete(0, tk.END)
         for it in self._insp_available:
             self._sel_list.insert(tk.END, _format_sel_item(it))
@@ -930,6 +1065,8 @@ class HomeApp:
             self._sel_list.selection_set(0)
         self._on_inspector_sel_change()
         self._set_inspector(title, evidence_lines)
+        if hasattr(self, "_sel_heading"):
+            self._sel_heading.set(title)
 
     def _on_inspector_sel_change(self) -> None:
         idxs = list(self._sel_list.curselection())
@@ -1008,7 +1145,7 @@ class HomeApp:
         except (ReviewError, ReviewUiError) as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self.status.set("Merged observations (clusters). Not a person assign.")
+        self.status.set("Combined face groups.")
         self._inspector_after_mutation()
 
     def _inspector_assign(self) -> None:
@@ -1033,7 +1170,7 @@ class HomeApp:
         except (ReviewError, ReviewUiError) as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self.status.set(f"Assigned to person {display!r}. Not Merge observations.")
+        self.status.set(f"Added to {display!r}.")
         self._inspector_after_mutation()
 
     def _inspector_split(self) -> None:
@@ -1061,7 +1198,7 @@ class HomeApp:
         except (ReviewError, ReviewUiError) as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self.status.set("Split cluster faces.")
+        self.status.set("Split faces into a new group.")
         self._inspector_after_mutation()
 
     def _inspector_name_commit(self) -> None:
@@ -1113,7 +1250,7 @@ class HomeApp:
         except (ReviewError, ReviewUiError) as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self.status.set("Ignored (deferral). Not Rule out.")
+        self.status.set("Ignored.")
         self._inspector_after_mutation()
 
     def _inspector_rule_out(self) -> None:
@@ -1140,38 +1277,69 @@ class HomeApp:
         except (ReviewError, ReviewUiError) as e:
             messagebox.showerror("Semblon", str(e))
             return
-        self.status.set("Ruled out (durable reject). Not Ignore.")
+        self.status.set("Marked as not this person.")
         self._inspector_after_mutation()
 
-    def _on_canvas_select(self, media_id: str | None, lines: list[str]) -> None:
-        from semblon.inspector_verbs import (
-            evidence_lines_for_selection,
-            items_from_media_board,
-        )
-
+    def _on_canvas_select(
+        self,
+        media_id: str | None,
+        lines: list[str],
+        selected_hit: dict | None = None,
+    ) -> None:
         # Guard init race: Canvas may fire on_select during construction / early reload
         # before Inspector widgets and _canvas_ws assignment are ready.
         if not hasattr(self, "_sel_list") or not hasattr(self, "_inspector"):
             return
-        title = "Selection" if media_id else "Canvas"
         ws = getattr(self, "_canvas_ws", None)
         board = (getattr(ws, "board", None) or {}) if ws is not None else {}
         run_id = board.get("run_id") or self._last_run_id
-        available = items_from_media_board(board, media_id) if media_id else []
-        evid = evidence_lines_for_selection(
-            run_id=run_id,
-            media_id=media_id,
-            selected=available,
-            board_lines=lines,
-            candidate_person=self._insp_target_person_name,
-        )
+        if selected_hit is None and ws is not None:
+            selected_hit = getattr(ws, "_selected", None)
+
+        # Soft title from interaction, not "Selection" ontology.
+        if selected_hit and selected_hit.get("kind") == "face":
+            title = selected_hit.get("label") or "Unknown person"
+            face = selected_hit.get("face") or {}
+            available = [
+                {
+                    "kind": "face",
+                    "face_id": selected_hit.get("id") or face.get("face_id"),
+                    "cluster_id": face.get("cluster_id"),
+                    "person_id": face.get("person_id"),
+                    "display_name": title if face.get("person_id") else None,
+                }
+            ]
+            preselect = True
+            self._set_inspector_collapsed(False)
+        elif selected_hit and selected_hit.get("kind") == "region":
+            title = "Looking here"
+            available = []
+            preselect = False
+            self._set_inspector_collapsed(False)
+        elif selected_hit and selected_hit.get("kind") != "face":
+            title = selected_hit.get("label") or "Something in the photo"
+            available = []
+            preselect = False
+            self._set_inspector_collapsed(False)
+        elif media_id:
+            title = "This photo"
+            available = []
+            preselect = False
+            # Photo open, nothing selected — keep inspector but soft.
+            self._set_inspector_collapsed(False)
+        else:
+            title = "Photos"
+            available = []
+            preselect = False
+
+        # Soft product lines from Canvas — do not re-wrap with engineering evidence.
         self._set_inspector_selection(
             run_id=run_id,
             media_id=media_id,
             available=available,
-            evidence_lines=evid,
+            evidence_lines=list(lines),
             title=title,
-            preselect_all=len(available) <= 2,
+            preselect_all=preselect,
         )
 
     def _build_home_landing(self) -> None:
@@ -1184,9 +1352,9 @@ class HomeApp:
         ttk.Label(
             hero,
             text="Find the people in your photos.",
-            font=BODY,
+            font=H2,
             foreground=TEXT_SECONDARY,
-            wraplength=420,
+            wraplength=480,
             justify=tk.CENTER,
         ).pack()
         ttk.Label(
@@ -1199,12 +1367,19 @@ class HomeApp:
             font=BODY,
             foreground=TEXT_SECONDARY,
             wraplength=480,
+            width=48,
             justify=tk.CENTER,
+            anchor=tk.CENTER,
         ).pack(pady=(SP_8, 0))
-        self.btn_landing_cta = ttk.Button(
-            hero, text="Add a photo folder", command=self._choose_folder
+        self.btn_landing_cta = _button(
+            hero,
+            "Add a photo folder",
+            self._choose_folder,
+            kind="primary",
+            icon="folder-plus",
+            plate=BG_CANVAS,
         )
-        self.btn_landing_cta.pack(pady=(SP_24, 0), ipady=6, ipadx=12)
+        self.btn_landing_cta.pack(pady=(SP_24, 0))
         self._landing_return_var = tk.StringVar(value="")
         self._landing_return = ttk.Label(
             hero,
@@ -1215,30 +1390,42 @@ class HomeApp:
             justify=tk.CENTER,
         )
         self._landing_return.pack(pady=(SP_8, 0))
-        self.btn_landing_review = ttk.Button(
-            hero, text="Review", command=self._open_review_ui
+        self.btn_landing_review = _button(
+            hero, "Review", self._open_review_ui, kind="tertiary", plate=BG_CANVAS
         )
         # Packed only when returning-user hint is shown.
 
-        steps = ttk.Frame(hero)
+        steps = tk.Frame(hero, bg=BG_CANVAS)
         steps.pack(pady=(SP_32, 0))
-        for num, title, desc in (
-            ("1", "Add your photos", "Choose the folder you want Semblon to examine."),
-            ("2", "Semblon finds people", "Your photos are analysed and similar faces are grouped."),
-            ("3", "Review and name", "Review the groups and tell Semblon who you recognise."),
+        for _num, title, desc in (
+            ("1", "Add your photos", "Add a photo folder to begin."),
+            ("2", "Semblon finds", "Similar faces are grouped together."),
+            ("3", "Review and name", "Review the groups and name the people."),
         ):
-            col = ttk.Frame(steps, padding=(SP_12, 0))
-            col.pack(side=tk.LEFT, fill=tk.Y, padx=(0, SP_24))
-            ttk.Label(col, text=num, font=H2).pack(anchor=tk.W)
-            ttk.Label(col, text=title, font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_8, 0))
-            ttk.Label(
+            col = tk.Frame(steps, bg=BG_CANVAS)
+            col.pack(side=tk.LEFT, anchor=tk.N, padx=(0, SP_16))
+            tk.Label(
+                col,
+                text=title,
+                font=H3,
+                bg=BG_CANVAS,
+                fg=TEXT_PRIMARY,
+                wraplength=190,
+                width=18,
+                anchor="w",
+                justify=tk.LEFT,
+            ).pack(anchor=tk.W)
+            tk.Label(
                 col,
                 text=desc,
                 font=BODY,
-                foreground=TEXT_SECONDARY,
-                wraplength=160,
+                bg=BG_CANVAS,
+                fg=TEXT_SECONDARY,
+                wraplength=190,
+                width=22,
+                anchor="nw",
                 justify=tk.LEFT,
-            ).pack(anchor=tk.W)
+            ).pack(anchor=tk.W, pady=(SP_8, 0))
 
         ttk.Label(
             hero,
@@ -1253,39 +1440,43 @@ class HomeApp:
             child.destroy()
         outer = tk.Frame(
             self._result_card,
-            bg=SURFACE_SECONDARY,
+            bg=BG_SURFACE,
             highlightbackground=BORDER_SUBTLE,
             highlightthickness=1,
-            padx=SP_24,
-            pady=SP_24,
+            padx=SP_32,
+            pady=SP_32,
         )
         outer.pack(expand=True, pady=SP_32)
         self._result_headline = tk.StringVar(value="Your photos are ready")
         self._result_body = tk.StringVar(value="")
-        ttk.Label(outer, textvariable=self._result_headline, font=H1).pack(anchor=tk.W)
+        ttk.Label(
+            outer, textvariable=self._result_headline, font=H1, style="Surface.TLabel"
+        ).pack(anchor=tk.W)
         ttk.Label(
             outer,
             textvariable=self._result_body,
             font=BODY,
-            foreground=TEXT_SECONDARY,
+            style="SurfaceMuted.TLabel",
             wraplength=432,
             justify=tk.LEFT,
-        ).pack(anchor=tk.W, pady=(SP_8, SP_16))
-        btns = ttk.Frame(outer)
+        ).pack(anchor=tk.W, pady=(SP_12, SP_16))
+        self._result_stats = ttk.Frame(outer, style="Surface.TFrame")
+        self._result_stats.pack(anchor=tk.W, pady=(0, SP_24))
+        btns = ttk.Frame(outer, style="Surface.TFrame")
         btns.pack(anchor=tk.W)
-        self.btn_result_primary = ttk.Button(
-            btns, text="Review people", command=self._open_review_ui
+        self.btn_result_primary = _button(
+            btns, "Review people", self._open_review_ui, kind="primary", plate=BG_SURFACE
         )
-        self.btn_result_primary.pack(side=tk.LEFT, padx=(0, SP_8), ipady=4, ipadx=8)
-        self.btn_result_secondary = ttk.Button(
-            btns, text="Add another folder", command=self._choose_folder
+        self.btn_result_primary.pack(side=tk.LEFT, padx=(0, SP_8))
+        self.btn_result_secondary = _button(
+            btns, "Add another folder", self._choose_folder, kind="secondary", plate=BG_SURFACE
         )
-        self.btn_result_secondary.pack(side=tk.LEFT, ipady=2, ipadx=6)
-        self.btn_result_continue = ttk.Button(
-            btns, text="Continue", command=self._resume
+        self.btn_result_secondary.pack(side=tk.LEFT)
+        self.btn_result_continue = _button(
+            btns, "Continue", self._resume, kind="primary", plate=BG_SURFACE
         )
-        self.btn_result_start_over = ttk.Button(
-            btns, text="Start over", command=self._choose_folder
+        self.btn_result_start_over = _button(
+            btns, "Start over", self._choose_folder, kind="secondary", plate=BG_SURFACE
         )
 
     def _hide_workspace_panes(self) -> None:
@@ -1330,6 +1521,7 @@ class HomeApp:
             self.btn_result_start_over,
         ):
             b.pack_forget()
+        self._fill_result_stats(data if kind == "done" else None)
         if kind == "cancelled":
             self._result_headline.set("Processing stopped")
             done = data.get("files_processed")
@@ -1368,6 +1560,46 @@ class HomeApp:
             self.btn_result_primary.pack(side=tk.LEFT, padx=(0, SP_8), ipady=4, ipadx=8)
             self.btn_result_secondary.pack(side=tk.LEFT, ipady=2, ipadx=6)
 
+    def _fill_result_stats(self, data: dict | None) -> None:
+        """Three quiet counts under the summary. Hidden when there is nothing to count."""
+        frame = getattr(self, "_result_stats", None)
+        if frame is None:
+            return
+        for child in frame.winfo_children():
+            child.destroy()
+        if not data:
+            return
+        tiles = (
+            ("Photos", data.get("photos")),
+            ("Faces", data.get("faces")),
+            ("Groups", data.get("groups")),
+        )
+        for label, value in tiles:
+            if value is None:
+                continue
+            cell = ttk.Frame(frame, style="Surface.TFrame", padding=(0, 0, SP_24, 0))
+            cell.pack(side=tk.LEFT)
+            ttk.Label(cell, text=str(value), font=H2, style="Surface.TLabel").pack(anchor=tk.W)
+            ttk.Label(
+                cell, text=label, font=CAPTION, style="SurfaceMuted.TLabel"
+            ).pack(anchor=tk.W)
+
+    def _search_focus_in(self, _event=None) -> None:
+        if self.search_var.get() == SEARCH_PLACEHOLDER:
+            self.search_var.set("")
+            try:
+                self._search_entry.configure(foreground=TEXT_PRIMARY)
+            except tk.TclError:
+                pass
+
+    def _search_focus_out(self, _event=None) -> None:
+        if not (self.search_var.get() or "").strip():
+            self.search_var.set(SEARCH_PLACEHOLDER)
+            try:
+                self._search_entry.configure(foreground=INK_TERTIARY)
+            except tk.TclError:
+                pass
+
     @staticmethod
     def _counts_from_done_payload(payload: dict) -> dict[str, int]:
         ing = payload.get("ingest") if isinstance(payload.get("ingest"), dict) else {}
@@ -1386,8 +1618,8 @@ class HomeApp:
             self._body.columnconfigure(1, weight=5)
         else:
             self._inspector_frame.grid()
-            self._body.columnconfigure(2, weight=2)
-            self._body.columnconfigure(1, weight=3)
+            self._body.columnconfigure(2, weight=1)
+            self._body.columnconfigure(1, weight=5)
 
     def _mark_nav_active(self, nav_id: str) -> None:
         """Best-effort active nav styling in ttk (underline / state)."""
@@ -1409,7 +1641,6 @@ class HomeApp:
             self.btn_html,
             self.btn_live,
             self.btn_canvas,
-            self._overflow,
         ):
             try:
                 w.pack_forget()
@@ -1418,23 +1649,43 @@ class HomeApp:
         busy = bool(getattr(self, "engine", None) and self.engine.busy)
         on_home = self._nav == "home"
         if on_home:
-            # Primary CTA lives on landing/card. Overflow keeps Live / html / Canvas.
-            self._overflow.pack(side=tk.LEFT)
+            # Primary CTA lives on the landing. More stays in the top bar.
+            self._jobs_frame.pack_forget()
             if self._completion_kind == "done" and not busy:
+                self._jobs_frame.pack(fill=tk.X, before=self._body)
                 self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
         else:
+            try:
+                self._jobs_frame.pack(fill=tk.X, before=self._body)
+            except tk.TclError:
+                self._jobs_frame.pack(fill=tk.X)
+            # Photos/Videos: folder only — Review/Canvas live under More (not primary chrome).
             self.btn_folder.pack(side=tk.LEFT)
-            self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
-            self._overflow.pack(side=tk.LEFT, padx=(SP_8, 0))
-            # Canvas button also direct when not on home (overflow still has it).
-            self.btn_canvas.pack(side=tk.LEFT, padx=(SP_8, 0))
+            if self._nav not in {"photos", "videos"}:
+                self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
+                self.btn_canvas.pack(side=tk.LEFT, padx=(SP_8, 0))
+            # else: browsing photos — no Review/Canvas escape hatch in the job bar.
         # Pause toggle + Cancel sit next to the progress bar when busy.
+        # Idle home has no status strip. The bar is never shown at rest.
         if busy:
+            try:
+                self._prog_frame.pack(fill=tk.X, before=self._body)
+            except tk.TclError:
+                self._prog_frame.pack(fill=tk.X)
+            self.bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
             self.btn_pause_toggle.pack(side=tk.LEFT, padx=(SP_8, 0))
             self.btn_cancel_prog.pack(side=tk.LEFT, padx=(SP_8, 0))
         else:
             self.btn_pause_toggle.pack_forget()
             self.btn_cancel_prog.pack_forget()
+            self.bar.pack_forget()
+            if self._nav == "home":
+                self._prog_frame.pack_forget()
+            else:
+                try:
+                    self._prog_frame.pack(fill=tk.X, before=self._body)
+                except tk.TclError:
+                    self._prog_frame.pack(fill=tk.X)
 
     def _toggle_pause_resume(self) -> None:
         """Single Pause/Resume control adjacent to the progress bar."""
@@ -1485,18 +1736,12 @@ class HomeApp:
             return
         if nav_id == "photos":
             # Stills are typically source_type=folder; exclude video assets.
+            # Canvas reload emits soft inspector via on_select — do not dump library log rows.
             self._show_workspace_canvas(reload=True, source_types=("folder",))
             lib = format_library_lines(self.store, source_type="folder")
             if not library_has_media_lines(lib):
                 self._set_inspector("Photos", photos_empty().as_lines())
-            else:
-                intro = photos_videos_nothing_selected(kind="photo").as_lines()
-                body = [
-                    ln
-                    for ln in lib
-                    if "source-media" not in ln.lower() and "state=" not in ln.lower()
-                ]
-                self._set_inspector("Photos", [*intro, *body])
+            # else: leave soft canvas inspector (photo / tip) in place
             self._sync_chrome_for_route()
             self._refresh_job_controls()
             return
@@ -1505,33 +1750,25 @@ class HomeApp:
             lib = format_library_lines(self.store, source_type="video")
             if not library_has_media_lines(lib):
                 self._set_inspector("Videos", videos_empty().as_lines())
-            else:
-                intro = photos_videos_nothing_selected(kind="video").as_lines()
-                body = [
-                    ln
-                    for ln in lib
-                    if "source-media" not in ln.lower()
-                    and "state=" not in ln.lower()
-                    and "track ≠ person" not in ln.lower()
-                    and "track != person" not in ln.lower()
-                ]
-                self._set_inspector("Videos", [*intro, *body])
             self._sync_chrome_for_route()
             self._refresh_job_controls()
             return
         if nav_id == "people":
+            self._welcome_title.set("People")
             self._show_workspace_welcome()
             self._show_people()
             self._sync_chrome_for_route()
             self._refresh_job_controls()
             return
         if nav_id == "unknown":
+            self._welcome_title.set("Needs attention")
             self._show_workspace_welcome()
             self._show_unknown()
             self._sync_chrome_for_route()
             self._refresh_job_controls()
             return
         if nav_id == "activity":
+            self._welcome_title.set("Recent activity")
             self._show_workspace_welcome()
             self._show_activity()
             self._sync_chrome_for_route()
@@ -1676,16 +1913,15 @@ class HomeApp:
                         payload.files_processed,
                         payload.files_total,
                     )
-                    bits = []
-                    if payload.clock:
-                        bits.append(payload.clock)
-                    elapsed = format_duration(payload.elapsed_s)
-                    if elapsed:
-                        bits.append(f"elapsed {elapsed}")
-                    eta = format_duration(payload.eta_s)
-                    if eta:
-                        bits.append(f"eta {eta}")
-                    self.clock.set("   ".join(bits))
+                    # Soft progress — counts only. Wall-clock / elapsed stay out of product chrome.
+                    from semblon.product_surface import soft_progress_clock
+
+                    self.clock.set(
+                        soft_progress_clock(
+                            files_processed=payload.files_processed,
+                            files_total=payload.files_total,
+                        )
+                    )
                 elif kind == "done":
                     self._last_run_id = payload.get("run_id")
                     out = payload.get("out")
@@ -1697,8 +1933,15 @@ class HomeApp:
                     )
                     self._completion = counts
                     self._completion_kind = "done"
-                    # §10/§11 — status stays plain; card owns messaging (no run_id).
-                    self.status.set("Your photos are ready.")
+                    # §10/§11 — status stays plain; card owns messaging (no run_id / elapsed).
+                    photos = int(counts.get("photos") or 0)
+                    if photos > 0:
+                        self.status.set(
+                            f"Your photos are ready. {photos} photo{'s' if photos != 1 else ''} added."
+                        )
+                    else:
+                        self.status.set("Your photos are ready.")
+                    self.clock.set("")
                     self.bar.set_from_event(
                         make_event(
                             STAGE_PROCESS,
@@ -1786,11 +2029,11 @@ class HomeApp:
             if is_expected_condition(e, has_store=self.store.is_file()):
                 if not self.store.is_file():
                     self._set_inspector(
-                        "To review", to_review_empty(has_store=False).as_lines()
+                        "Needs attention", to_review_empty(has_store=False).as_lines()
                     )
                 else:
                     self._set_inspector(
-                        "To review",
+                        "Needs attention",
                         to_review_empty(has_store=True, has_faces=False).as_lines(),
                     )
                 return
@@ -1873,7 +2116,7 @@ class HomeApp:
         )
         evid.insert(
             1,
-            "Select a person here, then a cluster/face on To review or Canvas to Assign.",
+            "Select a person here, then a face under Needs attention or in Photos to add them.",
         )
         self._insp_run_id = self._last_run_id
         self._insp_selected = []
@@ -1887,8 +2130,7 @@ class HomeApp:
             self._insp_target_person_id = p.get("person_id")
             self._insp_target_person_name = p.get("display_name") or p.get("person_id")
             self.status.set(
-                f"Assign target: {self._insp_target_person_name!r}  "
-                "(Merge observations is a separate verb)"
+                f"Ready to add faces to {self._insp_target_person_name!r}."
             )
         self._refresh_inspector_verbs()
 
@@ -1898,8 +2140,8 @@ class HomeApp:
         from semblon.process import latest_run_id
         from semblon.review_ui import load_board
 
-        # Display label "To review"; route id remains ``unknown``.
-        title = "To review"
+        # Display label "Needs attention"; route id remains ``unknown``.
+        title = "Needs attention"
         if not self.store.is_file():
             self._set_inspector_selection(
                 run_id=None,
@@ -2090,6 +2332,8 @@ class HomeApp:
         from semblon.search import SearchError, search_people, search_person, search_text
 
         q = (self.search_var.get() or "").strip()
+        if q == SEARCH_PLACEHOLDER:
+            q = ""
         if not q:
             messagebox.showinfo("Semblon", "Type a person name or text to search.")
             return
@@ -2140,21 +2384,23 @@ class HomeApp:
         win = tk.Toplevel(self.root)
         self._settings_win = win
         win.title("Settings")
-        win.geometry("360x480")
-        win.minsize(320, 360)
+        win.geometry("640x560")
+        win.minsize(480, 420)
+        if apply_theme is not None:
+            apply_theme(win)
         try:
             win.transient(self.root)
-            win.configure(bg=SURFACE_PRIMARY)
+            win.configure(bg=BG_CANVAS)
         except tk.TclError:
             pass
 
-        pad = ttk.Frame(win, padding=(SP_16, SP_16))
+        pad = ttk.Frame(win, padding=(SP_32, SP_24))
         pad.pack(fill=tk.BOTH, expand=True)
 
         head = ttk.Frame(pad)
         head.pack(fill=tk.X)
         ttk.Label(head, text="Settings", font=H2).pack(side=tk.LEFT)
-        ttk.Button(head, text="Close", command=win.destroy).pack(side=tk.RIGHT)
+        _button(head, "Close", win.destroy, kind="tertiary", icon="x").pack(side=tk.RIGHT)
 
         # Library
         ttk.Label(pad, text="Library", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_16, SP_8))
@@ -2169,9 +2415,9 @@ class HomeApp:
             foreground=TEXT_SECONDARY,
             wraplength=240,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(loc_row, text="Change…", command=self._settings_change_library).pack(
-            side=tk.RIGHT
-        )
+        _button(
+            loc_row, "Change…", self._settings_change_library, kind="secondary"
+        ).pack(side=tk.RIGHT)
 
         # Processing — GPU toggle (session prefer path; no engine redesign)
         ttk.Label(pad, text="Processing", font=BODY_STRONG).pack(
@@ -2209,6 +2455,17 @@ class HomeApp:
                 foreground=TEXT_SECONDARY,
             ).pack(anchor=tk.W)
 
+        ttk.Label(pad, text="Appearance", font=BODY_STRONG).pack(
+            anchor=tk.W, pady=(SP_24, SP_8)
+        )
+        ttk.Label(
+            pad,
+            text="Warm paper. One accent, used for actions and the selected section.",
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+            wraplength=520,
+        ).pack(anchor=tk.W)
+
         # About
         ttk.Label(pad, text="About", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_24, SP_8))
         try:
@@ -2225,10 +2482,11 @@ class HomeApp:
             font=BODY,
             wraplength=300,
         ).pack(anchor=tk.W, pady=(SP_8, 0))
-        ttk.Button(
+        _button(
             pad,
-            text="Advanced diagnostics…",
-            command=self._open_advanced_diagnostics,
+            "Advanced diagnostics…",
+            self._open_advanced_diagnostics,
+            kind="tertiary",
         ).pack(anchor=tk.W, pady=(SP_16, 0))
 
         def _on_close() -> None:

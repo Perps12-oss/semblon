@@ -115,7 +115,8 @@ def test_home_nav_matches_r3_ia():
     sections = {s: [i for i, _ in items] for s, items in HOME_NAV}
     assert sections["LIBRARY"] == ["home", "photos", "videos"]
     assert sections["PEOPLE"] == ["people", "unknown"]
-    assert sections["WORK"] == ["activity"]
+    # Section label is ACTIVITY (Recent activity). Route id stays "activity".
+    assert sections["ACTIVITY"] == ["activity"]
 
 
 def test_home_shell_source_has_sidebar_layout():

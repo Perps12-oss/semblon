@@ -150,15 +150,20 @@ def run_live_overlay(
         except Exception as e:  # noqa: BLE001
             raise LiveOverlayError(f"tkinter required for live overlay: {e}") from e
 
+        from semblon.ui_theme import apply_theme
+        from semblon.ui_tokens import BG_DARK
+
         root = tk.Tk()
+        apply_theme(root)
         root.title("Semblon Live Overlay")
         root.geometry("960x640")
+        root.configure(bg=BG_DARK)
         ttk.Label(
             root,
             text="Live overlay — boxes, track id, ACCEPT/UNKNOWN. Never assigns person_id.",
             wraplength=920,
         ).pack(anchor=tk.W, padx=8, pady=6)
-        preview = tk.Label(root)
+        preview = tk.Label(root, bg=BG_DARK)
         preview.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
         status = tk.StringVar(value="starting…")
         ttk.Label(root, textvariable=status, wraplength=920).pack(anchor=tk.W, padx=8, pady=4)

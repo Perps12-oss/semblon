@@ -392,8 +392,15 @@ def show_failure_dialog(
         return
 
     win = tk_mod.Toplevel(parent) if parent is not None else tk_mod.Tk()
+    try:
+        from semblon.ui_theme import apply_theme
+
+        apply_theme(win)
+    except Exception:  # noqa: BLE001 — dialog still works on the default theme
+        pass
     win.title("Semblon")
     win.resizable(False, False)
+    win.minsize(480, 0)
     frame = ttk_mod.Frame(win, padding=16)
     frame.pack(fill="both", expand=True)
     ttk_mod.Label(frame, text=dialog.headline, font=FONT_HEADING, wraplength=360).pack(

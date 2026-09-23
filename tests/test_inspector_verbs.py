@@ -211,10 +211,10 @@ def test_home_ui_wires_inspector_verbs():
     import semblon.home_ui as home_ui
 
     src = inspect.getsource(home_ui.HomeApp)
-    assert "Merge observations" in src
-    assert "Assign to person" in src
-    assert "Evidence relationship (machine)" in src
-    assert "Proposed action (human)" in src
+    # Soft product labels (engineering verbs stay in inspector_verbs / apply_*).
+    assert "VERB_LABEL_MERGE" in src or "Combine face groups" in src
+    assert "VERB_LABEL_ASSIGN" in src or "Add to person" in src
+    assert "What you can do" in src
     assert "apply_inspector_merge" in src or "inspector_verbs" in src
     assert "_name_entry" in src
     assert "<Return>" in src
@@ -222,8 +222,10 @@ def test_home_ui_wires_inspector_verbs():
     assert "btn_rule_out" in src
     assert "btn_ignore" in src
     # Must not equate merge with assign in one control.
-    assert "Merge observations ≠ Assign to person" in src
-
+    assert "Combining groups is separate from naming" in src
+    # Engineering dump headings stay out of the product inspector.
+    assert "Evidence relationship (machine)" not in src
+    assert "Proposed action (human)" not in src
 
 def test_canvas_inspector_lines_split_evidence_action():
     from semblon.canvas import media_inspector_lines

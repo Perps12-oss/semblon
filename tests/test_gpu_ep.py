@@ -112,13 +112,17 @@ def test_settings_lines_include_arch_execution():
 
 
 def test_home_settings_uses_execution_status_lines():
+    """Settings stays user-facing; execution dump lives in Advanced diagnostics."""
     import inspect
 
     import semblon.home_ui as home_ui
 
-    src = inspect.getsource(home_ui.HomeApp._show_settings)
-    assert "format_execution_status_lines" in src
-    assert "FaceKit CPU (not claimed GPU)" not in src
+    settings = inspect.getsource(home_ui.HomeApp._show_settings)
+    assert "format_execution_status_lines" not in settings
+    assert "Advanced diagnostics" in settings
+    assert "FaceKit CPU (not claimed GPU)" not in settings
+    # Soft GPU preference still available when a GPU EP exists.
+    assert "resolve_home_prefer_gpu" in settings or "Use GPU when available" in settings
 
 
 def test_home_ingest_passes_product_prefer_gpu():
@@ -127,8 +131,15 @@ def test_home_ingest_passes_product_prefer_gpu():
     import semblon.home_ui as home_ui
 
     src = inspect.getsource(home_ui.HomeApp._start_process)
-    assert "resolve_home_prefer_gpu" in src or "product_prefer_gpu" in src
+    # Prefer path may go through _effective_prefer_gpu (Settings override → product default).
+    assert (
+        "resolve_home_prefer_gpu" in src
+        or "product_prefer_gpu" in src
+        or "_effective_prefer_gpu" in src
+    )
     assert "prefer_gpu=" in src
+    eff = inspect.getsource(home_ui.HomeApp._effective_prefer_gpu)
+    assert "resolve_home_prefer_gpu" in eff
 
 
 def test_job_engine_accepts_prefer_gpu():
