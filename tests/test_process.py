@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
@@ -144,7 +145,16 @@ def test_process_skip_all_exports_prior_run_with_faces(tmp_path):
     assert rec["run_id"] == "r1"
     html = out.read_text(encoding="utf-8")
     assert EVIDENCE_SCRIPT_ID in html
-    assert "faces 5" in html
+    # Cluster Review chrome embeds counts in #semblon-run-evidence, not classic
+    # ``<span>faces N</span>`` markup.
+    marker = f'id="{EVIDENCE_SCRIPT_ID}"'
+    start = html.index(marker)
+    open_gt = html.index(">", start) + 1
+    close = html.index("</script>", open_gt)
+    payload = json.loads(html[open_gt:close])
+    assert payload["run_id"] == "r1"
+    assert payload["counts"]["faces"] == 5
+    assert "Cluster Review" in html
     assert any("reviewing existing run_id=r1" in line for line in lines)
 
 

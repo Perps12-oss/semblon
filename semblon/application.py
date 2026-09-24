@@ -60,6 +60,7 @@ __all__ = [
     "apply_rule_out",
     "apply_split",
     "board",
+    "chrome_board",
     "default_store_path",
     "home_control_states",
     "inbox",
@@ -67,6 +68,7 @@ __all__ = [
     "load_board",
     "load_canvas",
     "resolve_run_id",
+    "review_document",
     "search_people",
     "search_person",
 ]
@@ -76,6 +78,22 @@ def board(store: Path, run_id: str | None = None) -> dict:
     """Read-only review board. Does not enrol anyone."""
     rid = resolve_run_id(store, run_id)
     return load_board(store, rid)
+
+
+def chrome_board(store: Path, run_id: str | None = None, *, mode: str = "live") -> dict:
+    """Shared Cluster Review DTO (export snapshot + Home / review-ui live)."""
+    from semblon.review_chrome import build_chrome_board
+
+    rid = resolve_run_id(store, run_id)
+    return build_chrome_board(store, rid, mode=mode)
+
+
+def review_document(store: Path, run_id: str | None = None, *, mode: str = "live") -> str:
+    """Render the shared Cluster Review HTML document."""
+    from semblon.review_chrome import render_review_document_from_store
+
+    rid = resolve_run_id(store, run_id)
+    return render_review_document_from_store(store, rid, mode=mode)
 
 
 def activity(store: Path, run_id: str | None = None) -> dict:
@@ -152,6 +170,12 @@ class Application:
 
     def board(self, run_id: str | None = None) -> dict:
         return board(self.store, run_id)
+
+    def chrome_board(self, run_id: str | None = None, *, mode: str = "live") -> dict:
+        return chrome_board(self.store, run_id, mode=mode)
+
+    def review_document(self, run_id: str | None = None, *, mode: str = "live") -> str:
+        return review_document(self.store, run_id, mode=mode)
 
     def activity(self, run_id: str | None = None) -> dict:
         return activity(self.store, run_id)

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+__TOKENS_CSS__
+__SHELL_CSS__
+</style>
+</head>
+<body data-mode="__MODE__">
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="wordmark">Semblon</span>
+      <span class="brand-divider" aria-hidden="true"></span>
+      <span class="page-title">Cluster Review</span>
+    </div>
+    <div class="topbar-meta">
+      <span id="run-label" title="__RUN_ID_ESC__">Run: __RUN_LOCAL__</span>
+      __EXPLORER_HTML__
+    </div>
+  </header>
+  <div class="body">
+    <aside class="sidebar">
+      <nav class="nav" aria-label="Review sections">
+        <button type="button" class="nav-item" data-nav="overview">Overview</button>
+        <button type="button" class="nav-item is-active" data-nav="clusters">Clusters</button>
+        <button type="button" class="nav-item" data-nav="unassigned">Unassigned</button>
+        <button type="button" class="nav-item" data-nav="rejected">Rejected</button>
+        <button type="button" class="nav-item" data-nav="worst">Worst Pairs</button>
+        <button type="button" class="nav-item" data-nav="stats">Stats</button>
+      </nav>
+      <div class="filters">
+        <fieldset class="filter-group">
+          <legend>Status</legend>
+          <label class="filter-row"><input type="radio" name="status" value="all" checked> All (<span id="n-clusters">0</span>)</label>
+          <label class="filter-row"><input type="radio" name="status" value="good"> Good (<span id="n-good">0</span>)</label>
+          <label class="filter-row"><input type="radio" name="status" value="review"> Review (<span id="n-review">0</span>)</label>
+          <label class="filter-row"><input type="radio" name="status" value="mixed"> Mixed (<span id="n-mixed">0</span>)</label>
+          <label class="filter-row"><input type="radio" name="status" value="low"> Low confidence (<span id="n-low">0</span>)</label>
+        </fieldset>
+        <fieldset class="filter-group">
+          <legend>Cluster size</legend>
+          <label class="filter-row"><input type="radio" name="size" value="all" checked> All</label>
+          <label class="filter-row"><input type="radio" name="size" value="2-5"> 2–5</label>
+          <label class="filter-row"><input type="radio" name="size" value="6-10"> 6–10</label>
+          <label class="filter-row"><input type="radio" name="size" value="11-20"> 11–20</label>
+          <label class="filter-row"><input type="radio" name="size" value="21+"> 21+</label>
+        </fieldset>
+        <div class="filter-group">
+          <h3>Sort by</h3>
+          <select id="sort-by">
+            <option value="priority" selected>Priority (worst first)</option>
+            <option value="largest">Largest first</option>
+            <option value="newest">Newest first</option>
+            <option value="highest">Highest min_intra first</option>
+          </select>
+        </div>
+      </div>
+    </aside>
+    <main class="main" id="main">
+      <div class="stats-strip" id="stats-strip">
+        <div class="stat-card"><span class="value" id="stat-photos">0</span><span class="label">photos processed</span></div>
+        <div class="stat-card"><span class="value" id="stat-faces">0</span><span class="label">faces detected</span></div>
+        <div class="stat-card"><span class="value" id="stat-clusters">0</span><span class="label">clusters</span></div>
+        <div class="stat-card"><span class="value" id="stat-unassigned">0</span><span class="label">unassigned</span></div>
+        <div class="stat-card"><span class="value" id="stat-rejected">0</span><span class="label">rejected</span></div>
+        <div class="stats-view">
+          <label for="view-filter">View:</label>
+          <select id="view-filter">
+            <option value="all" selected>All clusters</option>
+            <option value="review">Review only</option>
+            <option value="strong">Strong only</option>
+            <option value="unassigned">Unassigned</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+      </div>
+      <div class="run-details" id="run-details"></div>
+      __EMPTY_STATE_HTML__
+      <div id="board-root"></div>
+      <div class="pagination" id="pagination"></div>
+    </main>
+    <aside class="inspector is-collapsed" id="inspector" aria-live="polite">
+      <div class="inspector-empty" id="inspector-empty">Select a cluster, track, or face.</div>
+      <div class="inspector-body hidden" id="inspector-body"></div>
+    </aside>
+  </div>
+</div>
+<script type="application/json" id="semblon-board">__BOARD_JSON__</script>
+__EVIDENCE_SCRIPT__
+<script>
+__BOARD_JS__
+__BRIDGE_JS__
+</script>
+</body>
+</html>

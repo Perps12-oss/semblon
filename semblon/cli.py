@@ -282,6 +282,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="min_intra >= this -> STRONG (default 0.50)",
     )
+    exp.add_argument(
+        "--classic",
+        action="store_true",
+        help="emit legacy dark dump HTML instead of Cluster Review chrome",
+    )
 
     nam = sub.add_parser("name", help="FACE-005 name a cluster, face, or derived track -> person")
     nam.add_argument("--cluster", default=None)
@@ -873,6 +878,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.run,
                     args.out,
                     strong_min_intra=STRONG_MIN_INTRA if args.strong_min_intra is None else args.strong_min_intra,
+                    classic=bool(getattr(args, "classic", False)),
                 )
             if args.views is not None:
                 rec["views"] = export_views(args.store, args.run, args.views)

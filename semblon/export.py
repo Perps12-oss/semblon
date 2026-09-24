@@ -378,7 +378,7 @@ def _render_decisions(decisions) -> str:
     return "\n".join(parts)
 
 
-def render_review_html(
+def render_review_html_classic(
     run,
     clusters,
     faces,
@@ -387,6 +387,7 @@ def render_review_html(
     tracks=None,
     empty_state: str | None = None,
 ) -> str:
+    """Legacy dark dump page. Kept for ``export --classic`` only."""
     pack_id = run["pack_id"]
     by_cluster: dict[str, list[dict]] = {}
     unassigned: list[dict] = []
@@ -515,6 +516,55 @@ timings { _esc(timings) }</p>
     return page.replace("</body>", evidence + "\n</body>", 1)
 
 
+def render_review_html(
+    run,
+    clusters,
+    faces,
+    strong_min_intra: float = STRONG_MIN_INTRA,
+    decisions=(),
+    tracks=None,
+    empty_state: str | None = None,
+    *,
+    classic: bool = False,
+    store: Path | None = None,
+) -> str:
+    """Default: shared Cluster Review chrome. ``classic=True`` keeps the dark dump."""
+    if classic:
+        return render_review_html_classic(
+            run,
+            clusters,
+            faces,
+            strong_min_intra=strong_min_intra,
+            decisions=decisions,
+            tracks=tracks,
+            empty_state=empty_state,
+        )
+    from semblon.review_chrome.board_dto import build_chrome_board
+    from semblon.review_chrome.render import render_review_document
+
+    if store is None:
+        # Fall back to classic when no store path (unit callers of raw rows only).
+        return render_review_html_classic(
+            run,
+            clusters,
+            faces,
+            strong_min_intra=strong_min_intra,
+            decisions=decisions,
+            tracks=tracks,
+            empty_state=empty_state,
+        )
+    board = build_chrome_board(
+        Path(store),
+        run["run_id"],
+        mode="snapshot",
+        strong_min_intra=strong_min_intra,
+        include_thumbs=True,
+    )
+    if empty_state:
+        board["empty_state"] = empty_state
+    return render_review_document(board, mode="snapshot", run_row=dict(run))
+
+
 def _connect_ro(store: Path) -> sqlite3.Connection:
     p = Path(store).resolve()
     if not p.is_file():
@@ -529,6 +579,8 @@ def export_review(
     run_id: str,
     out: Path,
     strong_min_intra: float = STRONG_MIN_INTRA,
+    *,
+    classic: bool = False,
 ) -> dict:
     conn = _connect_ro(store)
     run, clusters, faces, decisions = _load(conn, run_id)
@@ -547,6 +599,8 @@ def export_review(
         decisions=decisions,
         tracks=tracks_rec,
         empty_state=empty_state_line(store, run_id),
+        classic=classic,
+        store=store,
     )
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -557,6 +611,7 @@ def export_review(
         "clusters": len(clusters),
         "faces": len(faces),
         "bytes": out.stat().st_size,
+        "classic": classic,
     }
 
 
