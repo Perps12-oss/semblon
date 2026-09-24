@@ -27,6 +27,11 @@ def library_summary(store: Path) -> dict | None:
         conn.execute("PRAGMA busy_timeout=5000")
         files = int(conn.execute("SELECT COUNT(*) FROM media").fetchone()[0])
         faces = int(conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0])
+        named_people = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM persons WHERE status='active'"
+            ).fetchone()[0]
+        )
         unnamed = int(
             conn.execute(
                 """
@@ -60,6 +65,7 @@ def library_summary(store: Path) -> dict | None:
         "files": files,
         "faces": faces,
         "unnamed_groups": unnamed,
+        "named_people": named_people,
         "last_scan": stamp,
     }
 

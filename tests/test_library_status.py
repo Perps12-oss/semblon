@@ -23,11 +23,13 @@ def test_summary_counts_unconfirmed_groups(tmp_path):
     assert summary["files"] == 2
     assert summary["faces"] == 5
     assert summary["unnamed_groups"] >= 1
+    assert summary["named_people"] == 0
     before = summary["unnamed_groups"]
     name_cluster(store, "r1", assigned["f1"], "Alice")
     after = library_summary(store)
     assert after is not None
     assert after["unnamed_groups"] == before - 1
+    assert after["named_people"] == 1
     line = status_bar_text(after)
     assert f"{after['files']} files · {after['faces']} faces · {after['unnamed_groups']} unnamed people" in line
     # Seed stamp is not a timestamp, so Last scan stays off the line.

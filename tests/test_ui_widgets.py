@@ -7,7 +7,7 @@ import pytest
 pytest.importorskip("tkinter")
 
 from semblon.ui_theme import apply_theme, px, reset_theme_for_tests
-from semblon.ui_tokens import ACCENT, BG_CANVAS, INK_PRIMARY, PRIMARY_HEIGHT
+from semblon.ui_tokens import ACCENT, ACCENT_SUBTLE, BG_CANVAS, INK_PRIMARY, PRIMARY_HEIGHT
 from semblon.ui_widgets import Button
 
 
@@ -60,6 +60,27 @@ def test_nav_pressed_state(root):
     assert btn.state() == ("pressed",)
     btn.state(["!pressed"])
     assert btn.state() == ()
+
+
+def test_nav_badge_uses_accent_subtle_fill():
+    """To review count chip must read clearly in dark mode."""
+    import inspect
+
+    from semblon import ui_widgets
+
+    src = inspect.getsource(ui_widgets.Button._draw_badge)
+    assert "ACCENT_SUBTLE" in src
+    assert "INK_PRIMARY" in src
+    assert "BG_SURFACE" not in src or "fill=ACCENT_SUBTLE" in src
+    assert ACCENT_SUBTLE != "#1A1A1A"  # not the low-contrast surface
+
+
+def test_button_set_kind_switches_weight(root):
+    btn = Button(root, text="Add a photo folder", kind="primary")
+    btn.set_kind("secondary")
+    assert btn._kind == "secondary"
+    btn.set_kind("primary")
+    assert btn._kind == "primary"
 
 
 def test_one_button_class_covers_kinds(root):

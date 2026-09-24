@@ -45,6 +45,7 @@ from semblon.progress import (
 )
 from semblon.empty_states import (
     SEARCH_PLACEHOLDER,
+    SEARCH_PLACEHOLDER_PHOTOS,
     activity_empty,
     activity_history_lines,
     failure_dialog_for,
@@ -57,6 +58,7 @@ from semblon.empty_states import (
     search_no_matches,
     search_no_named_people,
     search_no_store,
+    search_placeholder,
     search_result_lines,
     show_failure_dialog,
     to_review_empty,
@@ -172,6 +174,8 @@ __all__ = [
     "format_library_lines",
     "format_progress_line",
     "home_control_states",
+    "landing_cta_plan",
+    "landing_step_states",
     "resolve_home_observers",
     "run_home_ui",
 ]
@@ -212,6 +216,105 @@ def resolve_home_observers() -> str:
     from semblon.observers import resolve_product_observers
 
     return resolve_product_observers()
+
+
+def landing_step_states(*, files: int, unnamed: int) -> list[dict]:
+    """Pure Home landing step progression. phase: idle | current | done."""
+    if files <= 0:
+        return [
+            {
+                "marker": "1",
+                "title": "Add your photos",
+                "desc": "Add a photo folder to begin.",
+                "phase": "current",
+            },
+            {
+                "marker": "2",
+                "title": "Semblon finds",
+                "desc": "Similar faces are grouped together.",
+                "phase": "idle",
+            },
+            {
+                "marker": "3",
+                "title": "Review and name",
+                "desc": "Review the groups and name the people.",
+                "phase": "idle",
+            },
+        ]
+    if unnamed > 0:
+        return [
+            {
+                "marker": "✓",
+                "title": "Add your photos",
+                "desc": "Folder added.",
+                "phase": "done",
+            },
+            {
+                "marker": "✓",
+                "title": "Semblon finds",
+                "desc": "Scan complete.",
+                "phase": "done",
+            },
+            {
+                "marker": "3",
+                "title": "Review and name",
+                "desc": "Review the groups and name the people.",
+                "phase": "current",
+            },
+        ]
+    return [
+        {
+            "marker": "✓",
+            "title": "Add your photos",
+            "desc": "Folder added.",
+            "phase": "done",
+        },
+        {
+            "marker": "✓",
+            "title": "Semblon finds",
+            "desc": "Scan complete.",
+            "phase": "done",
+        },
+        {
+            "marker": "✓",
+            "title": "Review and name",
+            "desc": "You're caught up.",
+            "phase": "done",
+        },
+    ]
+
+
+def landing_cta_plan(*, files: int, unnamed: int) -> dict:
+    """Which landing CTAs to show and which is primary.
+
+    primary: ``add`` | ``review`` | ``browse``
+    """
+    if files <= 0:
+        return {
+            "primary": "add",
+            "show_review": False,
+            "show_browse": False,
+            "show_privacy": True,
+            "add_label": "Add a photo folder",
+            "review_label": "Review suggestions",
+        }
+    if unnamed > 0:
+        return {
+            "primary": "review",
+            "show_review": True,
+            "show_browse": True,
+            "show_privacy": False,
+            "add_label": "Add a photo folder",
+            "review_label": f"Review {unnamed} suggestions",
+        }
+    return {
+        "primary": "browse",
+        "show_review": False,
+        "show_browse": True,
+        "show_privacy": False,
+        "add_label": "Add another folder",
+        "review_label": "Review suggestions",
+    }
 
 
 def resolve_home_prefer_gpu() -> bool:
@@ -770,7 +873,8 @@ class HomeApp:
         self.search_var = tk.StringVar()
         self._search_entry = ttk.Entry(search_row, textvariable=self.search_var, width=28)
         self._search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self._search_entry.insert(0, SEARCH_PLACEHOLDER)
+        self._search_placeholder = SEARCH_PLACEHOLDER_PHOTOS
+        self._search_entry.insert(0, self._search_placeholder)
         try:
             self._search_entry.configure(foreground=INK_TERTIARY)
         except tk.TclError:
@@ -1486,7 +1590,6 @@ class HomeApp:
             icon="folder-plus",
             plate=BG_CANVAS,
         )
-        self.btn_landing_cta.pack(side=tk.LEFT)
         self.btn_landing_review = _button(
             actions,
             "Review suggestions",
@@ -1501,17 +1604,14 @@ class HomeApp:
             kind="secondary",
             plate=BG_CANVAS,
         )
-        # Review and Browse are packed only when the library has something to show.
+        # Pack order and kinds are applied in _refresh_landing_hint.
 
         steps = tk.Frame(hero, bg=BG_CANVAS)
         self._landing_steps = steps
         steps.pack(anchor=tk.W, pady=(SP_24, 0))
         ui_strong = (DISPLAY[0], 14, "bold")
-        for num, title, desc in (
-            ("1", "Add your photos", "Add a photo folder to begin."),
-            ("2", "Semblon finds", "Similar faces are grouped together."),
-            ("3", "Review and name", "Review the groups and name the people."),
-        ):
+        self._landing_step_cards: list[dict] = []
+        for _ in range(3):
             card = tk.Frame(
                 steps,
                 bg=BG_CANVAS,
@@ -1521,36 +1621,48 @@ class HomeApp:
                 pady=SP_16,
             )
             card.pack(side=tk.LEFT, anchor=tk.N, padx=(0, SP_12))
-            tk.Label(
+            marker = tk.Label(
                 card,
-                text=num,
+                text="",
                 font=H2,
                 bg=BG_CANVAS,
                 fg=TEXT_DISABLED,
                 anchor="w",
-            ).pack(anchor=tk.W)
-            tk.Label(
+            )
+            marker.pack(anchor=tk.W)
+            title_lbl = tk.Label(
                 card,
-                text=title,
+                text="",
                 font=ui_strong,
                 bg=BG_CANVAS,
                 fg=TEXT_PRIMARY,
                 wraplength=180,
                 anchor="w",
                 justify=tk.LEFT,
-            ).pack(anchor=tk.W, pady=(SP_8, 0))
-            tk.Label(
+            )
+            title_lbl.pack(anchor=tk.W, pady=(SP_8, 0))
+            desc_lbl = tk.Label(
                 card,
-                text=desc,
+                text="",
                 font=H3,
                 bg=BG_CANVAS,
                 fg=TEXT_SECONDARY,
                 wraplength=180,
                 anchor="nw",
                 justify=tk.LEFT,
-            ).pack(anchor=tk.W, pady=(SP_8, 0))
+            )
+            desc_lbl.pack(anchor=tk.W, pady=(SP_8, 0))
+            self._landing_step_cards.append(
+                {
+                    "card": card,
+                    "marker": marker,
+                    "title": title_lbl,
+                    "desc": desc_lbl,
+                }
+            )
 
         privacy = tk.Frame(hero, bg=BG_CANVAS)
+        self._landing_privacy = privacy
         privacy.pack(anchor=tk.W, pady=(SP_24, 0))
         if draw_icon is not None:
             icon_px = 18
@@ -1573,6 +1685,7 @@ class HomeApp:
             justify=tk.LEFT,
             anchor="w",
         ).pack(side=tk.LEFT)
+        self._refresh_landing_hint()
 
     def _build_processing_home(self) -> None:
         """PROCESSING state — results framing while a job runs (not marketing + telemetry)."""
@@ -1869,21 +1982,88 @@ class HomeApp:
                 break
 
     def _refresh_landing_hint(self) -> None:
-        """Review action uses the real unconfirmed-group count. Hidden at 0."""
+        """First-run vs returning-user landing from real library counts."""
         summary = self._library_summary()
         files = 0 if summary is None else int(summary.get("files") or 0)
         waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
+        plan = landing_cta_plan(files=files, unnamed=waiting)
+
+        add_btn = getattr(self, "btn_landing_cta", None)
         review = getattr(self, "btn_landing_review", None)
         browse = getattr(self, "btn_landing_browse", None)
+        for btn in (add_btn, review, browse):
+            if btn is not None:
+                btn.pack_forget()
+
+        if add_btn is not None:
+            add_btn.configure(text=plan["add_label"])
+            if hasattr(add_btn, "set_kind"):
+                add_btn.set_kind(
+                    "primary" if plan["primary"] == "add" else "secondary"
+                )
         if review is not None:
-            review.pack_forget()
-            if waiting > 0:
-                review.configure(text=f"Review {waiting} suggestions")
-                review.pack(side=tk.LEFT, padx=(SP_12, 0))
-        if browse is not None:
-            browse.pack_forget()
-            if files > 0:
-                browse.pack(side=tk.LEFT, padx=(SP_12, 0))
+            review.configure(text=plan["review_label"])
+            if hasattr(review, "set_kind"):
+                review.set_kind(
+                    "primary" if plan["primary"] == "review" else "secondary"
+                )
+        if browse is not None and hasattr(browse, "set_kind"):
+            browse.set_kind(
+                "primary" if plan["primary"] == "browse" else "secondary"
+            )
+
+        # Pack primary first, then secondary actions.
+        order: list[tuple[object | None, bool]] = []
+        if plan["primary"] == "review":
+            order = [
+                (review, plan["show_review"]),
+                (add_btn, True),
+                (browse, plan["show_browse"]),
+            ]
+        elif plan["primary"] == "browse":
+            order = [
+                (browse, plan["show_browse"]),
+                (add_btn, True),
+                (review, plan["show_review"]),
+            ]
+        else:
+            order = [
+                (add_btn, True),
+                (review, plan["show_review"]),
+                (browse, plan["show_browse"]),
+            ]
+        first = True
+        for btn, show in order:
+            if btn is None or not show:
+                continue
+            btn.pack(side=tk.LEFT, padx=(0 if first else SP_12, 0))
+            first = False
+
+        privacy = getattr(self, "_landing_privacy", None)
+        if privacy is not None:
+            privacy.pack_forget()
+            if plan["show_privacy"]:
+                privacy.pack(anchor=tk.W, pady=(SP_24, 0))
+
+        steps = landing_step_states(files=files, unnamed=waiting)
+        cards = getattr(self, "_landing_step_cards", None) or []
+        for card, step in zip(cards, steps):
+            marker = card["marker"]
+            marker.configure(text=step["marker"])
+            phase = step["phase"]
+            if phase == "done":
+                marker.configure(fg=SUCCESS)
+            elif phase == "current":
+                marker.configure(fg=TEXT_PRIMARY)
+            else:
+                marker.configure(fg=TEXT_DISABLED)
+            card["title"].configure(text=step["title"])
+            card["desc"].configure(text=step["desc"])
+            try:
+                thickness = 2 if phase == "current" else 1
+                card["card"].configure(highlightthickness=thickness)
+            except tk.TclError:
+                pass
 
     def _library_summary(self) -> dict | None:
         from semblon.library_status import library_summary
@@ -1904,6 +2084,41 @@ class HomeApp:
         waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
         if btn is not None and hasattr(btn, "set_badge"):
             btn.set_badge(waiting)
+        self._refresh_search_placeholder(summary)
+
+    def _refresh_search_placeholder(self, summary: dict | None = None) -> None:
+        """Placeholder reflects whether any people have been named yet."""
+        if summary is None:
+            summary = self._library_summary()
+        named = 0 if summary is None else int(summary.get("named_people") or 0)
+        new_ph = search_placeholder(has_named_people=named > 0)
+        old_ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+        current = (self.search_var.get() or "").strip()
+        self._search_placeholder = new_ph
+        if current in {"", old_ph, SEARCH_PLACEHOLDER, new_ph}:
+            self.search_var.set(new_ph)
+            try:
+                self._search_entry.configure(foreground=INK_TERTIARY)
+            except tk.TclError:
+                pass
+
+    def _search_focus_in(self, _event=None) -> None:
+        ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+        if self.search_var.get() == ph:
+            self.search_var.set("")
+            try:
+                self._search_entry.configure(foreground=TEXT_PRIMARY)
+            except tk.TclError:
+                pass
+
+    def _search_focus_out(self, _event=None) -> None:
+        if not (self.search_var.get() or "").strip():
+            ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+            self.search_var.set(ph)
+            try:
+                self._search_entry.configure(foreground=INK_TERTIARY)
+            except tk.TclError:
+                pass
 
     def _apply_saved_theme(self) -> None:
         """Publish the saved appearance before widgets are built."""
@@ -2092,22 +2307,6 @@ class HomeApp:
             ttk.Label(
                 cell, text=label, font=CAPTION, style="SurfaceMuted.TLabel"
             ).pack(anchor=tk.W)
-
-    def _search_focus_in(self, _event=None) -> None:
-        if self.search_var.get() == SEARCH_PLACEHOLDER:
-            self.search_var.set("")
-            try:
-                self._search_entry.configure(foreground=TEXT_PRIMARY)
-            except tk.TclError:
-                pass
-
-    def _search_focus_out(self, _event=None) -> None:
-        if not (self.search_var.get() or "").strip():
-            self.search_var.set(SEARCH_PLACEHOLDER)
-            try:
-                self._search_entry.configure(foreground=INK_TERTIARY)
-            except tk.TclError:
-                pass
 
     @staticmethod
     def _counts_from_done_payload(payload: dict) -> dict[str, int]:
@@ -2909,7 +3108,8 @@ class HomeApp:
         from semblon.search import SearchError, search_people, search_person, search_text
 
         q = (self.search_var.get() or "").strip()
-        if q == SEARCH_PLACEHOLDER:
+        ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+        if q in {ph, SEARCH_PLACEHOLDER, SEARCH_PLACEHOLDER_PHOTOS}:
             q = ""
         if not q:
             messagebox.showinfo("Semblon", "Type a person name or text to search.")
@@ -3069,7 +3269,10 @@ class HomeApp:
             anchor=tk.W, pady=(SP_24, SP_8)
         )
         for shortcut, keys in (
-            ("Search people and text", "Ctrl+F"),
+            (
+                getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER),
+                "Ctrl+F",
+            ),
             ("Go to", "Ctrl+K"),
             ("Photos", "Ctrl+1"),
             ("Videos", "Ctrl+2"),

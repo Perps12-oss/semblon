@@ -17,6 +17,15 @@ except ImportError:  # pragma: no cover — tokens land via parallel UX slice
     _tokens = None
 
 SEARCH_PLACEHOLDER = "Search people and text"
+SEARCH_PLACEHOLDER_PHOTOS = "Search photos…"
+
+
+def search_placeholder(*, has_named_people: bool) -> str:
+    """Placeholder when named people exist vs first-run / unnamed-only library."""
+    if has_named_people:
+        return SEARCH_PLACEHOLDER
+    return SEARCH_PLACEHOLDER_PHOTOS
+
 
 # Soft action ids for Home wiring (map to existing job-bar / review handlers).
 ACTION_ADD_FOLDER = "add_folder"
