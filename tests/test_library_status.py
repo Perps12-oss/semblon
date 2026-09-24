@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from semblon.library_status import library_summary, relative_time, status_bar_text
+from semblon.library_status import (
+    library_summary,
+    people_to_name_text,
+    relative_time,
+    review_people_cta,
+    status_bar_text,
+)
 from semblon.review import name_cluster
 from tests.test_review import _clustered
 
@@ -13,6 +19,15 @@ from tests.test_review import _clustered
 def test_missing_store_is_empty_not_zero():
     assert library_summary(Path("/no/such/store.sqlite")) is None
     assert status_bar_text(None) == ""
+
+
+def test_people_to_name_phrase_is_one_noun():
+    assert people_to_name_text(0) == "No people to name"
+    assert people_to_name_text(1) == "1 person to name"
+    assert people_to_name_text(133) == "133 people to name"
+    assert review_people_cta(133) == "Review 133 people to name"
+    assert "suggestion" not in review_people_cta(133).lower()
+    assert "unnamed" not in people_to_name_text(133).lower()
 
 
 def test_summary_counts_unconfirmed_groups(tmp_path):
@@ -31,9 +46,10 @@ def test_summary_counts_unconfirmed_groups(tmp_path):
     assert after["unnamed_groups"] == before - 1
     assert after["named_people"] == 1
     line = status_bar_text(after)
-    assert f"{after['files']} files · {after['faces']} faces · {after['unnamed_groups']} unnamed people" in line
+    assert f"{after['files']} files · {after['faces']} faces · {people_to_name_text(after['unnamed_groups'])}" in line
     # Seed stamp is not a timestamp, so Last scan stays off the line.
     assert "Last scan" not in line
+    assert "unnamed people" not in line
 
 
 def test_relative_time_phrases():
@@ -47,4 +63,4 @@ def test_relative_time_phrases():
         {"files": 3, "faces": 1, "unnamed_groups": 0, "last_scan": "2026-09-24T11:59:40+00:00"},
         now=now,
     )
-    assert stamped == "3 files · 1 faces · 0 unnamed people · Last scan just now"
+    assert stamped == "3 files · 1 faces · No people to name · Last scan just now"

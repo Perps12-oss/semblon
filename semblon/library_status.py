@@ -1,8 +1,8 @@
 """Read-only library counts for the Home status bar and the review badge.
 
-Unnamed people in the status line are unconfirmed groups: clusters on the
-library whose faces have not been given a person. That is the same idea as
-the To review badge. This module does not write the store.
+People to name are unconfirmed groups: clusters whose faces have not been
+given a person. That is the same queue as the sidebar badge. This module
+does not write the store.
 """
 
 from __future__ import annotations
@@ -10,6 +10,26 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+def people_to_name_text(n: int) -> str:
+    """One phrase for the review queue — sidebar, button, and status agree."""
+    n = int(n or 0)
+    if n <= 0:
+        return "No people to name"
+    if n == 1:
+        return "1 person to name"
+    return f"{n} people to name"
+
+
+def review_people_cta(n: int) -> str:
+    """Primary Review button label. Same noun as ``people_to_name_text``."""
+    n = int(n or 0)
+    if n <= 0:
+        return "Review people"
+    if n == 1:
+        return "Review 1 person to name"
+    return f"Review {n} people to name"
 
 
 def library_summary(store: Path) -> dict | None:
@@ -102,7 +122,7 @@ def relative_time(stamp: str | None, *, now: datetime | None = None) -> str | No
 
 
 def status_bar_text(summary: dict | None, *, now: datetime | None = None) -> str:
-    """``{n} files · {n} faces · {n} unnamed people · Last scan {relative}``.
+    """``{n} files · {n} faces · {people_to_name_text} · Last scan {relative}``.
 
     Empty when there is no library to count. Last scan is omitted when the
     stamp cannot be read.
@@ -112,7 +132,7 @@ def status_bar_text(summary: dict | None, *, now: datetime | None = None) -> str
     files = int(summary.get("files") or 0)
     faces = int(summary.get("faces") or 0)
     unnamed = int(summary.get("unnamed_groups") or 0)
-    line = f"{files} files · {faces} faces · {unnamed} unnamed people"
+    line = f"{files} files · {faces} faces · {people_to_name_text(unnamed)}"
     rel = relative_time(summary.get("last_scan"), now=now)
     if rel:
         line = f"{line} · Last scan {rel}"

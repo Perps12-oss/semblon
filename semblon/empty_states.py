@@ -200,13 +200,13 @@ def photos_videos_nothing_selected(*, kind: str = "photo") -> EmptyState:
 
 
 def groups_waiting_line(n: int) -> str:
-    """§13 populated counts — soft language, not KNOWN=/UNKNOWN=."""
+    """Populated review-queue counts — same noun as the status bar."""
+    from semblon.library_status import people_to_name_text
+
     n = int(n)
     if n <= 0:
-        return "No groups waiting to be named."
-    if n == 1:
-        return "1 group waiting to be named."
-    return f"{n} groups waiting to be named."
+        return "No people to name."
+    return people_to_name_text(n) + "."
 
 
 def activity_history_lines(

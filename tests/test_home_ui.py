@@ -89,7 +89,7 @@ def test_home_control_policy_does_not_lock_read_surfaces():
 def test_home_nav_labels_ux_rescue():
     """§4 — display labels change; route ids stay unknown / activity."""
     flat = {nav_id: label for _sec, items in HOME_NAV for nav_id, label in items}
-    assert flat["unknown"] == "To review"
+    assert flat["unknown"] == "People to name"
     assert flat["activity"] == "Recent activity"
     assert flat["home"] == "Photos"
     assert "photos" not in flat
@@ -263,7 +263,7 @@ def test_landing_cta_plan_first_run_vs_returning():
     assert returning["show_review"] is True
     assert returning["show_browse"] is True
     assert returning["show_privacy"] is False
-    assert returning["review_label"] == "Review 7 suggestions"
+    assert returning["review_label"] == "Review 7 people to name"
     assert returning["add_label"] == "Add a photo folder"
 
     caught_up = landing_cta_plan(files=12, unnamed=0)
@@ -285,6 +285,24 @@ def test_landing_cta_plan_first_run_vs_returning():
     assert [s["phase"] for s in done] == ["done", "done", "done"]
     assert all(s["marker"] == "✓" for s in done)
     assert "caught up" in done[2]["desc"].lower()
+
+
+def test_populated_home_skips_first_run_marketing():
+    """Photos with a library must not keep the how-it-works brochure."""
+    import inspect
+
+    import semblon.home_ui as home_ui
+
+    show = inspect.getsource(home_ui.HomeApp._show_home_landing)
+    assert "_show_library_home" in show
+    assert 'files <= 0' in show or "files <= 0" in show
+    build = inspect.getsource(home_ui.HomeApp._build_library_home)
+    assert "btn_lib_review" in build
+    assert "_lib_home_thumbs" in build
+    assert "Find the people in your photos" not in build
+    assert "Add a photo folder to begin" not in build
+    thumbs = inspect.getsource(home_ui.HomeApp._refresh_library_home_thumbs)
+    assert "_unnamed_cluster_face_paths" in thumbs
 
 
 def test_home_search_while_analysing_is_state_aware():
