@@ -17,6 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover
 from semblon.ui_icons import draw as draw_icon
 from semblon.ui_theme import px
 from semblon.ui_tokens import (
+    ACCENT_SUBTLE,
     BG_CANVAS,
     BG_HOVER,
     BG_PRESSED,
@@ -166,6 +167,23 @@ else:
                 super().configure(cursor="hand2" if self._enabled else "arrow")
             except tk.TclError:
                 pass
+
+        def set_kind(self, kind: str) -> None:
+            """Switch primary/secondary/… weight without rebuilding the control."""
+            if kind not in _HEIGHT:
+                kind = "secondary"
+            self._kind = kind
+            self._font = _FONT[kind]
+            try:
+                super().configure(height=px(self, _HEIGHT[kind]))
+            except tk.TclError:
+                pass
+            try:
+                if self.winfo_width() <= self._measure() + 4:
+                    super().configure(width=self._measure())
+            except tk.TclError:
+                pass
+            self._redraw()
 
         def set_badge(self, count) -> None:
             """Nav count. Hidden at 0 or None. The count must already be real."""
@@ -334,13 +352,13 @@ else:
             y1 = (height - badge_h) / 2
             y2 = y1 + badge_h
             self._round(
-                x1, y1, x2, y2, badge_h / 2, fill=BG_SURFACE, outline=BORDER_DEFAULT
+                x1, y1, x2, y2, badge_h / 2, fill=ACCENT_SUBTLE, outline=BORDER_DEFAULT
             )
             self.create_text(
                 (x1 + x2) / 2,
                 height / 2,
                 text=label,
-                fill=INK_SECONDARY,
+                fill=INK_PRIMARY,
                 font=self._font,
             )
 

@@ -17,6 +17,15 @@ except ImportError:  # pragma: no cover — tokens land via parallel UX slice
     _tokens = None
 
 SEARCH_PLACEHOLDER = "Search people and text"
+SEARCH_PLACEHOLDER_PHOTOS = "Search photos…"
+
+
+def search_placeholder(*, has_named_people: bool) -> str:
+    """Placeholder when named people exist vs first-run / unnamed-only library."""
+    if has_named_people:
+        return SEARCH_PLACEHOLDER
+    return SEARCH_PLACEHOLDER_PHOTOS
+
 
 # Soft action ids for Home wiring (map to existing job-bar / review handlers).
 ACTION_ADD_FOLDER = "add_folder"
@@ -191,13 +200,13 @@ def photos_videos_nothing_selected(*, kind: str = "photo") -> EmptyState:
 
 
 def groups_waiting_line(n: int) -> str:
-    """§13 populated counts — soft language, not KNOWN=/UNKNOWN=."""
+    """Populated review-queue counts — same noun as the status bar."""
+    from semblon.library_status import people_to_name_text
+
     n = int(n)
     if n <= 0:
-        return "No groups waiting to be named."
-    if n == 1:
-        return "1 group waiting to be named."
-    return f"{n} groups waiting to be named."
+        return "No people to name."
+    return people_to_name_text(n) + "."
 
 
 def activity_history_lines(

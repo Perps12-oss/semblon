@@ -45,6 +45,7 @@ from semblon.progress import (
 )
 from semblon.empty_states import (
     SEARCH_PLACEHOLDER,
+    SEARCH_PLACEHOLDER_PHOTOS,
     activity_empty,
     activity_history_lines,
     failure_dialog_for,
@@ -57,6 +58,7 @@ from semblon.empty_states import (
     search_no_matches,
     search_no_named_people,
     search_no_store,
+    search_placeholder,
     search_result_lines,
     show_failure_dialog,
     to_review_empty,
@@ -172,6 +174,8 @@ __all__ = [
     "format_library_lines",
     "format_progress_line",
     "home_control_states",
+    "landing_cta_plan",
+    "landing_step_states",
     "resolve_home_observers",
     "run_home_ui",
 ]
@@ -189,7 +193,7 @@ HOME_OBSERVERS = "face,color,object"
 # the redundant item. The photo grid remains route id "photos".
 HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ("LIBRARY", (("home", "Photos"), ("videos", "Videos"))),
-    ("PEOPLE", (("people", "People"), ("unknown", "To review"))),
+    ("PEOPLE", (("people", "People"), ("unknown", "People to name"))),
     ("ACTIVITY", (("activity", "Recent activity"),)),
 )
 
@@ -212,6 +216,108 @@ def resolve_home_observers() -> str:
     from semblon.observers import resolve_product_observers
 
     return resolve_product_observers()
+
+
+def landing_step_states(*, files: int, unnamed: int) -> list[dict]:
+    """Pure Home landing step progression. phase: idle | current | done."""
+    if files <= 0:
+        return [
+            {
+                "marker": "1",
+                "title": "Add your photos",
+                "desc": "Add a photo folder to begin.",
+                "phase": "current",
+            },
+            {
+                "marker": "2",
+                "title": "Semblon finds",
+                "desc": "Similar faces are grouped together.",
+                "phase": "idle",
+            },
+            {
+                "marker": "3",
+                "title": "Review and name",
+                "desc": "Review the groups and name the people.",
+                "phase": "idle",
+            },
+        ]
+    if unnamed > 0:
+        return [
+            {
+                "marker": "✓",
+                "title": "Add your photos",
+                "desc": "Folder added.",
+                "phase": "done",
+            },
+            {
+                "marker": "✓",
+                "title": "Semblon finds",
+                "desc": "Scan complete.",
+                "phase": "done",
+            },
+            {
+                "marker": "3",
+                "title": "Review and name",
+                "desc": "Review the groups and name the people.",
+                "phase": "current",
+            },
+        ]
+    return [
+        {
+            "marker": "✓",
+            "title": "Add your photos",
+            "desc": "Folder added.",
+            "phase": "done",
+        },
+        {
+            "marker": "✓",
+            "title": "Semblon finds",
+            "desc": "Scan complete.",
+            "phase": "done",
+        },
+        {
+            "marker": "✓",
+            "title": "Review and name",
+            "desc": "You're caught up.",
+            "phase": "done",
+        },
+    ]
+
+
+def landing_cta_plan(*, files: int, unnamed: int) -> dict:
+    """Which landing CTAs to show and which is primary.
+
+    primary: ``add`` | ``review`` | ``browse``
+    First-run marketing only. Populated libraries use ``_show_library_home``.
+    """
+    from semblon.library_status import review_people_cta
+
+    if files <= 0:
+        return {
+            "primary": "add",
+            "show_review": False,
+            "show_browse": False,
+            "show_privacy": True,
+            "add_label": "Add a photo folder",
+            "review_label": review_people_cta(0),
+        }
+    if unnamed > 0:
+        return {
+            "primary": "review",
+            "show_review": True,
+            "show_browse": True,
+            "show_privacy": False,
+            "add_label": "Add a photo folder",
+            "review_label": review_people_cta(unnamed),
+        }
+    return {
+        "primary": "browse",
+        "show_review": False,
+        "show_browse": True,
+        "show_privacy": False,
+        "add_label": "Add another folder",
+        "review_label": review_people_cta(0),
+    }
 
 
 def resolve_home_prefer_gpu() -> bool:
@@ -686,6 +792,44 @@ def _recent_face_paths(store: Path, *, limit: int = 8) -> list[tuple[str, tuple[
     return out
 
 
+def _unnamed_cluster_face_paths(
+    store: Path, *, limit: int = 12
+) -> list[tuple[str, tuple[float, float, float, float]]]:
+    """One representative face per unnamed cluster — the review queue, visually."""
+    if limit <= 0 or not store.is_file():
+        return []
+    conn = sqlite3.connect(str(store))
+    try:
+        conn.execute("PRAGMA busy_timeout=2000")
+        rows = conn.execute(
+            """
+            SELECT m.path, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2
+            FROM clusters c
+            JOIN faces f ON f.cluster_id = c.cluster_id AND f.status = 'ok'
+            JOIN observations o ON o.observation_id = f.observation_id
+            JOIN media m ON m.media_id = o.media_id
+            WHERE (c.status IS NULL OR c.status != 'ignored')
+              AND NOT EXISTS (
+                SELECT 1 FROM faces fx
+                WHERE fx.cluster_id = c.cluster_id
+                  AND fx.person_id IS NOT NULL
+              )
+            GROUP BY c.cluster_id
+            ORDER BY COUNT(f.face_id) DESC, c.cluster_id
+            LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+    finally:
+        conn.close()
+    out: list[tuple[str, tuple[float, float, float, float]]] = []
+    for path, x1, y1, x2, y2 in rows:
+        if not path or None in (x1, y1, x2, y2):
+            continue
+        out.append((str(path), (float(x1), float(y1), float(x2), float(y2))))
+    return out
+
+
 def _button(master, text, command, kind="secondary", icon=None, plate=None):
     """One button class. Falls back to ttk only if the canvas control is absent."""
     if Button is None or tk is None:
@@ -770,7 +914,8 @@ class HomeApp:
         self.search_var = tk.StringVar()
         self._search_entry = ttk.Entry(search_row, textvariable=self.search_var, width=28)
         self._search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self._search_entry.insert(0, SEARCH_PLACEHOLDER)
+        self._search_placeholder = SEARCH_PLACEHOLDER_PHOTOS
+        self._search_entry.insert(0, self._search_placeholder)
         try:
             self._search_entry.configure(foreground=INK_TERTIARY)
         except tk.TclError:
@@ -969,9 +1114,11 @@ class HomeApp:
         self._landing = ttk.Frame(work)
         self._processing = ttk.Frame(work)
         self._result_card = ttk.Frame(work)
+        self._library_home = ttk.Frame(work)
         self._build_home_landing()
         self._build_processing_home()
         self._build_result_card_shell()
+        self._build_library_home()
 
         from semblon.canvas import CanvasWorkspace
 
@@ -1111,6 +1258,7 @@ class HomeApp:
             "Settings",
             "Search",
             "To review",
+            "People to name",
             "People",
         }:
             from semblon.product_surface import SEL_HEADING_IDLE
@@ -1130,6 +1278,7 @@ class HomeApp:
             "Settings",
             "Search",
             "To review",
+            "People to name",
         }:
             self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
             if title != "Canvas":
@@ -1486,7 +1635,6 @@ class HomeApp:
             icon="folder-plus",
             plate=BG_CANVAS,
         )
-        self.btn_landing_cta.pack(side=tk.LEFT)
         self.btn_landing_review = _button(
             actions,
             "Review suggestions",
@@ -1501,17 +1649,14 @@ class HomeApp:
             kind="secondary",
             plate=BG_CANVAS,
         )
-        # Review and Browse are packed only when the library has something to show.
+        # Pack order and kinds are applied in _refresh_landing_hint.
 
         steps = tk.Frame(hero, bg=BG_CANVAS)
         self._landing_steps = steps
         steps.pack(anchor=tk.W, pady=(SP_24, 0))
         ui_strong = (DISPLAY[0], 14, "bold")
-        for num, title, desc in (
-            ("1", "Add your photos", "Add a photo folder to begin."),
-            ("2", "Semblon finds", "Similar faces are grouped together."),
-            ("3", "Review and name", "Review the groups and name the people."),
-        ):
+        self._landing_step_cards: list[dict] = []
+        for _ in range(3):
             card = tk.Frame(
                 steps,
                 bg=BG_CANVAS,
@@ -1521,36 +1666,48 @@ class HomeApp:
                 pady=SP_16,
             )
             card.pack(side=tk.LEFT, anchor=tk.N, padx=(0, SP_12))
-            tk.Label(
+            marker = tk.Label(
                 card,
-                text=num,
+                text="",
                 font=H2,
                 bg=BG_CANVAS,
                 fg=TEXT_DISABLED,
                 anchor="w",
-            ).pack(anchor=tk.W)
-            tk.Label(
+            )
+            marker.pack(anchor=tk.W)
+            title_lbl = tk.Label(
                 card,
-                text=title,
+                text="",
                 font=ui_strong,
                 bg=BG_CANVAS,
                 fg=TEXT_PRIMARY,
                 wraplength=180,
                 anchor="w",
                 justify=tk.LEFT,
-            ).pack(anchor=tk.W, pady=(SP_8, 0))
-            tk.Label(
+            )
+            title_lbl.pack(anchor=tk.W, pady=(SP_8, 0))
+            desc_lbl = tk.Label(
                 card,
-                text=desc,
+                text="",
                 font=H3,
                 bg=BG_CANVAS,
                 fg=TEXT_SECONDARY,
                 wraplength=180,
                 anchor="nw",
                 justify=tk.LEFT,
-            ).pack(anchor=tk.W, pady=(SP_8, 0))
+            )
+            desc_lbl.pack(anchor=tk.W, pady=(SP_8, 0))
+            self._landing_step_cards.append(
+                {
+                    "card": card,
+                    "marker": marker,
+                    "title": title_lbl,
+                    "desc": desc_lbl,
+                }
+            )
 
         privacy = tk.Frame(hero, bg=BG_CANVAS)
+        self._landing_privacy = privacy
         privacy.pack(anchor=tk.W, pady=(SP_24, 0))
         if draw_icon is not None:
             icon_px = 18
@@ -1573,6 +1730,7 @@ class HomeApp:
             justify=tk.LEFT,
             anchor="w",
         ).pack(side=tk.LEFT)
+        self._refresh_landing_hint()
 
     def _build_processing_home(self) -> None:
         """PROCESSING state — results framing while a job runs (not marketing + telemetry)."""
@@ -1747,6 +1905,8 @@ class HomeApp:
         self._landing.pack_forget()
         self._processing.pack_forget()
         self._result_card.pack_forget()
+        if hasattr(self, "_library_home"):
+            self._library_home.pack_forget()
 
     def _home_state(self) -> str:
         """FIRST_RUN | PROCESSING | READY | EXPLORE — Home hierarchy gate."""
@@ -1760,7 +1920,7 @@ class HomeApp:
         return "FIRST_RUN"
 
     def _show_home_landing(self) -> None:
-        """Home route: processing workspace, result card, or marketing landing."""
+        """Home/Photos: first-run pitch, or photo library + review strip."""
         self._hide_workspace_panes()
         state = self._home_state()
         if state == "PROCESSING":
@@ -1779,11 +1939,175 @@ class HomeApp:
         if state == "READY":
             self._fill_result_card()
             self._result_card.pack(fill=tk.BOTH, expand=True)
-        else:
+            self._set_inspector_collapsed(True)
+            self._set_inspector("Home", list(INSPECTOR_HOME_EMPTY))
+            return
+
+        summary = self._library_summary()
+        files = 0 if summary is None else int(summary.get("files") or 0)
+        if files <= 0:
             self._refresh_landing_hint()
             self._landing.pack(fill=tk.BOTH, expand=True)
-        self._set_inspector_collapsed(True)
-        self._set_inspector("Home", list(INSPECTOR_HOME_EMPTY))
+            self._set_inspector_collapsed(True)
+            self._set_inspector("Home", list(INSPECTOR_HOME_EMPTY))
+            return
+
+        # Populated library: never the how-it-works brochure.
+        self._show_library_home(summary)
+        self._set_inspector_collapsed(False)
+        lib = format_library_lines(self.store, source_type="folder")
+        if not library_has_media_lines(lib):
+            self._set_inspector("Photos", photos_empty().as_lines())
+        else:
+            waiting = int(summary.get("unnamed_groups") or 0)
+            from semblon.library_status import people_to_name_text
+
+            lines = [
+                people_to_name_text(waiting) + "."
+                if waiting
+                else "Your photo library.",
+                "Select a photo to see faces Semblon found.",
+            ]
+            if waiting:
+                lines.append("Open People to name to review face groups.")
+            self._set_inspector("Photos", lines)
+
+    def _build_library_home(self) -> None:
+        """Returning-user strip above the photo grid — Review first, faces visible."""
+        bar = self._library_home
+        for child in bar.winfo_children():
+            child.destroy()
+        shell = tk.Frame(bar, bg=BG_CANVAS)
+        shell.pack(fill=tk.X, padx=SP_8, pady=(SP_8, SP_12))
+        self._lib_home_title = tk.StringVar(value="")
+        tk.Label(
+            shell,
+            textvariable=self._lib_home_title,
+            font=H1,
+            bg=BG_CANVAS,
+            fg=TEXT_PRIMARY,
+            anchor="w",
+        ).pack(anchor=tk.W)
+        actions = tk.Frame(shell, bg=BG_CANVAS)
+        actions.pack(anchor=tk.W, pady=(SP_12, 0))
+        self.btn_lib_review = _button(
+            actions,
+            "Review people",
+            lambda: self._navigate("unknown"),
+            kind="primary",
+            plate=BG_CANVAS,
+        )
+        self.btn_lib_review.pack(side=tk.LEFT)
+        self.btn_lib_add = _button(
+            actions,
+            "Add a photo folder",
+            self._choose_folder,
+            kind="secondary",
+            icon="folder-plus",
+            plate=BG_CANVAS,
+        )
+        self.btn_lib_add.pack(side=tk.LEFT, padx=(SP_12, 0))
+        self._lib_home_thumbs = tk.Frame(shell, bg=BG_CANVAS)
+        self._lib_home_thumbs.pack(anchor=tk.W, pady=(SP_16, 0))
+        self._lib_home_thumb_images: list = []
+
+    def _show_library_home(self, summary: dict | None = None) -> None:
+        """Photos route content when the library already has files."""
+        if summary is None:
+            summary = self._library_summary()
+        waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
+        from semblon.library_status import people_to_name_text, review_people_cta
+
+        if hasattr(self, "_lib_home_title"):
+            if waiting > 0:
+                self._lib_home_title.set(people_to_name_text(waiting))
+            else:
+                self._lib_home_title.set("Your photos")
+        review = getattr(self, "btn_lib_review", None)
+        add_btn = getattr(self, "btn_lib_add", None)
+        if review is not None:
+            review.configure(text=review_people_cta(waiting))
+            if hasattr(review, "set_kind"):
+                review.set_kind("primary" if waiting > 0 else "secondary")
+            try:
+                review.pack_forget()
+            except tk.TclError:
+                pass
+        if add_btn is not None:
+            add_btn.configure(
+                text="Add a photo folder" if waiting > 0 else "Add another folder"
+            )
+            if hasattr(add_btn, "set_kind"):
+                add_btn.set_kind("secondary" if waiting > 0 else "primary")
+            try:
+                add_btn.pack_forget()
+            except tk.TclError:
+                pass
+        # Primary first.
+        if waiting > 0:
+            if review is not None:
+                review.pack(side=tk.LEFT)
+            if add_btn is not None:
+                add_btn.pack(side=tk.LEFT, padx=(SP_12, 0))
+        else:
+            if add_btn is not None:
+                add_btn.pack(side=tk.LEFT)
+            if review is not None:
+                review.pack_forget()
+        self._refresh_library_home_thumbs(waiting)
+        self._library_home.pack(fill=tk.X, anchor=tk.N)
+        self._canvas_ws.pack(fill=tk.BOTH, expand=True)
+        try:
+            self._canvas_ws.reload(
+                self.store, self._last_run_id, source_types=("folder",)
+            )
+        except Exception:  # noqa: BLE001 — grid is best-effort on open
+            pass
+
+    def _refresh_library_home_thumbs(self, waiting: int) -> None:
+        frame = getattr(self, "_lib_home_thumbs", None)
+        if frame is None:
+            return
+        for child in frame.winfo_children():
+            child.destroy()
+        self._lib_home_thumb_images = []
+        if waiting <= 0 or not self.store.is_file():
+            return
+        try:
+            rows = _unnamed_cluster_face_paths(Path(self.store), limit=12)
+        except Exception:  # noqa: BLE001
+            rows = []
+        if not rows:
+            try:
+                rows = _recent_face_paths(Path(self.store), limit=12)
+            except Exception:  # noqa: BLE001
+                return
+        try:
+            from semblon.review_ui import crop_png_b64
+        except Exception:  # noqa: BLE001
+            return
+        for media_path, bbox in rows:
+            try:
+                b64 = crop_png_b64(
+                    media_path,
+                    bbox,
+                    max_side=64,
+                    frame_id=None,
+                )
+            except Exception:  # noqa: BLE001
+                continue
+            if not b64:
+                continue
+            try:
+                img = tk.PhotoImage(data=b64)
+            except Exception:  # noqa: BLE001
+                continue
+            self._lib_home_thumb_images.append(img)
+            lbl = tk.Label(frame, image=img, bg=BG_CANVAS, cursor="hand2")
+            lbl.pack(side=tk.LEFT, padx=(0, SP_8))
+            lbl.bind("<Button-1>", lambda _e: self._navigate("unknown"))
+            if len(self._lib_home_thumb_images) >= 12:
+                break
 
     def _refresh_processing_home(self, ev: ProgressEvent | None = None) -> None:
         """Push soft processing copy into the PROCESSING workspace."""
@@ -1869,21 +2193,88 @@ class HomeApp:
                 break
 
     def _refresh_landing_hint(self) -> None:
-        """Review action uses the real unconfirmed-group count. Hidden at 0."""
+        """First-run vs returning-user landing from real library counts."""
         summary = self._library_summary()
         files = 0 if summary is None else int(summary.get("files") or 0)
         waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
+        plan = landing_cta_plan(files=files, unnamed=waiting)
+
+        add_btn = getattr(self, "btn_landing_cta", None)
         review = getattr(self, "btn_landing_review", None)
         browse = getattr(self, "btn_landing_browse", None)
+        for btn in (add_btn, review, browse):
+            if btn is not None:
+                btn.pack_forget()
+
+        if add_btn is not None:
+            add_btn.configure(text=plan["add_label"])
+            if hasattr(add_btn, "set_kind"):
+                add_btn.set_kind(
+                    "primary" if plan["primary"] == "add" else "secondary"
+                )
         if review is not None:
-            review.pack_forget()
-            if waiting > 0:
-                review.configure(text=f"Review {waiting} suggestions")
-                review.pack(side=tk.LEFT, padx=(SP_12, 0))
-        if browse is not None:
-            browse.pack_forget()
-            if files > 0:
-                browse.pack(side=tk.LEFT, padx=(SP_12, 0))
+            review.configure(text=plan["review_label"])
+            if hasattr(review, "set_kind"):
+                review.set_kind(
+                    "primary" if plan["primary"] == "review" else "secondary"
+                )
+        if browse is not None and hasattr(browse, "set_kind"):
+            browse.set_kind(
+                "primary" if plan["primary"] == "browse" else "secondary"
+            )
+
+        # Pack primary first, then secondary actions.
+        order: list[tuple[object | None, bool]] = []
+        if plan["primary"] == "review":
+            order = [
+                (review, plan["show_review"]),
+                (add_btn, True),
+                (browse, plan["show_browse"]),
+            ]
+        elif plan["primary"] == "browse":
+            order = [
+                (browse, plan["show_browse"]),
+                (add_btn, True),
+                (review, plan["show_review"]),
+            ]
+        else:
+            order = [
+                (add_btn, True),
+                (review, plan["show_review"]),
+                (browse, plan["show_browse"]),
+            ]
+        first = True
+        for btn, show in order:
+            if btn is None or not show:
+                continue
+            btn.pack(side=tk.LEFT, padx=(0 if first else SP_12, 0))
+            first = False
+
+        privacy = getattr(self, "_landing_privacy", None)
+        if privacy is not None:
+            privacy.pack_forget()
+            if plan["show_privacy"]:
+                privacy.pack(anchor=tk.W, pady=(SP_24, 0))
+
+        steps = landing_step_states(files=files, unnamed=waiting)
+        cards = getattr(self, "_landing_step_cards", None) or []
+        for card, step in zip(cards, steps):
+            marker = card["marker"]
+            marker.configure(text=step["marker"])
+            phase = step["phase"]
+            if phase == "done":
+                marker.configure(fg=SUCCESS)
+            elif phase == "current":
+                marker.configure(fg=TEXT_PRIMARY)
+            else:
+                marker.configure(fg=TEXT_DISABLED)
+            card["title"].configure(text=step["title"])
+            card["desc"].configure(text=step["desc"])
+            try:
+                thickness = 2 if phase == "current" else 1
+                card["card"].configure(highlightthickness=thickness)
+            except tk.TclError:
+                pass
 
     def _library_summary(self) -> dict | None:
         from semblon.library_status import library_summary
@@ -1894,7 +2285,7 @@ class HomeApp:
             return None
 
     def _refresh_library_chrome(self) -> None:
-        """Status bar and To review badge from the library. Hidden badge at 0."""
+        """Status bar and People to name badge from the library. Hidden badge at 0."""
         from semblon.library_status import status_bar_text
 
         summary = self._library_summary()
@@ -1904,6 +2295,41 @@ class HomeApp:
         waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
         if btn is not None and hasattr(btn, "set_badge"):
             btn.set_badge(waiting)
+        self._refresh_search_placeholder(summary)
+
+    def _refresh_search_placeholder(self, summary: dict | None = None) -> None:
+        """Placeholder reflects whether any people have been named yet."""
+        if summary is None:
+            summary = self._library_summary()
+        named = 0 if summary is None else int(summary.get("named_people") or 0)
+        new_ph = search_placeholder(has_named_people=named > 0)
+        old_ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+        current = (self.search_var.get() or "").strip()
+        self._search_placeholder = new_ph
+        if current in {"", old_ph, SEARCH_PLACEHOLDER, new_ph}:
+            self.search_var.set(new_ph)
+            try:
+                self._search_entry.configure(foreground=INK_TERTIARY)
+            except tk.TclError:
+                pass
+
+    def _search_focus_in(self, _event=None) -> None:
+        ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+        if self.search_var.get() == ph:
+            self.search_var.set("")
+            try:
+                self._search_entry.configure(foreground=TEXT_PRIMARY)
+            except tk.TclError:
+                pass
+
+    def _search_focus_out(self, _event=None) -> None:
+        if not (self.search_var.get() or "").strip():
+            ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+            self.search_var.set(ph)
+            try:
+                self._search_entry.configure(foreground=INK_TERTIARY)
+            except tk.TclError:
+                pass
 
     def _apply_saved_theme(self) -> None:
         """Publish the saved appearance before widgets are built."""
@@ -2093,22 +2519,6 @@ class HomeApp:
                 cell, text=label, font=CAPTION, style="SurfaceMuted.TLabel"
             ).pack(anchor=tk.W)
 
-    def _search_focus_in(self, _event=None) -> None:
-        if self.search_var.get() == SEARCH_PLACEHOLDER:
-            self.search_var.set("")
-            try:
-                self._search_entry.configure(foreground=TEXT_PRIMARY)
-            except tk.TclError:
-                pass
-
-    def _search_focus_out(self, _event=None) -> None:
-        if not (self.search_var.get() or "").strip():
-            self.search_var.set(SEARCH_PLACEHOLDER)
-            try:
-                self._search_entry.configure(foreground=INK_TERTIARY)
-            except tk.TclError:
-                pass
-
     @staticmethod
     def _counts_from_done_payload(payload: dict) -> dict[str, int]:
         ing = payload.get("ingest") if isinstance(payload.get("ingest"), dict) else {}
@@ -2273,7 +2683,7 @@ class HomeApp:
             self._refresh_job_controls()
             return
         if nav_id == "unknown":
-            self._welcome_title.set("To review")
+            self._welcome_title.set("People to name")
             self._show_workspace_welcome()
             self._show_unknown()
             self._sync_chrome_for_route()
@@ -2606,11 +3016,11 @@ class HomeApp:
             if is_expected_condition(e, has_store=self.store.is_file()):
                 if not self.store.is_file():
                     self._set_inspector(
-                        "To review", to_review_empty(has_store=False).as_lines()
+                        "People to name", to_review_empty(has_store=False).as_lines()
                     )
                 else:
                     self._set_inspector(
-                        "To review",
+                        "People to name",
                         to_review_empty(has_store=True, has_faces=False).as_lines(),
                     )
                 return
@@ -2693,7 +3103,7 @@ class HomeApp:
         )
         evid.insert(
             1,
-            "Select a person here, then a face under To review or in Photos to add them.",
+            "Select a person here, then a face under People to name or in Photos to add them.",
         )
         self._insp_run_id = self._last_run_id
         self._insp_selected = []
@@ -2717,8 +3127,8 @@ class HomeApp:
         from semblon.process import latest_run_id
         from semblon.review_ui import load_board
 
-        # Display label "To review"; route id remains ``unknown``.
-        title = "To review"
+        # Display label "People to name"; route id remains ``unknown``.
+        title = "People to name"
         if not self.store.is_file():
             self._set_inspector_selection(
                 run_id=None,
@@ -2909,7 +3319,8 @@ class HomeApp:
         from semblon.search import SearchError, search_people, search_person, search_text
 
         q = (self.search_var.get() or "").strip()
-        if q == SEARCH_PLACEHOLDER:
+        ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+        if q in {ph, SEARCH_PLACEHOLDER, SEARCH_PLACEHOLDER_PHOTOS}:
             q = ""
         if not q:
             messagebox.showinfo("Semblon", "Type a person name or text to search.")
@@ -3069,12 +3480,15 @@ class HomeApp:
             anchor=tk.W, pady=(SP_24, SP_8)
         )
         for shortcut, keys in (
-            ("Search people and text", "Ctrl+F"),
+            (
+                getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER),
+                "Ctrl+F",
+            ),
             ("Go to", "Ctrl+K"),
             ("Photos", "Ctrl+1"),
             ("Videos", "Ctrl+2"),
             ("People", "Ctrl+3"),
-            ("To review", "Ctrl+4"),
+            ("People to name", "Ctrl+4"),
             ("Recent activity", "Ctrl+5"),
         ):
             row = ttk.Frame(pad)

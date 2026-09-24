@@ -89,7 +89,7 @@ def test_home_control_policy_does_not_lock_read_surfaces():
 def test_home_nav_labels_ux_rescue():
     """§4 — display labels change; route ids stay unknown / activity."""
     flat = {nav_id: label for _sec, items in HOME_NAV for nav_id, label in items}
-    assert flat["unknown"] == "To review"
+    assert flat["unknown"] == "People to name"
     assert flat["activity"] == "Recent activity"
     assert flat["home"] == "Photos"
     assert "photos" not in flat
@@ -238,12 +238,71 @@ def test_home_landing_wraplength_avoids_clipping():
     assert "justify=tk.CENTER" not in build
     assert "width=48" not in build
     assert "width=18" not in build
-    assert "Review and name" in build
     assert 'text="Semblon"' not in build
     assert "highlightthickness=1" in build
+    assert "_landing_step_cards" in build
+    assert "_landing_privacy" in build
     hint = inspect.getsource(home_ui.HomeApp._refresh_landing_hint)
     assert "previously added" not in hint
-    assert "Review {waiting} suggestions" in hint
+    assert "landing_cta_plan" in hint
+    assert "landing_step_states" in hint
+    assert "show_privacy" in hint
+
+
+def test_landing_cta_plan_first_run_vs_returning():
+    from semblon.home_ui import landing_cta_plan, landing_step_states
+
+    empty = landing_cta_plan(files=0, unnamed=0)
+    assert empty["primary"] == "add"
+    assert empty["show_review"] is False
+    assert empty["show_privacy"] is True
+    assert empty["add_label"] == "Add a photo folder"
+
+    returning = landing_cta_plan(files=12, unnamed=7)
+    assert returning["primary"] == "review"
+    assert returning["show_review"] is True
+    assert returning["show_browse"] is True
+    assert returning["show_privacy"] is False
+    assert returning["review_label"] == "Review 7 people to name"
+    assert returning["add_label"] == "Add a photo folder"
+
+    caught_up = landing_cta_plan(files=12, unnamed=0)
+    assert caught_up["primary"] == "browse"
+    assert caught_up["show_review"] is False
+    assert caught_up["show_privacy"] is False
+    assert caught_up["add_label"] == "Add another folder"
+
+    first_steps = landing_step_states(files=0, unnamed=0)
+    assert [s["phase"] for s in first_steps] == ["current", "idle", "idle"]
+    assert first_steps[0]["marker"] == "1"
+
+    mid = landing_step_states(files=5, unnamed=3)
+    assert [s["phase"] for s in mid] == ["done", "done", "current"]
+    assert mid[0]["marker"] == "✓"
+    assert mid[2]["marker"] == "3"
+
+    done = landing_step_states(files=5, unnamed=0)
+    assert [s["phase"] for s in done] == ["done", "done", "done"]
+    assert all(s["marker"] == "✓" for s in done)
+    assert "caught up" in done[2]["desc"].lower()
+
+
+def test_populated_home_skips_first_run_marketing():
+    """Photos with a library must not keep the how-it-works brochure."""
+    import inspect
+
+    import semblon.home_ui as home_ui
+
+    show = inspect.getsource(home_ui.HomeApp._show_home_landing)
+    assert "_show_library_home" in show
+    assert 'files <= 0' in show or "files <= 0" in show
+    build = inspect.getsource(home_ui.HomeApp._build_library_home)
+    assert "btn_lib_review" in build
+    assert "_lib_home_thumbs" in build
+    assert "Find the people in your photos" not in build
+    assert "Add a photo folder to begin" not in build
+    thumbs = inspect.getsource(home_ui.HomeApp._refresh_library_home_thumbs)
+    assert "_unnamed_cluster_face_paths" in thumbs
 
 
 def test_home_search_while_analysing_is_state_aware():
@@ -251,6 +310,7 @@ def test_home_search_while_analysing_is_state_aware():
 
     search = inspect.getsource(home_ui.HomeApp._search_person)
     assert "search_library_analysing" in search
+    assert "_search_placeholder" in search
     from semblon.empty_states import search_library_analysing
 
     st = search_library_analysing()

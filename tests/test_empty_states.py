@@ -6,6 +6,7 @@ import sqlite3
 
 from semblon.empty_states import (
     SEARCH_PLACEHOLDER,
+    SEARCH_PLACEHOLDER_PHOTOS,
     ConditionKind,
     activity_empty,
     activity_history_lines,
@@ -18,6 +19,7 @@ from semblon.empty_states import (
     search_no_matches,
     search_no_named_people,
     search_no_store,
+    search_placeholder,
     search_result_lines,
     to_review_empty,
     videos_empty,
@@ -69,17 +71,20 @@ def test_empty_state_anatomy_has_no_forbidden_vocab():
 
 def test_search_placeholder_copy():
     assert SEARCH_PLACEHOLDER == "Search people and text"
+    assert SEARCH_PLACEHOLDER_PHOTOS == "Search photos…"
+    assert search_placeholder(has_named_people=False) == "Search photos…"
+    assert search_placeholder(has_named_people=True) == "Search people and text"
 
 
 def test_groups_waiting_line():
-    assert groups_waiting_line(0) == "No groups waiting to be named."
-    assert groups_waiting_line(1) == "1 group waiting to be named."
-    assert groups_waiting_line(12) == "12 groups waiting to be named."
+    assert groups_waiting_line(0) == "No people to name."
+    assert groups_waiting_line(1) == "1 person to name."
+    assert groups_waiting_line(12) == "12 people to name."
 
 
 def test_format_unknown_demotes_known_unknown_codes():
     soft = format_unknown_lines({"counts": {"KNOWN": 1, "UNKNOWN": 4}}, "r1")
-    assert soft == ["4 groups waiting to be named."]
+    assert soft == ["4 people to name."]
     assert "KNOWN=" not in "\n".join(soft)
     adv = format_unknown_lines(
         {"counts": {"KNOWN": 1, "UNKNOWN": 4}}, "r1", advanced=True
