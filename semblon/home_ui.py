@@ -1492,7 +1492,14 @@ class HomeApp:
             kind="secondary",
             plate=BG_CANVAS,
         )
-        # Packed beside the primary action only when unconfirmed groups exist.
+        self.btn_landing_browse = _button(
+            actions,
+            "Browse photos",
+            lambda: self._navigate("photos"),
+            kind="secondary",
+            plate=BG_CANVAS,
+        )
+        # Review and Browse are packed only when the library has something to show.
 
         steps = tk.Frame(hero, bg=BG_CANVAS)
         self._landing_steps = steps
@@ -1862,14 +1869,19 @@ class HomeApp:
     def _refresh_landing_hint(self) -> None:
         """Review action uses the real unconfirmed-group count. Hidden at 0."""
         summary = self._library_summary()
+        files = 0 if summary is None else int(summary.get("files") or 0)
         waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
         review = getattr(self, "btn_landing_review", None)
-        if review is None:
-            return
-        review.pack_forget()
-        if waiting > 0:
-            review.configure(text=f"Review {waiting} suggestions")
-            review.pack(side=tk.LEFT, padx=(SP_12, 0))
+        browse = getattr(self, "btn_landing_browse", None)
+        if review is not None:
+            review.pack_forget()
+            if waiting > 0:
+                review.configure(text=f"Review {waiting} suggestions")
+                review.pack(side=tk.LEFT, padx=(SP_12, 0))
+        if browse is not None:
+            browse.pack_forget()
+            if files > 0:
+                browse.pack(side=tk.LEFT, padx=(SP_12, 0))
 
     def _library_summary(self) -> dict | None:
         from semblon.library_status import library_summary
