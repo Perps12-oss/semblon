@@ -2595,12 +2595,16 @@ class HomeApp:
 
         try:
             # Toplevel on Home's root. Home keeps pumping events. No nested mainloop.
-            run_review_ui(
+            # Shared Cluster Review chrome when WebView exists; else tk + review.html.
+            rec = run_review_ui(
                 store=self.store,
                 run_id=self._last_run_id,
                 parent=self.root,
                 on_add_folder=self._choose_folder,
             )
+            html_out = (rec or {}).get("review_html") if isinstance(rec, dict) else None
+            if html_out:
+                self._last_review_html = Path(html_out)
         except ReviewUiError as e:
             # Expected empty (no store / no runs) is handled inside run_review_ui.
             if is_expected_condition(e, has_store=self.store.is_file()):

@@ -1941,7 +1941,11 @@ def run_review_ui(
     parent=None,
     on_add_folder: Callable[[], None] | None = None,
 ) -> dict:
-    """Open Review. Expected empty (no store / no runs) shows coaching UI, not Error."""
+    """Open Review. Expected empty (no store / no runs) shows coaching UI, not Error.
+
+    Prefers the shared Cluster Review chrome host when a WebView is available;
+    otherwise falls back to the tk ReviewApp and still writes the new review.html.
+    """
     store_path = Path(store) if store is not None else default_store_path()
     try:
         rid = resolve_run_id(store_path, run_id)
@@ -1958,8 +1962,21 @@ def run_review_ui(
             str(store_path.resolve()) if store_path.exists() else str(store_path)
         )
         return {"store": store_out, "run_id": None, "empty": True, "reason": empty.reason}
-    app = ReviewApp(
-        store_path, rid, parent=parent, on_add_folder=on_add_folder
-    )
-    app.run()
-    return {"store": str(store_path.resolve()), "run_id": rid}
+
+    # Shared chrome host (WebView when present; tk fallback + snapshot HTML).
+    try:
+        from semblon.review_chrome.host import host_review_chrome
+
+        return host_review_chrome(
+            store_path,
+            rid,
+            parent=parent,
+            on_add_folder=on_add_folder,
+        )
+    except Exception:
+        # Absolute last resort: tk only (host already logs WebView miss).
+        app = ReviewApp(
+            store_path, rid, parent=parent, on_add_folder=on_add_folder
+        )
+        app.run()
+        return {"store": str(store_path.resolve()), "run_id": rid}

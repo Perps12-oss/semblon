@@ -125,6 +125,14 @@ TERTIARY_FONT: tuple[str, int] = UI
 
 INK_ON_ACCENT = "#FFFFFF"
 
+# Cluster Review HTML chrome (semblon/review_chrome/tokens.css). Keep in sync.
+REVIEW_NAVY_800 = "#0F1B2D"
+REVIEW_BG_MAIN = "#F7F8FA"
+REVIEW_STRONG_MIN_INTRA = 0.50
+REVIEW_SIDEBAR_W = 240
+REVIEW_INSPECTOR_W = 360
+REVIEW_TOPBAR_H = 64
+
 
 def mix(src: str, onto: str, amount: float) -> str:
     """Mix ``amount`` of ``src`` into ``onto`` (0 = onto, 1 = src)."""
