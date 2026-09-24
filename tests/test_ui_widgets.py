@@ -7,7 +7,7 @@ import pytest
 pytest.importorskip("tkinter")
 
 from semblon.ui_theme import apply_theme, px, reset_theme_for_tests
-from semblon.ui_tokens import ACCENT, BG_CANVAS, PRIMARY_HEIGHT
+from semblon.ui_tokens import ACCENT, BG_CANVAS, INK_PRIMARY, PRIMARY_HEIGHT
 from semblon.ui_widgets import Button
 
 
@@ -82,5 +82,9 @@ def test_theme_scaling_grows_pixel_metrics(root):
     btn = Button(root, text="Add a photo folder", kind="primary")
     btn.update_idletasks()
     assert btn.winfo_reqheight() >= high - 2
-    # Accent stays the single action color.
+    # Accent is the progress color. The action button is ink on the surface.
     assert ACCENT == "#2E6BE6"
+    fill, ink, border = btn._palette()
+    assert fill == INK_PRIMARY
+    assert ink == BG_CANVAS
+    assert border == ""

@@ -66,7 +66,7 @@ from semblon.empty_states import (
 # Visual design language — one token module. Soft import so Home still
 # constructs if a partial checkout is missing the foundation.
 try:
-    from semblon.ui_icons import NAV_ICONS
+    from semblon.ui_icons import NAV_ICONS, draw as draw_icon
     from semblon.ui_theme import apply_theme, style_listbox
     from semblon.ui_tokens import (
         ACCENT,
@@ -94,6 +94,7 @@ try:
         SP_24,
         SP_32,
         SP_48,
+        SUCCESS,
         SURFACE_PRIMARY,
         TEXT_DISABLED,
         TEXT_PRIMARY,
@@ -105,6 +106,7 @@ try:
     from semblon.ui_widgets import Button
 except ImportError:  # pragma: no cover - mid-merge stub
     NAV_ICONS = {}
+    draw_icon = None
     apply_theme = None
     style_listbox = None
     Button = None
@@ -133,6 +135,7 @@ except ImportError:  # pragma: no cover - mid-merge stub
     SP_24 = 24
     SP_32 = 32
     SP_48 = 48
+    SUCCESS = "#1A7F37"
     SURFACE_PRIMARY = "#FFFFFF"
     TEXT_DISABLED = "#B9B9B9"
     TEXT_PRIMARY = "#171717"
@@ -1425,21 +1428,22 @@ class HomeApp:
         )
 
     def _build_home_landing(self) -> None:
-        """Cold-launch hero (UX Rescue §2). No engineering strings on this surface."""
+        """Dashboard hero. The sentence is the title. No second wordmark."""
         for child in self._landing.winfo_children():
             child.destroy()
-        hero = ttk.Frame(self._landing, padding=(SP_24, SP_32))
-        hero.pack(expand=True, fill=tk.BOTH)
-        ttk.Label(hero, text="Semblon", font=DISPLAY).pack(pady=(0, SP_8))
-        ttk.Label(
+        hero = tk.Frame(self._landing, bg=BG_CANVAS)
+        hero.pack(anchor=tk.NW, padx=SP_24, pady=SP_24)
+        tk.Label(
             hero,
             text="Find the people in your photos",
-            font=H2,
-            foreground=TEXT_SECONDARY,
+            font=DISPLAY,
+            bg=BG_CANVAS,
+            fg=TEXT_PRIMARY,
             wraplength=560,
-            justify=tk.CENTER,
-        ).pack()
-        ttk.Label(
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(anchor=tk.W)
+        tk.Label(
             hero,
             text=(
                 "Semblon looks through your photo folder, finds faces, "
@@ -1447,78 +1451,103 @@ class HomeApp:
                 "decide who those people are."
             ),
             font=BODY,
-            foreground=TEXT_SECONDARY,
+            bg=BG_CANVAS,
+            fg=TEXT_SECONDARY,
             wraplength=560,
-            justify=tk.CENTER,
-            anchor=tk.CENTER,
-        ).pack(pady=(SP_8, 0))
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(anchor=tk.W, pady=(SP_12, 0))
+        actions = tk.Frame(hero, bg=BG_CANVAS)
+        self._landing_actions = actions
+        actions.pack(anchor=tk.W, pady=(SP_24, 0))
         self.btn_landing_cta = _button(
-            hero,
+            actions,
             "Add a photo folder",
             self._choose_folder,
             kind="primary",
             icon="folder-plus",
             plate=BG_CANVAS,
         )
-        self.btn_landing_cta.pack(pady=(SP_24, 0))
-        self._landing_return_var = tk.StringVar(value="")
-        self._landing_return = ttk.Label(
-            hero,
-            textvariable=self._landing_return_var,
-            font=CAPTION,
-            foreground=TEXT_SECONDARY,
-            wraplength=560,
-            justify=tk.CENTER,
-        )
-        self._landing_return.pack(pady=(SP_8, 0))
+        self.btn_landing_cta.pack(side=tk.LEFT)
         self.btn_landing_review = _button(
-            hero,
+            actions,
             "Review suggestions",
             lambda: self._navigate("unknown"),
-            kind="tertiary",
+            kind="secondary",
             plate=BG_CANVAS,
         )
-        # Packed only when there are real unconfirmed groups.
+        # Packed beside the primary action only when unconfirmed groups exist.
 
         steps = tk.Frame(hero, bg=BG_CANVAS)
         self._landing_steps = steps
-        steps.pack(pady=(SP_32, 0))
-        for _num, title, desc in (
+        steps.pack(anchor=tk.W, pady=(SP_24, 0))
+        ui_strong = (DISPLAY[0], 14, "bold")
+        for num, title, desc in (
             ("1", "Add your photos", "Add a photo folder to begin."),
             ("2", "Semblon finds", "Similar faces are grouped together."),
             ("3", "Review and name", "Review the groups and name the people."),
         ):
-            col = tk.Frame(steps, bg=BG_CANVAS)
-            col.pack(side=tk.LEFT, anchor=tk.N, padx=(0, SP_24))
-            tk.Label(
-                col,
-                text=title,
-                font=H3,
+            card = tk.Frame(
+                steps,
                 bg=BG_CANVAS,
-                fg=TEXT_PRIMARY,
-                wraplength=200,
+                highlightbackground=BORDER_SUBTLE,
+                highlightthickness=1,
+                padx=SP_16,
+                pady=SP_16,
+            )
+            card.pack(side=tk.LEFT, anchor=tk.N, padx=(0, SP_12))
+            tk.Label(
+                card,
+                text=num,
+                font=H2,
+                bg=BG_CANVAS,
+                fg=TEXT_DISABLED,
                 anchor="w",
-                justify=tk.LEFT,
             ).pack(anchor=tk.W)
             tk.Label(
-                col,
+                card,
+                text=title,
+                font=ui_strong,
+                bg=BG_CANVAS,
+                fg=TEXT_PRIMARY,
+                wraplength=180,
+                anchor="w",
+                justify=tk.LEFT,
+            ).pack(anchor=tk.W, pady=(SP_8, 0))
+            tk.Label(
+                card,
                 text=desc,
-                font=BODY,
+                font=H3,
                 bg=BG_CANVAS,
                 fg=TEXT_SECONDARY,
-                wraplength=200,
+                wraplength=180,
                 anchor="nw",
                 justify=tk.LEFT,
             ).pack(anchor=tk.W, pady=(SP_8, 0))
 
-        ttk.Label(
-            hero,
+        privacy = tk.Frame(hero, bg=BG_CANVAS)
+        privacy.pack(anchor=tk.W, pady=(SP_24, 0))
+        if draw_icon is not None:
+            icon_px = 18
+            mark = tk.Canvas(
+                privacy,
+                width=icon_px,
+                height=icon_px,
+                bg=BG_CANVAS,
+                highlightthickness=0,
+            )
+            mark.pack(side=tk.LEFT, padx=(0, SP_8))
+            draw_icon(mark, "shield", 0, 0, icon_px, SUCCESS)
+        tk.Label(
+            privacy,
             text="Everything stays on this computer. Nothing is uploaded.",
-            font=CAPTION,
-            foreground=TEXT_DISABLED,
+            font=META,
+            bg=BG_CANVAS,
+            fg=TEXT_SECONDARY,
             wraplength=560,
-            justify=tk.CENTER,
-        ).pack(pady=(SP_24, 0))
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(side=tk.LEFT)
 
     def _build_processing_home(self) -> None:
         """PROCESSING state — results framing while a job runs (not marketing + telemetry)."""
@@ -1815,27 +1844,16 @@ class HomeApp:
                 break
 
     def _refresh_landing_hint(self) -> None:
-        """First-run steps only when the library has no files yet."""
+        """Review action uses the real unconfirmed-group count. Hidden at 0."""
         summary = self._library_summary()
-        files = 0 if summary is None else int(summary.get("files") or 0)
         waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
-        steps = getattr(self, "_landing_steps", None)
-        if steps is not None:
-            if files == 0:
-                steps.pack(pady=(SP_32, 0))
-            else:
-                steps.pack_forget()
-        self.btn_landing_review.pack_forget()
-        if files > 0 and self._completion_kind is None:
-            self._landing_return_var.set(
-                "You have previously added photos. Add another folder, or review "
-                "the suggestions Semblon already found."
-            )
-        else:
-            self._landing_return_var.set("")
+        review = getattr(self, "btn_landing_review", None)
+        if review is None:
+            return
+        review.pack_forget()
         if waiting > 0:
-            self.btn_landing_review.configure(text=f"Review {waiting} suggestions")
-            self.btn_landing_review.pack(pady=(SP_8, 0))
+            review.configure(text=f"Review {waiting} suggestions")
+            review.pack(side=tk.LEFT, padx=(SP_12, 0))
 
     def _library_summary(self) -> dict | None:
         from semblon.library_status import library_summary

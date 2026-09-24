@@ -237,6 +237,11 @@ def test_home_landing_wraplength_avoids_clipping():
     assert "width=48" not in build
     assert "width=18" not in build
     assert "Review and name" in build
+    assert 'text="Semblon"' not in build
+    assert "highlightthickness=1" in build
+    hint = inspect.getsource(home_ui.HomeApp._refresh_landing_hint)
+    assert "previously added" not in hint
+    assert "Review {waiting} suggestions" in hint
 
 
 def test_home_search_while_analysing_is_state_aware():

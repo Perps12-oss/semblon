@@ -17,10 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover
 from semblon.ui_icons import draw as draw_icon
 from semblon.ui_theme import px
 from semblon.ui_tokens import (
-    ACCENT,
-    ACCENT_HOVER,
-    ACCENT_PRESSED,
-    ACCENT_SUBTLE,
+    BG_CANVAS,
     BG_HOVER,
     BG_PRESSED,
     BG_SUBTLE,
@@ -33,7 +30,6 @@ from semblon.ui_tokens import (
     BORDER_STRONG,
     DANGER,
     INK_DISABLED,
-    INK_ON_ACCENT,
     INK_PRIMARY,
     INK_SECONDARY,
     NAV_HEIGHT,
@@ -229,16 +225,18 @@ else:
             kind = self._kind
             if not self._enabled:
                 if kind == "primary":
-                    return _blend(ACCENT, self._plate, 0.40), INK_DISABLED, ""
+                    return _blend(INK_PRIMARY, self._plate, 0.40), INK_DISABLED, ""
                 if kind == "destructive":
                     return self._plate, INK_DISABLED, _blend(DANGER, self._plate, 0.30)
                 return BG_SUBTLE, INK_DISABLED, BORDER_DEFAULT if kind == "secondary" else ""
             if kind == "primary":
+                # Ink button. Accent stays on progress and status, not on actions.
+                ink = BG_CANVAS
                 if self._pressed:
-                    return ACCENT_PRESSED, INK_ON_ACCENT, ""
+                    return _blend(INK_PRIMARY, BG_CANVAS, 0.70), ink, ""
                 if self._hover:
-                    return ACCENT_HOVER, INK_ON_ACCENT, ""
-                return ACCENT, INK_ON_ACCENT, ""
+                    return _blend(INK_PRIMARY, BG_CANVAS, 0.85), ink, ""
+                return INK_PRIMARY, ink, ""
             if kind == "destructive":
                 fill = _blend(DANGER, self._plate, 0.10) if (self._hover or self._pressed) else self._plate
                 return fill, DANGER, _blend(DANGER, self._plate, 0.30)
@@ -296,11 +294,9 @@ else:
                 self._round(
                     1, 1, width - 2, height - 2, radius, fill=fill, outline=border or ""
                 )
-            if self._kind == "nav" and self._active:
-                self.create_rectangle(0, 2, px(self, 3), height - 2, fill=ACCENT, outline="")
             icon_size = px(self, 20 if self._kind == "nav" else 16)
             x = px(self, 12)
-            icon_ink = ACCENT if (self._kind == "nav" and self._active) else ink
+            icon_ink = ink
             if self._icon:
                 draw_icon(self, self._icon, x, (height - icon_size) / 2, icon_size, icon_ink)
                 x += icon_size + px(self, 8)
@@ -337,12 +333,14 @@ else:
             x1 = x2 - badge_w
             y1 = (height - badge_h) / 2
             y2 = y1 + badge_h
-            self._round(x1, y1, x2, y2, badge_h / 2, fill=ACCENT_SUBTLE, outline="")
+            self._round(
+                x1, y1, x2, y2, badge_h / 2, fill=BG_SURFACE, outline=BORDER_DEFAULT
+            )
             self.create_text(
                 (x1 + x2) / 2,
                 height / 2,
                 text=label,
-                fill=ACCENT,
+                fill=INK_SECONDARY,
                 font=self._font,
             )
 
