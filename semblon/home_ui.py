@@ -91,6 +91,7 @@ try:
         SP_8,
         SP_12,
         SP_16,
+        SP_20,
         SP_24,
         SP_32,
         SP_48,
@@ -132,6 +133,7 @@ except ImportError:  # pragma: no cover - mid-merge stub
     SP_8 = 8
     SP_12 = 12
     SP_16 = 16
+    SP_20 = 20
     SP_24 = 24
     SP_32 = 32
     SP_48 = 48
