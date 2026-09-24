@@ -75,7 +75,7 @@ def test_button_heights_four_classes():
     assert t.SECONDARY_HEIGHT == 36
     assert t.TERTIARY_HEIGHT == 28
     assert t.NAV_HEIGHT == 36
-    assert t.BUTTON_RADIUS_PX == 6
+    assert t.BUTTON_RADIUS_PX == 8
 
 
 def test_font_helper_and_pad():
