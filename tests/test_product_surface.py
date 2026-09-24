@@ -97,12 +97,18 @@ def test_product_status_text_omits_current_filename():
     assert "15:16:59" not in text
     assert "146" in text and "24,554" in text
     snap = processing_home_snapshot(ev)
-    assert "Building" in snap["headline"] or "library" in snap["headline"].lower()
+    assert snap["headline"] == "Reading photos…"
     assert "Finding people" in snap["activity"]
     assert "102" in snap["faces"]
     assert "people" not in snap["faces"].lower() or "faces" in snap["faces"].lower()
     assert snap["faces"] == "102 faces found"
-    assert "Estimating" in snap["eta"] or "left" in snap["eta"]
+    assert "146 of 24554 files" in snap["progress"]
+    assert "102 faces found" in snap["progress"]
+    assert snap["eta"]
+    assert "%" in snap["eta"]
+    assert "Elapsed" in snap["eta"]
+    assert "ETA" in snap["eta"]
+    assert "Estimating" not in snap["eta"]
 
 
 def test_soft_sel_item_never_uuid():

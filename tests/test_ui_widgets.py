@@ -83,4 +83,4 @@ def test_theme_scaling_grows_pixel_metrics(root):
     btn.update_idletasks()
     assert btn.winfo_reqheight() >= high - 2
     # Accent stays the single action color.
-    assert ACCENT == "#4338CA"
+    assert ACCENT == "#2E6BE6"

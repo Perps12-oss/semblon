@@ -21,9 +21,12 @@ from semblon.ui_tokens import (
     ACCENT_HOVER,
     ACCENT_PRESSED,
     ACCENT_SUBTLE,
+    BG_HOVER,
     BG_PRESSED,
     BG_SUBTLE,
     BG_SURFACE,
+    FOCUS_RING,
+    NAV_ACTIVE,
     BODY,
     BODY_STRONG,
     BORDER_DEFAULT,
@@ -99,6 +102,7 @@ else:
             self._hover = False
             self._pressed = False
             self._active = False
+            self._badge: str | None = None
             self._plate = plate or BG_SURFACE
             height = px(master, _HEIGHT[self._kind])
             super().__init__(
@@ -146,6 +150,8 @@ else:
                 self.configure_cursor()
             if "command" in kw:
                 self._command = kw.pop("command")
+            if "badge" in kw:
+                self.set_badge(kw.pop("badge"))
             if kw:
                 super().configure(**kw)
             # Grow with the label when the row is not already stretched by pack.
@@ -164,6 +170,15 @@ else:
                 super().configure(cursor="hand2" if self._enabled else "arrow")
             except tk.TclError:
                 pass
+
+        def set_badge(self, count) -> None:
+            """Nav count. Hidden at 0 or None. The count must already be real."""
+            try:
+                n = int(count)
+            except (TypeError, ValueError):
+                n = 0
+            self._badge = str(n) if n > 0 else None
+            self._redraw()
 
         def state(self, statespec=None):
             """ttk-style ``state(["pressed"])`` / ``state(["!pressed"])`` for nav."""
@@ -225,25 +240,25 @@ else:
                     return ACCENT_HOVER, INK_ON_ACCENT, ""
                 return ACCENT, INK_ON_ACCENT, ""
             if kind == "destructive":
-                fill = _blend(DANGER, self._plate, 0.08) if (self._hover or self._pressed) else self._plate
+                fill = _blend(DANGER, self._plate, 0.10) if (self._hover or self._pressed) else self._plate
                 return fill, DANGER, _blend(DANGER, self._plate, 0.30)
             if kind == "nav":
                 if self._active:
-                    return ACCENT_SUBTLE, INK_PRIMARY, ""
+                    return NAV_ACTIVE, INK_PRIMARY, ""
                 if self._pressed or self._hover:
-                    return BG_PRESSED, INK_PRIMARY, ""
+                    return BG_HOVER, INK_PRIMARY, ""
                 return self._plate, INK_SECONDARY, ""
             if kind == "tertiary":
                 if self._pressed:
                     return BG_PRESSED, INK_PRIMARY, ""
                 if self._hover:
-                    return BG_SUBTLE, INK_PRIMARY, ""
+                    return BG_HOVER, INK_PRIMARY, ""
                 return self._plate, INK_SECONDARY, ""
             # secondary
             if self._pressed:
                 return BG_PRESSED, INK_PRIMARY, BORDER_STRONG
             if self._hover:
-                return BG_SUBTLE, INK_PRIMARY, BORDER_STRONG
+                return BG_HOVER, INK_PRIMARY, BORDER_STRONG
             return BG_SURFACE, INK_PRIMARY, BORDER_DEFAULT
 
         def _measure(self) -> int:
@@ -295,14 +310,41 @@ else:
                 self.create_text(
                     tx, height / 2, text=self._text, fill=ink, font=self._font, anchor=anchor
                 )
+            if self._badge and self._kind == "nav":
+                self._draw_badge(width, height)
             try:
                 focused = self.focus_get() == self
             except tk.TclError:
                 focused = False
-            if focused and self._enabled and self._kind != "nav":
+            if focused and self._enabled:
                 self._round(
-                    1, 1, width - 2, height - 2, radius, fill="", outline=ACCENT, width=2
+                    1, 1, width - 2, height - 2, radius, fill="", outline=FOCUS_RING, width=2
                 )
+
+        def _draw_badge(self, width: int, height: int) -> None:
+            label = self._badge or ""
+            if not label or tkfont is None:
+                return
+            try:
+                fnt = tkfont.Font(font=self._font, root=self)
+                text_w = fnt.measure(label)
+            except tk.TclError:
+                text_w = 8 * len(label)
+            pad_x = px(self, 8)
+            badge_h = px(self, 18)
+            badge_w = text_w + pad_x
+            x2 = width - px(self, 8)
+            x1 = x2 - badge_w
+            y1 = (height - badge_h) / 2
+            y2 = y1 + badge_h
+            self._round(x1, y1, x2, y2, badge_h / 2, fill=ACCENT_SUBTLE, outline="")
+            self.create_text(
+                (x1 + x2) / 2,
+                height / 2,
+                text=label,
+                fill=ACCENT,
+                font=self._font,
+            )
 
         def _round(self, x1, y1, x2, y2, r, fill="", outline="", width=1):
             r = max(0, min(r, (x2 - x1) / 2, (y2 - y1) / 2))

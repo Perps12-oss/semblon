@@ -59,7 +59,7 @@ except ImportError:  # pragma: no cover
     apply_theme = None
     style_listbox = None
     RoleButton = None
-    ACCENT = "#4338CA"
+    ACCENT = "#2E6BE6"
     ACCENT_SUBTLE = "#EEF0FB"
     BG_CANVAS = "#FBFAF7"
     BG_DARK = "#14130F"

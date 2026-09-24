@@ -80,6 +80,8 @@ try:
         BORDER_SUBTLE,
         CAPTION,
         DISPLAY,
+        META,
+        MONO,
         H1,
         H2,
         H3,
@@ -106,22 +108,24 @@ except ImportError:  # pragma: no cover - mid-merge stub
     apply_theme = None
     style_listbox = None
     Button = None
-    ACCENT = "#4338CA"
-    BG_CANVAS = "#FBFAF7"
-    BG_DARK = "#14130F"
-    BG_SUBTLE = "#F6F4EF"
+    ACCENT = "#2E6BE6"
+    BG_CANVAS = "#FFFFFF"
+    BG_DARK = "#1C1C1D"
+    BG_SUBTLE = "#F5F5F4"
     BG_SURFACE = "#FFFFFF"
-    BODY = ("Segoe UI", 13)
-    BODY_SMALL = ("Segoe UI", 12)
-    BODY_STRONG = ("Segoe UI", 13, "bold")
-    BORDER_SUBTLE = "#E9E6DE"
-    CAPTION = ("Segoe UI", 11)
+    BODY = ("Segoe UI", 16)
+    BODY_SMALL = ("Segoe UI", 15)
+    BODY_STRONG = ("Segoe UI", 16, "bold")
+    BORDER_SUBTLE = "#E4E4E2"
+    CAPTION = ("Segoe UI", 12)
     DISPLAY = ("Segoe UI", 32, "bold")
-    H1 = ("Segoe UI", 24, "bold")
-    H2 = ("Segoe UI", 18, "bold")
-    H3 = ("Segoe UI", 14, "bold")
-    INK_TERTIARY = "#8F8A80"
-    SIDEBAR_WIDTH = 220
+    H1 = ("Segoe UI", 20, "bold")
+    H2 = ("Segoe UI", 20, "bold")
+    H3 = ("Segoe UI", 14)
+    INK_TERTIARY = "#8A8A8A"
+    META = ("Segoe UI", 13)
+    MONO = ("Cascadia Code", 13)
+    SIDEBAR_WIDTH = 228
     SP_4 = 4
     SP_8 = 8
     SP_12 = 12
@@ -130,9 +134,9 @@ except ImportError:  # pragma: no cover - mid-merge stub
     SP_32 = 32
     SP_48 = 48
     SURFACE_PRIMARY = "#FFFFFF"
-    TEXT_DISABLED = "#B8B3A8"
-    TEXT_PRIMARY = "#1A1815"
-    TEXT_SECONDARY = "#5E5A52"
+    TEXT_DISABLED = "#B9B9B9"
+    TEXT_PRIMARY = "#171717"
+    TEXT_SECONDARY = "#565656"
     WINDOW_DEFAULT = (1200, 780)
     WINDOW_MIN = (960, 640)
 
@@ -180,7 +184,7 @@ HOME_OBSERVERS = "face,color,object"
 # Route IDs unchanged; photo-intelligence softens Unknown / People wording.
 HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ("LIBRARY", (("home", "Home"), ("photos", "Photos"), ("videos", "Videos"))),
-    ("PEOPLE", (("people", "People"), ("unknown", "Needs attention"))),
+    ("PEOPLE", (("people", "People"), ("unknown", "To review"))),
     ("ACTIVITY", (("activity", "Recent activity"),)),
 )
 
@@ -719,6 +723,11 @@ class HomeApp:
         self._proc_thumbs_faces: int | None = None
         self._inspector_collapsed = False
         self._settings_win: tk.Toplevel | None = None
+        self._last_progress_event: ProgressEvent | None = None
+        from semblon.scan_present import ScanPace
+
+        self._scan_pace = ScanPace()
+        self._apply_saved_theme()
 
         self.root = tk.Tk()
         self.root.title("Semblon")
@@ -765,6 +774,12 @@ class HomeApp:
         )
         self.btn_search.pack(side=tk.LEFT, padx=(SP_8, 0))
         self.root.bind("<Control-f>", lambda _e: self._search_entry.focus_set())
+        self.root.bind("<Control-k>", self._open_command_palette)
+        self.root.bind("<Control-Key-1>", lambda _e: self._navigate("photos"))
+        self.root.bind("<Control-Key-2>", lambda _e: self._navigate("videos"))
+        self.root.bind("<Control-Key-3>", lambda _e: self._navigate("people"))
+        self.root.bind("<Control-Key-4>", lambda _e: self._navigate("unknown"))
+        self.root.bind("<Control-Key-5>", lambda _e: self._navigate("activity"))
 
         # ── Job controls (demoted on home — UX Rescue §3) ──
         jobs = ttk.Frame(self.root, padding=(12, 0, 12, 4))
@@ -845,6 +860,15 @@ class HomeApp:
         self.btn_cancel = self.btn_cancel_prog
 
         # ── Body: Library | Workspace | Inspector ──
+        self._library_status = tk.StringVar(value="")
+        self._status_bar = ttk.Label(
+            self.root,
+            textvariable=self._library_status,
+            font=META,
+            foreground=TEXT_SECONDARY,
+            padding=(SP_16, SP_8),
+        )
+        self._status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         body = ttk.Frame(self.root, padding=(8, 0, 8, 8))
         body.pack(fill=tk.BOTH, expand=True)
         self._body = body
@@ -863,10 +887,25 @@ class HomeApp:
         side.grid(row=0, column=0, sticky="nsw")
         self._body.columnconfigure(0, minsize=px(self.root, SIDEBAR_WIDTH), weight=0)
         self._sidebar = side
+        self._sidebar_footer = tk.Label(
+            side,
+            text="Local only — nothing is uploaded",
+            font=CAPTION,
+            bg=BG_SUBTLE,
+            fg=INK_TERTIARY,
+            wraplength=200,
+            justify=tk.LEFT,
+        )
+        self._sidebar_footer.pack(side=tk.BOTTOM, anchor=tk.W, padx=SP_16, pady=SP_16)
+        _section_labels = {
+            "LIBRARY": "Library",
+            "PEOPLE": "People",
+            "ACTIVITY": "Activity",
+        }
         for section, items in HOME_NAV:
             tk.Label(
                 side,
-                text=tracked(section),
+                text=_section_labels.get(section, section),
                 font=CAPTION,
                 bg=BG_SUBTLE,
                 fg=INK_TERTIARY,
@@ -1051,7 +1090,6 @@ class HomeApp:
             "Settings",
             "Search",
             "To review",
-            "Needs attention",
             "People",
         }:
             from semblon.product_surface import SEL_HEADING_IDLE
@@ -1071,7 +1109,6 @@ class HomeApp:
             "Settings",
             "Search",
             "To review",
-            "Needs attention",
         }:
             self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
             if title != "Canvas":
@@ -1396,7 +1433,7 @@ class HomeApp:
         ttk.Label(hero, text="Semblon", font=DISPLAY).pack(pady=(0, SP_8))
         ttk.Label(
             hero,
-            text="Find the people in your photos.",
+            text="Find the people in your photos",
             font=H2,
             foreground=TEXT_SECONDARY,
             wraplength=560,
@@ -1406,7 +1443,7 @@ class HomeApp:
             hero,
             text=(
                 "Semblon looks through your photo folder, finds faces, "
-                "groups faces that appear to belong together, and lets you "
+                "groups the ones that belong together, and lets you "
                 "decide who those people are."
             ),
             font=BODY,
@@ -1435,11 +1472,16 @@ class HomeApp:
         )
         self._landing_return.pack(pady=(SP_8, 0))
         self.btn_landing_review = _button(
-            hero, "Review", self._open_review_ui, kind="tertiary", plate=BG_CANVAS
+            hero,
+            "Review suggestions",
+            lambda: self._navigate("unknown"),
+            kind="tertiary",
+            plate=BG_CANVAS,
         )
-        # Packed only when returning-user hint is shown.
+        # Packed only when there are real unconfirmed groups.
 
         steps = tk.Frame(hero, bg=BG_CANVAS)
+        self._landing_steps = steps
         steps.pack(pady=(SP_32, 0))
         for _num, title, desc in (
             ("1", "Add your photos", "Add a photo folder to begin."),
@@ -1493,7 +1535,7 @@ class HomeApp:
         self._proc_activity = tk.StringVar(value=processing_home_activity())
         self._proc_progress = tk.StringVar(value="")
         self._proc_faces = tk.StringVar(value="")
-        self._proc_eta = tk.StringVar(value="Estimating time remaining…")
+        self._proc_eta = tk.StringVar(value="")
         self._proc_folder_note = tk.StringVar(
             value=(
                 "Semblon is analysing your library. You can add another folder "
@@ -1518,7 +1560,7 @@ class HomeApp:
         ttk.Label(
             shell,
             textvariable=self._proc_progress,
-            font=H2,
+            font=MONO,
             wraplength=640,
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=(SP_24, 0))
@@ -1533,7 +1575,7 @@ class HomeApp:
         ttk.Label(
             shell,
             textvariable=self._proc_eta,
-            font=CAPTION,
+            font=MONO,
             foreground=INK_TERTIARY,
             wraplength=640,
             justify=tk.LEFT,
@@ -1555,7 +1597,7 @@ class HomeApp:
         self.btn_proc_pause.pack(side=tk.LEFT, padx=(0, SP_8))
         self.btn_proc_cancel = _button(
             controls,
-            "Cancel this job",
+            "Cancel",
             self._request_cancel,
             kind="tertiary",
             plate=BG_CANVAS,
@@ -1694,11 +1736,12 @@ class HomeApp:
         from semblon.product_surface import processing_home_snapshot
 
         paused = bool(getattr(self, "engine", None) and self.engine.paused)
-        snap = processing_home_snapshot(ev, paused=paused)
+        pace = getattr(self, "_scan_pace", None)
+        snap = processing_home_snapshot(ev, paused=paused, pace=pace)
         if hasattr(self, "_proc_headline"):
             self._proc_headline.set(snap["headline"])
             self._proc_activity.set(snap["activity"])
-            self._proc_progress.set(snap["progress"] or "Preparing your photos…")
+            self._proc_progress.set(snap["progress"])
             self._proc_faces.set(snap["faces"])
             self._proc_eta.set(snap["eta"])
             self._proc_folder_note.set(snap["folder_note"])
@@ -1772,17 +1815,160 @@ class HomeApp:
                 break
 
     def _refresh_landing_hint(self) -> None:
-        """Returning-user line when a store exists but no completion card yet."""
-        has_store = self.store.is_file()
+        """First-run steps only when the library has no files yet."""
+        summary = self._library_summary()
+        files = 0 if summary is None else int(summary.get("files") or 0)
+        waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
+        steps = getattr(self, "_landing_steps", None)
+        if steps is not None:
+            if files == 0:
+                steps.pack(pady=(SP_32, 0))
+            else:
+                steps.pack_forget()
         self.btn_landing_review.pack_forget()
-        if has_store and self._completion_kind is None:
+        if files > 0 and self._completion_kind is None:
             self._landing_return_var.set(
-                "You have previously added photos. Add another folder, or open "
-                "Review to name the people Semblon already found."
+                "You have previously added photos. Add another folder, or review "
+                "the suggestions Semblon already found."
             )
-            self.btn_landing_review.pack(pady=(SP_8, 0))
         else:
             self._landing_return_var.set("")
+        if waiting > 0:
+            self.btn_landing_review.configure(text=f"Review {waiting} suggestions")
+            self.btn_landing_review.pack(pady=(SP_8, 0))
+
+    def _library_summary(self) -> dict | None:
+        from semblon.library_status import library_summary
+
+        try:
+            return library_summary(self.store)
+        except (OSError, sqlite3.DatabaseError):
+            return None
+
+    def _refresh_library_chrome(self) -> None:
+        """Status bar and To review badge from the library. Hidden badge at 0."""
+        from semblon.library_status import status_bar_text
+
+        summary = self._library_summary()
+        if hasattr(self, "_library_status"):
+            self._library_status.set(status_bar_text(summary))
+        btn = getattr(self, "_nav_buttons", {}).get("unknown")
+        waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
+        if btn is not None and hasattr(btn, "set_badge"):
+            btn.set_badge(waiting)
+
+    def _apply_saved_theme(self) -> None:
+        """Publish the saved appearance before widgets are built."""
+        from semblon.ui_prefs import load_theme_mode, resolve_palette
+        from semblon.ui_tokens import publish
+
+        publish(resolve_palette(load_theme_mode(self.store)))
+
+    def _set_theme_mode(self, mode: str) -> None:
+        from semblon.ui_prefs import resolve_palette, save_theme_mode
+        from semblon.ui_theme import apply_theme, reset_theme_for_tests
+        from semblon.ui_tokens import publish
+
+        kept = save_theme_mode(mode, self.store)
+        publish(resolve_palette(kept))
+        if apply_theme is not None:
+            reset_theme_for_tests()
+            apply_theme(self.root, force=True)
+            if self._settings_win is not None:
+                try:
+                    if self._settings_win.winfo_exists():
+                        apply_theme(self._settings_win, force=True)
+                except tk.TclError:
+                    pass
+        self._restyle_chrome()
+
+    def _restyle_chrome(self) -> None:
+        """Repaint surfaces that captured colors when they were created."""
+        try:
+            self.root.configure(bg=BG_CANVAS)
+        except tk.TclError:
+            pass
+        side = getattr(self, "_sidebar", None)
+        if side is not None:
+            try:
+                side.configure(
+                    bg=BG_SUBTLE,
+                    highlightbackground=BORDER_SUBTLE,
+                    highlightcolor=BORDER_SUBTLE,
+                )
+            except tk.TclError:
+                pass
+            for child in side.winfo_children():
+                if isinstance(child, tk.Label):
+                    try:
+                        child.configure(bg=BG_SUBTLE, fg=INK_TERTIARY)
+                    except tk.TclError:
+                        pass
+                elif hasattr(child, "_kind"):
+                    child._plate = BG_SUBTLE
+                    try:
+                        child.configure(bg=BG_SUBTLE)
+                    except tk.TclError:
+                        pass
+                    if hasattr(child, "_redraw"):
+                        child._redraw()
+        footer = getattr(self, "_sidebar_footer", None)
+        if footer is not None:
+            try:
+                footer.configure(bg=BG_SUBTLE, fg=INK_TERTIARY)
+            except tk.TclError:
+                pass
+        self._build_home_landing()
+        self._build_processing_home()
+        self._build_result_card_shell()
+        self._navigate(self._nav)
+        self._refresh_job_controls()
+
+    def _open_command_palette(self, _event=None):
+        """Jump to a real destination. Not a second navigation model."""
+        if tk is None:
+            return "break"
+        win = tk.Toplevel(self.root)
+        win.title("Semblon")
+        win.transient(self.root)
+        win.geometry("360x280")
+        if apply_theme is not None:
+            apply_theme(win)
+        try:
+            win.configure(bg=BG_CANVAS)
+        except tk.TclError:
+            pass
+        ttk.Label(win, text="Go to", font=H3).pack(anchor=tk.W, padx=SP_16, pady=(SP_16, SP_8))
+        box = tk.Listbox(win, exportselection=False, activestyle="none")
+        if style_listbox is not None:
+            style_listbox(box)
+        commands: list[tuple[str, str]] = []
+        for _section, items in HOME_NAV:
+            for nav_id, label in items:
+                commands.append((label, nav_id))
+        commands.append(("Settings", "settings"))
+        for label, _nav in commands:
+            box.insert(tk.END, label)
+        box.pack(fill=tk.BOTH, expand=True, padx=SP_16, pady=(0, SP_16))
+
+        def _go(_e=None) -> None:
+            sel = box.curselection()
+            if not sel:
+                return
+            _label, nav_id = commands[sel[0]]
+            win.destroy()
+            if nav_id == "settings":
+                self._show_settings()
+            else:
+                self._navigate(nav_id)
+
+        box.bind("<Return>", _go)
+        box.bind("<Double-Button-1>", _go)
+        box.bind("<Escape>", lambda _e: win.destroy())
+        if commands:
+            box.selection_set(0)
+            box.focus_set()
+        return "break"
 
     def _fill_result_card(self) -> None:
         kind = self._completion_kind
@@ -1999,6 +2185,7 @@ class HomeApp:
     def _navigate(self, nav_id: str) -> None:
         self._nav = nav_id
         self._mark_nav_active(nav_id)
+        self._refresh_library_chrome()
         if nav_id == "home":
             self._show_home_landing()
             self._sync_chrome_for_route()
@@ -2037,7 +2224,7 @@ class HomeApp:
             self._refresh_job_controls()
             return
         if nav_id == "unknown":
-            self._welcome_title.set("Needs attention")
+            self._welcome_title.set("To review")
             self._show_workspace_welcome()
             self._show_unknown()
             self._sync_chrome_for_route()
@@ -2120,8 +2307,9 @@ class HomeApp:
         if not self.engine.busy or self.engine.paused:
             return
         self.engine.pause()
-        self.status.set("Pausing…")
+        self.status.set("Paused")
         self._refresh_job_controls()
+        self._refresh_processing_home(getattr(self, "_last_progress_event", None))
 
     def _request_cancel(self) -> None:
         if not self.engine.busy:
@@ -2145,6 +2333,9 @@ class HomeApp:
         self._last_progress_files = (None, None)
         self._last_faces_found = None
         self._proc_thumbs_faces = None
+        self._last_progress_event = None
+        if getattr(self, "_scan_pace", None) is not None:
+            self._scan_pace.reset()
         self.bar.reset()
         if hasattr(self, "_proc_bar"):
             self._proc_bar.reset()
@@ -2217,11 +2408,14 @@ class HomeApp:
                 elif kind == "event":
                     from semblon.product_surface import (
                         product_status_text,
-                        soft_eta_line,
                         soft_progress_counts,
                     )
+                    from semblon.scan_present import scan_card
 
                     paused = bool(self.engine.paused)
+                    self._last_progress_event = payload
+                    if not paused and getattr(self, "_scan_pace", None) is not None:
+                        self._scan_pace.observe(payload.files_processed, payload.elapsed_s)
                     self.status.set(product_status_text(payload, paused=paused))
                     self.bar.set_from_event(payload)
                     self._last_progress_files = (
@@ -2229,19 +2423,23 @@ class HomeApp:
                         payload.files_total,
                     )
                     self._last_faces_found = payload.faces_found
-                    # Soft progress — counts + trustworthy ETA. Never filename/elapsed dump.
+                    # Counts stay available for the header. The clock is the
+                    # scan meta line (percent / elapsed / ETA) and only when real.
                     counts = soft_progress_counts(
                         files_processed=payload.files_processed,
                         files_total=payload.files_total,
                     )
-                    eta = soft_eta_line(
+                    card = scan_card(
+                        stage=payload.stage,
+                        kind=payload.kind,
+                        paused=paused,
                         files_processed=payload.files_processed,
                         files_total=payload.files_total,
+                        faces_found=payload.faces_found,
                         elapsed_s=payload.elapsed_s,
-                        eta_s=payload.eta_s,
-                        paused=paused,
+                        pace=getattr(self, "_scan_pace", None),
                     )
-                    self.clock.set("  ·  ".join(p for p in (counts, eta) if p))
+                    self.clock.set(card["meta"] or counts)
                     if self._nav == "home":
                         self._refresh_processing_home(payload)
                 elif kind == "done":
@@ -2255,6 +2453,7 @@ class HomeApp:
                     )
                     self._completion = counts
                     self._completion_kind = "done"
+                    self._refresh_library_chrome()
                     # §10/§11 — status stays plain; card owns messaging (no run_id / elapsed).
                     photos = int(counts.get("photos") or 0)
                     if photos > 0:
@@ -2294,6 +2493,7 @@ class HomeApp:
                         "run_id": payload or None,
                     }
                     self._completion_kind = "cancelled"
+                    self._refresh_library_chrome()
                     self.status.set(
                         "Processing stopped. Any partial results have been retained."
                     )
@@ -2357,11 +2557,11 @@ class HomeApp:
             if is_expected_condition(e, has_store=self.store.is_file()):
                 if not self.store.is_file():
                     self._set_inspector(
-                        "Needs attention", to_review_empty(has_store=False).as_lines()
+                        "To review", to_review_empty(has_store=False).as_lines()
                     )
                 else:
                     self._set_inspector(
-                        "Needs attention",
+                        "To review",
                         to_review_empty(has_store=True, has_faces=False).as_lines(),
                     )
                 return
@@ -2444,7 +2644,7 @@ class HomeApp:
         )
         evid.insert(
             1,
-            "Select a person here, then a face under Needs attention or in Photos to add them.",
+            "Select a person here, then a face under To review or in Photos to add them.",
         )
         self._insp_run_id = self._last_run_id
         self._insp_selected = []
@@ -2468,8 +2668,8 @@ class HomeApp:
         from semblon.process import latest_run_id
         from semblon.review_ui import load_board
 
-        # Display label "Needs attention"; route id remains ``unknown``.
-        title = "Needs attention"
+        # Display label "To review"; route id remains ``unknown``.
+        title = "To review"
         if not self.store.is_file():
             self._set_inspector_selection(
                 run_id=None,
@@ -2800,13 +3000,40 @@ class HomeApp:
         ttk.Label(pad, text="Appearance", font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
-        ttk.Label(
-            pad,
-            text="Warm paper. One accent, used for actions and the selected section.",
-            font=BODY,
-            foreground=TEXT_SECONDARY,
-            wraplength=520,
-        ).pack(anchor=tk.W)
+        from semblon.ui_prefs import load_theme_mode
+
+        self._theme_var = tk.StringVar(value=load_theme_mode(self.store))
+        for mode, label in (
+            ("system", "System"),
+            ("light", "Light"),
+            ("dark", "Dark"),
+        ):
+            ttk.Radiobutton(
+                pad,
+                text=label,
+                value=mode,
+                variable=self._theme_var,
+                command=lambda m=mode: self._set_theme_mode(m),
+            ).pack(anchor=tk.W)
+
+        ttk.Label(pad, text="Shortcuts", font=BODY_STRONG).pack(
+            anchor=tk.W, pady=(SP_24, SP_8)
+        )
+        for shortcut, keys in (
+            ("Search people and text", "Ctrl+F"),
+            ("Go to", "Ctrl+K"),
+            ("Photos", "Ctrl+1"),
+            ("Videos", "Ctrl+2"),
+            ("People", "Ctrl+3"),
+            ("To review", "Ctrl+4"),
+            ("Recent activity", "Ctrl+5"),
+        ):
+            row = ttk.Frame(pad)
+            row.pack(fill=tk.X, pady=1)
+            ttk.Label(row, text=shortcut, font=BODY).pack(side=tk.LEFT)
+            ttk.Label(
+                row, text=keys, font=META, foreground=TEXT_SECONDARY
+            ).pack(side=tk.RIGHT)
 
         # About
         ttk.Label(pad, text="About", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_24, SP_8))
