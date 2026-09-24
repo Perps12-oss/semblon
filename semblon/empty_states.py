@@ -98,7 +98,7 @@ def people_empty() -> EmptyState:
 
 
 def to_review_empty(*, has_store: bool, has_faces: bool = False) -> EmptyState:
-    """§13 — route display label is To review; route id stays ``unknown``."""
+    """§13 — route display label is Needs attention; route id stays ``unknown``."""
     if not has_store:
         return EmptyState(
             headline="Nothing to review yet",
@@ -161,6 +161,20 @@ def search_no_matches(query: str) -> EmptyState:
         description="Try a different name, or check the spelling.",
         tertiary_action="Clear search",
         tertiary_action_id=ACTION_CLEAR_SEARCH,
+    )
+
+
+def search_library_analysing() -> EmptyState:
+    """Search while an ingest/process job is still building the library."""
+    return EmptyState(
+        headline="Still analysing your library",
+        description=(
+            "Semblon is still finding faces and building your photo library. "
+            "Search will work better when this finishes — or try a name you "
+            "have already reviewed."
+        ),
+        primary_action="Open Review",
+        action_id=ACTION_OPEN_REVIEW,
     )
 
 

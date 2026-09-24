@@ -39,6 +39,19 @@ class _FakeCapture:
         return None
 
 
+class _FakeClock:
+    """Advance live loop time without wall-clock sleep (Windows flake guard)."""
+
+    def __init__(self) -> None:
+        self.t = 0.0
+
+    def monotonic(self) -> float:
+        return self.t
+
+    def sleep(self, dt: float) -> None:
+        self.t += float(dt)
+
+
 class _DetModel:
     def __init__(self, boxes: list[tuple[float, float, float, float, float]]):
         self.boxes = boxes or [(10.0, 10.0, 130.0, 130.0, 0.95)]
@@ -109,15 +122,20 @@ def test_live_identifies_vs_named_person(tmp_path):
             }
         ]
 
+    clock = _FakeClock()
     with _live_model_env(det, embed_side_effect=embed_ok):
-        rec = live_capture(
-            store,
-            source=0,
-            seconds=0.08,
-            sample_hz=250.0,
-            reembed_s=0.0,
-            capture_factory=lambda _src: _FakeCapture(max_reads=24),
-        )
+        with (
+            patch("semblon.live.time.monotonic", clock.monotonic),
+            patch("semblon.live.time.sleep", clock.sleep),
+        ):
+            rec = live_capture(
+                store,
+                source=0,
+                seconds=0.08,
+                sample_hz=250.0,
+                reembed_s=0.0,
+                capture_factory=lambda _src: _FakeCapture(max_reads=24),
+            )
 
     assert rec["source_type"] == "live"
     assert rec["tracks"] >= 1
