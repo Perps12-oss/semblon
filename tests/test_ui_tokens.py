@@ -8,53 +8,66 @@ from semblon import ui_tokens as t
 
 
 def test_type_scale_sizes_and_family():
-    assert t.DISPLAY == ("Segoe UI Variable Display", 32, "bold")
-    assert t.H1 == ("Segoe UI Variable Display", 24, "bold")
-    assert t.H2 == ("Segoe UI Variable Text", 18, "bold")
-    assert t.H3 == ("Segoe UI Variable Text", 14, "bold")
-    assert t.BODY == ("Segoe UI Variable Text", 13)
-    assert t.BODY_STRONG == ("Segoe UI Variable Text", 13, "bold")
-    assert t.BODY_SMALL == ("Segoe UI Variable Text", 12)
-    assert t.CAPTION == ("Segoe UI Variable Text", 11)
-    assert t.CAPTION_STRONG == ("Segoe UI Variable Text", 11, "bold")
-    assert t.OVERLINE == ("Segoe UI Variable Text", 10, "bold")
-    assert t.CAPTION[1] >= 11
+    assert t.HERO == ("Segoe UI", 32, "bold")
+    assert t.TITLE == ("Segoe UI", 20, "bold")
+    assert t.DISPLAY == t.HERO
+    assert t.H1 == t.TITLE
+    assert t.BODY == ("Segoe UI", 16)
+    assert t.BODY_SM == ("Segoe UI", 15)
+    assert t.UI == ("Segoe UI", 14)
+    assert t.META == ("Segoe UI", 13)
+    assert t.CAPTION == ("Segoe UI", 12)
+    assert t.BODY_STRONG[0] == "Segoe UI"
+    assert "bold" not in t.BODY
+    assert t.CAPTION[1] >= 12
     assert t.MONO[0] == "Cascadia Code"
-    assert t.MONO[1] == 12
+    assert t.MONO[1] == 13
 
 
 def test_spacing_rhythm_4px_base():
-    assert (t.SP_4, t.SP_8, t.SP_12, t.SP_16, t.SP_24, t.SP_32, t.SP_48, t.SP_64) == (
-        4, 8, 12, 16, 24, 32, 48, 64,
+    assert (t.SP_4, t.SP_8, t.SP_12, t.SP_16, t.SP_20, t.SP_24, t.SP_32) == (
+        4, 8, 12, 16, 20, 24, 32,
     )
 
 
 def test_color_tokens_match_visual_design():
-    assert t.BG_CANVAS == "#FBFAF7"
-    assert t.BG_SURFACE == "#FFFFFF"
-    assert t.BG_SUBTLE == "#F6F4EF"
-    assert t.BG_DARK == "#14130F"
-    assert t.INK_PRIMARY == "#1A1815"
-    assert t.INK_SECONDARY == "#5E5A52"
-    assert t.INK_TERTIARY == "#8F8A80"
-    assert t.INK_DISABLED == "#B8B3A8"
-    assert t.ACCENT == "#4338CA"
-    assert t.ACCENT_HOVER == "#3730A3"
-    assert t.ACCENT_PRESSED == "#312E81"
-    assert t.ACCENT_SUBTLE == "#EEF0FB"
-    assert t.SUCCESS == "#15803D"
-    assert t.WARNING == "#B45309"
-    assert t.DANGER == "#B91C1C"
-    assert t.BORDER_SUBTLE == "#E9E6DE"
-    assert t.BORDER_DEFAULT == "#DCD8CE"
-    # Legacy names point at the same palette. No second system.
+    light = t.LIGHT
+    assert light.text_primary == "#171717"
+    assert light.text_secondary == "#565656"
+    assert light.text_tertiary == "#8A8A8A"
+    assert light.text_quaternary == "#B9B9B9"
+    assert light.surface == "#FFFFFF"
+    assert light.surface_muted == "#F5F5F4"
+    assert light.surface_raised == "#FFFFFF"
+    assert light.border == "#E4E4E2"
+    assert light.accent == "#2E6BE6"
+    assert light.danger == "#C92A2A"
+    assert light.warning == "#9C6500"
+    assert light.positive == "#1A7F37"
+    assert light.focus_ring == "#171717"
+    assert t.BG_CANVAS == light.surface
+    assert t.ACCENT == light.accent
+    assert t.FOCUS_RING == light.focus_ring
+    assert t.SIDEBAR_WIDTH == 228
+    assert t.RADIUS_BUTTON == 8
+    assert t.RADIUS_INPUT == 10
+    assert t.RADIUS_CARD == 12
+    assert t.RADIUS_PILL == 999
+    assert t.BUTTON_RADIUS_PX == 8
+    assert t.CONTENT_MAX_WIDTH == 860
+    assert t.WINDOW_MIN == (960, 640)
+    # Legacy names point at the active palette. No second system.
     assert t.SURFACE_PRIMARY == t.BG_SURFACE
     assert t.TEXT_PRIMARY == t.INK_PRIMARY
     assert t.TEXT_SECONDARY == t.INK_SECONDARY
-    assert t.BORDER_FOCUS == t.ACCENT
+    assert t.BORDER_FOCUS == t.FOCUS_RING
     assert "#000000" not in (
         t.BG_CANVAS, t.BG_DARK, t.INK_PRIMARY, t.BG_SURFACE,
     )
+    hover = light.hover
+    assert hover == t.mix(light.text_primary, light.surface, 0.06)
+    assert light.active_nav == t.mix(light.text_primary, light.surface, 0.09)
+    assert light.chip_accent == t.mix(light.accent, light.surface, 0.14)
 
 
 def test_button_heights_four_classes():
@@ -79,6 +92,20 @@ def test_font_helper_and_pad():
 
 
 def test_dark_tokens_exist_parallel():
-    assert t.DARK_BG_CANVAS == "#14130F"
-    assert t.DARK_ACCENT == "#818CF8"
-    assert t.DARK_INK_PRIMARY == "#F5F3EE"
+    dark = t.DARK
+    assert dark.text_primary == "#F1F1F1"
+    assert dark.text_secondary == "#B4B4B4"
+    assert dark.surface == "#1C1C1D"
+    assert dark.surface_muted == "#242425"
+    assert dark.surface_raised == "#2B2B2C"
+    assert dark.border == "#363637"
+    assert dark.accent == "#4C8DFF"
+    assert dark.danger == "#E5484D"
+    assert dark.warning == "#D9A13B"
+    assert dark.positive == "#3FB27F"
+    assert dark.focus_ring == dark.text_primary
+    assert t.DARK_BG_CANVAS == dark.surface
+    assert t.DARK_ACCENT == dark.accent
+    css = dark.css_vars()
+    assert css["--accent"] == "#4C8DFF"
+    assert "QWidget" in t.qt_stylesheet(dark)

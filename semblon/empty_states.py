@@ -98,7 +98,7 @@ def people_empty() -> EmptyState:
 
 
 def to_review_empty(*, has_store: bool, has_faces: bool = False) -> EmptyState:
-    """§13 — route display label is Needs attention; route id stays ``unknown``."""
+    """§13 — route display label is To review; route id stays ``unknown``."""
     if not has_store:
         return EmptyState(
             headline="Nothing to review yet",

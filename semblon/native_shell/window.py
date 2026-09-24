@@ -71,6 +71,13 @@ class ShellWindow(QMainWindow):
         self._canvas_media_id: str | None = None
         self.setWindowTitle("Semblon")
         self.resize(1280, 800)
+        try:
+            from semblon.ui_prefs import load_theme_mode, resolve_palette
+            from semblon.ui_tokens import qt_stylesheet
+
+            self.setStyleSheet(qt_stylesheet(resolve_palette(load_theme_mode(session.store))))
+        except Exception:  # noqa: BLE001 — optional shell still opens without tokens
+            pass
 
         root = QWidget()
         self.setCentralWidget(root)

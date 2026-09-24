@@ -357,9 +357,9 @@ else:
 
         _DRAG_THRESHOLD = 6
         # Interaction accents — not CV class colours (no orange=object / green=face).
-        _HOVER_COLOR = "#9B96EC"
-        _SELECT_COLOR = "#4338CA"
-        _DRAG_COLOR = "#C4C0FF"
+        _HOVER_COLOR = "#285ECA"
+        _SELECT_COLOR = "#2E6BE6"
+        _DRAG_COLOR = "#E2EAFC"
         _THUMB_COLS = 2
         _THUMB_CELL = 96
         _THUMB_PAD = 6
@@ -375,7 +375,16 @@ else:
             source_types: tuple[str, ...] | None = None,
             advanced: bool = False,
         ):
-            from semblon.ui_tokens import ACCENT, BG_DARK, BG_SUBTLE, CAPTION, INK_ON_DARK, INK_SECONDARY
+            from semblon.ui_tokens import (
+                ACCENT,
+                ACCENT_HOVER,
+                ACCENT_SUBTLE,
+                BG_DARK,
+                BG_SUBTLE,
+                CAPTION,
+                INK_ON_DARK,
+                INK_SECONDARY,
+            )
 
             self.frame = ttk.Frame(master)
             self._on_select = on_select
@@ -451,6 +460,9 @@ else:
             self._caption_font = CAPTION
             self._accent = ACCENT
             self._bg_subtle = BG_SUBTLE
+            self._SELECT_COLOR = ACCENT
+            self._HOVER_COLOR = ACCENT_HOVER
+            self._DRAG_COLOR = ACCENT_SUBTLE
 
             self.preview.bind("<Motion>", self._on_motion)
             self.preview.bind("<Leave>", self._on_leave)

@@ -89,7 +89,7 @@ def test_home_control_policy_does_not_lock_read_surfaces():
 def test_home_nav_labels_ux_rescue():
     """§4 — display labels change; route ids stay unknown / activity."""
     flat = {nav_id: label for _sec, items in HOME_NAV for nav_id, label in items}
-    assert flat["unknown"] == "Needs attention"
+    assert flat["unknown"] == "To review"
     assert flat["activity"] == "Recent activity"
     assert flat["home"] == "Home"
     assert flat["people"] == "People"
@@ -128,7 +128,7 @@ def test_home_is_a_job_client():
     # UX Rescue landing + settings + result card.
     assert "_show_home_landing" in src
     assert "Add a photo folder" in src
-    assert "Find the people in your photos." in src
+    assert "Find the people in your photos" in src
     assert "open_advanced_diagnostics" in src
     assert "Your photos are ready" in src
     assert "Review people" in src
@@ -223,7 +223,7 @@ def test_home_processing_state_replaces_marketing_landing():
     build = inspect.getsource(home_ui.HomeApp._build_processing_home)
     assert "Add a photo folder" not in build
     assert "Building your photo library" in build or "processing_home_headline" in build
-    assert "Cancel this job" in build
+    assert '"Cancel"' in build
     assert "Already discovered" in build
     # Substantial bar — not hairline height=4 default.
     assert "height=16" in build or "height=14" in inspect.getsource(home_ui.StillProgressBar.__init__)

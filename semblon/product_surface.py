@@ -213,18 +213,16 @@ def soft_faces_found_line(faces_found: int | None) -> str:
     return f"{n:,} faces found"
 
 
-def processing_home_headline(*, paused: bool = False, stage: str | None = None) -> str:
-    """Primary processing Home headline — results framing, not stage tokens."""
-    if paused:
-        return "Analysis paused"
-    # Cluster stage is still \"building the library\" for the user.
-    if stage == "cluster":
-        return "Grouping faces in your library"
-    if stage == "export":
-        return "Finishing your library"
-    if stage == "discover":
-        return "Looking through your folder"
-    return "Building your photo library"
+def processing_home_headline(
+    *,
+    paused: bool = False,
+    stage: str | None = None,
+    kind: str | None = None,
+) -> str:
+    """Scan card title. Deck labels; failed and cancelled stay explicit."""
+    from semblon.scan_present import scan_title
+
+    return scan_title(stage=stage, kind=kind, paused=paused)
 
 
 def processing_home_activity(*, paused: bool = False) -> str:
@@ -249,7 +247,9 @@ def product_status_text(
         return "Cancelled"
     if kind == "failed":
         return "Couldn't finish"
-    headline = processing_home_headline(paused=False, stage=stage)
+    if kind == "completed":
+        return "Completed"
+    headline = processing_home_headline(paused=False, stage=stage, kind=kind)
     counts = soft_progress_counts(
         files_processed=getattr(ev, "files_processed", None),
         files_total=getattr(ev, "files_total", None),
@@ -273,8 +273,17 @@ def processing_home_snapshot(
     elapsed_s: float | None = None,
     eta_s: float | None = None,
     stage: str | None = None,
+    kind: str | None = None,
+    pace: Any | None = None,
 ) -> dict[str, str]:
-    """Structured copy for the processing Home workspace."""
+    """Structured copy for the processing Home workspace.
+
+    ``eta`` is the scan meta line (percent, elapsed, ETA) from real counters.
+    ``eta_s`` on the event is not shown as a made-up sentence. Pace, when
+    passed, is the file-rate EMA owned by the Home session.
+    """
+    from semblon.scan_present import ScanPace, scan_card
+
     if ev is not None:
         files_processed = getattr(ev, "files_processed", files_processed)
         files_total = getattr(ev, "files_total", files_total)
@@ -282,24 +291,31 @@ def processing_home_snapshot(
         elapsed_s = getattr(ev, "elapsed_s", elapsed_s)
         eta_s = getattr(ev, "eta_s", eta_s)
         stage = getattr(ev, "stage", stage)
+        kind = getattr(ev, "kind", kind)
+    if pace is None and not paused and elapsed_s is not None and files_processed:
+        pace = ScanPace()
+        pace.observe(files_processed, elapsed_s)
+    card = scan_card(
+        stage=stage,
+        kind=kind,
+        paused=paused,
+        files_processed=files_processed,
+        files_total=files_total,
+        faces_found=faces_found,
+        elapsed_s=elapsed_s,
+        pace=pace,
+    )
+    _ = eta_s  # event field stays available; the card computes ETA from pace
     return {
-        "headline": processing_home_headline(paused=paused, stage=stage),
+        "headline": card["title"],
         "activity": processing_home_activity(paused=paused),
-        "progress": soft_progress_counts(
-            files_processed=files_processed, files_total=files_total
-        ),
+        "progress": card["stats"],
         "faces": soft_faces_found_line(faces_found),
-        "eta": soft_eta_line(
-            files_processed=files_processed,
-            files_total=files_total,
-            elapsed_s=elapsed_s,
-            eta_s=eta_s,
-            paused=paused,
-        ),
+        "eta": card["meta"],
         "folder_note": (
             "Semblon is analysing your library. You can add another folder when this finishes."
             if not paused
-            else "Job paused. Resume to continue, or cancel to stop this job."
+            else "Paused. Resume to continue, or cancel to stop this scan."
         ),
     }
 

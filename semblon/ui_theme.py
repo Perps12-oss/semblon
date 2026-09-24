@@ -15,12 +15,14 @@ from semblon.ui_tokens import (
     ACCENT,
     ACCENT_HOVER,
     ACCENT_SUBTLE,
+    FOCUS_RING,
     BG_CANVAS,
     BG_INSET,
     BG_PRESSED,
     BG_SUBTLE,
     BG_SURFACE,
     BODY,
+    BODY_STRONG,
     CAPTION,
     BORDER_DEFAULT,
     BORDER_STRONG,
@@ -60,13 +62,16 @@ def _family(installed: set[str], preferred: str, fallback: str) -> str:
     return preferred
 
 
-def apply_theme(root) -> None:
-    """Configure the process ttk theme. Safe to call once per Tcl interpreter."""
+def apply_theme(root, *, force: bool = False) -> None:
+    """Configure the process ttk theme. Safe to call once per Tcl interpreter.
+
+    ``force`` rebinds colors after ``ui_tokens.publish`` (appearance switch).
+    """
     if tk is None or ttk is None or root is None:
         return
     # Theme is interpreter-global. Key off the Tcl interpreter, not the widget.
     key = id(getattr(root, "tk", root))
-    if key in _APPLIED:
+    if key in _APPLIED and not force:
         try:
             root.configure(bg=BG_CANVAS)
         except tk.TclError:
@@ -151,7 +156,7 @@ def apply_theme(root) -> None:
         padding=(16, 8),
         font=body,
         focusthickness=2,
-        focuscolor=ACCENT,
+        focuscolor=FOCUS_RING,
     )
     style.map(
         "TButton",
@@ -161,7 +166,7 @@ def apply_theme(root) -> None:
             ("disabled", BG_SUBTLE),
         ],
         foreground=[("disabled", INK_DISABLED)],
-        bordercolor=[("focus", ACCENT), ("active", BORDER_STRONG), ("!focus", BORDER_DEFAULT)],
+        bordercolor=[("focus", FOCUS_RING), ("active", BORDER_STRONG), ("!focus", BORDER_DEFAULT)],
     )
     style.configure(
         "Primary.TButton",
@@ -170,7 +175,7 @@ def apply_theme(root) -> None:
         bordercolor=ACCENT,
         lightcolor=ACCENT,
         darkcolor=ACCENT,
-        font=face(("Segoe UI Variable Text", 13, "bold")),
+        font=face(BODY_STRONG),
         padding=(20, 10),
     )
     style.map(
@@ -195,7 +200,7 @@ def apply_theme(root) -> None:
     )
     style.map(
         "TEntry",
-        bordercolor=[("focus", ACCENT), ("!focus", BORDER_DEFAULT)],
+        bordercolor=[("focus", FOCUS_RING), ("!focus", BORDER_DEFAULT)],
         lightcolor=[("focus", ACCENT_SUBTLE)],
     )
     style.configure(
@@ -267,7 +272,7 @@ def style_listbox(widget) -> None:
             relief="flat",
             highlightthickness=1,
             highlightbackground=BORDER_SUBTLE,
-            highlightcolor=ACCENT,
+            highlightcolor=FOCUS_RING,
             activestyle="none",
             bd=0,
         )
