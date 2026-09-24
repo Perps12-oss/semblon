@@ -183,10 +183,10 @@ from semblon.watchdog import Watchdog
 # Base Home observers (always). Product path may append OCR/CLIP/pose when ready.
 HOME_OBSERVERS = "face,color,object"
 
-# R3-BRIEF §4 information architecture (nav ids → display label).
-# Route IDs unchanged; photo-intelligence softens Unknown / People wording.
+# Dashboard route id stays "home". The sidebar label is Photos — Home was
+# the redundant item. The photo grid remains route id "photos".
 HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
-    ("LIBRARY", (("home", "Home"), ("photos", "Photos"), ("videos", "Videos"))),
+    ("LIBRARY", (("home", "Photos"), ("videos", "Videos"))),
     ("PEOPLE", (("people", "People"), ("unknown", "To review"))),
     ("ACTIVITY", (("activity", "Recent activity"),)),
 )
@@ -749,22 +749,25 @@ class HomeApp:
         self._workspace_role = self._PANE_WORKSPACE
         self._inspector_role = self._PANE_INSPECTOR
 
-        # ── Top chrome: brand · search · settings ──
-        top = ttk.Frame(self.root, padding=(SP_16, SP_12, SP_16, SP_8))
+        # Sidebar is full height. Search and Settings sit over the content only.
+        self._shell = tk.Frame(self.root, bg=BG_CANVAS)
+        self._shell.pack(fill=tk.BOTH, expand=True)
+        self._main = ttk.Frame(self._shell)
+        self._main.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        # ── Top chrome: search · settings ──
+        top = ttk.Frame(self._main, padding=(SP_20, SP_12, SP_20, SP_12))
         top.pack(fill=tk.X)
         self._top = top
-        ttk.Label(top, text="Semblon", font=H3).pack(side=tk.LEFT, padx=(SP_4, 0))
         self.btn_settings = _button(
-            top, "Settings", self._show_settings, kind="tertiary", icon="settings"
+            top, "", self._show_settings, kind="secondary", icon="settings"
         )
         self.btn_settings.pack(side=tk.RIGHT)
-        self._overflow = ttk.Menubutton(top, text="More")
-        self._overflow.pack(side=tk.RIGHT, padx=(0, SP_8))
         search_row = ttk.Frame(top)
-        search_row.pack(side=tk.RIGHT, padx=(0, SP_12))
+        search_row.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, SP_12))
         self.search_var = tk.StringVar()
         self._search_entry = ttk.Entry(search_row, textvariable=self.search_var, width=28)
-        self._search_entry.pack(side=tk.LEFT)
+        self._search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._search_entry.insert(0, SEARCH_PLACEHOLDER)
         try:
             self._search_entry.configure(foreground=INK_TERTIARY)
@@ -772,20 +775,21 @@ class HomeApp:
             pass
         self._search_entry.bind("<FocusIn>", self._search_focus_in)
         self._search_entry.bind("<FocusOut>", self._search_focus_out)
+        # Kept for the control-state map. Enter submits the field.
         self.btn_search = _button(
             search_row, "Search", self._search_person, kind="tertiary", icon="search"
         )
-        self.btn_search.pack(side=tk.LEFT, padx=(SP_8, 0))
+        self._search_entry.bind("<Return>", lambda _e: self._search_person())
         self.root.bind("<Control-f>", lambda _e: self._search_entry.focus_set())
         self.root.bind("<Control-k>", self._open_command_palette)
-        self.root.bind("<Control-Key-1>", lambda _e: self._navigate("photos"))
+        self.root.bind("<Control-Key-1>", lambda _e: self._navigate("home"))
         self.root.bind("<Control-Key-2>", lambda _e: self._navigate("videos"))
         self.root.bind("<Control-Key-3>", lambda _e: self._navigate("people"))
         self.root.bind("<Control-Key-4>", lambda _e: self._navigate("unknown"))
         self.root.bind("<Control-Key-5>", lambda _e: self._navigate("activity"))
 
         # ── Job controls (demoted on home — UX Rescue §3) ──
-        jobs = ttk.Frame(self.root, padding=(12, 0, 12, 4))
+        jobs = ttk.Frame(self._main, padding=(12, 0, 12, 4))
         jobs.pack(fill=tk.X)
         self._jobs_frame = jobs
         self.btn_folder = _button(
@@ -806,12 +810,16 @@ class HomeApp:
         self.btn_canvas = _button(
             jobs, "Canvas", lambda: self._navigate("canvas"), kind="tertiary", icon="images"
         )
-        # Overflow keeps advanced callbacks reachable without equal-weight job bar.
-        # The control itself is created on the top bar (a Menubutton cannot be reparented).
+        # Advanced actions stay off the top bar. The menu is on the job row.
+        self._overflow = ttk.Menubutton(jobs, text="More")
+        self._overflow.pack(side=tk.RIGHT, padx=(SP_8, 0))
         self._overflow_menu = tk.Menu(self._overflow, tearoff=0)
         self._overflow_menu.add_command(label="Open Review", command=self._open_review_ui)
         self._overflow_menu.add_command(label="Live…", command=self._open_live_overlay)
         self._overflow_menu.add_command(label="Open review.html", command=self._open_html)
+        self._overflow_menu.add_command(
+            label="Browse photos", command=lambda: self._navigate("photos")
+        )
         self._overflow_menu.add_command(
             label="Explore workspace", command=lambda: self._navigate("canvas")
         )
@@ -822,7 +830,7 @@ class HomeApp:
         self.btn_unknown = self.btn_canvas
         self.btn_activity = self.btn_canvas
 
-        prog = ttk.Frame(self.root, padding=(12, 0, 12, 6))
+        prog = ttk.Frame(self._main, padding=(12, 0, 12, 6))
         prog.pack(fill=tk.X)
         self._prog_frame = prog
         self.status = tk.StringVar(value=HOME_IDLE_STATUS)
@@ -865,31 +873,38 @@ class HomeApp:
         # ── Body: Library | Workspace | Inspector ──
         self._library_status = tk.StringVar(value="")
         self._status_bar = ttk.Label(
-            self.root,
+            self._main,
             textvariable=self._library_status,
             font=META,
             foreground=TEXT_SECONDARY,
-            padding=(SP_16, SP_8),
+            padding=(SP_20, SP_8),
         )
         self._status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        body = ttk.Frame(self.root, padding=(8, 0, 8, 8))
+        body = ttk.Frame(self._main, padding=(8, 0, 8, 8))
         body.pack(fill=tk.BOTH, expand=True)
         self._body = body
-        body.columnconfigure(1, weight=5)
-        body.columnconfigure(2, weight=1)
+        body.columnconfigure(0, weight=5)
+        body.columnconfigure(1, weight=1)
         body.rowconfigure(0, weight=1)
 
         # Library sidebar — navigation, not a diagnostic listing.
         side = tk.Frame(
-            body,
+            self._shell,
             bg=BG_SUBTLE,
             highlightthickness=1,
             highlightbackground=BORDER_SUBTLE,
             highlightcolor=BORDER_SUBTLE,
         )
-        side.grid(row=0, column=0, sticky="nsw")
-        self._body.columnconfigure(0, minsize=px(self.root, SIDEBAR_WIDTH), weight=0)
+        side.pack(side=tk.LEFT, fill=tk.Y)
         self._sidebar = side
+        self._sidebar_brand = tk.Label(
+            side,
+            text="Semblon",
+            font=H1,
+            bg=BG_SUBTLE,
+            fg=TEXT_PRIMARY,
+        )
+        self._sidebar_brand.pack(anchor=tk.W, padx=SP_16, pady=(SP_16, SP_8))
         self._sidebar_footer = tk.Label(
             side,
             text="Local only — nothing is uploaded",
@@ -914,12 +929,13 @@ class HomeApp:
                 fg=INK_TERTIARY,
             ).pack(anchor=tk.W, pady=(SP_24 if section != "LIBRARY" else SP_8, SP_8), padx=(SP_16, SP_8))
             for nav_id, label in items:
+                icon_name = "images" if nav_id == "home" else NAV_ICONS.get(nav_id)
                 btn = _button(
                     side,
                     label,
                     lambda n=nav_id: self._navigate(n),
                     kind="nav",
-                    icon=NAV_ICONS.get(nav_id),
+                    icon=icon_name,
                     plate=BG_SUBTLE,
                 )
                 btn.pack(fill=tk.X, pady=1, padx=SP_4)
@@ -932,7 +948,7 @@ class HomeApp:
 
         # Workspace (landing / Canvas / welcome). Role: WORKSPACE / INTELLIGENCE CANVAS.
         work = ttk.Frame(body, padding=(SP_16, SP_8))
-        work.grid(row=0, column=1, sticky="nsew", padx=(SP_8, SP_8))
+        work.grid(row=0, column=0, sticky="nsew", padx=(SP_8, SP_8))
         self._workspace = work
         self._welcome = ttk.Frame(work, padding=(SP_8, SP_16))
         self._welcome_title = tk.StringVar(value="")
@@ -969,7 +985,7 @@ class HomeApp:
 
         # Inspector — contextual result for the current interaction.
         insp = ttk.Frame(body, padding=(SP_16, SP_16))
-        insp.grid(row=0, column=2, sticky="nsew")
+        insp.grid(row=0, column=1, sticky="nsew")
         self._inspector_frame = insp
         self._inspector_title = tk.StringVar(value="Home")
         ttk.Label(insp, textvariable=self._inspector_title, font=H3).pack(
@@ -1919,7 +1935,8 @@ class HomeApp:
             for child in side.winfo_children():
                 if isinstance(child, tk.Label):
                     try:
-                        child.configure(bg=BG_SUBTLE, fg=INK_TERTIARY)
+                        fg = TEXT_PRIMARY if child is getattr(self, "_sidebar_brand", None) else INK_TERTIARY
+                        child.configure(bg=BG_SUBTLE, fg=fg)
                     except tk.TclError:
                         pass
                 elif hasattr(child, "_kind"):
@@ -2092,12 +2109,12 @@ class HomeApp:
         self._inspector_collapsed = collapsed
         if collapsed:
             self._inspector_frame.grid_remove()
-            self._body.columnconfigure(2, weight=0, minsize=0)
-            self._body.columnconfigure(1, weight=5)
+            self._body.columnconfigure(1, weight=0, minsize=0)
+            self._body.columnconfigure(0, weight=5)
         else:
             self._inspector_frame.grid()
-            self._body.columnconfigure(2, weight=1)
-            self._body.columnconfigure(1, weight=5)
+            self._body.columnconfigure(1, weight=1)
+            self._body.columnconfigure(0, weight=5)
 
     def _mark_nav_active(self, nav_id: str) -> None:
         """Best-effort active nav styling in ttk (underline / state)."""

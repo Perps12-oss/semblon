@@ -113,7 +113,7 @@ def test_canvas_workspace_is_embeddable():
 
 def test_home_nav_matches_r3_ia():
     sections = {s: [i for i, _ in items] for s, items in HOME_NAV}
-    assert sections["LIBRARY"] == ["home", "photos", "videos"]
+    assert sections["LIBRARY"] == ["home", "videos"]
     assert sections["PEOPLE"] == ["people", "unknown"]
     # Section label is ACTIVITY (Recent activity). Route id stays "activity".
     assert sections["ACTIVITY"] == ["activity"]

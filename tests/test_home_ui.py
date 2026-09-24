@@ -91,7 +91,8 @@ def test_home_nav_labels_ux_rescue():
     flat = {nav_id: label for _sec, items in HOME_NAV for nav_id, label in items}
     assert flat["unknown"] == "To review"
     assert flat["activity"] == "Recent activity"
-    assert flat["home"] == "Home"
+    assert flat["home"] == "Photos"
+    assert "photos" not in flat
     assert flat["people"] == "People"
 
 
