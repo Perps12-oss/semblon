@@ -64,4 +64,6 @@ def test_cli_registers_shell_command():
         except SystemExit as e:
             assert e.code == 0
     text = buf.getvalue() + err.getvalue()
-    assert "native production shell" in text.lower() or "JobEngine" in text or "--store" in text
+    lowered = text.lower()
+    assert "not the product home" in lowered
+    assert "native production shell" not in lowered

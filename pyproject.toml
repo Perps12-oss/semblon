@@ -13,7 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
-gui = ["PySide6>=6.6"]  # native production shell (`semblon shell`) + S8 spike reference
+gui = ["PySide6>=6.6"]  # optional Qt client (`semblon shell`) + S8 spike; not the product Home
 
 [project.scripts]
 semblon = "semblon.cli:main"

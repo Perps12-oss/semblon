@@ -235,6 +235,7 @@ def test_home_landing_wraplength_avoids_clipping():
 
     build = inspect.getsource(home_ui.HomeApp._build_home_landing)
     assert "wraplength=560" in build
+    assert "justify=tk.CENTER" not in build
     assert "width=48" not in build
     assert "width=18" not in build
     assert "Review and name" in build

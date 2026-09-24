@@ -50,7 +50,9 @@ def test_interactive_script_opens_home():
     assert script.is_file()
     text = script.read_text(encoding="utf-8")
     assert "Invoke-SemblonHome" in text
-    assert " home" in text
+    assert "-m semblon home" in text
+    assert "semblon shell" not in text
+    assert "s8_toolkit_spike" not in text
     assert "FolderBrowserDialog" not in text
     assert "process" in text  # -Folder smoke path still processes
     assert "UseDescriptionForTitle" not in text

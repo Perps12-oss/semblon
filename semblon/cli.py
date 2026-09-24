@@ -408,7 +408,7 @@ def main(argv: list[str] | None = None) -> int:
 
     home = sub.add_parser(
         "home",
-        help="tk Home (compatibility): Choose folder, Pause/Cancel/Resume, Open Review (JobEngine)",
+        help="authoritative production GUI (tk Home): folder, scan, review, people",
     )
     home.add_argument(
         "--store",
@@ -419,7 +419,8 @@ def main(argv: list[str] | None = None) -> int:
 
     shell = sub.add_parser(
         "shell",
-        help="native production shell (Qt/PySide; Application API -> JobEngine; requires PySide6)",
+        help="optional Qt client; not the product Home (requires PySide6)",
+        description="Optional Qt client. Not the product Home. Requires PySide6.",
     )
     shell.add_argument(
         "--store",
