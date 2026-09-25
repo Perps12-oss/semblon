@@ -162,15 +162,12 @@ class Application:
         )
 
     def pause_job(self) -> None:
-        """Cooperative pause at the next file/stage gate. Same job stays claimed."""
         self.engine.pause()
 
     def unpause_job(self) -> None:
-        """Continue the same in-flight job. Not resume-after-cancel."""
         self.engine.unpause()
 
     def cancel_job(self) -> None:
-        """Cooperative cancel (also unblocks a paused wait)."""
         self.engine.cancel()
 
     def control_states(self, *, resume_ready: bool = False) -> dict[str, str]:
@@ -217,7 +214,6 @@ class Application:
         run_id: str | None = None,
         report=None,
     ) -> dict:
-        """Persist a user box. Observation, not a person."""
         from semblon.user_region import persist_user_region
 
         return persist_user_region(
@@ -240,3 +236,30 @@ class Application:
         from semblon.user_region import name_user_region
 
         return name_user_region(self.store, item_id, name)
+
+    def remember_and_find_region(
+        self,
+        media_id: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        *,
+        image_path: Path | None = None,
+        run_id: str | None = None,
+        limit: int = 10,
+    ) -> dict:
+        """Persist the box and search existing library embeddings. Query-time crop."""
+        from semblon.region_search import remember_and_find
+
+        return remember_and_find(
+            self.store,
+            media_id=media_id,
+            image_path=image_path,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
+            run_id=run_id,
+            limit=limit,
+        )
