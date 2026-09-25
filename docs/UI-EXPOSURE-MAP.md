@@ -8,7 +8,8 @@
 `semblon/product_exposure.py` (`GUI_PATHS`). Actions taken in this branch:
 remove `Open review.html` and job-bar Canvas from product chrome; Review /
 Explore / Live stay under More; export review page lives under Settings →
-Advanced; Lens soft-copies capability labels; Search tries text when people
+Advanced; Diagnostics holds runtime/provider/model/schema/job chrome;
+Lens soft-copies capability labels; Search tries text when people
 miss; capability strip uses Available / Optional · component required.
 
 Authority companions: `docs/COMPLETION-MATRIX.md`, `docs/APPLICATION_API.md`, `docs/PRODUCT.md`, `docs/SEM-ARCH-V1.4.md`.
@@ -67,7 +68,7 @@ Nav source of truth: `HOME_NAV` in `semblon/home_ui.py` (ASK / LIBRARY / PEOPLE 
 | Search | top bar | `_search_person` / analysing gate | **CANONICAL** — people-first today; Lens absorbs broader visual ask |
 | Activity | `activity` | `application.activity_memory` via Home Activity workspace | **CANONICAL** — soft history / Memory (people together, moments, recent processing) |
 | Lens / Inspect | `lens` + brand **Lens** | `_open_lens`, Lens workspace, `_open_region_select` | **CANONICAL** — Home route/workspace; open photo → select → soft results; backends decide availability |
-| Settings | Settings button | `_show_settings` | **CANONICAL** — theme, library path; tech under Advanced |
+| Settings | Settings button | `_show_settings` | **CANONICAL** — Library / Appearance / Processing / About; Advanced = shortcuts + export; Diagnostics = runtime/provider/model/schema/jobs |
 | Inspector verbs | right pane | merge / assign / split / name / rule-out / ignore | **CANONICAL** — soft labels via `product_surface` |
 | Ingest / Pause / Cancel | Home job client | `JobEngine` via Application façade | **CANONICAL** — job controls, not nav |
 
@@ -174,7 +175,7 @@ Open photo → Lens → select region → Semblon runs available capabilities
 | Job-bar **Canvas** as equal primary chrome | **STALE → removed** | Photos embed + More → Explore |
 | Job-bar / More **Open review.html** | **STALE → removed** | Prefer Review workspace; export under Advanced |
 | Marketing three-step brochure on populated Home | **SUPERSEDED** by library shell (#93) | Do not revive |
-| Advanced diagnostics (Settings link) | Settings-adjacent · not nav | Engineering honesty; do not promote to sidebar |
+| Advanced diagnostics (Settings → Diagnostics) | Settings-adjacent · not nav | Engineering honesty; do not promote to sidebar |
 | Permanent Tk AppShell / Electron / Tauri / CustomTkinter / FastAPI shell | **Forbidden** | Refuse |
 
 ---

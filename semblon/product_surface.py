@@ -25,6 +25,49 @@ INSPECTOR_CAPTION = "What you can do"
 SEL_HEADING_IDLE = "Nothing selected"
 DETAILS_HEADING = "About this"
 
+# Settings — product vs Advanced vs Diagnostics (presentation only).
+SETTINGS_TITLE = "Settings"
+SETTINGS_LIBRARY = "Library"
+SETTINGS_LIBRARY_HINT = "Where Semblon keeps your photo library on this computer."
+SETTINGS_PROCESSING = "Processing"
+SETTINGS_PROCESSING_CPU = "Processing on this computer."
+SETTINGS_GPU = "Use GPU when available"
+SETTINGS_APPEARANCE = "Appearance"
+SETTINGS_ABOUT = "About"
+SETTINGS_ABOUT_BODY = (
+    "Personal photo library on this computer. Semblon finds faces, "
+    "groups similar ones, and lets you name people. Nothing is uploaded."
+)
+SETTINGS_ADVANCED = "Advanced"
+SETTINGS_ADVANCED_HINT = "Keyboard shortcuts and export tools."
+SETTINGS_DIAGNOSTICS = "Diagnostics"
+SETTINGS_DIAGNOSTICS_HINT = (
+    "Technical details for support — runtime, models, schema, and recent jobs. "
+    "Not needed for everyday use."
+)
+SETTINGS_EXPORT_REVIEW = "Open export review page…"
+SETTINGS_OPEN_DIAGNOSTICS = "Advanced diagnostics…"
+SETTINGS_SHORTCUTS: tuple[tuple[str, str], ...] = (
+    ("Search", "Ctrl+F"),
+    ("Go to", "Ctrl+K"),
+    ("Photos", "Ctrl+1"),
+    ("Videos", "Ctrl+2"),
+    ("People", "Ctrl+3"),
+    ("People to name", "Ctrl+4"),
+    ("Recent activity", "Ctrl+5"),
+)
+
+# People / Unknown — short workflow coaching (never lectures; identity-safe).
+PEOPLE_LIST_HEAD = "People you have named"
+PEOPLE_LIST_HINT = (
+    "Select a person, then choose faces under People to name to add them."
+)
+UNKNOWN_COACH = (
+    "Browse the groups. Name someone when you recognise them — "
+    "or leave them unknown."
+)
+UNKNOWN_SAFETY = "Unknown is fine. A group is not a person until you name them."
+
 
 def basename_path(path: str | None) -> str:
     if not path:
@@ -545,3 +588,44 @@ def display_rect_for_bbox(
         return None
     x1, y1, x2, y2 = (float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
     return (x1 * scale, y1 * scale, x2 * scale, y2 * scale)
+
+
+def settings_product_section_titles() -> tuple[str, ...]:
+    """Everyday Settings sections a non-technical user understands."""
+    return (SETTINGS_LIBRARY, SETTINGS_PROCESSING, SETTINGS_APPEARANCE, SETTINGS_ABOUT)
+
+
+def settings_forbidden_product_vocab() -> tuple[str, ...]:
+    """Strings that must stay in Diagnostics — never everyday Settings copy."""
+    return (
+        "buffalo_l",
+        "FaceKit",
+        "pack_id",
+        "schema_version",
+        "onnx",
+        "JobEngine",
+        "execution_provider",
+        "modality=",
+        "embeddings.modality",
+        "faces.person_id",
+        "ANN",
+        "DBSCAN",
+        "InsightFace",
+    )
+
+
+def soft_people_header_lines() -> list[str]:
+    """People list header — workflow, not architecture lecture."""
+    return [PEOPLE_LIST_HEAD, PEOPLE_LIST_HINT]
+
+
+def soft_unknown_coach_lines(*, waiting: int) -> list[str]:
+    """People to name coaching. Unknown valid; cluster ≠ person; no auto-assign."""
+    from semblon.library_status import people_to_name_text
+
+    n = int(waiting or 0)
+    if n <= 0:
+        head = "No people to name."
+    else:
+        head = people_to_name_text(n) + "."
+    return [head, UNKNOWN_COACH, UNKNOWN_SAFETY]

@@ -64,8 +64,8 @@ def test_home_product_chrome_drops_review_html_and_job_bar_canvas():
     assert "btn_canvas.pack" not in sync
     assert "btn_html" not in sync
     settings = inspect.getsource(home_ui.HomeApp._show_settings)
-    assert "Open export review page" in settings
-    assert "Advanced" in settings
+    assert "SETTINGS_EXPORT_REVIEW" in settings or "Open export review page" in settings
+    assert "SETTINGS_ADVANCED" in settings or "Advanced" in settings
     assert "html" not in home_ui.HOME_CONTROLS_ALWAYS_ON
     assert "canvas" not in home_ui.HOME_CONTROLS_ALWAYS_ON
     forbidden = product_chrome_forbidden_labels()
@@ -154,3 +154,4 @@ def test_people_unknown_copy_avoids_uuid_and_keeps_unknown_valid():
     ut = "\n".join(unknown)
     assert "Unknown is fine" in ut
     assert "run=r1" not in ut
+    assert "People you have named" in "\n".join(people) or "Named" in "\n".join(people)

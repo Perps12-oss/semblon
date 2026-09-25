@@ -235,7 +235,13 @@ def test_derived_index_is_used_and_faces_stay_out(tmp_path):
     assert rec["status"] == "SUCCESS"
     assert rec["fallback"] is None
     assert rec["provider_state"] == "READY"
-    assert "authoritative" in rec["reason"] or "derived index" in rec["reason"]
+    reason = rec["reason"].lower()
+    assert (
+        "source of truth" in reason
+        or "authoritative" in reason
+        or "speed index" in reason
+        or "derived index" in reason
+    )
     demanded = search_similar(store, item, require_index=True)
     assert demanded["status"] == "SUCCESS"
 

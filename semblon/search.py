@@ -163,9 +163,9 @@ def _failed_item(conn, item_id: str) -> dict | None:
             "model_state": "MISSING",
             "provider_state": "FAILED",
             "fallback": None,
-            "reason": "This item has no embedding. Nothing was searched.",
+            "reason": "This item has no embedding yet. Nothing was searched.",
             "error_id": "similar.NO_EMBEDDING",
-            "note": "Similarity is not identity.",
+            "note": "Similar looking is not the same as a named person.",
         }
     out_status = "ERROR" if status == "ERROR" or raw == "error" else "UNAVAILABLE"
     return {
@@ -179,9 +179,10 @@ def _failed_item(conn, item_id: str) -> dict | None:
         "model_state": "MISSING",
         "provider_state": "FAILED",
         "fallback": None,
-        "reason": payload.get("reason") or "Similarity did not run. Nothing was searched.",
+        "reason": payload.get("reason")
+        or "Similar photos need an optional model. Nothing was searched.",
         "error_id": payload.get("error_id") or f"{row['kind']}.{out_status}",
-        "note": "Similarity is not identity.",
+        "note": "Similar looking is not the same as a named person.",
     }
 
 
@@ -206,11 +207,11 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index:
             "provider_state": "FAILED",
             "fallback": None,
             "reason": (
-                "The fast visual index is not built. A library scan was not used "
-                "because this request demanded the index."
+                "The fast visual index is not built. Semblon did not fall back "
+                "to a library scan because this request required the index."
             ),
             "error_id": "ann_index.INDEX_REQUIRED",
-            "note": "Similarity is not identity.",
+            "note": "Similar looking is not the same as a named person.",
         }
     conn = _open_ro(store)
     try:
@@ -275,16 +276,16 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index:
         conn.close()
     scored.sort(key=lambda x: -x["score"])
     items = scored[:limit]
-    note = "Lens-like lookup in owned memory. Similarity is not identity."
+    note = "Similar looking is not the same as a named person."
     if used_index:
-        reason_hit = "These matches came from the derived index. The library stays authoritative."
-        reason_miss = "The derived index was searched and nothing matched."
+        reason_hit = "Matches from a speed index. Your library stays the source of truth."
+        reason_miss = "Nothing matched in the speed index."
         provider = "READY"
         model = "AVAILABLE"
         fallback = None
     else:
-        reason_hit = "The fast index is absent. These matches came from the library."
-        reason_miss = "The fast index is absent. The library was scanned and nothing matched."
+        reason_hit = "Searched your library directly (no separate index required)."
+        reason_miss = "Searched your library directly and nothing matched."
         provider = "DEGRADED"
         model = "MISSING"
         fallback = "LIBRARY_SCAN"
@@ -398,7 +399,7 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
         )
         if len(items) >= limit:
             break
-    note = "OCR text lookup is observation evidence only; not identity."
+    note = "Text in photos is observation evidence only — not identity."
     if items:
         return {
             "kind": "text",
@@ -408,7 +409,7 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
             "status": "SUCCESS",
             "model_state": "AVAILABLE",
             "provider_state": "READY",
-            "reason": "Read text ran.",
+            "reason": "Found matching text in your photos.",
             "error_id": None,
             "note": note,
         }
@@ -421,7 +422,7 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
             "status": "NO_RESULT",
             "model_state": "AVAILABLE",
             "provider_state": "READY",
-            "reason": "Read text ran and nothing matched.",
+            "reason": "No text matched in your photos.",
             "error_id": None,
             "note": note,
         }
@@ -429,13 +430,19 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
 
     if saw_failed:
         result, _ = invoke("ocr")
-        reason = "Read text did not run. Nothing was searched."
+        reason = (
+            "Text reading did not finish for these photos. "
+            "People search still works for names you have given."
+        )
         error_id = result.error_id or "ocr.UNAVAILABLE"
         model_state = result.model_state
         provider_state = "FAILED"
         status = "UNAVAILABLE" if result.status != "ERROR" else "ERROR"
     else:
-        reason = "Read text has no stored reads in this library. Nothing was searched."
+        reason = (
+            "No readable text is stored in this library yet. "
+            "Optional text reading may need a component, or photos without text."
+        )
         error_id = "ocr.NO_STORED_READ"
         model_state = "MISSING"
         provider_state = "FAILED"

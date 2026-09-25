@@ -46,7 +46,7 @@ def test_one_embedding_is_a_scan_with_no_neighbour(tmp_path):
     assert "nothing matched" in rec["reason"]
     lines = search_result_lines(rec)
     assert "No matches nearby." not in lines
-    assert any("nothing matched" in line for line in lines)
+    assert any("nothing matched" in line.lower() for line in lines)
 
 
 def test_two_embeddings_are_a_degraded_hit(tmp_path):
@@ -84,7 +84,8 @@ def test_failed_clip_is_not_an_empty_neighbourhood(tmp_path):
     assert rec["fallback"] is None
     assert rec["status"] != "NO_RESULT"
     lines = search_result_lines(rec)
-    assert lines == [rec["reason"]]
+    assert "Similar photos unavailable" in lines[0]
+    assert rec["reason"] in "\n".join(lines)
     assert "No matches nearby." not in lines
 
 

@@ -100,9 +100,14 @@ def videos_empty() -> EmptyState:
 def people_empty() -> EmptyState:
     return EmptyState(
         headline="No people yet",
-        description="Open Review and name a face to create your first person.",
-        primary_action="Open Review",
-        action_id=ACTION_OPEN_REVIEW,
+        description=(
+            "Open People to name, pick a group you recognise, "
+            "and give them a name."
+        ),
+        primary_action="People to name",
+        action_id=ACTION_REVIEW_PEOPLE,
+        tertiary_action="Open Review",
+        tertiary_action_id=ACTION_OPEN_REVIEW,
     )
 
 
@@ -167,7 +172,9 @@ def search_no_matches(query: str) -> EmptyState:
     q = (query or "").strip() or "…"
     return EmptyState(
         headline=f'No matches for "{q}"',
-        description="Try a different name, or check the spelling.",
+        description=(
+            "Try another person name, or words that appear in a photo."
+        ),
         tertiary_action="Clear search",
         tertiary_action_id=ACTION_CLEAR_SEARCH,
     )
@@ -184,6 +191,51 @@ def search_library_analysing() -> EmptyState:
         ),
         primary_action="Open Review",
         action_id=ACTION_OPEN_REVIEW,
+    )
+
+
+def search_text_unavailable(*, reason: str | None = None) -> EmptyState:
+    """OCR/text search could not run — optional model or no stored reads."""
+    detail = (reason or "").strip()
+    if not detail:
+        detail = (
+            "Text in photos is optional. Semblon can still find people "
+            "you have named."
+        )
+    return EmptyState(
+        headline="Text search unavailable",
+        description=detail,
+        tertiary_action="Clear search",
+        tertiary_action_id=ACTION_CLEAR_SEARCH,
+    )
+
+
+def search_text_error(*, reason: str | None = None) -> EmptyState:
+    """Text search failed — soft product copy, no capability ids."""
+    detail = (reason or "").strip() or "Semblon could not read text in photos right now."
+    return EmptyState(
+        headline="Couldn't search text",
+        description=detail,
+        tertiary_action="Clear search",
+        tertiary_action_id=ACTION_CLEAR_SEARCH,
+    )
+
+
+def loading_workspace(label: str = "results") -> EmptyState:
+    """Cheap loading copy — never fake progress percentages."""
+    noun = (label or "results").strip() or "results"
+    return EmptyState(
+        headline=f"Loading {noun}…",
+        description="This should only take a moment.",
+    )
+
+
+def disabled_while_busy(action: str = "this") -> EmptyState:
+    """Controls disabled while a job runs — soft, not an Error title."""
+    bit = (action or "this").strip() or "this"
+    return EmptyState(
+        headline="Not available right now",
+        description=f"Finish or cancel processing before {bit}.",
     )
 
 
@@ -248,13 +300,17 @@ def activity_history_lines(
 
 
 def search_result_lines(rec: dict, *, advanced: bool = False) -> list[str]:
-    """§16 populated / empty search rendering. Demote modality=/pack= by default."""
+    """§16 populated / empty search rendering. Demote modality=/pack= by default.
+
+    Hierarchy (product): results → no match → unavailable (optional) → error.
+    Never ANN-as-production theatre; never capability ids in soft copy.
+    """
     kind = rec.get("kind")
     if kind == "person":
         items = rec.get("items") or []
         if not items:
             return search_no_matches(str(rec.get("query") or "")).as_lines()
-        lines = []
+        lines = ["People"]
         for i in items:
             name = i.get("display_name") or "Named person"
             faces = i.get("faces", 0)
@@ -265,19 +321,41 @@ def search_result_lines(rec: dict, *, advanced: bool = False) -> list[str]:
                 lines.append(f"  person_id={i.get('person_id')}")
         return lines
     if kind == "similar":
-        status = str(rec.get("status") or "")
-        if status in {"UNAVAILABLE", "ERROR", "TIMEOUT", "CANCELLED"}:
-            return [str(rec.get("reason") or "Similarity did not run.")]
-        lines: list[str] = ["Similar results"]
+        status = str(rec.get("status") or "").upper()
+        if status == "UNAVAILABLE":
+            reason = str(
+                rec.get("reason")
+                or "Similar photos need an optional model. Nothing was searched."
+            )
+            return [
+                "Similar photos unavailable",
+                reason,
+            ]
+        if status in {"ERROR", "TIMEOUT", "CANCELLED"}:
+            return [
+                "Couldn't compare photos",
+                str(rec.get("reason") or "Similarity did not run."),
+            ]
+        lines: list[str] = ["Similar photos"]
         if advanced:
             lines = [
                 f"similar {rec.get('query')}  modality={rec.get('modality')}  "
                 f"pack={rec.get('pack_id')}",
                 rec.get("note") or "Similarity is not identity.",
             ]
+            if rec.get("fallback"):
+                lines.append(f"fallback={rec.get('fallback')}")
         else:
-            if rec.get("note"):
-                lines.append(str(rec.get("note")))
+            # Soft honesty: library scan is authoritative; index is optional speed.
+            reason = str(rec.get("reason") or "")
+            if "index is absent" in reason.lower() or "library" in reason.lower():
+                lines.append("Searched your library directly.")
+            elif rec.get("note"):
+                note = str(rec.get("note"))
+                if "identity" in note.lower():
+                    lines.append("Similar looking — not the same as a named person.")
+                else:
+                    lines.append(note)
         for i in rec.get("items") or []:
             score = i.get("score")
             if advanced:
@@ -296,15 +374,17 @@ def search_result_lines(rec: dict, *, advanced: bool = False) -> list[str]:
                 lines.append(str(label))
         if rec.get("count") == 0:
             if status == "NO_RESULT":
-                lines.append(str(rec.get("reason") or "Similarity ran and nothing matched."))
+                lines.append(str(rec.get("reason") or "Nothing matched in your library."))
             else:
                 lines.append("No matches nearby.")
         return lines
     if kind == "text":
-        status = str(rec.get("status") or "")
-        if status in {"UNAVAILABLE", "ERROR", "TIMEOUT", "CANCELLED"}:
-            return [str(rec.get("reason") or "Read text did not run.")]
-        lines = [f'Text matches for "{rec.get("query") or ""}"']
+        status = str(rec.get("status") or "").upper()
+        if status == "UNAVAILABLE":
+            return search_text_unavailable(reason=str(rec.get("reason") or "")).as_lines()
+        if status in {"ERROR", "TIMEOUT", "CANCELLED"}:
+            return search_text_error(reason=str(rec.get("reason") or "")).as_lines()
+        lines = [f'Text in photos for "{rec.get("query") or ""}"']
         if advanced:
             lines = [
                 f"OCR text {rec.get('query')!r}  hits={rec.get('count', 0)}",
@@ -318,7 +398,7 @@ def search_result_lines(rec: dict, *, advanced: bool = False) -> list[str]:
                 lines.append(snippet or str(i.get("item_id") or ""))
         if rec.get("count") == 0:
             if status == "NO_RESULT":
-                lines.append(str(rec.get("reason") or "Read text ran and nothing matched."))
+                lines.append(str(rec.get("reason") or "No text matched in your photos."))
             else:
                 lines.append("No text matches.")
         return lines
