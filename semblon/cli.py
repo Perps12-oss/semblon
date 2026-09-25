@@ -77,6 +77,29 @@ def main(argv: list[str] | None = None) -> int:
     integ.add_argument("--store", required=True, type=Path)
     mods = lab_sub.add_parser("models", help="report local buffalo_l weights (does not download)")
     lab_sub.add_parser("providers", help="list observation providers and availability")
+    query = lab_sub.add_parser(
+        "query",
+        help="Lens query on a file region (no model download; missing providers stay unavailable)",
+    )
+    query.add_argument("--image", required=True, type=Path)
+    query.add_argument("--x", type=int, default=None)
+    query.add_argument("--y", type=int, default=None)
+    query.add_argument("--w", type=int, default=None)
+    query.add_argument("--h", type=int, default=None)
+    query.add_argument(
+        "--capability",
+        default=None,
+        help="comma-separated capability ids; default is the lens set",
+    )
+    capture = lab_sub.add_parser(
+        "capture",
+        help="Lens query from a Windows screen selection (unsupported off Windows)",
+    )
+    capture.add_argument("--x", type=int, required=True)
+    capture.add_argument("--y", type=int, required=True)
+    capture.add_argument("--w", type=int, required=True)
+    capture.add_argument("--h", type=int, required=True)
+    capture.add_argument("--capability", default=None)
     oc = lab_sub.add_parser(
         "opencv",
         help="timed OpenCV import / PE layout probe (fail-fast; does not hang the suite)",
@@ -590,6 +613,36 @@ def main(argv: list[str] | None = None) -> int:
             "contract": status_report(model_overrides=overrides),
         }
         print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd in {"query", "capture"}:
+        from semblon.lens import LENS_CAPABILITIES, query_image, query_screen
+
+        caps = None
+        if getattr(args, "capability", None):
+            caps = tuple(part.strip() for part in args.capability.split(",") if part.strip())
+        try:
+            if args.labcmd == "capture":
+                report = query_screen(args.x, args.y, args.w, args.h, capabilities=caps)
+            else:
+                import cv2
+
+                image = cv2.imread(str(args.image), cv2.IMREAD_COLOR)
+                if image is None:
+                    print(f"could not read image: {args.image}", file=sys.stderr)
+                    return 2
+                report = query_image(
+                    image,
+                    x=args.x,
+                    y=args.y,
+                    w=args.w,
+                    h=args.h,
+                    capabilities=caps or LENS_CAPABILITIES,
+                )
+        except Exception as exc:
+            print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(report.as_dict(), indent=2))
         return 0
 
     if args.cmd == "lab" and args.labcmd == "opencv":
