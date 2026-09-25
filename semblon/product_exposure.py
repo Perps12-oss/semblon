@@ -76,7 +76,7 @@ GUI_PATHS: tuple[tuple[str, ExposureClass, str, str, str], ...] = (
         "Activity",
         "CANONICAL",
         "HOME_NAV activity",
-        "application.activity via Home",
+        "application.activity_memory via Home Activity workspace",
         "KEEP",
     ),
     (

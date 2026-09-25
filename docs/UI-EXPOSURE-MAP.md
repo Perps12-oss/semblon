@@ -65,7 +65,7 @@ Nav source of truth: `HOME_NAV` in `semblon/home_ui.py` (ASK / LIBRARY / PEOPLE 
 | People | `people` | Home welcome + `search_people` | **CANONICAL** — named people |
 | People to name | `unknown` | Inbox / board flatten | **CANONICAL** — human decisions; Unknown is valid |
 | Search | top bar | `_search_person` / analysing gate | **CANONICAL** — people-first today; Lens absorbs broader visual ask |
-| Activity | `activity` | `application.activity` | **CANONICAL** — soft history |
+| Activity | `activity` | `application.activity_memory` via Home Activity workspace | **CANONICAL** — soft history / Memory (people together, moments, recent processing) |
 | Lens / Inspect | `lens` + brand **Lens** | `_open_lens`, Lens workspace, `_open_region_select` | **CANONICAL** — Home route/workspace; open photo → select → soft results; backends decide availability |
 | Settings | Settings button | `_show_settings` | **CANONICAL** — theme, library path; tech under Advanced |
 | Inspector verbs | right pane | merge / assign / split / name / rule-out / ignore | **CANONICAL** — soft labels via `product_surface` |
@@ -108,7 +108,7 @@ Not Home navigation. Doors for scripts and power users. Defined in `semblon/cli.
 | `process` / `ingest` / `cluster` / `export` | Headless pipeline | **CLI** |
 | `name` / `merge` / `split` / `review *` | Corrections without GUI | **CLI** |
 | `identify` / `inbox` / `stats` / `report` | Identity ops + read-only reports | **CLI** (`report` must not write the store) |
-| `memory history\|together\|events` | S6 memory — not identity | **CLI** · no Home surface |
+| `memory history\|together\|events` | S6 memory — not identity | **CLI** · product soft surface under Home **Activity** (`application.activity_memory`); CLI remains the power door |
 | `tracks` | Video track lanes | **CLI** / Canvas data |
 | `search` | Broader than Home people search | **CLI** · Lens should absorb product visual-search intent |
 | `watch` | Incremental folder poll | **CLI** → optional **SECONDARY** later |

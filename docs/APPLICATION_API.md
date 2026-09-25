@@ -43,6 +43,7 @@ Reads:
 | `search_person(store, query)` | `search_person` | Lookup, not identity |
 | `inbox(store, run_id)` | `inbox` · `Application.inbox` | UNKNOWN is valid |
 | `activity(store, run_id?)` | `application.activity` → Home `read_activity_snapshot` | groups / relationships / events; track ≠ person |
+| `activity_memory(store, run_id?)` | `application.activity_memory` → `activity_surface.load_activity_memory` | Soft Home Activity / Memory (processing + people together + moments); not identity |
 | `canvas(store, run_id?)` | `load_canvas` · `Application.canvas` | Overlay payload. Cluster ≠ person |
 | `job_current()` | `Application.job_current` / `busy` / `state` / `paused` | Handle while running; None when idle |
 

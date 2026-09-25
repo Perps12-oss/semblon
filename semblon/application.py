@@ -53,6 +53,7 @@ __all__ = [
     "JobHandle",
     "JobResult",
     "activity",
+    "activity_memory",
     "apply_ignore",
     "apply_merge",
     "apply_name",
@@ -100,6 +101,17 @@ def activity(store: Path, run_id: str | None = None) -> dict:
     """Read-only groups / relationships / events snapshot. Track ≠ person."""
     rid = resolve_run_id(store, run_id)
     return read_activity_snapshot(store, rid)
+
+
+def activity_memory(store: Path, run_id: str | None = None) -> dict:
+    """Product Activity/Memory view — soft history, not the DB model.
+
+    Combines recent processing with S6 people-together and moments.
+    Read-only. Does not assign persons. Time/place are not identity.
+    """
+    from semblon.activity_surface import load_activity_memory
+
+    return load_activity_memory(store, run_id)
 
 
 class Application:
@@ -179,6 +191,9 @@ class Application:
 
     def activity(self, run_id: str | None = None) -> dict:
         return activity(self.store, run_id)
+
+    def activity_memory(self, run_id: str | None = None) -> dict:
+        return activity_memory(self.store, run_id)
 
     def people(self) -> dict:
         return search_people(self.store)
