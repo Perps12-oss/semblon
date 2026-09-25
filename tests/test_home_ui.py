@@ -374,3 +374,34 @@ def test_counts_from_done_payload():
         }
     )
     assert counts == {"photos": 340, "faces": 42, "groups": 12}
+
+
+def test_home_ui_token_names_are_bound():
+    """Regression: SP_20 / INK_SECONDARY style NameErrors on Windows launch."""
+    import re
+    from pathlib import Path
+
+    import semblon.home_ui as home_ui
+
+    src = Path("semblon/home_ui.py").read_text(encoding="utf-8")
+    used = set(
+        re.findall(
+            r"\b((?:SP|BG|INK|TEXT|BORDER|ACCENT|SURFACE)_[A-Z0-9_]+|"
+            r"SIDEBAR_WIDTH|WINDOW_DEFAULT|WINDOW_MIN|SUCCESS|DISPLAY|"
+            r"H1|H2|H3|BODY|BODY_SMALL|BODY_STRONG|CAPTION|META|MONO)\b",
+            src,
+        )
+    )
+    import_block = re.search(r"from semblon\.ui_tokens import \((.*?)\)", src, re.S)
+    assert import_block is not None
+    imported = set(re.findall(r"[A-Z][A-Z0-9_]*", import_block.group(1)))
+    # Mid-merge stub sits in the same try/except as the ui_tokens import.
+    stub_region = src[import_block.end() : import_block.end() + 2500]
+    stubbed = set(re.findall(r"^    ([A-Z][A-Z0-9_]*) =", stub_region, re.M))
+    missing_import = sorted(used - imported)
+    missing_stub = sorted(used - stubbed)
+    assert missing_import == [], f"used but not imported from ui_tokens: {missing_import}"
+    assert missing_stub == [], f"used but not in ImportError stub: {missing_stub}"
+    # Module must actually bind tokens used by HomeApp chrome.
+    assert getattr(home_ui, "INK_SECONDARY")
+    assert getattr(home_ui, "SP_20")
