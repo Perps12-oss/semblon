@@ -579,9 +579,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "lab" and args.labcmd == "providers":
         from semblon.engine import select_execution_provider
-        from semblon.observers import optional_status
+        from semblon.observers import optional_status, probe_ocr_status
+        from semblon.runtime_contract import status_report
 
-        rec = {"observers": optional_status(), "execution": select_execution_provider(prefer_gpu=True)}
+        ocr_ready, _ = probe_ocr_status()
+        overrides = {"ocr": "AVAILABLE"} if ocr_ready else None
+        rec = {
+            "observers": optional_status(),
+            "execution": select_execution_provider(prefer_gpu=True),
+            "contract": status_report(model_overrides=overrides),
+        }
         print(json.dumps(rec, indent=2))
         return 0
 

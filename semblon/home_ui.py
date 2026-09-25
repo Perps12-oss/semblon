@@ -3374,6 +3374,15 @@ class HomeApp:
             if text_rec is not None and int(text_rec.get("count") or 0) > 0:
                 lines.append("")
                 lines.extend(format_search_lines(text_rec))
+            elif text_rec is not None and text_rec.get("status") in {
+                "UNAVAILABLE",
+                "ERROR",
+                "TIMEOUT",
+                "CANCELLED",
+                "NO_RESULT",
+            }:
+                lines.append("")
+                lines.extend(format_search_lines(text_rec))
         self._set_inspector("Search", lines)
 
     def _show_settings(self) -> None:

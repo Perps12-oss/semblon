@@ -373,6 +373,37 @@ def pose_landmarks(img) -> dict | None:
         return {"error": type(e).__name__, "note": str(e)[:240]}
 
 
+def _ocr_failure_payload(note: str, *, crash: str | None = None) -> dict:
+    """OCR that did not produce text. Not an empty match."""
+    from semblon.runtime_contract import invoke
+
+    if crash:
+        result, _ = invoke("ocr", model_state="AVAILABLE", run=lambda: {"crash": crash})
+        legacy = "error"
+    else:
+        result, _ = invoke("ocr")
+        legacy = "unavailable"
+    return {
+        "status": legacy,
+        "note": note or result.reason,
+        "contract_status": result.status,
+        "reason": result.reason,
+        "error_id": result.error_id,
+    }
+
+
+def _extra_failure_payload(capability: str, note: str, *, crash: str | None = None) -> dict:
+    """CLIP/pose failure stamp. These are not the SigLIP capability."""
+    status = "ERROR" if crash else "UNAVAILABLE"
+    return {
+        "status": "error" if crash else "unavailable",
+        "note": note,
+        "contract_status": status,
+        "reason": note or f"{capability} did not run.",
+        "error_id": f"{capability}.{status}",
+    }
+
+
 def persist_item(
     conn,
     *,
@@ -466,7 +497,9 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
                 run_id=run_id,
                 kind="text",
                 provider=OCR_PROVIDER,
-                payload={"status": "unavailable", "note": optional_status()["notes"].get("ocr", "unavailable")},
+                payload=_ocr_failure_payload(
+                    optional_status()["notes"].get("ocr", "unavailable")
+                ),
                 score=0.0,
             )
         elif rec.get("error"):
@@ -476,17 +509,22 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
                 run_id=run_id,
                 kind="text",
                 provider=OCR_PROVIDER,
-                payload={"status": "error", "error": rec["error"], "note": rec.get("note", "")},
+                payload=_ocr_failure_payload(rec.get("note") or rec["error"], crash=rec["error"]),
                 score=0.0,
             )
         else:
+            text = rec.get("text") or ""
             persist_item(
                 conn,
                 observation_id=observation_id,
                 run_id=run_id,
                 kind="text",
                 provider=OCR_PROVIDER,
-                payload={"text": rec.get("text") or "", "identity": "not facekit"},
+                payload={
+                    "text": text,
+                    "identity": "not facekit",
+                    "contract_status": "SUCCESS" if text.strip() else "NO_RESULT",
+                },
                 score=rec.get("score"),
             )
             counts["text"] += 1
@@ -499,7 +537,9 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
                 run_id=run_id,
                 kind="clip",
                 provider="open-clip",
-                payload={"status": "unavailable", "note": optional_status()["notes"].get("clip", "unavailable")},
+                payload=_extra_failure_payload(
+                    "clip", optional_status()["notes"].get("clip", "unavailable")
+                ),
                 score=0.0,
             )
         elif rec.get("error"):
@@ -509,7 +549,9 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
                 run_id=run_id,
                 kind="clip",
                 provider="open-clip",
-                payload={"status": "error", "error": rec["error"], "note": rec.get("note", "")},
+                payload=_extra_failure_payload(
+                    "clip", rec.get("note") or rec["error"], crash=rec["error"]
+                ),
                 score=0.0,
             )
         else:
@@ -535,7 +577,9 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
                 run_id=run_id,
                 kind="pose",
                 provider=POSE_PROVIDER,
-                payload={"status": "unavailable", "note": optional_status()["notes"].get("pose", "unavailable")},
+                payload=_extra_failure_payload(
+                    "pose", optional_status()["notes"].get("pose", "unavailable")
+                ),
                 score=0.0,
             )
         elif rec.get("error"):
@@ -545,7 +589,9 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
                 run_id=run_id,
                 kind="pose",
                 provider=POSE_PROVIDER,
-                payload={"status": "error", "error": rec["error"], "note": rec.get("note", "")},
+                payload=_extra_failure_payload(
+                    "pose", rec.get("note") or rec["error"], crash=rec["error"]
+                ),
                 score=0.0,
             )
         else:

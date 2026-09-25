@@ -483,6 +483,56 @@ def _finish(
     return result, note_success(circuit)
 
 
+def declare(
+    capability_id: str,
+    *,
+    catalog: Catalog | None = None,
+    model_state: ModelState | None = None,
+) -> StructuredResult:
+    """State of a capability that was not invoked.
+
+    A ready or degraded provider stays UNAVAILABLE until something actually
+    runs. That is not an empty match.
+    """
+    cat = catalog or default_catalog()
+    spec = cat.get(capability_id)
+    model: ModelState = model_state or spec.default_model
+    provider = provider_state_for(model, spec, False)
+    if provider == "FAILED":
+        result, _ = invoke(capability_id, catalog=cat, model_state=model)
+        return result
+    if provider == "DEGRADED":
+        return assert_honest(
+            _result(
+                spec,
+                model,
+                "DEGRADED",
+                "UNAVAILABLE",
+                f"{spec.label} was not invoked. Fallback {spec.fallback_method} was not used.",
+                error_id=f"{spec.id}.NOT_INVOKED",
+            )
+        )
+    return assert_honest(
+        _result(
+            spec,
+            model,
+            "READY",
+            "UNAVAILABLE",
+            f"{spec.label} is installed and was not invoked.",
+            error_id=f"{spec.id}.NOT_INVOKED",
+        )
+    )
+
+
+def status_report(*, model_overrides: dict[str, ModelState] | None = None) -> list[dict]:
+    """Every planned capability, not invoked. Deferred rows stay in the list."""
+    overrides = model_overrides or {}
+    return [
+        declare(spec.id, model_state=overrides.get(spec.id)).as_dict()
+        for spec in default_catalog().specs
+    ]
+
+
 def contract_checks(catalog: Catalog | None = None) -> list[tuple[str, bool, str]]:
     cat = catalog or default_catalog()
     checks: list[tuple[str, bool, str]] = []

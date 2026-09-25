@@ -283,6 +283,9 @@ def search_result_lines(rec: dict, *, advanced: bool = False) -> list[str]:
             lines.append("No matches nearby.")
         return lines
     if kind == "text":
+        status = str(rec.get("status") or "")
+        if status in {"UNAVAILABLE", "ERROR", "TIMEOUT", "CANCELLED"}:
+            return [str(rec.get("reason") or "Read text did not run.")]
         lines = [f'Text matches for "{rec.get("query") or ""}"']
         if advanced:
             lines = [
@@ -296,7 +299,10 @@ def search_result_lines(rec: dict, *, advanced: bool = False) -> list[str]:
             else:
                 lines.append(snippet or str(i.get("item_id") or ""))
         if rec.get("count") == 0:
-            lines.append("No text matches.")
+            if status == "NO_RESULT":
+                lines.append(str(rec.get("reason") or "Read text ran and nothing matched."))
+            else:
+                lines.append("No text matches.")
         return lines
     return []
 
