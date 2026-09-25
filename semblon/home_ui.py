@@ -98,6 +98,7 @@ try:
         SP_24,
         SP_32,
         SP_48,
+        STAT,
         SUCCESS,
         SURFACE_PRIMARY,
         TEXT_DISABLED,
@@ -119,19 +120,19 @@ except ImportError:  # pragma: no cover - mid-merge stub
     BG_DARK = "#1C1C1D"
     BG_SUBTLE = "#F5F5F4"
     BG_SURFACE = "#FFFFFF"
-    BODY = ("Segoe UI", 16)
-    BODY_SMALL = ("Segoe UI", 15)
-    BODY_STRONG = ("Segoe UI", 16, "bold")
+    BODY = ("Segoe UI", 12)
+    BODY_SMALL = ("Segoe UI", 11)
+    BODY_STRONG = ("Segoe UI", 12, "bold")
     BORDER_SUBTLE = "#E4E4E2"
-    CAPTION = ("Segoe UI", 12)
-    DISPLAY = ("Segoe UI", 32, "bold")
-    H1 = ("Segoe UI", 20, "bold")
-    H2 = ("Segoe UI", 20, "bold")
-    H3 = ("Segoe UI", 14)
+    CAPTION = ("Segoe UI", 10)
+    DISPLAY = ("Segoe UI", 22, "bold")
+    H1 = ("Segoe UI", 15, "bold")
+    H2 = ("Segoe UI", 15, "bold")
+    H3 = ("Segoe UI", 12)
     INK_SECONDARY = "#565656"
     INK_TERTIARY = "#8A8A8A"
-    META = ("Segoe UI", 13)
-    MONO = ("Cascadia Code", 13)
+    META = ("Segoe UI", 11)
+    MONO = ("Cascadia Code", 11)
     SIDEBAR_WIDTH = 228
     SP_4 = 4
     SP_8 = 8
@@ -141,6 +142,7 @@ except ImportError:  # pragma: no cover - mid-merge stub
     SP_24 = 24
     SP_32 = 32
     SP_48 = 48
+    STAT = ("Segoe UI", 20, "bold")
     SUCCESS = "#1A7F37"
     SURFACE_PRIMARY = "#FFFFFF"
     TEXT_DISABLED = "#B9B9B9"
@@ -1665,38 +1667,56 @@ class HomeApp:
         )
 
     def _build_home_landing(self) -> None:
-        """Dashboard hero. The sentence is the title. No second wordmark."""
+        """Local-first library shell (grok Home): headline, stats, capabilities, last result."""
+        from semblon.home_shell import (
+            SHELL_HEADLINE,
+            SHELL_LAST_HINT,
+            SHELL_LAST_TITLE,
+            SHELL_READY_TITLE,
+            SHELL_SUBCOPY,
+            SHELL_TRACKED_TITLE,
+        )
+
         for child in self._landing.winfo_children():
             child.destroy()
-        hero = tk.Frame(self._landing, bg=BG_CANVAS)
-        hero.pack(anchor=tk.NW, padx=SP_24, pady=SP_24)
+        root = tk.Frame(self._landing, bg=BG_CANVAS)
+        root.pack(fill=tk.BOTH, expand=True, padx=SP_24, pady=SP_20)
+        self._shell_root = root
+
+        # Brand mark stays small — headline is the product statement.
         tk.Label(
-            hero,
-            text="Find the people in your photos",
+            root,
+            text="Semblon",
+            font=CAPTION,
+            bg=BG_CANVAS,
+            fg=INK_TERTIARY,
+            anchor="w",
+        ).pack(anchor=tk.W)
+
+        tk.Label(
+            root,
+            text=SHELL_HEADLINE,
             font=DISPLAY,
             bg=BG_CANVAS,
             fg=TEXT_PRIMARY,
-            wraplength=560,
+            wraplength=640,
             justify=tk.LEFT,
             anchor="w",
-        ).pack(anchor=tk.W)
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
         tk.Label(
-            hero,
-            text=(
-                "Semblon looks through your photo folder, finds faces, "
-                "groups the ones that belong together, and lets you "
-                "decide who those people are."
-            ),
+            root,
+            text=SHELL_SUBCOPY,
             font=BODY,
             bg=BG_CANVAS,
             fg=TEXT_SECONDARY,
-            wraplength=560,
+            wraplength=640,
             justify=tk.LEFT,
             anchor="w",
-        ).pack(anchor=tk.W, pady=(SP_12, 0))
-        actions = tk.Frame(hero, bg=BG_CANVAS)
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+
+        actions = tk.Frame(root, bg=BG_CANVAS)
         self._landing_actions = actions
-        actions.pack(anchor=tk.W, pady=(SP_24, 0))
+        actions.pack(anchor=tk.W, pady=(SP_16, 0))
         self.btn_landing_cta = _button(
             actions,
             "Add a photo folder",
@@ -1707,7 +1727,7 @@ class HomeApp:
         )
         self.btn_landing_review = _button(
             actions,
-            "Review suggestions",
+            "Review people",
             lambda: self._navigate("unknown"),
             kind="secondary",
             plate=BG_CANVAS,
@@ -1719,88 +1739,184 @@ class HomeApp:
             kind="secondary",
             plate=BG_CANVAS,
         )
-        # Pack order and kinds are applied in _refresh_landing_hint.
 
-        steps = tk.Frame(hero, bg=BG_CANVAS)
-        self._landing_steps = steps
-        steps.pack(anchor=tk.W, pady=(SP_24, 0))
-        ui_strong = (DISPLAY[0], 14, "bold")
-        self._landing_step_cards: list[dict] = []
-        for _ in range(3):
-            card = tk.Frame(
-                steps,
-                bg=BG_CANVAS,
-                highlightbackground=BORDER_SUBTLE,
-                highlightthickness=1,
-                padx=SP_16,
-                pady=SP_16,
-            )
-            card.pack(side=tk.LEFT, anchor=tk.N, padx=(0, SP_12))
-            marker = tk.Label(
-                card,
-                text="",
-                font=H2,
-                bg=BG_CANVAS,
-                fg=TEXT_DISABLED,
-                anchor="w",
-            )
-            marker.pack(anchor=tk.W)
-            title_lbl = tk.Label(
-                card,
-                text="",
-                font=ui_strong,
-                bg=BG_CANVAS,
-                fg=TEXT_PRIMARY,
-                wraplength=180,
-                anchor="w",
-                justify=tk.LEFT,
-            )
-            title_lbl.pack(anchor=tk.W, pady=(SP_8, 0))
-            desc_lbl = tk.Label(
-                card,
-                text="",
-                font=H3,
-                bg=BG_CANVAS,
-                fg=TEXT_SECONDARY,
-                wraplength=180,
-                anchor="nw",
-                justify=tk.LEFT,
-            )
-            desc_lbl.pack(anchor=tk.W, pady=(SP_8, 0))
-            self._landing_step_cards.append(
-                {
-                    "card": card,
-                    "marker": marker,
-                    "title": title_lbl,
-                    "desc": desc_lbl,
-                }
-            )
+        # Stat tiles
+        self._shell_stats = tk.Frame(root, bg=BG_CANVAS)
+        self._shell_stats.pack(anchor=tk.W, fill=tk.X, pady=(SP_20, 0))
+        self._shell_stat_vars: list[tk.StringVar] = []
+        self._shell_stat_cards: list[tk.Frame] = []
 
-        privacy = tk.Frame(hero, bg=BG_CANVAS)
+        cols = tk.Frame(root, bg=BG_CANVAS)
+        cols.pack(anchor=tk.W, fill=tk.BOTH, expand=True, pady=(SP_20, 0))
+        left = tk.Frame(cols, bg=BG_CANVAS)
+        left.pack(side=tk.LEFT, anchor=tk.N, fill=tk.BOTH, expand=True, padx=(0, SP_24))
+        right = tk.Frame(cols, bg=BG_CANVAS)
+        right.pack(side=tk.LEFT, anchor=tk.N, fill=tk.BOTH, expand=True)
+
+        tk.Label(
+            left,
+            text=SHELL_READY_TITLE,
+            font=BODY_STRONG,
+            bg=BG_CANVAS,
+            fg=TEXT_PRIMARY,
+            anchor="w",
+        ).pack(anchor=tk.W)
+        self._shell_ready = tk.Frame(left, bg=BG_CANVAS)
+        self._shell_ready.pack(anchor=tk.W, fill=tk.X, pady=(SP_8, 0))
+
+        tk.Label(
+            left,
+            text=SHELL_TRACKED_TITLE,
+            font=BODY_STRONG,
+            bg=BG_CANVAS,
+            fg=TEXT_PRIMARY,
+            anchor="w",
+        ).pack(anchor=tk.W, pady=(SP_16, 0))
+        self._shell_tracked = tk.Frame(left, bg=BG_CANVAS)
+        self._shell_tracked.pack(anchor=tk.W, fill=tk.X, pady=(SP_8, 0))
+
+        tk.Label(
+            right,
+            text=SHELL_LAST_TITLE,
+            font=BODY_STRONG,
+            bg=BG_CANVAS,
+            fg=TEXT_PRIMARY,
+            anchor="w",
+        ).pack(anchor=tk.W)
+        self._shell_last_body = tk.StringVar(value="")
+        self._shell_last_hint = tk.StringVar(value=SHELL_LAST_HINT)
+        tk.Label(
+            right,
+            textvariable=self._shell_last_body,
+            font=BODY,
+            bg=BG_CANVAS,
+            fg=TEXT_PRIMARY,
+            wraplength=320,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+        tk.Label(
+            right,
+            textvariable=self._shell_last_hint,
+            font=CAPTION,
+            bg=BG_CANVAS,
+            fg=TEXT_SECONDARY,
+            wraplength=320,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+
+        privacy = tk.Frame(root, bg=BG_CANVAS)
         self._landing_privacy = privacy
-        privacy.pack(anchor=tk.W, pady=(SP_24, 0))
-        if draw_icon is not None:
-            icon_px = 18
-            mark = tk.Canvas(
-                privacy,
-                width=icon_px,
-                height=icon_px,
-                bg=BG_CANVAS,
-                highlightthickness=0,
-            )
-            mark.pack(side=tk.LEFT, padx=(0, SP_8))
-            draw_icon(mark, "shield", 0, 0, icon_px, SUCCESS)
+        privacy.pack(anchor=tk.W, pady=(SP_20, 0))
         tk.Label(
             privacy,
             text="Everything stays on this computer. Nothing is uploaded.",
-            font=META,
+            font=CAPTION,
             bg=BG_CANVAS,
             fg=TEXT_SECONDARY,
-            wraplength=560,
+            wraplength=640,
             justify=tk.LEFT,
             anchor="w",
         ).pack(side=tk.LEFT)
+
+        # Kept for _refresh_landing_hint compatibility (first-run step cards unused).
+        self._landing_steps = tk.Frame(root, bg=BG_CANVAS)
+        self._landing_step_cards = []
+        self._last_lens_result: dict | None = getattr(self, "_last_lens_result", None)
         self._refresh_landing_hint()
+        self._refresh_library_shell()
+
+    def _refresh_library_shell(self, summary: dict | None = None) -> None:
+        """Push live counts + capability honesty into the Home shell."""
+        from semblon.home_shell import (
+            capability_sections,
+            enrich_summary_counts,
+            last_result_copy,
+            shell_stats,
+        )
+
+        if not hasattr(self, "_shell_stats"):
+            return
+        if summary is None:
+            summary = self._library_summary()
+        summary = enrich_summary_counts(self.store, summary)
+        files = 0 if summary is None else int(summary.get("files") or 0)
+
+        for child in self._shell_stats.winfo_children():
+            child.destroy()
+        self._shell_stat_vars = []
+        for tile in shell_stats(summary):
+            card = tk.Frame(
+                self._shell_stats,
+                bg=BG_SUBTLE,
+                highlightbackground=BORDER_SUBTLE,
+                highlightthickness=1,
+                padx=SP_12,
+                pady=SP_12,
+            )
+            card.pack(side=tk.LEFT, padx=(0, SP_8), anchor=tk.N)
+            var = tk.StringVar(value=str(tile["value"]))
+            self._shell_stat_vars.append(var)
+            tk.Label(
+                card,
+                textvariable=var,
+                font=STAT,
+                bg=BG_SUBTLE,
+                fg=TEXT_PRIMARY,
+                anchor="w",
+            ).pack(anchor=tk.W)
+            tk.Label(
+                card,
+                text=tile["label"],
+                font=CAPTION,
+                bg=BG_SUBTLE,
+                fg=TEXT_SECONDARY,
+                anchor="w",
+            ).pack(anchor=tk.W, pady=(SP_4, 0))
+
+        sections = capability_sections(has_library_content=files > 0)
+        for frame, rows in (
+            (self._shell_ready, sections["ready"]),
+            (self._shell_tracked, sections["tracked"]),
+        ):
+            for child in frame.winfo_children():
+                child.destroy()
+            if not rows:
+                tk.Label(
+                    frame,
+                    text="—",
+                    font=BODY,
+                    bg=BG_CANVAS,
+                    fg=TEXT_SECONDARY,
+                    anchor="w",
+                ).pack(anchor=tk.W)
+                continue
+            for row in rows:
+                line = tk.Frame(frame, bg=BG_CANVAS)
+                line.pack(anchor=tk.W, fill=tk.X, pady=(0, SP_4))
+                tk.Label(
+                    line,
+                    text=row["label"],
+                    font=BODY,
+                    bg=BG_CANVAS,
+                    fg=TEXT_PRIMARY,
+                    anchor="w",
+                ).pack(side=tk.LEFT)
+                if row.get("state"):
+                    tk.Label(
+                        line,
+                        text=row["state"],
+                        font=CAPTION,
+                        bg=BG_CANVAS,
+                        fg=TEXT_SECONDARY,
+                        anchor="e",
+                    ).pack(side=tk.RIGHT)
+
+        body, hint = last_result_copy(getattr(self, "_last_lens_result", None))
+        if hasattr(self, "_shell_last_body"):
+            self._shell_last_body.set(body)
+            self._shell_last_hint.set(hint)
 
     def _build_processing_home(self) -> None:
         """PROCESSING state — results framing while a job runs (not marketing + telemetry)."""
@@ -2017,30 +2133,28 @@ class HomeApp:
         files = 0 if summary is None else int(summary.get("files") or 0)
         if files <= 0:
             self._refresh_landing_hint()
+            self._refresh_library_shell(summary)
             self._landing.pack(fill=tk.BOTH, expand=True)
             self._set_inspector_collapsed(True)
             self._set_inspector("Home", list(INSPECTOR_HOME_EMPTY))
             return
 
-        # Populated library: never the how-it-works brochure.
-        self._show_library_home(summary)
-        self._set_inspector_collapsed(False)
-        lib = format_library_lines(self.store, source_type="folder")
-        if not library_has_media_lines(lib):
-            self._set_inspector("Photos", photos_empty().as_lines())
-        else:
-            waiting = int(summary.get("unnamed_groups") or 0)
-            from semblon.library_status import people_to_name_text
+        # Populated library: local-first shell (stats + capabilities), not brochure + grid.
+        self._refresh_landing_hint()
+        self._refresh_library_shell(summary)
+        self._landing.pack(fill=tk.BOTH, expand=True)
+        self._set_inspector_collapsed(True)
+        waiting = int(summary.get("unnamed_groups") or 0)
+        from semblon.home_shell import SHELL_HEADLINE
+        from semblon.library_status import people_to_name_text
 
-            lines = [
-                people_to_name_text(waiting) + "."
-                if waiting
-                else "Your photo library.",
-                "Select a photo to see faces Semblon found.",
-            ]
-            if waiting:
-                lines.append("Open People to name to review face groups.")
-            self._set_inspector("Photos", lines)
+        lines = [
+            SHELL_HEADLINE,
+            people_to_name_text(waiting) + "." if waiting else "Browse Photos when you want the grid.",
+        ]
+        if waiting:
+            lines.append("Open People to name when Semblon needs a decision.")
+        self._set_inspector("Home", lines)
 
     def _build_library_home(self) -> None:
         """Returning-user strip above the photo grid — Review first, faces visible."""
@@ -2324,8 +2438,9 @@ class HomeApp:
         if privacy is not None:
             privacy.pack_forget()
             if plan["show_privacy"]:
-                privacy.pack(anchor=tk.W, pady=(SP_24, 0))
+                privacy.pack(anchor=tk.W, pady=(SP_20, 0))
 
+        # Step cards were retired from the shell; keep loop safe if empty.
         steps = landing_step_states(files=files, unnamed=waiting)
         cards = getattr(self, "_landing_step_cards", None) or []
         for card, step in zip(cards, steps):
@@ -2661,12 +2776,20 @@ class HomeApp:
         """Lens stays on the top bar. It asks about the open photo, or says to open one."""
         self._nav = "lens"
         self._mark_nav_active("lens")
-        if self._home_state() == "EXPLORE":
-            self._show_library_home()
         media_id = getattr(self, "_insp_media_id", None)
         if media_id:
             self._open_region_select()
             return
+        # No photo selected — send user to Photos; record honest last-result.
+        self._last_lens_result = {
+            "status": "UNAVAILABLE",
+            "reason": "Open a photo first. Nothing was searched.",
+        }
+        if hasattr(self, "_refresh_library_shell"):
+            try:
+                self._refresh_library_shell()
+            except Exception:  # noqa: BLE001
+                pass
         self._set_inspector(
             "Lens",
             [
@@ -2674,6 +2797,7 @@ class HomeApp:
                 "Lens asks about that picture. Nothing was searched.",
             ],
         )
+        self._navigate("photos")
 
     def _mark_nav_active(self, nav_id: str) -> None:
         """Best-effort active nav styling in ttk (underline / state)."""

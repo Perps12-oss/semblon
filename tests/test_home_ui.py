@@ -137,7 +137,8 @@ def test_home_is_a_job_client():
     # UX Rescue landing + settings + result card.
     assert "_show_home_landing" in src
     assert "Add a photo folder" in src
-    assert "Find the people in your photos" in src
+    assert "SHELL_HEADLINE" in src or "Your pictures stay here." in src
+    assert "_refresh_library_shell" in src
     assert "open_advanced_diagnostics" in src
     assert "Your photos are ready" in src
     assert "Review people" in src
@@ -242,19 +243,34 @@ def test_home_landing_wraplength_avoids_clipping():
     import semblon.home_ui as home_ui
 
     build = inspect.getsource(home_ui.HomeApp._build_home_landing)
-    assert "wraplength=560" in build
+    assert "wraplength=640" in build
     assert "justify=tk.CENTER" not in build
     assert "width=48" not in build
-    assert "width=18" not in build
-    assert 'text="Semblon"' not in build
-    assert "highlightthickness=1" in build
-    assert "_landing_step_cards" in build
+    assert "Your pictures stay here." in build or "SHELL_HEADLINE" in build
+    assert "_shell_stats" in build
     assert "_landing_privacy" in build
+    assert "Ready without a download" in build or "SHELL_READY_TITLE" in build
     hint = inspect.getsource(home_ui.HomeApp._refresh_landing_hint)
     assert "previously added" not in hint
     assert "landing_cta_plan" in hint
-    assert "landing_step_states" in hint
     assert "show_privacy" in hint
+
+
+def test_populated_home_skips_first_run_marketing():
+    """Home with a library shows the local-first shell, not the how-it-works brochure."""
+    import inspect
+
+    import semblon.home_ui as home_ui
+
+    show = inspect.getsource(home_ui.HomeApp._show_home_landing)
+    assert "_refresh_library_shell" in show
+    assert 'files <= 0' in show or "files <= 0" in show
+    # Populated Home stays on the shell — photo grid is Photos, not Home.
+    assert "_show_library_home(summary)" not in show
+    build = inspect.getsource(home_ui.HomeApp._build_home_landing)
+    assert "SHELL_HEADLINE" in build or "Your pictures stay here." in build
+    assert "Add a photo folder to begin" not in build
+    assert "Find the people in your photos" not in build
 
 
 def test_landing_cta_plan_first_run_vs_returning():
@@ -293,24 +309,6 @@ def test_landing_cta_plan_first_run_vs_returning():
     assert [s["phase"] for s in done] == ["done", "done", "done"]
     assert all(s["marker"] == "✓" for s in done)
     assert "caught up" in done[2]["desc"].lower()
-
-
-def test_populated_home_skips_first_run_marketing():
-    """Photos with a library must not keep the how-it-works brochure."""
-    import inspect
-
-    import semblon.home_ui as home_ui
-
-    show = inspect.getsource(home_ui.HomeApp._show_home_landing)
-    assert "_show_library_home" in show
-    assert 'files <= 0' in show or "files <= 0" in show
-    build = inspect.getsource(home_ui.HomeApp._build_library_home)
-    assert "btn_lib_review" in build
-    assert "_lib_home_thumbs" in build
-    assert "Find the people in your photos" not in build
-    assert "Add a photo folder to begin" not in build
-    thumbs = inspect.getsource(home_ui.HomeApp._refresh_library_home_thumbs)
-    assert "_unnamed_cluster_face_paths" in thumbs
 
 
 def test_home_search_while_analysing_is_state_aware():

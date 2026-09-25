@@ -30,18 +30,21 @@ FONT_FAMILY = FONT_TEXT
 MONO_FAMILY = FONT_MONO
 
 # Role → tk font tuple. Sizes are points.
-# hero 32 / title 20 / body 16 / body-sm 15 / ui 14 / meta 13 / caption 12.
-HERO: tuple[str, int, str] = (FONT_TEXT, 32, "bold")
-TITLE: tuple[str, int, str] = (FONT_TEXT, 20, "bold")
-BODY: tuple[str, int] = (FONT_TEXT, 16)
-BODY_SM: tuple[str, int] = (FONT_TEXT, 15)
-UI: tuple[str, int] = (FONT_TEXT, 14)
-META: tuple[str, int] = (FONT_TEXT, 13)
-CAPTION: tuple[str, int] = (FONT_TEXT, 12)
-BODY_STRONG: tuple[str, int, str] = (FONT_TEXT, 16, "bold")
+# Compact product scale — large Tk point sizes look soft/blurry on Windows DPI.
+# hero 22 / title 15 / body 12 / body-sm 11 / ui 12 / meta 11 / caption 10.
+HERO: tuple[str, int, str] = (FONT_TEXT, 22, "bold")
+TITLE: tuple[str, int, str] = (FONT_TEXT, 15, "bold")
+BODY: tuple[str, int] = (FONT_TEXT, 12)
+BODY_SM: tuple[str, int] = (FONT_TEXT, 11)
+UI: tuple[str, int] = (FONT_TEXT, 12)
+META: tuple[str, int] = (FONT_TEXT, 11)
+CAPTION: tuple[str, int] = (FONT_TEXT, 10)
+BODY_STRONG: tuple[str, int, str] = (FONT_TEXT, 12, "bold")
 # Tabular-looking digits: Tk has no font-variant. Mono is the stand-in
 # for counts that update during a scan.
-META_TABULAR: tuple[str, int] = (FONT_MONO, 13)
+META_TABULAR: tuple[str, int] = (FONT_MONO, 11)
+# Stat tile numbers on the library Home shell.
+STAT: tuple[str, int, str] = (FONT_TEXT, 20, "bold")
 
 # Legacy role names used by Home, Review, and diagnostics.
 DISPLAY: tuple[str, int, str] = HERO
@@ -49,7 +52,7 @@ H1: tuple[str, int, str] = TITLE
 H2: tuple[str, int, str] = TITLE
 H3: tuple[str, int] = UI
 BODY_SMALL: tuple[str, int] = BODY_SM
-CAPTION_STRONG: tuple[str, int, str] = (FONT_TEXT, 12, "bold")
+CAPTION_STRONG: tuple[str, int, str] = (FONT_TEXT, 10, "bold")
 OVERLINE: tuple[str, int] = CAPTION
 MONO: tuple[str, int] = META_TABULAR
 
@@ -70,6 +73,7 @@ FONT_ROLES: dict[str, tuple[Any, ...]] = {
     "caption_strong": CAPTION_STRONG,
     "overline": OVERLINE,
     "mono": MONO,
+    "stat": STAT,
 }
 
 # Spacing scale (px). 4 / 8 / 12 / 16 / 20 / 24 / 32 only for new chrome.
@@ -108,16 +112,16 @@ INSPECTOR_WIDTH = 300
 CONTENT_MAX_WIDTH = 860
 CONTENT_PAD = SP_24
 
-PRIMARY_HEIGHT = 40
-SECONDARY_HEIGHT = 36
-TERTIARY_HEIGHT = 28
-NAV_HEIGHT = 36
+PRIMARY_HEIGHT = 32
+SECONDARY_HEIGHT = 28
+TERTIARY_HEIGHT = 24
+NAV_HEIGHT = 28
 
-PRIMARY_PAD_X = 20
-PRIMARY_PAD_Y = 10
-SECONDARY_PAD_X = 16
-SECONDARY_PAD_Y = 8
-TERTIARY_PAD_X = 12
+PRIMARY_PAD_X = 14
+PRIMARY_PAD_Y = 6
+SECONDARY_PAD_X = 12
+SECONDARY_PAD_Y = 5
+TERTIARY_PAD_X = 10
 TERTIARY_PAD_Y = 4
 
 SECONDARY_FONT: tuple[str, int] = BODY
