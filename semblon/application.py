@@ -76,13 +76,11 @@ __all__ = [
 
 
 def board(store: Path, run_id: str | None = None) -> dict:
-    """Read-only review board. Does not enrol anyone."""
     rid = resolve_run_id(store, run_id)
     return load_board(store, rid)
 
 
 def chrome_board(store: Path, run_id: str | None = None, *, mode: str = "live") -> dict:
-    """Shared Cluster Review DTO (export snapshot + Home / review-ui live)."""
     from semblon.review_chrome import build_chrome_board
 
     rid = resolve_run_id(store, run_id)
@@ -90,7 +88,6 @@ def chrome_board(store: Path, run_id: str | None = None, *, mode: str = "live") 
 
 
 def review_document(store: Path, run_id: str | None = None, *, mode: str = "live") -> str:
-    """Render the shared Cluster Review HTML document."""
     from semblon.review_chrome import render_review_document_from_store
 
     rid = resolve_run_id(store, run_id)
@@ -98,32 +95,29 @@ def review_document(store: Path, run_id: str | None = None, *, mode: str = "live
 
 
 def activity(store: Path, run_id: str | None = None) -> dict:
-    """Read-only groups / relationships / events snapshot. Track ≠ person."""
     rid = resolve_run_id(store, run_id)
     return read_activity_snapshot(store, rid)
 
 
 def activity_memory(store: Path, run_id: str | None = None) -> dict:
-    """Product Activity/Memory view — soft history, not the DB model.
-
-    Combines recent processing with S6 people-together and moments.
-    Read-only. Does not assign persons. Time/place are not identity.
-    """
     from semblon.activity_surface import load_activity_memory
 
     return load_activity_memory(store, run_id)
 
 
+def _install_lens_home() -> None:
+    """Home mouse-up persists the user box and finds similar photos."""
+    from semblon.home_ui import HomeApp
+    from semblon.lens_home import install
+
+    install(HomeApp)
+
+
 class Application:
-    """One store + one JobEngine. Named commands match docs/APPLICATION_API.md.
-
-    Progress KIND_QUEUED is a ProgressEvent, not JobEngine.state. Engine state is
-    idle | running | paused | cancelling. Terminal outcomes are JobResult.status.
-    """
-
     def __init__(self, store: Path | None = None):
         self.store = Path(store) if store is not None else default_store_path()
         self.engine = JobEngine(self.store)
+        _install_lens_home()
 
     def job_current(self) -> JobHandle | None:
         return self.engine.current()
@@ -249,7 +243,6 @@ class Application:
         run_id: str | None = None,
         limit: int = 10,
     ) -> dict:
-        """Persist the box and search existing library embeddings. Query-time crop."""
         from semblon.region_search import remember_and_find
 
         return remember_and_find(

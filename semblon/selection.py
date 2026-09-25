@@ -18,14 +18,12 @@ from semblon.runtime_contract import failure_disguised_as_empty
 
 LENS_HEADLINE = "Lens"
 LENS_SUBCOPY = (
-    "Ask about something in a photo. Semblon uses whatever understanding "
-    "is available on this computer."
+    "Select something in a photo and find visually similar examples. "
+    "Semblon has not named the thing unless you have."
 )
 LENS_EMPTY_GUIDE = "Open a photo, then select something to look at."
 LENS_BUSY = "Looking…"
-LENS_SELECT_HINT = (
-    "Drag a box on the photo. Semblon uses whatever understanding is available."
-)
+LENS_SELECT_HINT = "Drag a box on the photo. Semblon remembers that selection."
 UNKNOWN_HEADLINE = "Unknown selection"
 UNKNOWN_BODY = "We couldn't identify this yet."
 
@@ -172,6 +170,8 @@ def run_lens_query(
     on_error: Callable[[BaseException], None] | None = None,
     on_busy: Callable[[bool], None] | None = None,
 ) -> None:
+    """Capability query only. Never writes the store. Persist+find is on_rect."""
+
     def _finish_ok(report) -> None:
         if on_report is not None:
             try:
@@ -277,6 +277,7 @@ def mount_region_select(
     on_busy=None,
     schedule: Callable[[Callable[[], None]], None] | None = None,
     on_close: Callable[[], None] | None = None,
+    on_rect: Callable[[dict], None] | None = None,
     hint_text: str = LENS_SELECT_HINT,
 ) -> object | None:
     import tempfile
@@ -347,6 +348,20 @@ def mount_region_select(
             if on_busy is not None:
                 on_busy(flag)
 
+        if on_rect is not None:
+            def _run_rect() -> None:
+                _busy(True)
+                try:
+                    on_rect(rect)
+                finally:
+                    _busy(False)
+
+            if schedule is not None:
+                schedule(_run_rect)
+            else:
+                _run_rect()
+            return
+
         def _done_lines(lines: list[str]) -> None:
             on_lines(lines)
             if on_close is not None:
@@ -378,6 +393,7 @@ def open_region_window(
     on_report=None,
     on_busy=None,
     schedule: Callable[[Callable[[], None]], None] | None = None,
+    on_rect: Callable[[dict], None] | None = None,
 ) -> None:
     import tkinter as tk
 
@@ -400,7 +416,8 @@ def open_region_window(
         on_report=on_report,
         on_busy=on_busy,
         schedule=schedule,
-        on_close=_close,
+        on_close=None if on_rect is not None else _close,
+        on_rect=on_rect,
     )
     if mounted is None:
         _close()
