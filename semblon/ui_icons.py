@@ -89,6 +89,10 @@ ICONS: dict[str, tuple[tuple[Any, ...], ...]] = {
     "shield": (
         ("L", ((12, 3), (20, 7), (20, 12), (12, 21), (4, 12), (4, 7), (12, 3))),
     ),
+    "lens": (
+        ("O", 3, 3, 18, 18),
+        ("O", 9, 9, 6, 6),
+    ),
 }
 
 NAV_ICONS = {
@@ -99,6 +103,7 @@ NAV_ICONS = {
     "unknown": "inbox",
     "activity": "history",
     "canvas": "images",
+    "lens": "lens",
 }
 
 

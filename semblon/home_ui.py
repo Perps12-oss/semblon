@@ -191,11 +191,21 @@ HOME_OBSERVERS = "face,color,object"
 
 # Dashboard route id stays "home". The sidebar label is Photos — Home was
 # the redundant item. The photo grid remains route id "photos".
+# Lens is its own section so LIBRARY / PEOPLE / ACTIVITY ids stay put.
 HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    ("ASK", (("lens", "Lens"),)),
     ("LIBRARY", (("home", "Photos"), ("videos", "Videos"))),
     ("PEOPLE", (("people", "People"), ("unknown", "People to name"))),
     ("ACTIVITY", (("activity", "Recent activity"),)),
 )
+
+# Below this window width the rail sits under the top bar, Lens included.
+CONDENSED_BELOW = 1100
+
+
+def shell_is_condensed(width: int) -> bool:
+    """Narrow window: one horizontal rail. Lens does not fall off the side."""
+    return int(width) < CONDENSED_BELOW
 
 # Job control, not an application lock. These stay usable while ingest runs.
 HOME_CONTROLS_ALWAYS_ON = (
@@ -901,8 +911,27 @@ class HomeApp:
         self._main = ttk.Frame(self._shell)
         self._main.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        # ── Top chrome: search · settings ──
-        top = ttk.Frame(self._main, padding=(SP_20, SP_12, SP_20, SP_12))
+        # ── Top bar: brand stays. Lens stays. Search sits under it. ──
+        brand = ttk.Frame(self._main, padding=(SP_20, SP_16, SP_20, SP_8))
+        brand.pack(fill=tk.X)
+        self._brand = brand
+        self.btn_lens = _button(brand, "Lens", self._open_lens, kind="secondary", icon="lens")
+        self.btn_lens.pack(side=tk.RIGHT)
+        self._to_name = tk.StringVar(value="")
+        ttk.Label(brand, textvariable=self._to_name, font=BODY_SMALL, foreground=INK_SECONDARY).pack(
+            side=tk.RIGHT, padx=(0, SP_12)
+        )
+        title_col = ttk.Frame(brand)
+        title_col.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Label(title_col, text="Semblon", font=H1).pack(anchor=tk.W)
+        ttk.Label(
+            title_col,
+            text="Local library · one window",
+            font=CAPTION,
+            foreground=INK_SECONDARY,
+        ).pack(anchor=tk.W)
+
+        top = ttk.Frame(self._main, padding=(SP_20, SP_4, SP_20, SP_12))
         top.pack(fill=tk.X)
         self._top = top
         self.btn_settings = _button(
@@ -1043,7 +1072,15 @@ class HomeApp:
             highlightcolor=BORDER_SUBTLE,
         )
         side.pack(side=tk.LEFT, fill=tk.Y)
+        try:
+            side.configure(width=260)
+            side.pack_propagate(False)
+        except tk.TclError:
+            pass
         self._sidebar = side
+        self._rail = ttk.Frame(self._main, padding=(SP_12, 0, SP_12, SP_8))
+        self._nav_rows: list[tuple[str, object]] = []
+        self._condensed: bool | None = None
         self._sidebar_brand = tk.Label(
             side,
             text="Semblon",
@@ -1063,22 +1100,31 @@ class HomeApp:
         )
         self._sidebar_footer.pack(side=tk.BOTTOM, anchor=tk.W, padx=SP_16, pady=SP_16)
         _section_labels = {
+            "ASK": "",
             "LIBRARY": "Library",
             "PEOPLE": "People",
             "ACTIVITY": "Activity",
         }
         for section, items in HOME_NAV:
-            tk.Label(
-                side,
-                text=_section_labels.get(section, section),
-                font=CAPTION,
-                bg=BG_SUBTLE,
-                fg=INK_TERTIARY,
-            ).pack(anchor=tk.W, pady=(SP_24 if section != "LIBRARY" else SP_8, SP_8), padx=(SP_16, SP_8))
+            heading = _section_labels.get(section, section.title())
+            if heading:
+                section_lbl = tk.Label(
+                    side,
+                    text=heading,
+                    font=CAPTION,
+                    bg=BG_SUBTLE,
+                    fg=INK_TERTIARY,
+                )
+                section_lbl.pack(
+                    anchor=tk.W,
+                    pady=(SP_24 if section != "LIBRARY" else SP_8, SP_8),
+                    padx=(SP_16, SP_8),
+                )
+                self._nav_rows.append(("label", section_lbl))
             for nav_id, label in items:
                 icon_name = "images" if nav_id == "home" else NAV_ICONS.get(nav_id)
                 btn = _button(
-                    side,
+                    self._shell,
                     label,
                     lambda n=nav_id: self._navigate(n),
                     kind="nav",
@@ -1087,6 +1133,8 @@ class HomeApp:
                 )
                 btn.pack(fill=tk.X, pady=1, padx=SP_4)
                 self._nav_buttons[nav_id] = btn
+                self._nav_rows.append(("nav", nav_id))
+        self.root.bind("<Configure>", self._on_root_configure, add="+")
 
         # Keep job-control map keys: people/unknown/activity point at sidebar buttons.
         self.btn_people = self._nav_buttons["people"]
@@ -2313,6 +2361,8 @@ class HomeApp:
             self._library_status.set(status_bar_text(summary))
         btn = getattr(self, "_nav_buttons", {}).get("unknown")
         waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
+        if hasattr(self, "_to_name"):
+            self._to_name.set(f"{waiting} to name" if waiting else "")
         if btn is not None and hasattr(btn, "set_badge"):
             btn.set_badge(waiting)
         self._refresh_search_placeholder(summary)
@@ -2560,6 +2610,69 @@ class HomeApp:
             self._body.columnconfigure(1, weight=1)
             self._body.columnconfigure(0, weight=5)
 
+    def _on_root_configure(self, event) -> None:
+        if event.widget is not self.root:
+            return
+        self._apply_shell_width(int(event.width))
+
+    def _apply_shell_width(self, width: int) -> None:
+        """Wide: left rail. Narrow: the same items in a bar under the title, Lens included."""
+        condensed = shell_is_condensed(width)
+        if condensed == self._condensed:
+            return
+        self._condensed = condensed
+        for kind, item in self._nav_rows:
+            widget = item if kind == "label" else self._nav_buttons[str(item)]
+            try:
+                widget.pack_forget()
+            except tk.TclError:
+                pass
+        if condensed:
+            try:
+                self._sidebar.pack_forget()
+            except tk.TclError:
+                pass
+            try:
+                self._rail.pack(fill=tk.X, before=self._top)
+            except tk.TclError:
+                self._rail.pack(fill=tk.X)
+            for kind, item in self._nav_rows:
+                if kind != "nav":
+                    continue
+                self._nav_buttons[str(item)].pack(in_=self._rail, side=tk.LEFT, padx=2, pady=2)
+            return
+        try:
+            self._rail.pack_forget()
+        except tk.TclError:
+            pass
+        try:
+            self._sidebar.pack(side=tk.LEFT, fill=tk.Y, before=self._main)
+        except tk.TclError:
+            self._sidebar.pack(side=tk.LEFT, fill=tk.Y)
+        for kind, item in self._nav_rows:
+            if kind == "label":
+                item.pack(in_=self._sidebar, anchor=tk.W, pady=(SP_16, SP_8), padx=(SP_16, SP_8))
+            else:
+                self._nav_buttons[str(item)].pack(in_=self._sidebar, fill=tk.X, pady=1, padx=SP_4)
+
+    def _open_lens(self) -> None:
+        """Lens stays on the top bar. It asks about the open photo, or says to open one."""
+        self._nav = "lens"
+        self._mark_nav_active("lens")
+        if self._home_state() == "EXPLORE":
+            self._show_library_home()
+        media_id = getattr(self, "_insp_media_id", None)
+        if media_id:
+            self._open_region_select()
+            return
+        self._set_inspector(
+            "Lens",
+            [
+                "Open a photo first.",
+                "Lens asks about that picture. Nothing was searched.",
+            ],
+        )
+
     def _mark_nav_active(self, nav_id: str) -> None:
         """Best-effort active nav styling in ttk (underline / state)."""
         for nid, btn in self._nav_buttons.items():
@@ -2692,6 +2805,11 @@ class HomeApp:
             lib = format_library_lines(self.store, source_type="video")
             if not library_has_media_lines(lib):
                 self._set_inspector("Videos", videos_empty().as_lines())
+            self._sync_chrome_for_route()
+            self._refresh_job_controls()
+            return
+        if nav_id == "lens":
+            self._open_lens()
             self._sync_chrome_for_route()
             self._refresh_job_controls()
             return

@@ -318,11 +318,26 @@ else:
             if self._icon:
                 draw_icon(self, self._icon, x, (height - icon_size) / 2, icon_size, icon_ink)
                 x += icon_size + px(self, 8)
-            if self._text:
+            reserve = 0
+            if self._badge and self._kind == "nav":
+                reserve = self._badge_width() + px(self, 8)
+            shown = self._text
+            if shown and tkfont is not None and reserve:
+                try:
+                    fnt = tkfont.Font(font=self._font, root=self)
+                    avail = max(12, width - x - reserve)
+                    if fnt.measure(shown) > avail:
+                        trimmed = shown
+                        while trimmed and fnt.measure(trimmed + "…") > avail:
+                            trimmed = trimmed[:-1]
+                        shown = (trimmed + "…") if trimmed != shown else shown
+                except tk.TclError:
+                    pass
+            if shown:
                 anchor = "w" if (self._icon or self._kind == "nav") else "center"
                 tx = x if anchor == "w" else width / 2
                 self.create_text(
-                    tx, height / 2, text=self._text, fill=ink, font=self._font, anchor=anchor
+                    tx, height / 2, text=shown, fill=ink, font=self._font, anchor=anchor
                 )
             if self._badge and self._kind == "nav":
                 self._draw_badge(width, height)
@@ -335,18 +350,25 @@ else:
                     1, 1, width - 2, height - 2, radius, fill="", outline=FOCUS_RING, width=2
                 )
 
-        def _draw_badge(self, width: int, height: int) -> None:
+        def _badge_width(self) -> int:
             label = self._badge or ""
-            if not label or tkfont is None:
-                return
+            if not label:
+                return 0
+            if tkfont is None:
+                return 8 * len(label) + px(self, 16)
             try:
                 fnt = tkfont.Font(font=self._font, root=self)
                 text_w = fnt.measure(label)
             except tk.TclError:
                 text_w = 8 * len(label)
-            pad_x = px(self, 8)
+            return text_w + px(self, 8)
+
+        def _draw_badge(self, width: int, height: int) -> None:
+            label = self._badge or ""
+            if not label or tkfont is None:
+                return
+            badge_w = self._badge_width()
             badge_h = px(self, 18)
-            badge_w = text_w + pad_x
             x2 = width - px(self, 8)
             x1 = x2 - badge_w
             y1 = (height - badge_h) / 2
