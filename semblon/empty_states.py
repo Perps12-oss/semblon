@@ -253,6 +253,9 @@ def search_result_lines(rec: dict, *, advanced: bool = False) -> list[str]:
                 lines.append(f"  {i.get('why')}")
         return lines
     if kind == "similar":
+        status = str(rec.get("status") or "")
+        if status in {"UNAVAILABLE", "ERROR", "TIMEOUT", "CANCELLED"}:
+            return [str(rec.get("reason") or "Similarity did not run.")]
         lines: list[str] = ["Similar results"]
         if advanced:
             lines = [
@@ -280,7 +283,10 @@ def search_result_lines(rec: dict, *, advanced: bool = False) -> list[str]:
                 label = i.get("item_id") or i.get("kind") or "result"
                 lines.append(str(label))
         if rec.get("count") == 0:
-            lines.append("No matches nearby.")
+            if status == "NO_RESULT":
+                lines.append(str(rec.get("reason") or "Similarity ran and nothing matched."))
+            else:
+                lines.append("No matches nearby.")
         return lines
     if kind == "text":
         status = str(rec.get("status") or "")
