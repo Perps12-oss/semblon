@@ -4,6 +4,13 @@
 **Rule:** Backend capability does not dictate navigation. Product intent dictates navigation.  
 **Shell rule:** One production GUI (`semblon home`, tk) → multiple workspaces/routes. Not separate apps or GUI stacks.
 
+**Forensic audit (consolidation):** every GUI path is classified in
+`semblon/product_exposure.py` (`GUI_PATHS`). Actions taken in this branch:
+remove `Open review.html` and job-bar Canvas from product chrome; Review /
+Explore / Live stay under More; export review page lives under Settings →
+Advanced; Lens soft-copies capability labels; Search tries text when people
+miss; capability strip uses Available / Optional · component required.
+
 Authority companions: `docs/COMPLETION-MATRIX.md`, `docs/APPLICATION_API.md`, `docs/PRODUCT.md`, `docs/SEM-ARCH-V1.4.md`.
 
 ## Vocabulary
@@ -60,7 +67,7 @@ Nav source of truth: `HOME_NAV` in `semblon/home_ui.py` (ASK / LIBRARY / PEOPLE 
 | Search | top bar | `_search_person` / analysing gate | **CANONICAL** — people-first today; Lens absorbs broader visual ask |
 | Activity | `activity` | `application.activity` | **CANONICAL** — soft history |
 | Lens (entry) | `lens` + brand **Lens** | `_open_lens`, `_open_region_select` | **CANONICAL** · **PARTIAL** — needs open photo; not a full Lens workspace yet |
-| Settings | Settings button | `_show_settings` | **CANONICAL** — theme, library path, Advanced link |
+| Settings | Settings button | `_show_settings` | **CANONICAL** — theme, library path; tech under Advanced |
 | Inspector verbs | right pane | merge / assign / split / name / rule-out / ignore | **CANONICAL** — soft labels via `product_surface` |
 | Ingest / Pause / Cancel | Home job client | `JobEngine` via Application façade | **CANONICAL** — job controls, not nav |
 
@@ -78,11 +85,11 @@ Nav source of truth: `HOME_NAV` in `semblon/home_ui.py` (ASK / LIBRARY / PEOPLE 
 
 | Surface | Entry today | Code | Class |
 |---|---|---|---|
-| Review UI | More → Open Review / job **Open Review** / `semblon review-ui` | `review_ui.py`; optional `review_chrome/` | **SECONDARY** · **KEEP** evidence vertical (Toplevel on Home) |
-| Canvas (standalone / Explore) | More → Explore / job **Canvas** / `semblon canvas` | `canvas.py` | **SECONDARY** (also embedded under Photos) |
-| Live overlay | More → Live… / job **Live…** | `live_overlay.py` | **SECONDARY** · experimental continuous surface |
+| Review UI | More → Open Review / `semblon review-ui` | `review_ui.py`; optional `review_chrome/` | **SECONDARY** · **KEEP** evidence vertical (Toplevel on Home) |
+| Canvas (standalone / Explore) | More → Explore / `semblon canvas` | `canvas.py` | **SECONDARY** (also embedded under Photos) |
+| Live overlay | More → Live… | `live_overlay.py` | **SECONDARY** · experimental continuous surface |
 | Folder watch | *not in Home nav* | `semblon watch` | **CLI** today → product candidate as **SECONDARY** later |
-| `review.html` | More → Open review.html | `export.py` / `_open_html` | **SUPERSEDED as UX** · keep as export artifact |
+| `review.html` | Settings → Advanced → Open export review page | `export.py` / `_open_html` | **SUPERSEDED as UX** · export artifact only |
 
 ### Audit anchors (secondary)
 
@@ -163,9 +170,9 @@ Open photo → Lens → select region → Semblon runs available capabilities
 | `semblon review-ui` | **SECONDARY** · **KEEP** | Do not make a second Home |
 | Optional Qt `semblon shell` | **KEEP (optional)** | Application API client (`native_shell/`); **not** product Home; **not** a mapped blocker |
 | `review_chrome/` (HTML host) | KEEP / engineering chrome for Review | Not a second app |
-| `review.html` as primary UX | **SUPERSEDED as UX** | Export only |
-| Job-bar **Canvas** as equal primary chrome | **STALE? as primary chrome** | Prefer Photos embed + More → Explore; keep secondary |
-| Job-bar / More **Open review.html** | **STALE? in product chrome** | Prefer Review workspace; keep export path |
+| `review.html` as primary UX | **SUPERSEDED as UX** | Export only — Settings → Advanced |
+| Job-bar **Canvas** as equal primary chrome | **STALE → removed** | Photos embed + More → Explore |
+| Job-bar / More **Open review.html** | **STALE → removed** | Prefer Review workspace; export under Advanced |
 | Marketing three-step brochure on populated Home | **SUPERSEDED** by library shell (#93) | Do not revive |
 | Advanced diagnostics (Settings link) | Settings-adjacent · not nav | Engineering honesty; do not promote to sidebar |
 | Permanent Tk AppShell / Electron / Tauri / CustomTkinter / FastAPI shell | **Forbidden** | Refuse |

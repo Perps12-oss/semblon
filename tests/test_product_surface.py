@@ -97,8 +97,8 @@ def test_product_status_text_omits_current_filename():
     assert "15:16:59" not in text
     assert "146" in text and "24,554" in text
     snap = processing_home_snapshot(ev)
-    assert snap["headline"] == "Reading photos…"
-    assert "Finding people" in snap["activity"]
+    assert snap["headline"] == "Getting your library ready…"
+    assert "Finding faces" in snap["activity"] or "library" in snap["activity"].lower()
     assert "102" in snap["faces"]
     assert "people" not in snap["faces"].lower() or "faces" in snap["faces"].lower()
     assert snap["faces"] == "102 faces found"

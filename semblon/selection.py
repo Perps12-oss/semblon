@@ -41,23 +41,87 @@ def widget_drag_to_image(
     return {"x": ix, "y": iy, "w": iw, "h": ih}
 
 
+def _capability_plain(capability_id: str) -> str:
+    """Product verb for a capability — never provider / internal ids."""
+    try:
+        from semblon.runtime_contract import default_catalog
+
+        spec = default_catalog().get(capability_id)
+        return spec.label
+    except Exception:  # noqa: BLE001 — soft fallback
+        return (capability_id or "Result").replace("_", " ").strip().capitalize()
+
+
 def format_query_lines(report) -> list[str]:
-    lines = ["Selection"]
-    region = report.region
-    lines.append(
-        f"{region.get('w')}×{region.get('h')} at {region.get('x')},{region.get('y')}"
-    )
+    """Lens result lines for normal UX. No embed_siglip / ground_selection names."""
+    lines = ["Lens"]
+    region = report.region or {}
+    w, h = region.get("w"), region.get("h")
+    if w and h:
+        lines.append(f"Selected area · {w}×{h}")
     for row in report.results:
         if failure_disguised_as_empty(row):
             raise RuntimeError(row.capability_id)
+        plain = _capability_plain(row.capability_id)
         if row.status == "SUCCESS":
-            label = row.items[0].label if row.items else ""
-            lines.append(f"{row.capability_id}: {label}")
+            hit = row.items[0].label if row.items else ""
+            # Prefer catalog/product labels; strip provider tokens from item labels.
+            if hit and hit.lower() not in {
+                "siglip",
+                "sam2",
+                "ocr",
+                "vlm",
+                "argos",
+                "tesseract",
+            }:
+                lines.append(f"{plain}: {hit}")
+            else:
+                lines.append(f"{plain}: found something")
         elif row.status == "NO_RESULT":
-            lines.append(f"{row.capability_id}: ran, nothing matched")
+            lines.append(f"{plain}: ran, nothing matched")
         else:
-            lines.append(row.reason or f"{row.capability_id} did not run")
+            lines.append(row.reason or f"{plain} did not run")
+    if len(lines) == 1:
+        lines.append("Nothing was searched.")
     return lines
+
+
+def lens_result_summary(report) -> dict:
+    """Compact last-result payload for the Home shell (honest status)."""
+    results = list(getattr(report, "results", ()) or ())
+    if not results:
+        return {
+            "status": "UNAVAILABLE",
+            "reason": "Nothing was searched.",
+            "item_count": 0,
+        }
+    success = [r for r in results if r.status == "SUCCESS" and r.items]
+    if success:
+        n = sum(len(r.items) for r in success)
+        return {
+            "status": "SUCCESS",
+            "summary": f"{n} result{'s' if n != 1 else ''}",
+            "item_count": n,
+            "items": [{"label": i.label} for r in success for i in r.items],
+        }
+    no_result = [r for r in results if r.status == "NO_RESULT"]
+    if no_result and all(r.status == "NO_RESULT" for r in results):
+        return {
+            "status": "NO_RESULT",
+            "reason": "Semblon looked and found nothing in that area.",
+            "item_count": 0,
+        }
+    failed = next(
+        (r for r in results if r.status in {"UNAVAILABLE", "ERROR", "TIMEOUT", "CANCELLED"}),
+        None,
+    )
+    if failed is not None:
+        return {
+            "status": failed.status,
+            "reason": failed.reason or "It did not run.",
+            "item_count": 0,
+        }
+    return {"status": "NO_RESULT", "reason": "Nothing matched.", "item_count": 0}
 
 
 def media_file(store: Path, media_id: str | None) -> Path | None:
@@ -76,7 +140,7 @@ def media_file(store: Path, media_id: str | None) -> Path | None:
     return path if path.is_file() else None
 
 
-def open_region_window(master, image_path: Path, on_lines) -> None:
+def open_region_window(master, image_path: Path, on_lines, *, on_report=None) -> None:
     """Tk drag rectangle. Releases into the same query pipeline as lab query."""
     import tkinter as tk
 
@@ -92,7 +156,15 @@ def open_region_window(master, image_path: Path, on_lines) -> None:
     shown = cv2.resize(image, (view_w, view_h), interpolation=cv2.INTER_AREA)
     rgb = cv2.cvtColor(shown, cv2.COLOR_BGR2RGB)
     win = tk.Toplevel(master)
-    win.title("Select a region")
+    win.title("Lens — select a region")
+    hint = tk.Label(
+        win,
+        text="Drag a box on the photo. Semblon uses whatever understanding is available.",
+        anchor="w",
+        padx=8,
+        pady=4,
+    )
+    hint.pack(fill="x")
     canvas = tk.Canvas(win, width=view_w, height=view_h, highlightthickness=0)
     canvas.pack()
     ppm = f"P6\n{view_w} {view_h}\n255\n".encode() + rgb.tobytes()
@@ -132,6 +204,11 @@ def open_region_window(master, image_path: Path, on_lines) -> None:
             on_lines(["Draw a region first. Nothing was searched."])
             return
         report = query_image(image, x=rect["x"], y=rect["y"], w=rect["w"], h=rect["h"])
+        if on_report is not None:
+            try:
+                on_report(report)
+            except Exception:  # noqa: BLE001 — UI path must still show lines
+                pass
         on_lines(format_query_lines(report))
         win.destroy()
 

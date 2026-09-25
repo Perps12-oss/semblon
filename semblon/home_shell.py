@@ -10,10 +10,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-# Caps shown under "Ready without a download" when the model is AVAILABLE.
+# Caps shown under Available when the model is AVAILABLE.
 _READY_IDS = frozenset({"library_query"})
 
-# Caps listed under "Not installed · still tracked" (product Home order).
+# Optional product capabilities (not Home nav). ann_index stays invisible —
+# it is an accelerator under Lens/Search, not a tracked Home row.
 _TRACKED_IDS = (
     "visual_embedding",
     "ocr",
@@ -23,37 +24,37 @@ _TRACKED_IDS = (
     "vlm",
     "lkg",
     "screen_capture",
-    "ann_index",
 )
 
 SHELL_HEADLINE = "Your pictures stay here."
 SHELL_SUBCOPY = (
-    "Faces already in the library can be reviewed. "
-    "Anything that still needs a model is listed, and it will say so "
-    "instead of pretending the library is empty."
+    "Semblon finds faces in your photos on this computer, groups similar ones, "
+    "and lets you name the people. Add a folder to begin. "
+    "Available vs optional below is honest — missing a model is not an empty library."
 )
-SHELL_READY_TITLE = "Ready without a download"
-SHELL_TRACKED_TITLE = "Not installed · still tracked"
+SHELL_READY_TITLE = "Available"
+SHELL_TRACKED_TITLE = "Optional · component required"
 SHELL_LAST_TITLE = "Last result"
 SHELL_LAST_EMPTY = "Nothing has been asked yet."
 SHELL_LAST_HINT = (
     "A failure says it did not run. "
     "“Nothing matched” only appears after a real run."
 )
-SHELL_SAVED_LINE = "Saved faces, text, and the barcode already in the library"
+SHELL_SAVED_LINE = "Saved faces, text, and barcodes already in the library"
 
 
-def _state_label(model_state: str, *, disabled_as: str = "Off") -> str:
+def _state_label(model_state: str, *, disabled_as: str = "Experimental") -> str:
+    """Product honesty vocabulary — never imply a nav button is required."""
     state = (model_state or "").upper()
     if state == "AVAILABLE":
-        return "Ready"
+        return "Available"
     if state == "DISABLED":
         return disabled_as
     if state in {"UNSUPPORTED_RUNTIME", "INCOMPATIBLE"}:
-        return "Not installed"
+        return "Optional · not supported here"
     if state == "CORRUPT":
         return "Unavailable"
-    return "Not installed"
+    return "Optional · install needed"
 
 
 def capability_sections(
@@ -90,8 +91,8 @@ def capability_sections(
         label = (spec.label if spec else cap_id) or cap_id
         model = str(row.get("model_state") or "MISSING")
         if model.upper() == "AVAILABLE":
-            # Honest: an installed deferred model moves to Ready.
-            ready.append({"id": cap_id, "label": label, "state": "Ready"})
+            # Honest: an installed deferred model moves to Available.
+            ready.append({"id": cap_id, "label": label, "state": "Available"})
             continue
         tracked.append(
             {
