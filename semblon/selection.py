@@ -1,12 +1,30 @@
-"""Drag-to-select geometry and the Home region window. A selection is a query."""
+"""Drag-to-select geometry and the Home Lens region flow. A selection is a query.
+
+Lens never writes faces.person_id or embeddings.modality='face'. Inference runs
+off the UI thread when a schedule callback is provided.
+"""
 
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
+from typing import Callable
 
 from semblon.lens import query_image
 from semblon.runtime_contract import failure_disguised_as_empty
+
+# Soft product copy for the Lens workspace (no capability / provider ids).
+LENS_HEADLINE = "Lens"
+LENS_SUBCOPY = (
+    "Ask about something in a photo. Semblon uses whatever understanding "
+    "is available on this computer."
+)
+LENS_EMPTY_GUIDE = "Open a photo, then select something to look at."
+LENS_BUSY = "Looking…"
+LENS_SELECT_HINT = (
+    "Drag a box on the photo. Semblon uses whatever understanding is available."
+)
 
 
 def widget_drag_to_image(
@@ -140,78 +158,275 @@ def media_file(store: Path, media_id: str | None) -> Path | None:
     return path if path.is_file() else None
 
 
-def open_region_window(master, image_path: Path, on_lines, *, on_report=None) -> None:
-    """Tk drag rectangle. Releases into the same query pipeline as lab query."""
-    import tkinter as tk
+def media_basename(store: Path, media_id: str | None) -> str | None:
+    """Display name for the current Lens asset — basename only, never a store path dump."""
+    path = media_file(store, media_id)
+    if path is None:
+        return None
+    return path.name
 
+
+def run_lens_query(
+    image_path: Path,
+    *,
+    x: int | None = None,
+    y: int | None = None,
+    w: int | None = None,
+    h: int | None = None,
+    schedule: Callable[[Callable[[], None]], None] | None = None,
+    on_lines: Callable[[list[str]], None] | None = None,
+    on_report: Callable | None = None,
+    on_error: Callable[[BaseException], None] | None = None,
+    on_busy: Callable[[bool], None] | None = None,
+) -> None:
+    """Load pixels and run Lens query. When ``schedule`` is set, work is off the UI thread.
+
+    ``schedule`` is typically ``lambda fn: root.after(0, fn)``. Without it the
+    query runs synchronously (tests / lab). Never writes the store.
+    """
+
+    def _finish_ok(report) -> None:
+        if on_report is not None:
+            try:
+                on_report(report)
+            except Exception:  # noqa: BLE001 — UI path must still show lines
+                pass
+        if on_lines is not None:
+            try:
+                on_lines(format_query_lines(report))
+            except Exception as exc:  # noqa: BLE001
+                if on_error is not None:
+                    on_error(exc)
+                elif on_lines is not None:
+                    on_lines(["Semblon could not finish looking. Nothing was searched."])
+
+    def _finish_err(exc: BaseException) -> None:
+        if on_error is not None:
+            try:
+                on_error(exc)
+                return
+            except Exception:  # noqa: BLE001
+                pass
+        if on_lines is not None:
+            on_lines(
+                [
+                    "Semblon could not finish looking.",
+                    "Nothing was searched.",
+                ]
+            )
+
+    def work() -> None:
+        try:
+            import cv2
+
+            image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+            if image is None:
+                lines = ["Could not read that photo. Nothing was searched."]
+
+                def _bad() -> None:
+                    if on_busy is not None:
+                        on_busy(False)
+                    if on_lines is not None:
+                        on_lines(lines)
+
+                if schedule is not None:
+                    schedule(_bad)
+                else:
+                    _bad()
+                return
+            report = query_image(image, x=x, y=y, w=w, h=h)
+
+            def _ok() -> None:
+                if on_busy is not None:
+                    on_busy(False)
+                _finish_ok(report)
+
+            if schedule is not None:
+                schedule(_ok)
+            else:
+                _ok()
+        except Exception as exc:  # noqa: BLE001 — surface honestly; do not crash Home
+
+            def _err() -> None:
+                if on_busy is not None:
+                    on_busy(False)
+                _finish_err(exc)
+
+            if schedule is not None:
+                schedule(_err)
+            else:
+                _err()
+
+    if on_busy is not None:
+        on_busy(True)
+    if schedule is None:
+        work()
+        return
+    threading.Thread(target=work, name="semblon-lens-query", daemon=True).start()
+
+
+def _prepare_view(image_path: Path):
+    """Load + scale for a Lens drag canvas. Returns None when the file cannot be read."""
     import cv2
 
     image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
     if image is None:
-        on_lines(["Could not read that photo. Nothing was searched."])
-        return
+        return None
     image_h, image_w = image.shape[:2]
     view_w = min(800, image_w)
     view_h = max(1, int(round(image_h * (view_w / image_w))))
     shown = cv2.resize(image, (view_w, view_h), interpolation=cv2.INTER_AREA)
     rgb = cv2.cvtColor(shown, cv2.COLOR_BGR2RGB)
-    win = tk.Toplevel(master)
-    win.title("Lens — select a region")
-    hint = tk.Label(
-        win,
-        text="Drag a box on the photo. Semblon uses whatever understanding is available.",
-        anchor="w",
-        padx=8,
-        pady=4,
-    )
-    hint.pack(fill="x")
-    canvas = tk.Canvas(win, width=view_w, height=view_h, highlightthickness=0)
-    canvas.pack()
-    ppm = f"P6\n{view_w} {view_h}\n255\n".encode() + rgb.tobytes()
-    import tempfile
+    return {
+        "image": image,
+        "image_w": image_w,
+        "image_h": image_h,
+        "view_w": view_w,
+        "view_h": view_h,
+        "rgb": rgb,
+    }
 
+
+def mount_region_select(
+    parent,
+    image_path: Path,
+    *,
+    on_lines,
+    on_report=None,
+    on_busy=None,
+    schedule: Callable[[Callable[[], None]], None] | None = None,
+    on_close: Callable[[], None] | None = None,
+    hint_text: str = LENS_SELECT_HINT,
+) -> object | None:
+    """Embed a drag-rectangle canvas in ``parent``. Returns the frame, or None on read fail.
+
+    Inference is scheduled off the UI thread when ``schedule`` is provided.
+    """
+    import tempfile
+    import tkinter as tk
+
+    prepared = _prepare_view(image_path)
+    if prepared is None:
+        on_lines(["Could not read that photo. Nothing was searched."])
+        return None
+
+    frame = tk.Frame(parent)
+    hint = tk.Label(frame, text=hint_text, anchor="w", padx=8, pady=4)
+    hint.pack(fill="x")
+    canvas = tk.Canvas(
+        frame,
+        width=prepared["view_w"],
+        height=prepared["view_h"],
+        highlightthickness=0,
+    )
+    canvas.pack()
+    ppm = (
+        f"P6\n{prepared['view_w']} {prepared['view_h']}\n255\n".encode()
+        + prepared["rgb"].tobytes()
+    )
     tmp = tempfile.NamedTemporaryFile(suffix=".ppm", delete=False)
     tmp.write(ppm)
     tmp.close()
     photo = tk.PhotoImage(file=tmp.name)
     canvas.create_image(0, 0, anchor=tk.NW, image=photo)
     canvas.image = photo
-    state = {"x": 0, "y": 0, "box": None}
+    state = {"x": 0, "y": 0, "box": None, "busy": False}
 
     def press(event):
+        if state["busy"]:
+            return
         state["x"], state["y"] = event.x, event.y
         if state["box"] is not None:
             canvas.delete(state["box"])
-        state["box"] = canvas.create_rectangle(event.x, event.y, event.x, event.y, outline="#c4554a")
+        state["box"] = canvas.create_rectangle(
+            event.x, event.y, event.x, event.y, outline="#c4554a"
+        )
 
     def drag(event):
-        if state["box"] is None:
+        if state["box"] is None or state["busy"]:
             return
         canvas.coords(state["box"], state["x"], state["y"], event.x, event.y)
 
     def release(event):
+        if state["busy"]:
+            return
         rect = widget_drag_to_image(
             state["x"],
             state["y"],
             event.x,
             event.y,
-            view_w=view_w,
-            view_h=view_h,
-            image_w=image_w,
-            image_h=image_h,
+            view_w=prepared["view_w"],
+            view_h=prepared["view_h"],
+            image_w=prepared["image_w"],
+            image_h=prepared["image_h"],
         )
         if rect is None:
             on_lines(["Draw a region first. Nothing was searched."])
             return
-        report = query_image(image, x=rect["x"], y=rect["y"], w=rect["w"], h=rect["h"])
-        if on_report is not None:
-            try:
-                on_report(report)
-            except Exception:  # noqa: BLE001 — UI path must still show lines
-                pass
-        on_lines(format_query_lines(report))
-        win.destroy()
+
+        def _busy(flag: bool) -> None:
+            state["busy"] = flag
+            if on_busy is not None:
+                on_busy(flag)
+
+        def _done_lines(lines: list[str]) -> None:
+            on_lines(lines)
+            if on_close is not None:
+                on_close()
+
+        run_lens_query(
+            image_path,
+            x=rect["x"],
+            y=rect["y"],
+            w=rect["w"],
+            h=rect["h"],
+            schedule=schedule,
+            on_lines=_done_lines,
+            on_report=on_report,
+            on_busy=_busy,
+        )
 
     canvas.bind("<ButtonPress-1>", press)
     canvas.bind("<B1-Motion>", drag)
     canvas.bind("<ButtonRelease-1>", release)
+    return frame
+
+
+def open_region_window(
+    master,
+    image_path: Path,
+    on_lines,
+    *,
+    on_report=None,
+    on_busy=None,
+    schedule: Callable[[Callable[[], None]], None] | None = None,
+) -> None:
+    """Tk Toplevel drag rectangle — same pipeline as the embedded Lens pane."""
+    import tkinter as tk
+
+    win = tk.Toplevel(master)
+    win.title("Lens — select a region")
+
+    def _close() -> None:
+        try:
+            win.destroy()
+        except tk.TclError:
+            pass
+
+    # Prefer off-thread when the caller did not pass schedule (Home always should).
+    if schedule is None and hasattr(master, "after"):
+        schedule = lambda fn: master.after(0, fn)  # noqa: E731
+
+    mounted = mount_region_select(
+        win,
+        image_path,
+        on_lines=on_lines,
+        on_report=on_report,
+        on_busy=on_busy,
+        schedule=schedule,
+        on_close=_close,
+    )
+    if mounted is None:
+        _close()
+        return
+    mounted.pack(fill="both", expand=True)

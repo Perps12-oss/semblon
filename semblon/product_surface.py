@@ -390,6 +390,7 @@ def soft_inspector_for_media(board: dict, media_id: str | None) -> list[str]:
     lines.append("")
     lines.append("Move over the photo to discover faces. Click one to select it.")
     lines.append("Or drag a box over any area to look more closely.")
+    lines.append("Open Lens to ask about a region with available understanding.")
     return lines
 
 
