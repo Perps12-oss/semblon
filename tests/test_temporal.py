@@ -49,6 +49,21 @@ def test_read_bgr_still_uses_imread(tmp_path):
     im.assert_called_once_with(str(img_path))
 
 
+def test_read_bgr_decodes_when_imread_cannot(tmp_path):
+    import cv2
+
+    img = np.zeros((8, 8, 3), dtype=np.uint8)
+    img[0, 0] = (0, 0, 255)
+    ok, buf = cv2.imencode(".jpg", img)
+    assert ok
+    img_path = tmp_path / "real.jpg"
+    img_path.write_bytes(buf.tobytes())
+    with patch("semblon.temporal.cv2.imread", return_value=None):
+        out = read_bgr(img_path, None)
+    assert out is not None
+    assert out.shape[:2] == (8, 8)
+
+
 def test_read_bgr_video_seeks_frame():
     fake = np.ones((20, 20, 3), dtype=np.uint8) * 7
 

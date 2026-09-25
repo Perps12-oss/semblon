@@ -94,6 +94,14 @@ def test_home_nav_labels_ux_rescue():
     assert flat["home"] == "Photos"
     assert "photos" not in flat
     assert flat["people"] == "People"
+    assert flat["lens"] == "Lens"
+
+
+def test_narrow_window_keeps_a_rail():
+    from semblon.home_ui import shell_is_condensed
+
+    assert shell_is_condensed(900) is True
+    assert shell_is_condensed(1100) is False
 
 
 def test_home_idle_status_has_no_store_path():

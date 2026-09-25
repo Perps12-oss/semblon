@@ -47,16 +47,32 @@ def frame_t_ms(frame_idx: int, fps: float) -> int:
     return int(round(frame_idx / fps * 1000.0))
 
 
+def _decode_still(path: Path):
+    """Bytes then imdecode. imread misses Unicode and long Windows paths."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    if not data:
+        return None
+    import numpy as np
+
+    arr = np.frombuffer(data, dtype=np.uint8)
+    return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+
 def read_bgr(path: Path | str, frame_id: int | None = None):
     """Load one BGR frame for review/export thumbs.
 
-    Stills: ``frame_id`` is None → ``cv2.imread``.
+    Stills: bytes first, then ``cv2.imread`` if that cannot decode.
     Video: seek to ``frame_id`` via VideoCapture. Does not write crops to disk.
     """
     path = Path(path)
     if frame_id is None:
-        img = cv2.imread(str(path))
-        return img
+        img = _decode_still(path)
+        if img is not None:
+            return img
+        return cv2.imread(str(path))
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         return None

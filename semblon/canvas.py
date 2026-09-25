@@ -335,6 +335,38 @@ def _ppm_thumb(path: str | None, *, max_side: int = 88):
     return data, nw, nh
 
 
+def load_bgr(path: str | None):
+    """Still for the grid and the opened photo. None if the file is gone."""
+    if not path:
+        return None
+    from semblon.temporal import read_bgr
+
+    try:
+        return read_bgr(path, None)
+    except Exception:  # noqa: BLE001 — a bad file is a missing photo, not a crash
+        return None
+
+
+def _png_photo(img_bgr, max_side: int = 720, *, upscale: bool = False):
+    """PNG that Tk PhotoImage can show. PPM data= leaves a blank tile."""
+    import base64
+
+    import cv2
+
+    height, width = img_bgr.shape[:2]
+    scale = float(max_side) / float(max(height, width, 1))
+    if not upscale:
+        scale = min(1.0, scale)
+    nw = max(1, int(round(width * scale)))
+    nh = max(1, int(round(height * scale)))
+    if (nw, nh) != (width, height):
+        img_bgr = cv2.resize(img_bgr, (nw, nh), interpolation=cv2.INTER_AREA)
+    ok, buf = cv2.imencode(".png", img_bgr)
+    if not ok:
+        raise ValueError("png encode failed")
+    return base64.b64encode(buf.tobytes()).decode("ascii"), scale, nw, nh
+
+
 if tk is None:
     class CanvasWorkspace:
         """Headless stub — tkinter required for embedded Canvas."""
@@ -360,9 +392,8 @@ else:
         _HOVER_COLOR = "#285ECA"
         _SELECT_COLOR = "#2E6BE6"
         _DRAG_COLOR = "#E2EAFC"
-        _THUMB_COLS = 2
-        _THUMB_CELL = 96
-        _THUMB_PAD = 6
+        _THUMB_CELL = 156
+        _THUMB_PAD = 8
 
         def __init__(
             self,
@@ -406,6 +437,12 @@ else:
             self._tip_shown = True
             self._thumb_photos: list = []  # keep PhotoImage refs alive
             self._thumb_hitmap: dict[int, int] = {}  # canvas item → media index
+            self._thumb_job = 0
+            self._open = False
+            self._img = None
+            self._ox = 0.0
+            self._oy = 0.0
+            self._fit_size: tuple[int, int] | None = None
             self.status = tk.StringVar(value="Photos")
 
             if show_chrome:
@@ -415,38 +452,39 @@ else:
 
             body = ttk.Frame(self.frame)
             body.pack(fill=tk.BOTH, expand=True)
+            self._body = body
 
-            # Thumbnail strip — visual browse, not an engineering log.
-            left = ttk.Frame(body, width=self._THUMB_COLS * (self._THUMB_CELL + self._THUMB_PAD) + 18)
-            left.pack(side=tk.LEFT, fill=tk.Y)
-            left.pack_propagate(False)
+            tools = ttk.Frame(body)
+            self._tools = tools
+            self._back = ttk.Button(tools, text="All photos", command=self._enter_grid)
+
+            # The grid fills the stage. A click opens that one photo.
+            self._browse = ttk.Frame(body)
             self._thumb_canvas = tk.Canvas(
-                left,
-                width=self._THUMB_COLS * (self._THUMB_CELL + self._THUMB_PAD) + 4,
+                self._browse,
                 background=BG_SUBTLE,
                 highlightthickness=0,
             )
             self._thumb_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            thumb_sb = ttk.Scrollbar(left, orient=tk.VERTICAL, command=self._thumb_canvas.yview)
+            thumb_sb = ttk.Scrollbar(self._browse, orient=tk.VERTICAL, command=self._thumb_canvas.yview)
             thumb_sb.pack(side=tk.LEFT, fill=tk.Y)
             self._thumb_canvas.configure(yscrollcommand=thumb_sb.set)
             self._thumb_canvas.bind("<Button-1>", self._on_thumb_click)
+            self._thumb_canvas.bind("<Configure>", self._on_thumb_configure)
             self._thumb_canvas.bind(
                 "<MouseWheel>",
                 lambda e: self._thumb_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"),
             )
 
             # Keep a hidden listbox for tests / fallback index tracking.
-            self._listbox = tk.Listbox(left, width=1, exportselection=False, height=1)
-            # Not packed — index mirror only.
+            self._listbox = tk.Listbox(self.frame, width=1, exportselection=False, height=1)
 
-            preview_wrap = ttk.Frame(body)
-            preview_wrap.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(12, 0))
+            self._preview_wrap = ttk.Frame(body)
             self._tip_var = tk.StringVar(
                 value="Explore this photo — move over a person, or drag around anything you're curious about."
             )
             self._tip = ttk.Label(
-                preview_wrap,
+                self._preview_wrap,
                 textvariable=self._tip_var,
                 font=CAPTION,
                 foreground=INK_SECONDARY,
@@ -454,7 +492,7 @@ else:
             )
             self._tip.pack(anchor=tk.W, pady=(0, 4))
 
-            self.preview = tk.Canvas(preview_wrap, background=BG_DARK, highlightthickness=0)
+            self.preview = tk.Canvas(self._preview_wrap, background=BG_DARK, highlightthickness=0)
             self.preview.pack(fill=tk.BOTH, expand=True)
             self._ink_on_dark = INK_ON_DARK
             self._caption_font = CAPTION
@@ -464,11 +502,13 @@ else:
             self._HOVER_COLOR = ACCENT_HOVER
             self._DRAG_COLOR = ACCENT_SUBTLE
 
+            self.preview.bind("<Configure>", self._on_preview_configure)
             self.preview.bind("<Motion>", self._on_motion)
             self.preview.bind("<Leave>", self._on_leave)
             self.preview.bind("<ButtonPress-1>", self._on_press)
             self.preview.bind("<B1-Motion>", self._on_drag)
             self.preview.bind("<ButtonRelease-1>", self._on_release)
+            self._enter_grid()
             # Escape is bound on the toplevel when available.
             try:
                 top = self.frame.winfo_toplevel()
@@ -490,6 +530,56 @@ else:
 
         def grid(self, **kwargs):
             return self.frame.grid(**kwargs)
+
+        def _enter_grid(self) -> None:
+            """Photos fill the stage. The opened picture is not sitting beside a rail."""
+            self._open = False
+            self._img = None
+            try:
+                self._preview_wrap.pack_forget()
+                self._tools.pack_forget()
+            except tk.TclError:
+                pass
+            self._browse.pack(fill=tk.BOTH, expand=True)
+            self._rebuild_thumbs()
+
+        def _enter_open(self) -> None:
+            self._open = True
+            try:
+                self._browse.pack_forget()
+            except tk.TclError:
+                pass
+            self._tools.pack(fill=tk.X, pady=(0, 4))
+            self._back.pack(side=tk.LEFT)
+            self._preview_wrap.pack(fill=tk.BOTH, expand=True)
+
+        def _thumb_cols(self) -> int:
+            width = 0
+            try:
+                width = int(self._thumb_canvas.winfo_width())
+            except tk.TclError:
+                width = 0
+            cell = self._THUMB_CELL + self._THUMB_PAD
+            if width < cell * 2:
+                return 4
+            return max(2, width // cell)
+
+        def _on_thumb_configure(self, event) -> None:
+            if self._open or event.width < 40:
+                return
+            cols = max(2, event.width // (self._THUMB_CELL + self._THUMB_PAD))
+            if cols != getattr(self, "_laid_cols", None):
+                self._laid_cols = cols
+                self._rebuild_thumbs()
+
+        def _on_preview_configure(self, event) -> None:
+            if not self._open or self._img is None:
+                return
+            size = (int(event.width), int(event.height))
+            if size[0] < 20 or size == getattr(self, "_fit_size", None):
+                return
+            self._fit_size = size
+            self._paint_fitted()
 
         def set_advanced(self, advanced: bool) -> None:
             self._advanced = bool(advanced)
@@ -540,69 +630,90 @@ else:
             self._thumb_hitmap = {}
 
         def _rebuild_thumbs(self) -> None:
-            """Visual photo strip — thumbnails, not path/UUID log rows."""
+            """Photo grid across the stage. Tiles fill in; a click opens one."""
             from semblon.product_surface import basename_path
 
             self._clear_thumbs()
+            self._thumb_job += 1
+            job = self._thumb_job
             cell = self._THUMB_CELL
             pad = self._THUMB_PAD
-            cols = self._THUMB_COLS
+            cols = self._thumb_cols()
+            self._laid_cols = cols
+            self._thumb_cells: dict[int, tuple[int, int]] = {}
             for idx, m in enumerate(self._media):
                 row, col = divmod(idx, cols)
                 x0 = pad + col * (cell + pad)
                 y0 = pad + row * (cell + pad + 18)
-                thumb = _ppm_thumb(m.get("path"), max_side=cell - 8)
-                item_ids = []
-                if thumb is not None:
-                    data, nw, nh = thumb
-                    try:
-                        photo = tk.PhotoImage(data=data)
-                    except tk.TclError:
-                        photo = None
-                    if photo is not None:
-                        self._thumb_photos.append(photo)
-                        ox = x0 + (cell - nw) // 2
-                        oy = y0 + (cell - nh) // 2
-                        iid = self._thumb_canvas.create_image(ox, oy, anchor=tk.NW, image=photo)
-                        item_ids.append(iid)
-                if not item_ids:
-                    iid = self._thumb_canvas.create_rectangle(
-                        x0,
-                        y0,
-                        x0 + cell,
-                        y0 + cell,
-                        outline="#C9C4BA",
-                        fill="#EEEBE4",
-                    )
-                    item_ids.append(iid)
-                    tid = self._thumb_canvas.create_text(
-                        x0 + cell // 2,
-                        y0 + cell // 2,
-                        text="·",
-                        fill="#8A847A",
-                    )
-                    item_ids.append(tid)
+                self._thumb_cells[idx] = (x0, y0)
+                iid = self._thumb_canvas.create_rectangle(
+                    x0, y0, x0 + cell, y0 + cell, outline="#2a2d34", fill="#1c1f26"
+                )
+                self._thumb_hitmap[iid] = idx
                 label = basename_path(m.get("path"))
-                if len(label) > 14:
-                    label = label[:12] + "…"
+                if len(label) > 18:
+                    label = label[:16] + "…"
                 tid = self._thumb_canvas.create_text(
                     x0 + cell // 2,
                     y0 + cell + 2,
                     text=label,
                     anchor=tk.N,
-                    fill="#5C574F",
-                    font=("Segoe UI", 8),
+                    fill="#9b9a94",
+                    font=("Segoe UI", 9),
                 )
-                item_ids.append(tid)
-                for iid in item_ids:
-                    self._thumb_hitmap[iid] = idx
+                self._thumb_hitmap[tid] = idx
             rows = (len(self._media) + cols - 1) // cols if self._media else 0
             height = pad + rows * (cell + pad + 18) + pad
             width = pad + cols * (cell + pad)
-            self._thumb_canvas.configure(scrollregion=(0, 0, width, height))
+            self._thumb_canvas.configure(scrollregion=(0, 0, width, max(height, 1)))
+            pending = list(range(len(self._media)))
+
+            def pump() -> None:
+                if job != self._thumb_job:
+                    return
+                for idx in pending[:6]:
+                    self._fill_thumb(idx)
+                del pending[:6]
+                if pending:
+                    try:
+                        self.frame.after(1, pump)
+                    except tk.TclError:
+                        return
+
+            if pending:
+                try:
+                    self.frame.after(1, pump)
+                except tk.TclError:
+                    pass
+
+        def _fill_thumb(self, idx: int) -> None:
+            if idx >= len(self._media):
+                return
+            spot = self._thumb_cells.get(idx)
+            if spot is None:
+                return
+            img = load_bgr(self._media[idx].get("path"))
+            if img is None:
+                return
+            try:
+                b64, _scale, nw, nh = _png_photo(img, max_side=self._THUMB_CELL - 8)
+                photo = tk.PhotoImage(data=b64)
+            except tk.TclError:
+                return
+            except Exception:  # noqa: BLE001
+                return
+            self._thumb_photos.append(photo)
+            x0, y0 = spot
+            cell = self._THUMB_CELL
+            ox = x0 + (cell - nw) // 2
+            oy = y0 + (cell - nh) // 2
+            iid = self._thumb_canvas.create_image(ox, oy, anchor=tk.NW, image=photo)
+            self._thumb_hitmap[iid] = idx
 
         def _on_thumb_click(self, event) -> None:
-            items = self._thumb_canvas.find_overlapping(event.x, event.y, event.x, event.y)
+            x = self._thumb_canvas.canvasx(event.x)
+            y = self._thumb_canvas.canvasy(event.y)
+            items = self._thumb_canvas.find_overlapping(x, y, x, y)
             for iid in items:
                 idx = self._thumb_hitmap.get(iid)
                 if idx is not None:
@@ -646,12 +757,14 @@ else:
                     unknown_faces=unknown_faces,
                 )
             )
-            self._rebuild_thumbs()
             if self._media:
                 self._listbox.selection_set(0)
-                self.show_index(0)
+                self._current_media = self._media[0]
+                self._enter_grid()
+                self._emit_inspector(media_id=self._media[0].get("media_id"))
             else:
                 self.preview.delete("all")
+                self._enter_grid()
                 self._emit_inspector(media_id=None)
 
         def show_index(self, index: int) -> None:
@@ -662,67 +775,73 @@ else:
             self.show_media(self._media[index])
 
         def show_media(self, media: dict) -> None:
-            """Show a clean photograph. Overlays only appear on hover/select/drag."""
+            """Open one photograph across the stage. The grid is not left beside it."""
             if self.board is None:
                 return
             self._current_media = media
             self._selected = None
             self._hover_id = None
             self._hit_regions = []
+            self._img = None
+            self._fit_size = None
             mid = media.get("media_id")
             path = media.get("path")
-
+            self._enter_open()
             self.preview.delete("all")
             self._photo = None
-            try:
-                import cv2
-            except ImportError as e:
-                self.preview.create_text(
-                    12,
-                    12,
-                    anchor=tk.NW,
-                    fill=getattr(self, "_ink_on_dark", "#B5B1A8"),
-                    text="Photo preview needs OpenCV on this machine.",
-                )
-                self.status.set("Preview unavailable")
-                self._emit_inspector(media_id=mid)
-                return
-
-            img = cv2.imread(str(path)) if path else None
+            img = load_bgr(str(path) if path else None)
             if img is None:
                 from semblon.product_surface import basename_path
 
                 self.preview.create_text(
-                    12,
-                    12,
+                    24,
+                    48,
                     anchor=tk.NW,
                     fill=getattr(self, "_ink_on_dark", "#B5B1A8"),
-                    text=f"Photo file missing\n{basename_path(path)}",
+                    font=self._caption_font,
+                    text=f"This photo is not in the folder anymore.\n{basename_path(path)}",
                 )
                 self._emit_inspector(media_id=mid)
                 return
+            self._img = img
+            self._paint_fitted()
+            self._emit_inspector(media_id=mid)
+
+        def _paint_fitted(self) -> None:
+            if self._img is None:
+                return
+            width = max(int(self.preview.winfo_width() or 0), 320)
+            height = max(int(self.preview.winfo_height() or 0), 240)
+            self.preview.delete("all")
             try:
-                data, scale, nw, nh = _ppm_photo(img)
-                photo = tk.PhotoImage(data=data)
+                b64, _native, nw, nh = _png_photo(
+                    self._img,
+                    max_side=min(max(width - 24, height - 24, 320), 1400),
+                    upscale=True,
+                )
+                photo = tk.PhotoImage(data=b64)
             except Exception:  # noqa: BLE001
                 from semblon.product_surface import basename_path
 
                 self.preview.create_text(
-                    12,
-                    12,
+                    24,
+                    48,
                     anchor=tk.NW,
                     fill=getattr(self, "_ink_on_dark", "#B5B1A8"),
-                    text=f"Couldn't show this photo\n{basename_path(path)}",
+                    text=f"Couldn't show this photo\n{basename_path((self._current_media or {}).get('path'))}",
                 )
-                self._emit_inspector(media_id=mid)
                 return
             self._photo = photo
-            self._scale = float(scale)
+            ih, iw = self._img.shape[:2]
+            self._scale = nw / float(max(iw, 1))
             self._nw, self._nh = nw, nh
-            self.preview.create_image(0, 0, anchor=tk.NW, image=photo, tags=("photo",))
-            self.preview.config(scrollregion=(0, 0, nw, nh))
+            self._ox = max(0, (width - nw) / 2)
+            self._oy = 8.0
+            self.preview.create_image(self._ox, self._oy, anchor=tk.NW, image=photo, tags=("photo",))
+            self.preview.config(scrollregion=(0, 0, max(width, nw), max(height, nh + 16)))
+            mid = (self._current_media or {}).get("media_id")
             self._build_hit_regions(mid)
-            self._emit_inspector(media_id=mid)
+            self._paint_interaction()
 
         def _build_hit_regions(self, media_id: str | None) -> None:
             from semblon.product_surface import display_rect_for_bbox, soft_object_label, soft_person_label
@@ -739,6 +858,8 @@ else:
                 )
                 if rect is None:
                     continue
+                x1, y1, x2, y2 = rect
+                rect = (x1 + self._ox, y1 + self._oy, x2 + self._ox, y2 + self._oy)
                 self._hit_regions.append(
                     {
                         "kind": "face",
@@ -757,6 +878,8 @@ else:
                 )
                 if rect is None:
                     continue
+                x1, y1, x2, y2 = rect
+                rect = (x1 + self._ox, y1 + self._oy, x2 + self._ox, y2 + self._oy)
                 self._hit_regions.append(
                     {
                         "kind": it.get("kind") or "object",
@@ -766,6 +889,10 @@ else:
                         "label": soft_object_label(it),
                     }
                 )
+
+        def _to_image(self, x: float, y: float) -> tuple[float, float]:
+            scale = self._scale if self._scale else 1.0
+            return (x - self._ox) / scale, (y - self._oy) / scale
 
         def _hit_at(self, x: float, y: float) -> dict | None:
             # Prefer faces; smallest containing box wins when nested.
@@ -903,9 +1030,8 @@ else:
                 if self.board is None or self._current_media is None:
                     return
                 mid = self._current_media.get("media_id")
-                # Convert display coords → image coords.
-                ix1, iy1 = ox / self._scale, oy / self._scale
-                ix2, iy2 = event.x / self._scale, event.y / self._scale
+                ix1, iy1 = self._to_image(ox, oy)
+                ix2, iy2 = self._to_image(event.x, event.y)
                 hits_raw = region_hits(
                     self.board, mid, x1=ix1, y1=iy1, x2=ix2, y2=iy2
                 )
