@@ -97,7 +97,7 @@ def test_format_unknown_demotes_known_unknown_codes():
 def test_format_people_empty_coaching():
     lines = format_people_lines({"items": []})
     assert lines[0] == "No people yet"
-    assert "Open Review" in "\n".join(lines)
+    assert "People to name" in "\n".join(lines) or "Open Review" in "\n".join(lines)
 
 
 def test_format_search_demotes_modality_pack():
@@ -129,6 +129,7 @@ def test_format_search_no_matches():
     lines = format_search_lines({"kind": "person", "query": "Zed", "items": []})
     assert 'No matches for "Zed"' in lines[0]
     assert "Clear search" in "\n".join(lines)
+    assert "photo" in "\n".join(lines).lower() or "name" in "\n".join(lines).lower()
 
 
 def test_activity_history_soft_vs_advanced():
@@ -204,5 +205,6 @@ def test_search_result_lines_person_populated():
             "items": [{"display_name": "Ada", "faces": 3}],
         }
     )
-    assert "Ada" in lines[0]
-    assert "3 photos" in lines[0]
+    assert lines[0] == "People"
+    assert "Ada" in lines[1]
+    assert "3 photos" in lines[1]

@@ -49,7 +49,6 @@ from semblon.empty_states import (
     activity_empty,
     activity_history_lines,
     failure_dialog_for,
-    groups_waiting_line,
     is_expected_condition,
     lens_empty,
     library_has_media_lines,
@@ -447,12 +446,12 @@ else:
             self.create_rectangle(x1, y1, x2, y2, fill=fill, outline="")
 
 def format_people_lines(rec: dict) -> list[str]:
+    from semblon.product_surface import soft_people_header_lines
+
     items = rec.get("items") or []
     if not items:
         return people_empty().as_lines()
-    lines = [
-        "Named people — a group is not a person until you name them.",
-    ]
+    lines = soft_people_header_lines()
     for i in items:
         name = (i.get("display_name") or "").strip() or "Named person"
         faces = int(i.get("faces") or 0)
@@ -463,11 +462,12 @@ def format_people_lines(rec: dict) -> list[str]:
 def format_unknown_lines(
     rec: dict, run_id: str, *, advanced: bool = False
 ) -> list[str]:
-    """People to name — soft counts by default; KNOWN=/UNKNOWN= only when advanced."""
+    """People to name — soft coaching by default; KNOWN=/UNKNOWN= only when advanced."""
+    from semblon.product_surface import soft_unknown_coach_lines
+
     c = rec.get("counts") or {}
     waiting = int(c.get("UNKNOWN", 0) or 0) + int(c.get("REVIEW_REQUIRED", 0) or 0)
-    lines = [groups_waiting_line(waiting)]
-    lines.append("Unknown is fine. Name someone only when you are sure.")
+    lines = soft_unknown_coach_lines(waiting=waiting)
     if advanced:
         lines.extend(
             [
@@ -944,7 +944,7 @@ class HomeApp:
         top.pack(fill=tk.X)
         self._top = top
         self.btn_settings = _button(
-            top, "", self._show_settings, kind="secondary", icon="settings"
+            top, "Settings", self._show_settings, kind="secondary", icon="settings"
         )
         self.btn_settings.pack(side=tk.RIGHT)
         search_row = ttk.Frame(top)
@@ -952,6 +952,11 @@ class HomeApp:
         self.search_var = tk.StringVar()
         self._search_entry = ttk.Entry(search_row, textvariable=self.search_var, width=28)
         self._search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        try:
+            # Cheap a11y: named entry for focus/screen-reader tooling.
+            self._search_entry.configure(takefocus=True)
+        except tk.TclError:
+            pass
         self._search_placeholder = SEARCH_PLACEHOLDER_PHOTOS
         self._search_entry.insert(0, self._search_placeholder)
         try:
@@ -3740,10 +3745,7 @@ class HomeApp:
             board_lines=format_people_lines(rec),
             candidate_person=self._insp_target_person_name,
         )
-        evid.insert(
-            1,
-            "Select a person here, then a face under People to name or in Photos to add them.",
-        )
+        # Header already coaches; avoid duplicating the lecture.
         self._insp_run_id = self._last_run_id
         self._insp_selected = []
         self._set_inspector("People", evid)
@@ -3962,7 +3964,26 @@ class HomeApp:
         self._set_inspector("Search", lines)
 
     def _show_settings(self) -> None:
-        """User Settings panel (UX Rescue §6). Diagnostics live in Advanced."""
+        """Product Settings. Runtime/provider/model/schema/job live in Diagnostics."""
+        from semblon.product_surface import (
+            SETTINGS_ABOUT,
+            SETTINGS_ABOUT_BODY,
+            SETTINGS_ADVANCED,
+            SETTINGS_ADVANCED_HINT,
+            SETTINGS_APPEARANCE,
+            SETTINGS_DIAGNOSTICS,
+            SETTINGS_DIAGNOSTICS_HINT,
+            SETTINGS_EXPORT_REVIEW,
+            SETTINGS_GPU,
+            SETTINGS_LIBRARY,
+            SETTINGS_LIBRARY_HINT,
+            SETTINGS_OPEN_DIAGNOSTICS,
+            SETTINGS_PROCESSING,
+            SETTINGS_PROCESSING_CPU,
+            SETTINGS_SHORTCUTS,
+            SETTINGS_TITLE,
+        )
+
         if self._settings_win is not None:
             try:
                 if self._settings_win.winfo_exists():
@@ -3974,8 +3995,8 @@ class HomeApp:
 
         win = tk.Toplevel(self.root)
         self._settings_win = win
-        win.title("Settings")
-        win.geometry("640x560")
+        win.title(SETTINGS_TITLE)
+        win.geometry("640x620")
         win.minsize(480, 420)
         if apply_theme is not None:
             apply_theme(win)
@@ -3985,17 +4006,47 @@ class HomeApp:
         except tk.TclError:
             pass
 
-        pad = ttk.Frame(win, padding=(SP_32, SP_24))
-        pad.pack(fill=tk.BOTH, expand=True)
+        # Scrollable body — large Settings content stays usable.
+        outer = ttk.Frame(win)
+        outer.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(outer, highlightthickness=0, bg=BG_CANVAS)
+        scroll = ttk.Scrollbar(outer, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        pad = ttk.Frame(canvas, padding=(SP_32, SP_24))
+        pad_id = canvas.create_window((0, 0), window=pad, anchor=tk.NW)
+
+        def _sync_scroll(_event=None) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            try:
+                canvas.itemconfigure(pad_id, width=canvas.winfo_width())
+            except tk.TclError:
+                pass
+
+        pad.bind("<Configure>", _sync_scroll)
+        canvas.bind("<Configure>", _sync_scroll)
 
         head = ttk.Frame(pad)
         head.pack(fill=tk.X)
-        ttk.Label(head, text="Settings", font=H2).pack(side=tk.LEFT)
-        _button(head, "Close", win.destroy, kind="tertiary", icon="x").pack(side=tk.RIGHT)
+        ttk.Label(head, text=SETTINGS_TITLE, font=H2).pack(side=tk.LEFT)
+        close_btn = _button(head, "Close", win.destroy, kind="tertiary", icon="x")
+        close_btn.pack(side=tk.RIGHT)
 
-        # Library
-        ttk.Label(pad, text="Library", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_16, SP_8))
-        ttk.Label(pad, text="Library location", font=BODY).pack(anchor=tk.W)
+        # ── Product settings ──
+        ttk.Label(pad, text=SETTINGS_LIBRARY, font=BODY_STRONG).pack(
+            anchor=tk.W, pady=(SP_16, SP_8)
+        )
+        ttk.Label(
+            pad,
+            text=SETTINGS_LIBRARY_HINT,
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+            wraplength=480,
+        ).pack(anchor=tk.W)
+        ttk.Label(pad, text="Library location", font=BODY).pack(
+            anchor=tk.W, pady=(SP_8, 0)
+        )
         loc_row = ttk.Frame(pad)
         loc_row.pack(fill=tk.X, pady=(SP_8, 0))
         self._settings_lib_var = tk.StringVar(value=str(self.store))
@@ -4010,8 +4061,7 @@ class HomeApp:
             loc_row, "Change…", self._settings_change_library, kind="secondary"
         ).pack(side=tk.RIGHT)
 
-        # Processing — GPU toggle (session prefer path; no engine redesign)
-        ttk.Label(pad, text="Processing", font=BODY_STRONG).pack(
+        ttk.Label(pad, text=SETTINGS_PROCESSING, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
         gpu_available = False
@@ -4034,19 +4084,19 @@ class HomeApp:
 
             ttk.Checkbutton(
                 pad,
-                text="Use GPU when available",
+                text=SETTINGS_GPU,
                 variable=self._gpu_var,
                 command=_on_gpu,
             ).pack(anchor=tk.W)
         else:
             ttk.Label(
                 pad,
-                text="Processing on this computer.",
+                text=SETTINGS_PROCESSING_CPU,
                 font=CAPTION,
                 foreground=TEXT_SECONDARY,
             ).pack(anchor=tk.W)
 
-        ttk.Label(pad, text="Appearance", font=BODY_STRONG).pack(
+        ttk.Label(pad, text=SETTINGS_APPEARANCE, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
         from semblon.ui_prefs import load_theme_mode
@@ -4065,8 +4115,9 @@ class HomeApp:
                 command=lambda m=mode: self._set_theme_mode(m),
             ).pack(anchor=tk.W)
 
-        # About — product, not engineering.
-        ttk.Label(pad, text="About", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_24, SP_8))
+        ttk.Label(pad, text=SETTINGS_ABOUT, font=BODY_STRONG).pack(
+            anchor=tk.W, pady=(SP_24, SP_8)
+        )
         try:
             from semblon import __version__ as _ver
         except Exception:  # noqa: BLE001
@@ -4077,34 +4128,23 @@ class HomeApp:
         ).pack(anchor=tk.W, pady=(SP_8, 0))
         ttk.Label(
             pad,
-            text=(
-                "Personal photo library on this computer. Semblon finds faces, "
-                "groups similar ones, and lets you name people. Nothing is uploaded."
-            ),
+            text=SETTINGS_ABOUT_BODY,
             font=BODY,
             wraplength=480,
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
-        # Advanced / Diagnostics — tech and export stay out of everyday settings.
-        ttk.Label(pad, text="Advanced", font=BODY_STRONG).pack(
+        # ── Advanced (shortcuts / export) — not everyday product chrome ──
+        ttk.Label(pad, text=SETTINGS_ADVANCED, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
         ttk.Label(
             pad,
-            text="Shortcuts, diagnostics, and export tools for power users.",
+            text=SETTINGS_ADVANCED_HINT,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
             wraplength=480,
         ).pack(anchor=tk.W)
-        for shortcut, keys in (
-            ("Search", "Ctrl+F"),
-            ("Go to", "Ctrl+K"),
-            ("Photos", "Ctrl+1"),
-            ("Videos", "Ctrl+2"),
-            ("People", "Ctrl+3"),
-            ("People to name", "Ctrl+4"),
-            ("Recent activity", "Ctrl+5"),
-        ):
+        for shortcut, keys in SETTINGS_SHORTCUTS:
             row = ttk.Frame(pad)
             row.pack(fill=tk.X, pady=1)
             ttk.Label(row, text=shortcut, font=BODY).pack(side=tk.LEFT)
@@ -4113,13 +4153,25 @@ class HomeApp:
             ).pack(side=tk.RIGHT)
         _button(
             pad,
-            "Open export review page…",
+            SETTINGS_EXPORT_REVIEW,
             self._open_html,
             kind="tertiary",
         ).pack(anchor=tk.W, pady=(SP_12, 0))
+
+        # ── Diagnostics — runtime / provider / model / schema / jobs ──
+        ttk.Label(pad, text=SETTINGS_DIAGNOSTICS, font=BODY_STRONG).pack(
+            anchor=tk.W, pady=(SP_24, SP_8)
+        )
+        ttk.Label(
+            pad,
+            text=SETTINGS_DIAGNOSTICS_HINT,
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+            wraplength=480,
+        ).pack(anchor=tk.W)
         _button(
             pad,
-            "Advanced diagnostics…",
+            SETTINGS_OPEN_DIAGNOSTICS,
             self._open_advanced_diagnostics,
             kind="tertiary",
         ).pack(anchor=tk.W, pady=(SP_8, 0))
@@ -4129,6 +4181,10 @@ class HomeApp:
             win.destroy()
 
         win.protocol("WM_DELETE_WINDOW", _on_close)
+        try:
+            close_btn.focus_set()
+        except tk.TclError:
+            pass
 
     def _settings_change_library(self) -> None:
         """Pick an existing store.sqlite — presentation path only; no ingest change."""

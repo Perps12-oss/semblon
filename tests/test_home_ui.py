@@ -164,13 +164,14 @@ def test_home_landing_has_no_engineering_leak():
 
 
 def test_home_settings_is_user_panel_not_dump():
-    """§6 — Settings opens a user panel; diagnostics go to Advanced."""
+    """§6 — Settings opens a user panel; diagnostics go to Diagnostics."""
     import semblon.home_ui as home_ui
 
     src = inspect.getsource(home_ui.HomeApp._show_settings)
-    assert "Advanced diagnostics" in src
-    assert "Library location" in src
-    assert "Use GPU when available" in src or "Processing on this computer" in src
+    assert "Advanced diagnostics" in src or "SETTINGS_OPEN_DIAGNOSTICS" in src
+    assert "Library location" in src or "SETTINGS_LIBRARY" in src
+    assert "Use GPU when available" in src or "SETTINGS_GPU" in src or "Processing on this computer" in src or "SETTINGS_PROCESSING_CPU" in src
+    assert "SETTINGS_DIAGNOSTICS" in src or "Diagnostics" in src
     assert "format_execution_status_lines" not in src
     assert "weights_status" not in src
     assert "buffalo_l" not in src

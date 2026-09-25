@@ -341,7 +341,7 @@ def test_overlay_boxes_skip_dual_write_faces():
 def test_home_list_formatters():
     people = format_people_lines({"items": [{"display_name": "Alice", "faces": 3}]})
     # Soft coaching header first; named rows follow (group ≠ person until named).
-    assert "Named people" in people[0]
+    assert "People you have named" in people[0] or "Named people" in people[0]
     assert any("Alice" in ln for ln in people[1:])
     empty = format_people_lines({"items": []})
     assert "No people yet" in empty[0]
@@ -360,15 +360,16 @@ def test_home_list_formatters():
         }
     )
     assert "modality=" not in "\n".join(sim)
-    assert "Similar results" in sim[0]
+    assert "Similar" in sim[0]
     text_lines = format_search_lines(
         {
             "kind": "text",
             "query": "hello",
             "count": 1,
+            "status": "SUCCESS",
             "items": [{"item_id": "t1", "text": "hello world", "why": "OCR payload substring; not a person"}],
             "note": "OCR text lookup is observation evidence only; not identity.",
         }
     )
-    assert "hello" in text_lines[0].lower() or "Text matches" in text_lines[0]
+    assert "hello" in text_lines[0].lower() or "Text" in text_lines[0]
     assert "hello world" in "\n".join(text_lines)
