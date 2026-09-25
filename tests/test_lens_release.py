@@ -9,6 +9,7 @@ import numpy as np
 
 from semblon.application import Application
 from semblon.geometry import normalize_pixels, same_norm
+from semblon.lens_home import install, open_region_select
 from semblon.lens_release import remember_selection
 from semblon.observers import observe_bgr, persist_item
 from semblon.store import connect, init_db
@@ -110,10 +111,15 @@ def test_detector_box_does_not_mutate_user_box(tmp_path):
 def test_home_release_path_calls_remember_and_find():
     import semblon.home_ui as home_ui
 
-    src = inspect.getsource(home_ui.HomeApp._open_region_select)
+    install(home_ui.HomeApp)
+    assert home_ui.HomeApp._open_region_select is open_region_select
+    src = inspect.getsource(open_region_select)
     assert "remember_selection" in src
     assert "on_rect" in src
-    assert "_refresh_lens_workspace()" not in src.split("def done")[1].split("def on_report")[0]
+    assert "_refresh_lens_workspace()" not in src.split("def done")[1]
+    sel = inspect.getsource(__import__("semblon.selection", fromlist=["mount_region_select"]).mount_region_select)
+    assert "on_rect" in sel
+    assert "person_id" not in sel
 
 
 def test_empty_similar_copy_is_truthful(tmp_path):
