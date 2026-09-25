@@ -349,6 +349,14 @@ def test_home_inspector_uses_soft_verbs():
     assert "Combine face groups" in init or "VERB_LABEL_MERGE" in init
     assert "Name this person" in init or "VERB_LABEL_NAME" in init
     assert "Nothing selected" in init or "SEL_HEADING_IDLE" in init
+    # Save identity is a primary button — not Enter-only on a grey Add to person.
+    assert "btn_name" in init
+    assert "self._inspector_name_commit" in init
+    refresh = inspect.getsource(home_ui.HomeApp._refresh_inspector_verbs)
+    assert "_sync_name_save_button" in refresh
+    sync = inspect.getsource(home_ui.HomeApp._sync_name_save_button)
+    assert "btn_name" in sync
+    assert "strip()" in sync
     assert 'text="Selection"' not in init
     fmt = inspect.getsource(home_ui._format_sel_item)
     assert "soft_sel_item_label" in fmt
