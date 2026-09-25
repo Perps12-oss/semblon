@@ -177,7 +177,9 @@ def test_review_html_not_product_ux_regression():
     sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
     assert "btn_html" not in sync
     settings = inspect.getsource(home_ui.HomeApp._show_settings)
-    assert "Open export review page" in settings
+    assert "SETTINGS_EXPORT_REVIEW" in settings or "Open export review page" in settings
+    assert "SETTINGS_ADVANCED" in settings or "Advanced" in settings
+    assert "SETTINGS_DIAGNOSTICS" in settings or "Diagnostics" in settings
 
 
 def test_widget_drag_and_media_file(tmp_path):

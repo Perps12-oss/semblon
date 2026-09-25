@@ -119,10 +119,17 @@ def test_home_settings_uses_execution_status_lines():
 
     settings = inspect.getsource(home_ui.HomeApp._show_settings)
     assert "format_execution_status_lines" not in settings
-    assert "Advanced diagnostics" in settings
+    assert (
+        "Advanced diagnostics" in settings
+        or "SETTINGS_OPEN_DIAGNOSTICS" in settings
+    )
     assert "FaceKit CPU (not claimed GPU)" not in settings
     # Soft GPU preference still available when a GPU EP exists.
-    assert "resolve_home_prefer_gpu" in settings or "Use GPU when available" in settings
+    assert (
+        "resolve_home_prefer_gpu" in settings
+        or "Use GPU when available" in settings
+        or "SETTINGS_GPU" in settings
+    )
 
 
 def test_home_ingest_passes_product_prefer_gpu():
