@@ -15,6 +15,15 @@ from semblon.runtime_contract import failure_disguised_as_empty
 from semblon.store import connect, init_db
 
 
+@pytest.fixture(autouse=True)
+def _clean_circuits():
+    from semblon.circuits import reset_circuits
+
+    reset_circuits()
+    yield
+    reset_circuits()
+
+
 def _qr() -> np.ndarray:
     import cv2
 

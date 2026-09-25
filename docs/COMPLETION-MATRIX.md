@@ -1,6 +1,6 @@
 # Semblon completion matrix (authoritative current state)
 
-**Date:** 2026-09-22  
+**Date:** 2026-09-22 (identity and APP-1). Schema list below is 2026-09-25.  
 **Authority:** `docs/SEM-ARCH-V1.4.md` · this matrix reconciles docs vs `main` implementation.  
 **Do not** treat older freeze audits as current blockers without checking this file + SEM-ARCH §I.5.
 
@@ -42,3 +42,20 @@ Owner Windows 2026-09-22: pytest jobs/application/ipc **20 passed**; live `sembl
 ## Retired docs (2026-09-22)
 
 Deleted superseded parallel / historical plan files that competed with this matrix + `SEM-ARCH-V1.4`: `SEM-ARCH.md`, `SEMBLON_MATURITY_BLUEPRINT.md`, `ROADMAP-RECONCILE.md`, `PRODUCTION-AUDIT.md`, `PRODUCTION-READINESS-2026-09-22.md`, `HUMAN-VERIFY-THEN-WIRE.md`, `CURSOR_INSTRUCTION.txt`, stub discovery/backlog/references, `CRITIQUE-P0.md`, historical `PERF-WORKERS.md`, redundant `docs/r3-packets/` (Ruled-out note lives in `CONTRACTS-RULED-OUT.md`; Artifacts stay under `docs/r3-artifacts/`). Git history retains them.
+
+## Schema list 2026-09-25 (not a Windows verification)
+
+These rows close the open schema list in code. They do not move ARM64, worker default, MSI sign, buffalo_l, or identify/inbox pages.
+
+| ITEM | CURRENT STATE | EVIDENCE | REMAINING ACTION | FINAL STATUS |
+|---|---|---|---|---|
+| Home drag-to-select | Inspector “Select a region” maps a drag into `query_image` | `semblon/selection.py`, `home_ui._open_region_select` | Tk window not clicked in this environment (no libtk) | **PARTIAL** |
+| Windows capture | Privacy intersection before grab. ImageGrab fallback. WGC import does not return frames | `semblon/privacy.py`, `lens.capture_screen` | Not tried on a Windows desktop | **PARTIAL** |
+| SigLIP | ONNX session, L2 blob, not a face embedding. `semblon lab install` is atomic and does not download | `lens.embed_siglip`, `model_install.py` | Fixture is a tiny ONNX graph, not SigLIP weights | **PARTIAL** |
+| SAM2 | Real mask only when `SAM2ImagePredictor` returns one. Otherwise rectangle, mask unset | `lens.ground_selection` | Needs sam2 package, config, and checkpoint | **PARTIAL** |
+| Translation | JSON dictionary runs. Argos only if that import exists | `lens.translate_text` | No neural model shipped | **PARTIAL** |
+| VLM | `pixel-describer` marker runs a local colour model. Bad schema is ERROR | `lens.describe_vlm` | Not a downloaded VLM | **PARTIAL** |
+| Landmarks, logos, products | Local JSON pack, substring or barcode. Missing pack is UNAVAILABLE | `semblon/knowledge.py` | Not a world recognizer | **PARTIAL** |
+| Fast index | Derived `.semblon-index.npz` from non-face embeddings. SQLite stays authoritative | `semblon/ann_index.py`, `search_similar` | Numpy cosine, not FAISS | **PARTIAL** |
+| Circuit breaker | Lens query and ingest OCR/CLIP/pose. Three crashes then `{id}.CIRCUIT_OPEN` | `semblon/circuits.py` | Process memory only. Not Home text search | **PARTIAL** |
+| Model installer | Write `.partial`, fsync, `os.replace`. Checksum mismatch does not replace dest | `semblon lab install` | No download | **COMPLETE** (local file) |

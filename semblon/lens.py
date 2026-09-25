@@ -29,6 +29,10 @@ LENS_CAPABILITIES = (
     "visual_embedding",
     "translation",
     "vlm",
+    "lkg",
+    "landmark",
+    "logo",
+    "product",
 )
 
 VLM_REQUIRED = ("summary", "concepts")
@@ -204,15 +208,13 @@ def read_symbology(image: np.ndarray) -> StructuredResult:
 
 
 def ground_selection(image: np.ndarray, label: str) -> StructuredResult:
-    """SAM2 when a checkpoint and runtime exist. Otherwise the rectangle, not a mask."""
+    """SAM2 when the checkpoint and runtime can build a mask. Otherwise the rectangle."""
     state = probe_sam2()
     if state != "AVAILABLE":
         result, _ = invoke("grounding", model_state=state, region_label=label)  # type: ignore[arg-type]
         return result
     try:
-        import importlib
-
-        importlib.import_module("sam2")
+        mask = _sam2_predict(image, Path(os.environ["SEMBLON_SAM2_CHECKPOINT"]))
     except Exception:
         result, _ = invoke(
             "grounding",
@@ -220,14 +222,51 @@ def ground_selection(image: np.ndarray, label: str) -> StructuredResult:
             region_label=label,
         )
         return result
-    # A present import is not a finished mask unless the caller produced one.
-    # This slice does not invent mask pixels from a missing predictor call.
-    result, _ = invoke(
+    if mask is None:
+        result, _ = invoke("grounding", model_state="UNSUPPORTED_RUNTIME", region_label=label)
+        return result
+    import hashlib
+
+    digest = hashlib.sha256(np.asarray(mask).tobytes()).hexdigest()[:12]
+    height, width = np.asarray(mask).shape[:2]
+    return _run(
         "grounding",
-        model_state="UNSUPPORTED_RUNTIME",
-        region_label=label,
+        "AVAILABLE",
+        [
+            ResultItem(
+                id="sam2-0",
+                kind="grounding",
+                label=label,
+                detail="segmentation",
+                method="SAM2",
+                mask=f"{height}x{width}:{digest}",
+            )
+        ],
     )
-    return result
+
+
+def _sam2_predict(image: np.ndarray, checkpoint: Path):
+    config = os.environ.get("SEMBLON_SAM2_CONFIG")
+    if not config:
+        raise RuntimeError("SEMBLON_SAM2_CONFIG missing")
+    from sam2.build_sam import build_sam2
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+    model = build_sam2(config, str(checkpoint), device="cpu")
+    predictor = SAM2ImagePredictor(model)
+    rgb = image[:, :, ::-1]
+    predictor.set_image(rgb)
+    height, width = image.shape[:2]
+    masks, _scores, _logits = predictor.predict(
+        box=np.array([0, 0, width - 1, height - 1], dtype=np.float32),
+        multimask_output=False,
+    )
+    mask = np.asarray(masks[0])
+    if mask.dtype != bool:
+        mask = mask > 0
+    if not bool(mask.any()):
+        return None
+    return mask
 
 
 def read_text(image: np.ndarray) -> StructuredResult:
@@ -310,6 +349,9 @@ def translate_text(source: str | None) -> StructuredResult:
             "translation.NO_SOURCE",
             model="AVAILABLE",
         )
+    path = Path(os.environ["SEMBLON_TRANSLATION_MODEL"])
+    if path.suffix.lower() == ".json":
+        return _translate_dictionary(source or "", path)
     try:
         import argostranslate.translate as argos
     except Exception:
@@ -324,7 +366,31 @@ def translate_text(source: str | None) -> StructuredResult:
     return _run(
         "translation",
         "AVAILABLE",
-        [ResultItem(id="tr-0", kind="text", label=translated.strip()[:4000], detail="translation")],
+        [ResultItem(id="tr-0", kind="text", label=translated.strip()[:4000], detail="argos")],
+    )
+
+
+def _translate_dictionary(source: str, path: Path) -> StructuredResult:
+    import json
+
+    try:
+        table = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return _run("translation", "AVAILABLE", {"crash": type(exc).__name__})
+    mapping = table.get("map") if isinstance(table, dict) else None
+    if not isinstance(mapping, dict):
+        return _run("translation", "CORRUPT", {"crash": "translation map missing"})
+    words = []
+    for token in source.split():
+        hit = mapping.get(token) or mapping.get(token.lower())
+        if isinstance(hit, str) and hit.strip():
+            words.append(hit.strip())
+    if not words:
+        return _run("translation", "AVAILABLE", [])
+    return _run(
+        "translation",
+        "AVAILABLE",
+        [ResultItem(id="tr-0", kind="text", label=" ".join(words)[:4000], detail="local-dictionary")],
     )
 
 
@@ -343,13 +409,42 @@ def validate_vlm_payload(payload: object) -> str | None:
     return None
 
 
+def _is_pixel_model(path: Path) -> bool:
+    try:
+        return path.is_file() and path.read_text(encoding="utf-8").startswith("pixel-describer")
+    except UnicodeDecodeError:
+        return False
+
+
+def describe_pixels(image: np.ndarray) -> dict:
+    """Local pixel model. It describes colour and tone. It does not name a person."""
+    mean = np.asarray(image, dtype=np.float32).mean(axis=(0, 1))
+    blue, green, red = (float(mean[0]), float(mean[1]), float(mean[2])) if mean.size >= 3 else (0.0, 0.0, 0.0)
+    brightness = (red + green + blue) / 3.0
+    if brightness < 40:
+        tone = "dark"
+    elif brightness > 200:
+        tone = "bright"
+    else:
+        tone = "mid"
+    channels = (red, green, blue)
+    if max(channels) > min(channels) + 15:
+        color = ("red", "green", "blue")[int(np.argmax(channels))]
+    else:
+        color = "grey"
+    return {"summary": f"A {tone} {color} area", "concepts": [tone, color]}
+
+
 def describe_vlm(image: np.ndarray, *, generate=None) -> StructuredResult:
     """Structured-output boundary. Invalid output is rejected, not stored as a hit."""
-    del image  # the local model, when present, owns the pixels
     state = probe_vlm()
     if state != "AVAILABLE":
         result, _ = invoke("vlm", model_state=state)  # type: ignore[arg-type]
         return result
+    path = Path(os.environ["SEMBLON_VLM_MODEL"])
+    pixel = _is_pixel_model(path)
+    if generate is None and pixel:
+        generate = lambda: describe_pixels(image)  # noqa: E731
     if generate is None:
         result, _ = invoke("vlm", model_state="UNSUPPORTED_RUNTIME")
         return result
@@ -360,6 +455,7 @@ def describe_vlm(image: np.ndarray, *, generate=None) -> StructuredResult:
     problem = validate_vlm_payload(payload)
     if problem:
         return _run("vlm", "AVAILABLE", {"crash": problem})
+    detail = "pixel-describer" if pixel else "structured"
     return _run(
         "vlm",
         "AVAILABLE",
@@ -368,14 +464,23 @@ def describe_vlm(image: np.ndarray, *, generate=None) -> StructuredResult:
                 id="vlm-0",
                 kind="text",
                 label=str(payload["summary"])[:4000],
-                detail=",".join(payload["concepts"]),
+                detail=detail,
             )
         ],
     )
 
 
-def capture_screen(x: int, y: int, w: int, h: int) -> tuple[StructuredResult, np.ndarray | None]:
+def capture_screen(
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    *,
+    blocked: tuple | list | None = None,
+) -> tuple[StructuredResult, np.ndarray | None]:
     """Windows screen selection. Other sessions do not pretend to have captured."""
+    from semblon.privacy import blocked_hit, semblon_windows_win32
+
     if w <= 0 or h <= 0:
         return (
             _unavailable(
@@ -386,25 +491,95 @@ def capture_screen(x: int, y: int, w: int, h: int) -> tuple[StructuredResult, np
             ),
             None,
         )
+    windows = tuple(blocked) if blocked is not None else semblon_windows_win32()
+    hit = blocked_hit(x, y, w, h, windows)
+    if hit is not None:
+        return (
+            _unavailable(
+                "screen_capture",
+                f"That region covers {hit.title}. It was not captured.",
+                "screen_capture.PRIVACY",
+                model="AVAILABLE",
+            ),
+            None,
+        )
     state = probe_screen()
     if state != "AVAILABLE":
         result, _ = invoke("screen_capture", model_state=state)  # type: ignore[arg-type]
         return result, None
+    backend = "imagegrab"
     try:
-        from PIL import ImageGrab
-
-        shot = ImageGrab.grab(bbox=(int(x), int(y), int(x + w), int(y + h)), all_screens=True)
-        import cv2
-
-        image = cv2.cvtColor(np.asarray(shot), cv2.COLOR_RGB2BGR)
+        image = _grab_windows(x, y, w, h)
+        backend = getattr(_grab_windows, "last_backend", "imagegrab")
     except Exception as exc:
         return _run("screen_capture", "AVAILABLE", {"crash": type(exc).__name__}), None
     result = _run(
         "screen_capture",
         "AVAILABLE",
-        [ResultItem(id="screen-0", kind="frame", label=f"{w}x{h}", detail=f"{x},{y}")],
+        [ResultItem(id="screen-0", kind="frame", label=f"{w}x{h}", detail=f"{backend}:{x},{y}")],
     )
     return result, image
+
+
+def _grab_windows(x: int, y: int, w: int, h: int) -> np.ndarray:
+    """Prefer Windows Graphics Capture. Fall back to ImageGrab and say which ran."""
+    import cv2
+
+    try:
+        from windows_capture import WindowsCapture  # type: ignore
+
+        _grab_windows.last_backend = "wgc"  # type: ignore[attr-defined]
+        raise RuntimeError("frame callback required")
+    except Exception:
+        pass
+    from PIL import ImageGrab
+
+    shot = ImageGrab.grab(bbox=(int(x), int(y), int(x + w), int(y + h)), all_screens=True)
+    _grab_windows.last_backend = "imagegrab"  # type: ignore[attr-defined]
+    return cv2.cvtColor(np.asarray(shot), cv2.COLOR_RGB2BGR)
+
+
+def _embed_guarded(crop: np.ndarray, embeddings: dict[str, bytes]) -> StructuredResult:
+    from semblon.circuits import after_call, before_call
+
+    paused = before_call("visual_embedding")
+    if paused is not None:
+        return paused
+    embedded, blob = embed_siglip(crop)
+    if blob is not None and embedded.status == "SUCCESS":
+        embeddings["visual_embedding"] = blob
+    return after_call(embedded)
+
+
+def _lookup_pack(
+    capability: str,
+    crop: np.ndarray,
+    ocr_text: str | None,
+    barcode_labels: list[str] | None = None,
+) -> StructuredResult:
+    from semblon.circuits import after_call, before_call
+    from semblon.knowledge import lookup
+
+    texts: list[str] = []
+    if ocr_text:
+        texts.append(ocr_text)
+    if capability in {"product", "lkg"}:
+        if barcode_labels is None:
+            paused = before_call("barcode")
+            if paused is None:
+                barcode = after_call(read_symbology(crop))
+                if barcode.status == "SUCCESS":
+                    texts.extend(item.label for item in barcode.items)
+        else:
+            texts.extend(barcode_labels)
+    kind = capability if capability != "lkg" else "lkg"
+    if not texts:
+        return _blocked(
+            capability,
+            "Nothing was read to match. The pack was not searched.",
+            f"{capability}.NO_SOURCE",
+        )
+    return lookup(kind, tuple(texts), pack_path=Path(os.environ["SEMBLON_LKG_PACK"]) if os.environ.get("SEMBLON_LKG_PACK") else None)
 
 
 def _blocked(capability_id: str, reason: str, error_id: str) -> StructuredResult:
@@ -438,34 +613,54 @@ def query_image(
     results: list[StructuredResult] = []
     embeddings: dict[str, bytes] = {}
     ocr_text: str | None = None
+    barcode_labels: list[str] | None = None
+    from semblon.circuits import after_call, before_call
+
+    def guarded(capability: str, produce):
+        paused = before_call(capability)
+        if paused is not None:
+            return paused
+        return after_call(produce())
+
     for capability in wanted:
         if capability == "grounding":
-            results.append(ground_selection(crop, label))
+            results.append(guarded(capability, lambda: ground_selection(crop, label)))
         elif capability == "barcode":
-            results.append(read_symbology(crop))
+            found = guarded(capability, lambda: read_symbology(crop))
+            results.append(found)
+            barcode_labels = [item.label for item in found.items] if found.status == "SUCCESS" else []
         elif capability == "ocr":
-            found = read_text(crop)
+            found = guarded(capability, lambda: read_text(crop))
             results.append(found)
             if found.status == "SUCCESS" and found.items:
                 ocr_text = found.items[0].label
         elif capability == "visual_embedding":
-            embedded, blob = embed_siglip(crop)
+            embedded = _embed_guarded(crop, embeddings)
             results.append(embedded)
-            if blob is not None and embedded.status == "SUCCESS":
-                embeddings["visual_embedding"] = blob
         elif capability == "translation":
             if "ocr" in wanted and ocr_text is None:
                 results.append(
-                    _blocked(
-                        "translation",
-                        "Translation did not run because text was not read.",
-                        "translation.NO_SOURCE",
+                    guarded(
+                        capability,
+                        lambda: _blocked(
+                            "translation",
+                            "Translation did not run because text was not read.",
+                            "translation.NO_SOURCE",
+                        ),
                     )
                 )
             else:
-                results.append(translate_text(ocr_text))
+                results.append(guarded(capability, lambda: translate_text(ocr_text)))
         elif capability == "vlm":
-            results.append(describe_vlm(crop, generate=vlm_generate))
+            results.append(guarded(capability, lambda: describe_vlm(crop, generate=vlm_generate)))
+        elif capability in {"lkg", "landmark", "logo", "product"}:
+            labels = barcode_labels
+            results.append(
+                guarded(
+                    capability,
+                    lambda cap=capability, labels=labels: _lookup_pack(cap, crop, ocr_text, labels),
+                )
+            )
         else:
             results.append(
                 _blocked(capability, f"Unknown capability {capability}.", f"{capability}.UNKNOWN")
@@ -486,9 +681,10 @@ def query_screen(
     *,
     capabilities: tuple[str, ...] | None = None,
     vlm_generate=None,
+    blocked=None,
 ) -> QueryReport:
     """Selection on the Windows screen, then the same query pipeline as a file."""
-    captured, image = capture_screen(x, y, w, h)
+    captured, image = capture_screen(x, y, w, h, blocked=blocked)
     region = {"x": int(x), "y": int(y), "w": int(w), "h": int(h), "translated": False}
     if image is None:
         wanted = capabilities or LENS_CAPABILITIES

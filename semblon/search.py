@@ -188,11 +188,12 @@ def _failed_item(conn, item_id: str) -> dict | None:
 def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index: bool = False) -> dict:
     """Modality-scoped nearest items. Face identity is forbidden here.
 
-    There is no fast index. A scan of stored embeddings is LIBRARY_SCAN and
-    must say so. Demanding the index does not become an empty match.
-    A missing embedding is UNAVAILABLE, not NO_RESULT.
+    A derived index is used when it has been built. Otherwise the library is
+    scanned and the result says so. Demanding a missing index is not an empty match.
     """
-    if require_index:
+    from semblon.ann_index import has_index, search_index
+
+    if require_index and not has_index(store):
         return {
             "kind": "similar",
             "query": item_id,
@@ -226,41 +227,67 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index:
             raise SearchError(f"no non-identity embedding for item {item_id}")
         if row["modality"] == "face":
             raise SearchError("face identity must use search --face / identify, not --similar")
-        others = conn.execute(
-            """SELECT e.item_id, e.embedding, e.embedding_dim, e.pack_id, e.modality, i.kind, i.provider
-               FROM embeddings e JOIN observation_items i ON i.item_id=e.item_id
-               WHERE e.item_id != ? AND e.modality != 'face'""",
-            (item_id,),
-        ).fetchall()
-        scored = []
-        for o in others:
-            try:
-                s = compare_space(
-                    row["modality"],
-                    row["pack_id"],
-                    int(row["embedding_dim"]),
-                    row["embedding"],
-                    o["modality"],
-                    o["pack_id"],
-                    int(o["embedding_dim"]),
-                    o["embedding"],
+        indexed = search_index(
+            store,
+            item_id=item_id,
+            modality=row["modality"],
+            pack_id=row["pack_id"],
+            vector=row["embedding"],
+            dim=int(row["embedding_dim"]),
+            limit=limit,
+        )
+        if indexed is not None:
+            scored = indexed
+            used_index = True
+        else:
+            used_index = False
+            others = conn.execute(
+                """SELECT e.item_id, e.embedding, e.embedding_dim, e.pack_id, e.modality, i.kind, i.provider
+                   FROM embeddings e JOIN observation_items i ON i.item_id=e.item_id
+                   WHERE e.item_id != ? AND e.modality != 'face'""",
+                (item_id,),
+            ).fetchall()
+            scored = []
+            for o in others:
+                try:
+                    s = compare_space(
+                        row["modality"],
+                        row["pack_id"],
+                        int(row["embedding_dim"]),
+                        row["embedding"],
+                        o["modality"],
+                        o["pack_id"],
+                        int(o["embedding_dim"]),
+                        o["embedding"],
+                    )
+                except CompareError:
+                    continue
+                scored.append(
+                    {
+                        "item_id": o["item_id"],
+                        "kind": o["kind"],
+                        "provider": o["provider"],
+                        "score": s,
+                        "why": "same modality+pack only; not a person",
+                    }
                 )
-            except CompareError:
-                continue
-            scored.append(
-                {
-                    "item_id": o["item_id"],
-                    "kind": o["kind"],
-                    "provider": o["provider"],
-                    "score": s,
-                    "why": "same modality+pack only; not a person",
-                }
-            )
     finally:
         conn.close()
     scored.sort(key=lambda x: -x["score"])
     items = scored[:limit]
     note = "Lens-like lookup in owned memory. Similarity is not identity."
+    if used_index:
+        reason_hit = "These matches came from the derived index. The library stays authoritative."
+        reason_miss = "The derived index was searched and nothing matched."
+        provider = "READY"
+        model = "AVAILABLE"
+        fallback = None
+    else:
+        reason_hit = "The fast index is absent. These matches came from the library."
+        reason_miss = "The fast index is absent. The library was scanned and nothing matched."
+        provider = "DEGRADED"
+        model = "MISSING"
+        fallback = "LIBRARY_SCAN"
     if not items:
         return {
             "kind": "similar",
@@ -270,10 +297,10 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index:
             "count": 0,
             "items": [],
             "status": "NO_RESULT",
-            "model_state": "MISSING",
-            "provider_state": "DEGRADED",
-            "fallback": "LIBRARY_SCAN",
-            "reason": "The fast index is absent. The library was scanned and nothing matched.",
+            "model_state": model,
+            "provider_state": provider,
+            "fallback": fallback,
+            "reason": reason_miss,
             "error_id": None,
             "note": note,
         }
@@ -285,10 +312,10 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index:
         "count": len(items),
         "items": items,
         "status": "SUCCESS",
-        "model_state": "MISSING",
-        "provider_state": "DEGRADED",
-        "fallback": "LIBRARY_SCAN",
-        "reason": "The fast index is absent. These matches came from the library.",
+        "model_state": model,
+        "provider_state": provider,
+        "fallback": fallback,
+        "reason": reason_hit,
         "error_id": None,
         "note": note,
     }
