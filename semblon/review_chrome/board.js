@@ -4,7 +4,8 @@
 
   var PAGE_SIZE = 8;
   var CARD_THUMBS = 10;
-  var INSPECTOR_THUMBS = 18;
+  // Inspector shows every face in the group for comparison (card row stays capped).
+  var INSPECTOR_THUMBS = 10000;
 
   function $(id) {
     return document.getElementById(id);
@@ -767,8 +768,16 @@
     if (!state.board) return;
     fillStats();
     bind();
-    renderBoard();
-    renderInspector();
+    var focus =
+      (document.body && document.body.getAttribute("data-focus-cluster")) ||
+      (state.board && state.board.focus_cluster_id) ||
+      "";
+    if (focus) {
+      selectItem("cluster", focus);
+    } else {
+      renderBoard();
+      renderInspector();
+    }
   }
 
   window.semblonReviewBoard = {

@@ -108,7 +108,7 @@ def test_run_review_ui_expected_empty_opens_coaching_not_error(tmp_path, monkeyp
     created = {}
 
     class FakeApp:
-        def __init__(self, store, run_id, *, parent=None, empty_reason=None, on_add_folder=None):
+        def __init__(self, store, run_id, *, parent=None, empty_reason=None, on_add_folder=None, **_kw):
             created["store"] = store
             created["run_id"] = run_id
             created["empty_reason"] = empty_reason
@@ -134,7 +134,7 @@ def test_run_review_ui_with_runs_uses_resolved_id(tmp_path, monkeypatch):
     created = {}
 
     class FakeApp:
-        def __init__(self, store, run_id, *, parent=None, empty_reason=None, on_add_folder=None):
+        def __init__(self, store, run_id, *, parent=None, empty_reason=None, on_add_folder=None, **_kw):
             created["run_id"] = run_id
             created["empty_reason"] = empty_reason
 
@@ -180,6 +180,7 @@ def test_visible_review_items_hides_singles_by_default():
         visible_review_items,
         ACCENT,
         FACE_BORDER_MUTED,
+        GROUP_REPR_FACES,
     )
 
     items = [
@@ -194,6 +195,7 @@ def test_visible_review_items_hides_singles_by_default():
     assert len(shown) == 4
     reps = representative_members(items[0], limit=1)
     assert reps == [{"face_id": "a"}]
+    assert GROUP_REPR_FACES == 3
     assert cluster_items_at_indices(hidden, [0, 1]) == [items[0]]
     assert cluster_items_at_indices(items, [0, 2]) == [items[0]]
     assert split_button_label(0) == "Split selected"
@@ -203,6 +205,18 @@ def test_visible_review_items_hides_singles_by_default():
     assert color == ACCENT and width == 3
     color, width = face_border_style(selected=False, hovered=False)
     assert color == FACE_BORDER_MUTED and width == 1
+
+
+def test_load_board_face_count_matches_members(tmp_path):
+    """Group labels must not claim more faces than the clickable member grid has."""
+    store = tmp_path / "s.sqlite"
+    _clustered(store)
+    board = load_board(store, "r1")
+    clusters = [it for it in board["items"] if it["kind"] == "cluster"]
+    assert clusters
+    for it in clusters:
+        assert it["face_count"] == len(it["members"])
+        assert it["face_count"] >= 1
 
 
 def test_review_status_text_named_progress():
