@@ -131,8 +131,86 @@ def search_people(store: Path) -> dict:
     return {"kind": "people", "count": len(items), "items": items}
 
 
-def search_similar(store: Path, item_id: str, *, limit: int = 10) -> dict:
-    """Modality-scoped nearest items. Face identity is forbidden here."""
+def _failed_item(conn, item_id: str) -> dict | None:
+    """Observation that was stored but never embedded. Not an empty match."""
+    row = conn.execute(
+        "SELECT kind, payload_json FROM observation_items WHERE item_id=?",
+        (item_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        payload = json.loads(row["payload_json"] or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    status = str(payload.get("contract_status") or "").upper()
+    raw = str(payload.get("status") or "").lower()
+    failed = status in {"UNAVAILABLE", "ERROR", "TIMEOUT", "CANCELLED"} or raw in {
+        "unavailable",
+        "error",
+    }
+    if not failed:
+        return {
+            "kind": "similar",
+            "query": item_id,
+            "modality": row["kind"],
+            "pack_id": None,
+            "count": 0,
+            "items": [],
+            "status": "UNAVAILABLE",
+            "model_state": "MISSING",
+            "provider_state": "FAILED",
+            "fallback": None,
+            "reason": "This item has no embedding. Nothing was searched.",
+            "error_id": "similar.NO_EMBEDDING",
+            "note": "Similarity is not identity.",
+        }
+    out_status = "ERROR" if status == "ERROR" or raw == "error" else "UNAVAILABLE"
+    return {
+        "kind": "similar",
+        "query": item_id,
+        "modality": row["kind"],
+        "pack_id": None,
+        "count": 0,
+        "items": [],
+        "status": out_status,
+        "model_state": "MISSING",
+        "provider_state": "FAILED",
+        "fallback": None,
+        "reason": payload.get("reason") or "Similarity did not run. Nothing was searched.",
+        "error_id": payload.get("error_id") or f"{row['kind']}.{out_status}",
+        "note": "Similarity is not identity.",
+    }
+
+
+def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index: bool = False) -> dict:
+    """Modality-scoped nearest items. Face identity is forbidden here.
+
+    There is no fast index. A scan of stored embeddings is LIBRARY_SCAN and
+    must say so. Demanding the index does not become an empty match.
+    A missing embedding is UNAVAILABLE, not NO_RESULT.
+    """
+    if require_index:
+        return {
+            "kind": "similar",
+            "query": item_id,
+            "modality": None,
+            "pack_id": None,
+            "count": 0,
+            "items": [],
+            "status": "UNAVAILABLE",
+            "model_state": "MISSING",
+            "provider_state": "FAILED",
+            "fallback": None,
+            "reason": (
+                "The fast visual index is not built. A library scan was not used "
+                "because this request demanded the index."
+            ),
+            "error_id": "ann_index.INDEX_REQUIRED",
+            "note": "Similarity is not identity.",
+        }
     conn = _open_ro(store)
     try:
         row = conn.execute(
@@ -142,6 +220,9 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10) -> dict:
             (item_id,),
         ).fetchone()
         if row is None:
+            failed = _failed_item(conn, item_id)
+            if failed is not None:
+                return failed
             raise SearchError(f"no non-identity embedding for item {item_id}")
         if row["modality"] == "face":
             raise SearchError("face identity must use search --face / identify, not --similar")
@@ -178,14 +259,38 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10) -> dict:
     finally:
         conn.close()
     scored.sort(key=lambda x: -x["score"])
+    items = scored[:limit]
+    note = "Lens-like lookup in owned memory. Similarity is not identity."
+    if not items:
+        return {
+            "kind": "similar",
+            "query": item_id,
+            "modality": row["modality"],
+            "pack_id": row["pack_id"],
+            "count": 0,
+            "items": [],
+            "status": "NO_RESULT",
+            "model_state": "MISSING",
+            "provider_state": "DEGRADED",
+            "fallback": "LIBRARY_SCAN",
+            "reason": "The fast index is absent. The library was scanned and nothing matched.",
+            "error_id": None,
+            "note": note,
+        }
     return {
         "kind": "similar",
         "query": item_id,
         "modality": row["modality"],
         "pack_id": row["pack_id"],
-        "count": min(limit, len(scored)),
-        "items": scored[:limit],
-        "note": "Lens-like lookup in owned memory. Similarity is not identity.",
+        "count": len(items),
+        "items": items,
+        "status": "SUCCESS",
+        "model_state": "MISSING",
+        "provider_state": "DEGRADED",
+        "fallback": "LIBRARY_SCAN",
+        "reason": "The fast index is absent. These matches came from the library.",
+        "error_id": None,
+        "note": note,
     }
 
 
