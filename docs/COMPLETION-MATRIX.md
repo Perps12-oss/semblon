@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-22 (identity and APP-1). Schema list below is 2026-09-25.  
 **Authority:** `docs/SEM-ARCH-V1.4.md` · this matrix reconciles docs vs `main` implementation.  
+**UI exposure classes:** `docs/UI-EXPOSURE-MAP.md` (canonical / secondary / CLI / lab / KEEP / SUPERSEDED / STALE?).  
 **Do not** treat older freeze audits as current blockers without checking this file + SEM-ARCH §I.5.
 
 | ITEM | CURRENT STATE | EVIDENCE | REMAINING ACTION | FINAL STATUS |
