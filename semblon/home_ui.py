@@ -1173,11 +1173,13 @@ class HomeApp:
         self._result_card = ttk.Frame(work)
         self._library_home = ttk.Frame(work)
         self._lens = ttk.Frame(work)
+        self._activity = ttk.Frame(work)
         self._build_home_landing()
         self._build_processing_home()
         self._build_result_card_shell()
         self._build_library_home()
         self._build_lens_workspace()
+        self._build_activity_workspace()
 
         from semblon.canvas import CanvasWorkspace
 
@@ -1705,6 +1707,92 @@ class HomeApp:
         self._set_inspector_collapsed(False)
         self._lens.pack(fill=tk.BOTH, expand=True)
         self._refresh_lens_workspace()
+
+    def _build_activity_workspace(self) -> None:
+        """Activity / Memory pane — soft history, not the database model."""
+        from semblon.activity_surface import ACTIVITY_HEADLINE, ACTIVITY_SUBCOPY
+
+        for child in self._activity.winfo_children():
+            child.destroy()
+        shell = ttk.Frame(self._activity, padding=(SP_24, SP_20))
+        shell.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(shell, text=ACTIVITY_HEADLINE, font=H1).pack(anchor=tk.W)
+        ttk.Label(
+            shell,
+            text=ACTIVITY_SUBCOPY,
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+            wraplength=560,
+        ).pack(anchor=tk.W, pady=(SP_4, SP_16))
+
+        actions = ttk.Frame(shell)
+        actions.pack(anchor=tk.W, pady=(0, SP_12))
+        self.btn_activity_review = _button(
+            actions, "Review people", lambda: self._navigate("unknown"), kind="secondary"
+        )
+        self.btn_activity_review.pack(side=tk.LEFT, padx=(0, SP_8))
+        self.btn_activity_people = _button(
+            actions, "Open People", lambda: self._navigate("people"), kind="tertiary"
+        )
+        self.btn_activity_people.pack(side=tk.LEFT)
+
+        self._activity_body = ttk.Frame(shell)
+        self._activity_body.pack(anchor=tk.W, fill=tk.BOTH, expand=True)
+        self._last_activity_view: dict | None = None
+
+    def _refresh_activity_workspace(self, view: dict | None = None) -> None:
+        from semblon.activity_surface import (
+            ACTIVITY_HEADLINE,
+            activity_workspace_sections,
+            format_activity_memory_lines,
+        )
+
+        if view is None:
+            view = self._last_activity_view
+        if view is None:
+            return
+        self._last_activity_view = view
+        body = getattr(self, "_activity_body", None)
+        if body is None:
+            return
+        for child in body.winfo_children():
+            child.destroy()
+
+        sections = activity_workspace_sections(view)
+        for sec in sections:
+            title = str(sec.get("title") or "")
+            ttk.Label(body, text=title, font=CAPTION).pack(
+                anchor=tk.W, pady=(SP_12, SP_4)
+            )
+            rows = list(sec.get("rows") or [])
+            emptyish = bool(sec.get("empty"))
+            for row in rows:
+                ttk.Label(
+                    body,
+                    text=str(row),
+                    font=BODY,
+                    foreground=TEXT_SECONDARY if emptyish else TEXT_PRIMARY,
+                    wraplength=560,
+                ).pack(anchor=tk.W, pady=(0, SP_4))
+
+        # Soft CTA visibility — Review people only when unnamed groups exist.
+        if hasattr(self, "btn_activity_review"):
+            show_review = bool(view.get("has_unnamed")) and not view.get("empty")
+            try:
+                if show_review:
+                    self.btn_activity_review.configure(state=tk.NORMAL)
+                else:
+                    self.btn_activity_review.configure(state=tk.DISABLED)
+            except tk.TclError:
+                pass
+
+        # Keep inspector aligned with the workspace (soft lines only).
+        self._set_inspector(ACTIVITY_HEADLINE, format_activity_memory_lines(view))
+
+    def _show_activity_workspace(self) -> None:
+        self._hide_workspace_panes()
+        self._set_inspector_collapsed(False)
+        self._activity.pack(fill=tk.BOTH, expand=True)
 
     def _on_inspector_sel_change(self) -> None:
         idxs = list(self._sel_list.curselection())
@@ -2409,6 +2497,8 @@ class HomeApp:
             self._library_home.pack_forget()
         if hasattr(self, "_lens"):
             self._lens.pack_forget()
+        if hasattr(self, "_activity"):
+            self._activity.pack_forget()
 
     def _home_state(self) -> str:
         """FIRST_RUN | PROCESSING | READY | EXPLORE — Home hierarchy gate."""
@@ -3239,8 +3329,6 @@ class HomeApp:
             self._refresh_job_controls()
             return
         if nav_id == "activity":
-            self._welcome_title.set("Recent activity")
-            self._show_workspace_welcome()
             self._show_activity()
             self._sync_chrome_for_route()
             self._refresh_job_controls()
@@ -3745,121 +3833,50 @@ class HomeApp:
 
     def _activity_soft_stats(self, run_id: str) -> dict:
         """Plain-language counts for Recent activity rows (no integrity jargon)."""
-        conn = sqlite3.connect(f"file:{self.store.resolve()}?mode=ro", uri=True)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout=5000")
-        try:
-            photos = int(
-                conn.execute(
-                    "SELECT COUNT(*) FROM media "
-                    "WHERE source_type != 'video' OR source_type IS NULL"
-                ).fetchone()[0]
-            )
-            run_media = conn.execute(
-                """
-                SELECT COUNT(DISTINCT o.media_id) AS n
-                FROM observations o
-                WHERE o.run_id=?
-                """,
-                (run_id,),
-            ).fetchone()
-            if run_media and int(run_media["n"] or 0) > 0:
-                photos = int(run_media["n"])
-            faces = int(
-                conn.execute(
-                    "SELECT COUNT(*) FROM faces WHERE run_id=?", (run_id,)
-                ).fetchone()[0]
-            )
-            groups = int(
-                conn.execute(
-                    """
-                    SELECT COUNT(*) FROM clusters
-                    WHERE run_id=? AND (status IS NULL OR status != 'ignored')
-                    """,
-                    (run_id,),
-                ).fetchone()[0]
-            )
-            unnamed = int(
-                conn.execute(
-                    """
-                    SELECT COUNT(*) FROM clusters c
-                    WHERE c.run_id=?
-                      AND NOT EXISTS (
-                        SELECT 1 FROM faces f
-                        WHERE f.cluster_id = c.cluster_id AND f.person_id IS NOT NULL
-                      )
-                    """,
-                    (run_id,),
-                ).fetchone()[0]
-            )
-            row = conn.execute(
-                "SELECT finished_at, started_at FROM runs WHERE run_id=?",
-                (run_id,),
-            ).fetchone()
-            stamped = None
-            if row is not None:
-                stamped = row["finished_at"] or row["started_at"]
-                if stamped:
-                    stamped = str(stamped)[:10]
-        except sqlite3.OperationalError:
-            return {
-                "photos": None,
-                "faces": None,
-                "groups": None,
-                "has_unnamed": False,
-                "stamped": None,
-            }
-        finally:
-            conn.close()
-        return {
-            "photos": photos,
-            "faces": faces,
-            "groups": groups,
-            "has_unnamed": unnamed > 0,
-            "stamped": stamped,
-        }
+        from semblon.activity_surface import _processing_stats
+
+        return _processing_stats(self.store, run_id)
 
     def _show_activity(self) -> None:
+        """Canonical Activity / Memory workspace — soft history, not schema dump."""
+        from semblon.activity_surface import ACTIVITY_HEADLINE, load_activity_memory
         from semblon.process import latest_run_id
 
-        title = "Recent activity"
+        title = ACTIVITY_HEADLINE
+        self._show_activity_workspace()
+
         if not self.store.is_file():
-            self._set_inspector(title, activity_empty().as_lines())
+            self._refresh_activity_workspace(load_activity_memory(self.store, None))
             return
+
         rid = latest_run_id(self.store)
         if not rid:
-            self._set_inspector(title, activity_empty().as_lines())
+            self._refresh_activity_workspace(load_activity_memory(self.store, None))
             return
 
         try:
-            from semblon.application import activity
+            from semblon.application import activity_memory
 
-            rec = activity(self.store, rid)
+            view = activity_memory(self.store, rid)
         except (sqlite3.DatabaseError, OSError, ValueError) as e:
             if is_expected_condition(e):
-                self._set_inspector(title, activity_empty().as_lines())
+                self._refresh_activity_workspace(
+                    {
+                        "empty": True,
+                        "partial": False,
+                        "processing": None,
+                        "together_lines": [],
+                        "moment_lines": [],
+                        "has_unnamed": False,
+                        "empty_state": activity_empty(),
+                    }
+                )
             else:
                 self._show_failure(e)
             return
 
-        stats = self._activity_soft_stats(rid)
-        self._set_inspector(
-            title,
-            format_activity_lines(
-                run_line="Recent run",
-                integrity_line="",
-                groups=rec.get("groups") or [],
-                relationships=rec.get("relationships") or [],
-                events=rec.get("events") or [],
-                track_count=int(rec.get("track_count") or 0),
-                photos=stats.get("photos"),
-                faces=stats.get("faces"),
-                stamped=stats.get("stamped"),
-                has_unnamed=bool(stats.get("has_unnamed")),
-                group_count=stats.get("groups"),
-                advanced=False,
-            ),
-        )
+        self._refresh_activity_workspace(view)
+        self._inspector_title.set(title)
 
     def _open_canvas(self) -> None:
         """First-class canvas is the Home workspace; keep Toplevel as escape hatch."""

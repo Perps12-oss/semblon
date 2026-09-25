@@ -34,6 +34,18 @@ def test_board_and_activity_are_read_only_facade(tmp_path):
     # Activity snapshot is observation-graph RO — not a person enrolment record.
     assert set(act) >= {"groups", "relationships", "events", "track_count"}
 
+    from semblon.application import activity_memory
+
+    mem = activity_memory(store, "r1")
+    assert mem["empty"] is False
+    soft = "\n".join(
+        __import__("semblon.activity_surface", fromlist=["format_activity_memory_lines"])
+        .format_activity_memory_lines(mem)
+    )
+    assert "person_id" not in soft
+    assert "observation_groups" not in soft
+    assert "Alice" in soft and "Bob" in soft
+
 
 def test_application_pause_unpause_same_job(tmp_path, monkeypatch):
     entered = threading.Event()
