@@ -83,7 +83,7 @@ GUI_PATHS: tuple[tuple[str, ExposureClass, str, str, str], ...] = (
         "Lens / Inspect",
         "CANONICAL",
         "ASK Lens / top Lens button",
-        "home_ui._open_lens → selection.open_region_window",
+        "home_ui._open_lens → Lens workspace + selection.mount_region_select",
         "KEEP",
     ),
     (

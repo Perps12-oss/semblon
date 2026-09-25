@@ -51,6 +51,7 @@ from semblon.empty_states import (
     failure_dialog_for,
     groups_waiting_line,
     is_expected_condition,
+    lens_empty,
     library_has_media_lines,
     people_empty,
     photos_empty,
@@ -1171,10 +1172,12 @@ class HomeApp:
         self._processing = ttk.Frame(work)
         self._result_card = ttk.Frame(work)
         self._library_home = ttk.Frame(work)
+        self._lens = ttk.Frame(work)
         self._build_home_landing()
         self._build_processing_home()
         self._build_result_card_shell()
         self._build_library_home()
+        self._build_lens_workspace()
 
         from semblon.canvas import CanvasWorkspace
 
@@ -1289,6 +1292,10 @@ class HomeApp:
             actions, "Select a region", self._open_region_select, kind="secondary"
         )
         self.btn_region.pack(fill=tk.X, pady=1)
+        self.btn_ask_lens = _button(
+            actions, "Ask with Lens", self._ask_with_lens, kind="secondary", icon="lens"
+        )
+        self.btn_ask_lens.pack(fill=tk.X, pady=1)
         ttk.Label(insp, textvariable=self._verb_reason, wraplength=260).pack(
             anchor=tk.W, pady=(4, 0)
         )
@@ -1320,6 +1327,7 @@ class HomeApp:
             "To review",
             "People to name",
             "People",
+            "Lens",
         }:
             from semblon.product_surface import SEL_HEADING_IDLE
 
@@ -1328,6 +1336,7 @@ class HomeApp:
         for line in lines:
             self._inspector.insert(tk.END, line)
         # Non-selection views keep verb disable reasons honest.
+        # Lens keeps the current media_id — clearing it would break the workspace.
         if title in {
             "Home",
             "Canvas",
@@ -1339,9 +1348,10 @@ class HomeApp:
             "Search",
             "To review",
             "People to name",
+            "Lens",
         }:
             self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
-            if title != "Canvas":
+            if title not in {"Canvas", "Lens"}:
                 self._insp_available = []
                 self._insp_selected = []
                 self._insp_media_id = None
@@ -1381,7 +1391,8 @@ class HomeApp:
             self._sel_heading.set(title)
 
     def _open_region_select(self) -> None:
-        from semblon.selection import lens_result_summary, media_file, open_region_window
+        """Start region select — embedded in Lens pane when on that route."""
+        from semblon.selection import lens_result_summary, media_file, mount_region_select
 
         path = media_file(self.store, getattr(self, "_insp_media_id", None))
         if path is None:
@@ -1389,14 +1400,24 @@ class HomeApp:
                 "Lens",
                 [
                     "Open a photo first.",
-                    "Then use Lens and drag a box. Semblon uses available understanding.",
+                    "Then select something to look at. Semblon uses available understanding.",
                     "Nothing was searched.",
                 ],
             )
+            if getattr(self, "_nav", None) == "lens":
+                self._refresh_lens_workspace()
             return
 
         def done(lines: list[str]) -> None:
-            self._set_inspector("Lens", lines or ["Nothing was searched."])
+            try:
+                self._set_inspector("Lens", lines or ["Nothing was searched."])
+            except Exception:  # noqa: BLE001 — never crash Home on Lens result paint
+                pass
+            if hasattr(self, "_refresh_lens_workspace"):
+                try:
+                    self._refresh_lens_workspace()
+                except Exception:  # noqa: BLE001
+                    pass
 
         def on_report(report) -> None:
             self._last_lens_result = lens_result_summary(report)
@@ -1406,37 +1427,284 @@ class HomeApp:
                 except Exception:  # noqa: BLE001
                     pass
 
-        open_region_window(self.root, path, done, on_report=on_report)
+        def on_busy(flag: bool) -> None:
+            self._lens_busy = bool(flag)
+            if hasattr(self, "_lens_status"):
+                from semblon.selection import LENS_BUSY
+
+                try:
+                    self._lens_status.set(LENS_BUSY if flag else "")
+                except Exception:  # noqa: BLE001
+                    pass
+
+        schedule = lambda fn: self.root.after(0, fn)  # noqa: E731
+
+        # Prefer the Lens workspace stage when that route is active.
+        if getattr(self, "_nav", None) == "lens" and hasattr(self, "_lens_stage"):
+            for child in self._lens_stage.winfo_children():
+                child.destroy()
+            mounted = mount_region_select(
+                self._lens_stage,
+                path,
+                on_lines=done,
+                on_report=on_report,
+                on_busy=on_busy,
+                schedule=schedule,
+            )
+            if mounted is not None:
+                mounted.pack(fill=tk.BOTH, expand=True)
+            return
+
+        from semblon.selection import open_region_window
+
+        open_region_window(
+            self.root,
+            path,
+            done,
+            on_report=on_report,
+            on_busy=on_busy,
+            schedule=schedule,
+        )
+
+    def _ask_with_lens(self) -> None:
+        """Photos/Videos → Lens with the current asset (clear product path)."""
+        media_id = getattr(self, "_insp_media_id", None)
+        if not media_id:
+            self._set_inspector(
+                "Lens",
+                [
+                    "Open a photo first.",
+                    "Then use Ask with Lens. Nothing was searched.",
+                ],
+            )
+            return
+        self._open_lens()
 
     def _open_lens(self) -> None:
-        """Lens: open photo → select region → available understanding → results."""
+        """Lens route: coherent Inspect workspace inside Home (not a second app)."""
         self._nav = "lens"
         self._mark_nav_active("lens")
-        media_id = getattr(self, "_insp_media_id", None)
-        if media_id:
-            self._open_region_select()
-            self._sync_chrome_for_route()
+        self._show_lens_workspace()
+        self._sync_chrome_for_route()
+
+    def _build_lens_workspace(self) -> None:
+        """Lens / Inspect pane — open photo → select → soft results."""
+        from semblon.home_shell import LENS_UNDERSTANDING_TITLE
+        from semblon.selection import LENS_HEADLINE, LENS_SUBCOPY
+
+        for child in self._lens.winfo_children():
+            child.destroy()
+        shell = ttk.Frame(self._lens, padding=(SP_24, SP_20))
+        shell.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(shell, text=LENS_HEADLINE, font=H1).pack(anchor=tk.W)
+        ttk.Label(
+            shell,
+            text=LENS_SUBCOPY,
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+            wraplength=560,
+        ).pack(anchor=tk.W, pady=(SP_4, SP_16))
+
+        self._lens_asset = tk.StringVar(value="")
+        ttk.Label(
+            shell, textvariable=self._lens_asset, font=BODY_STRONG, wraplength=560
+        ).pack(anchor=tk.W)
+
+        self._lens_status = tk.StringVar(value="")
+        ttk.Label(
+            shell,
+            textvariable=self._lens_status,
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+        ).pack(anchor=tk.W, pady=(SP_4, 0))
+
+        actions = ttk.Frame(shell)
+        actions.pack(anchor=tk.W, pady=(SP_12, SP_8))
+        self.btn_lens_region = _button(
+            actions, "Select a region", self._open_region_select, kind="primary"
+        )
+        self.btn_lens_region.pack(side=tk.LEFT, padx=(0, SP_8))
+        self.btn_lens_whole = _button(
+            actions, "Ask about this photo", self._lens_ask_whole, kind="secondary"
+        )
+        self.btn_lens_whole.pack(side=tk.LEFT, padx=(0, SP_8))
+        self.btn_lens_browse = _button(
+            actions, "Browse photos", lambda: self._navigate("photos"), kind="tertiary"
+        )
+        self.btn_lens_browse.pack(side=tk.LEFT)
+
+        ttk.Label(shell, text=LENS_UNDERSTANDING_TITLE, font=CAPTION).pack(
+            anchor=tk.W, pady=(SP_16, SP_4)
+        )
+        self._lens_understanding = ttk.Frame(shell)
+        self._lens_understanding.pack(anchor=tk.W, fill=tk.X)
+
+        ttk.Label(shell, text="Results", font=CAPTION).pack(
+            anchor=tk.W, pady=(SP_16, SP_4)
+        )
+        self._lens_result_var = tk.StringVar(value="Nothing has been asked yet.")
+        ttk.Label(
+            shell,
+            textvariable=self._lens_result_var,
+            font=BODY,
+            wraplength=560,
+            foreground=TEXT_SECONDARY,
+        ).pack(anchor=tk.W)
+
+        # Stage hosts the embedded region canvas (or empty guide).
+        self._lens_stage = ttk.Frame(shell)
+        self._lens_stage.pack(fill=tk.BOTH, expand=True, pady=(SP_16, 0))
+        self._lens_busy = False
+        self._last_lens_result: dict | None = getattr(self, "_last_lens_result", None)
+
+    def _lens_ask_whole(self) -> None:
+        """Query the full image with available understanding (backend decides)."""
+        from semblon.selection import (
+            LENS_BUSY,
+            lens_result_summary,
+            media_file,
+            run_lens_query,
+        )
+
+        path = media_file(self.store, getattr(self, "_insp_media_id", None))
+        if path is None:
+            self._set_inspector(
+                "Lens",
+                [
+                    "Open a photo first.",
+                    "Then ask about it. Nothing was searched.",
+                ],
+            )
             return
-        # No photo selected — send user to Photos; record honest last-result.
-        self._last_lens_result = {
-            "status": "UNAVAILABLE",
-            "reason": "Open a photo first. Nothing was searched.",
-        }
-        if hasattr(self, "_refresh_library_shell"):
+
+        def done(lines: list[str]) -> None:
             try:
-                self._refresh_library_shell()
+                self._set_inspector("Lens", lines or ["Nothing was searched."])
             except Exception:  # noqa: BLE001
                 pass
-        self._set_inspector(
-            "Lens",
-            [
-                "Open a photo first.",
-                "Lens asks about that picture — drag a box, then Semblon uses "
-                "whatever understanding is available on this computer.",
-                "Nothing was searched.",
-            ],
+            self._refresh_lens_workspace()
+
+        def on_report(report) -> None:
+            self._last_lens_result = lens_result_summary(report)
+            if hasattr(self, "_refresh_library_shell"):
+                try:
+                    self._refresh_library_shell()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        def on_busy(flag: bool) -> None:
+            self._lens_busy = bool(flag)
+            try:
+                self._lens_status.set(LENS_BUSY if flag else "")
+                state = tk.DISABLED if flag else tk.NORMAL
+                self.btn_lens_region.configure(state=state)
+                self.btn_lens_whole.configure(state=state)
+            except Exception:  # noqa: BLE001
+                pass
+
+        def on_error(exc: BaseException) -> None:
+            try:
+                show_failure_dialog(self.root, exc, tk_mod=tk, ttk_mod=ttk)
+            except Exception:  # noqa: BLE001
+                messagebox.showerror("Semblon", "Semblon could not finish looking.")
+            self._set_inspector(
+                "Lens",
+                ["Semblon could not finish looking.", "Nothing was searched."],
+            )
+            self._refresh_lens_workspace()
+
+        run_lens_query(
+            path,
+            schedule=lambda fn: self.root.after(0, fn),
+            on_lines=done,
+            on_report=on_report,
+            on_busy=on_busy,
+            on_error=on_error,
         )
-        self._navigate("photos")
+
+    def _refresh_lens_workspace(self) -> None:
+        """Repaint Lens pane from current media + last result + honesty rows."""
+        if not hasattr(self, "_lens_stage"):
+            return
+        from semblon.empty_states import mount_empty_state
+        from semblon.home_shell import last_result_copy, lens_understanding_rows
+        from semblon.selection import LENS_EMPTY_GUIDE, media_basename, media_file
+
+        media_id = getattr(self, "_insp_media_id", None)
+        path = media_file(self.store, media_id)
+        name = media_basename(self.store, media_id)
+
+        for child in self._lens_understanding.winfo_children():
+            child.destroy()
+        for row in lens_understanding_rows():
+            line = ttk.Frame(self._lens_understanding)
+            line.pack(anchor=tk.W, fill=tk.X, pady=1)
+            ttk.Label(line, text=row["label"], font=BODY).pack(side=tk.LEFT)
+            ttk.Label(
+                line, text=row["state"], font=CAPTION, foreground=TEXT_SECONDARY
+            ).pack(side=tk.RIGHT)
+
+        body, _hint = last_result_copy(getattr(self, "_last_lens_result", None))
+        self._lens_result_var.set(body)
+
+        for child in self._lens_stage.winfo_children():
+            child.destroy()
+
+        if path is None:
+            self._lens_asset.set(LENS_EMPTY_GUIDE)
+            try:
+                self.btn_lens_region.configure(state=tk.DISABLED)
+                self.btn_lens_whole.configure(state=tk.DISABLED)
+            except tk.TclError:
+                pass
+            empty = lens_empty()
+            mount_empty_state(
+                self._lens_stage,
+                empty,
+                on_primary=lambda: self._navigate("photos"),
+                tk_mod=tk,
+                ttk_mod=ttk,
+            ).pack(fill=tk.BOTH, expand=True)
+            self._set_inspector("Lens", empty.as_lines())
+            return
+
+        self._lens_asset.set(f"Looking at · {name}")
+        try:
+            busy = bool(getattr(self, "_lens_busy", False))
+            state = tk.DISABLED if busy else tk.NORMAL
+            self.btn_lens_region.configure(state=state)
+            self.btn_lens_whole.configure(state=state)
+        except tk.TclError:
+            pass
+        ttk.Label(
+            self._lens_stage,
+            text="Select a region on the photo, or ask about the whole picture.",
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+            wraplength=560,
+        ).pack(anchor=tk.W)
+        last = getattr(self, "_last_lens_result", None)
+        if last:
+            lines = [body]
+            if last.get("reason") and str(last.get("status") or "").upper() != "SUCCESS":
+                lines = [str(last.get("reason"))]
+            self._set_inspector("Lens", lines)
+        else:
+            self._set_inspector(
+                "Lens",
+                [
+                    "Lens",
+                    f"Photo · {name}",
+                    "Select a region, or ask about this photo.",
+                    "Semblon uses available understanding — missing models say so.",
+                ],
+            )
+
+    def _show_lens_workspace(self) -> None:
+        self._hide_workspace_panes()
+        self._set_inspector_collapsed(False)
+        self._lens.pack(fill=tk.BOTH, expand=True)
+        self._refresh_lens_workspace()
 
     def _on_inspector_sel_change(self) -> None:
         idxs = list(self._sel_list.curselection())
@@ -2139,6 +2407,8 @@ class HomeApp:
         self._result_card.pack_forget()
         if hasattr(self, "_library_home"):
             self._library_home.pack_forget()
+        if hasattr(self, "_lens"):
+            self._lens.pack_forget()
 
     def _home_state(self) -> str:
         """FIRST_RUN | PROCESSING | READY | EXPLORE — Home hierarchy gate."""
@@ -2952,7 +3222,6 @@ class HomeApp:
             return
         if nav_id == "lens":
             self._open_lens()
-            self._sync_chrome_for_route()
             self._refresh_job_controls()
             return
         if nav_id == "people":

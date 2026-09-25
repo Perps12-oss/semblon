@@ -66,7 +66,7 @@ Nav source of truth: `HOME_NAV` in `semblon/home_ui.py` (ASK / LIBRARY / PEOPLE 
 | People to name | `unknown` | Inbox / board flatten | **CANONICAL** — human decisions; Unknown is valid |
 | Search | top bar | `_search_person` / analysing gate | **CANONICAL** — people-first today; Lens absorbs broader visual ask |
 | Activity | `activity` | `application.activity` | **CANONICAL** — soft history |
-| Lens (entry) | `lens` + brand **Lens** | `_open_lens`, `_open_region_select` | **CANONICAL** · **PARTIAL** — needs open photo; not a full Lens workspace yet |
+| Lens / Inspect | `lens` + brand **Lens** | `_open_lens`, Lens workspace, `_open_region_select` | **CANONICAL** — Home route/workspace; open photo → select → soft results; backends decide availability |
 | Settings | Settings button | `_show_settings` | **CANONICAL** — theme, library path; tech under Advanced |
 | Inspector verbs | right pane | merge / assign / split / name / rule-out / ignore | **CANONICAL** — soft labels via `product_surface` |
 | Ingest / Pause / Cancel | Home job client | `JobEngine` via Application façade | **CANONICAL** — job controls, not nav |
@@ -76,7 +76,7 @@ Nav source of truth: `HOME_NAV` in `semblon/home_ui.py` (ASK / LIBRARY / PEOPLE 
 ### Audit anchors (canonical)
 
 - `HOME_NAV`: `semblon/home_ui.py:199-204`
-- Brand Lens + Search + Settings chrome: `semblon/home_ui.py:918-960`, `_open_lens` `:2775-2800`
+- Brand Lens + Search + Settings chrome: `semblon/home_ui.py` (top bar Lens + `_open_lens` / `_build_lens_workspace`)
 - `semblon home` help: `semblon/cli.py:449-451`
 
 ---
@@ -179,15 +179,15 @@ Open photo → Lens → select region → Semblon runs available capabilities
 
 ---
 
-## G. Biggest product gap (frozen for next product work)
+## G. Product gap notes (Lens)
 
-**Lens / Inspect as a real workspace**, not only a thin button that requires a pre-selected photo:
+**Lens / Inspect** is a Home route/workspace (not a thin button that only opens a Toplevel):
 
 - Unify mechanism: open photo → Lens → select something → Semblon understands/searches it.
-- Backend decides which capabilities are available.
+- Backend decides which capabilities are available; missing models say so honestly.
 - Home nav stays intent-shaped (Photos / People / Search / Lens…), not model-shaped.
 
-This map does **not** authorize implementing the full Lens workspace in the same PR as the classification audit.
+Remaining honesty: optional model install / Windows verification of every Lens backend stays PARTIAL in COMPLETION-MATRIX — not a second GUI.
 
 ---
 

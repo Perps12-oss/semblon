@@ -149,6 +149,45 @@ def last_result_copy(last: dict | None) -> tuple[str, str]:
     return reason or SHELL_LAST_EMPTY, SHELL_LAST_HINT
 
 
+# Lens workspace — same honesty vocabulary as the library shell, catalog labels only.
+LENS_UNDERSTANDING_TITLE = "Available understanding"
+_LENS_IDS = (
+    "ocr",
+    "barcode",
+    "grounding",
+    "visual_embedding",
+    "translation",
+    "vlm",
+    "lkg",
+)
+
+
+def lens_understanding_rows(
+    *,
+    report: list[dict] | None = None,
+) -> list[dict[str, str]]:
+    """Soft rows for the Lens pane. Labels from the catalog — never capability ids."""
+    from semblon.runtime_contract import default_catalog, status_report
+
+    rows = list(report if report is not None else status_report())
+    by_id = {str(r.get("capability_id") or ""): r for r in rows}
+    catalog = {spec.id: spec for spec in default_catalog().specs}
+    out: list[dict[str, str]] = []
+    for cap_id in _LENS_IDS:
+        row = by_id.get(cap_id) or {}
+        spec = catalog.get(cap_id)
+        label = (spec.label if spec else cap_id) or cap_id
+        model = str(row.get("model_state") or "MISSING")
+        out.append(
+            {
+                "id": cap_id,
+                "label": label,
+                "state": _state_label(model),
+            }
+        )
+    return out
+
+
 def enrich_summary_counts(store: Path, summary: dict | None) -> dict | None:
     """Add photos / video_frames / observations when the store can answer."""
     if summary is None:

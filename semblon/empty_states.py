@@ -196,6 +196,16 @@ def photos_videos_nothing_selected(*, kind: str = "photo") -> EmptyState:
     )
 
 
+def lens_empty() -> EmptyState:
+    """Lens workspace with no current photo — guide, never a capability dump."""
+    return EmptyState(
+        headline="Nothing to look at yet",
+        description="Open a photo, then select something to look at.",
+        primary_action="Browse photos",
+        action_id="browse_photos",
+    )
+
+
 # ── Soft populated copy (formatters) ─────────────────────────────────────────
 
 
