@@ -456,6 +456,71 @@ def persist_item(
     return item_id
 
 
+
+def _circuit_paused(capability: str):
+    """OPEN circuit. The provider is not called. Not an empty match."""
+    from semblon.circuits import before_call
+
+    return before_call(capability)
+
+
+def _paused_payload(paused) -> dict:
+    return {
+        "status": "unavailable",
+        "note": paused.reason,
+        "contract_status": paused.status,
+        "reason": paused.reason,
+        "error_id": paused.error_id,
+    }
+
+
+def _circuit_note(capability: str, rec, *, matched: bool) -> None:
+    """Record a live observer call. Missing models do not open the circuit. Crashes do."""
+    from semblon.circuits import after_call
+    from semblon.runtime_contract import ResultItem, StructuredResult
+
+    if rec is None:
+        result = StructuredResult(
+            status="UNAVAILABLE",
+            capability_id=capability,
+            provider_id=capability,
+            model_state="MISSING",
+            provider_state="FAILED",
+            reason=f"{capability} is not installed.",
+            error_id=f"{capability}.MISSING",
+        )
+    elif isinstance(rec, dict) and rec.get("error"):
+        result = StructuredResult(
+            status="ERROR",
+            capability_id=capability,
+            provider_id=capability,
+            model_state="AVAILABLE",
+            provider_state="FAILED",
+            reason=str(rec.get("note") or rec.get("error"))[:240],
+            error_id=f"{capability}.ERROR",
+        )
+    elif matched:
+        result = StructuredResult(
+            status="SUCCESS",
+            capability_id=capability,
+            provider_id=capability,
+            model_state="AVAILABLE",
+            provider_state="READY",
+            reason="ran",
+            items=(ResultItem(id=f"{capability}-0", kind=capability, label=capability),),
+        )
+    else:
+        result = StructuredResult(
+            status="NO_RESULT",
+            capability_id=capability,
+            provider_id=capability,
+            model_state="AVAILABLE",
+            provider_state="READY",
+            reason="ran, nothing matched",
+        )
+    after_call(result)
+
+
 def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple[str, ...]) -> dict:
     """Run non-identity observers. 'face' is ignored here (FaceKit owns faces)."""
     counts = {"appearance": 0, "object": 0, "text": 0, "pose": 0, "clip": 0}
@@ -489,123 +554,168 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
             )
             counts["object"] += 1
     if "text" in wanted or "ocr" in wanted:
-        rec = ocr_image(img)
-        if rec is None:
+        paused = _circuit_paused("ocr")
+        if paused is not None:
             persist_item(
                 conn,
                 observation_id=observation_id,
                 run_id=run_id,
                 kind="text",
                 provider=OCR_PROVIDER,
-                payload=_ocr_failure_payload(
-                    optional_status()["notes"].get("ocr", "unavailable")
-                ),
-                score=0.0,
-            )
-        elif rec.get("error"):
-            persist_item(
-                conn,
-                observation_id=observation_id,
-                run_id=run_id,
-                kind="text",
-                provider=OCR_PROVIDER,
-                payload=_ocr_failure_payload(rec.get("note") or rec["error"], crash=rec["error"]),
+                payload=_paused_payload(paused),
                 score=0.0,
             )
         else:
-            text = rec.get("text") or ""
-            persist_item(
-                conn,
-                observation_id=observation_id,
-                run_id=run_id,
-                kind="text",
-                provider=OCR_PROVIDER,
-                payload={
-                    "text": text,
-                    "identity": "not facekit",
-                    "contract_status": "SUCCESS" if text.strip() else "NO_RESULT",
-                },
-                score=rec.get("score"),
-            )
-            counts["text"] += 1
+            rec = ocr_image(img)
+            if rec is None:
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="text",
+                    provider=OCR_PROVIDER,
+                    payload=_ocr_failure_payload(
+                        optional_status()["notes"].get("ocr", "unavailable")
+                    ),
+                    score=0.0,
+                )
+                _circuit_note("ocr", None, matched=False)
+            elif rec.get("error"):
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="text",
+                    provider=OCR_PROVIDER,
+                    payload=_ocr_failure_payload(rec.get("note") or rec["error"], crash=rec["error"]),
+                    score=0.0,
+                )
+                _circuit_note("ocr", rec, matched=False)
+            else:
+                text_read = rec.get("text") or ""
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="text",
+                    provider=OCR_PROVIDER,
+                    payload={
+                        "text": text_read,
+                        "identity": "not facekit",
+                        "contract_status": "SUCCESS" if text_read.strip() else "NO_RESULT",
+                    },
+                    score=rec.get("score"),
+                )
+                counts["text"] += 1
+                _circuit_note("ocr", rec, matched=bool(text_read.strip()))
     if "clip" in wanted:
-        rec = clip_embed(img)
-        if rec is None:
+        paused = _circuit_paused("clip")
+        if paused is not None:
             persist_item(
                 conn,
                 observation_id=observation_id,
                 run_id=run_id,
                 kind="clip",
                 provider="open-clip",
-                payload=_extra_failure_payload(
-                    "clip", optional_status()["notes"].get("clip", "unavailable")
-                ),
-                score=0.0,
-            )
-        elif rec.get("error"):
-            persist_item(
-                conn,
-                observation_id=observation_id,
-                run_id=run_id,
-                kind="clip",
-                provider="open-clip",
-                payload=_extra_failure_payload(
-                    "clip", rec.get("note") or rec["error"], crash=rec["error"]
-                ),
+                payload=_paused_payload(paused),
                 score=0.0,
             )
         else:
-            persist_item(
-                conn,
-                observation_id=observation_id,
-                run_id=run_id,
-                kind="clip",
-                provider="open-clip",
-                payload={"space": "clip", "identity": "not facekit"},
-                embedding=rec["embedding"],
-                modality="clip",
-                pack_id=rec["pack_id"],
-                dim=rec["dim"],
-            )
-            counts["clip"] += 1
+            rec = clip_embed(img)
+            if rec is None:
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="clip",
+                    provider="open-clip",
+                    payload=_extra_failure_payload(
+                        "clip", optional_status()["notes"].get("clip", "unavailable")
+                    ),
+                    score=0.0,
+                )
+                _circuit_note("clip", None, matched=False)
+            elif rec.get("error"):
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="clip",
+                    provider="open-clip",
+                    payload=_extra_failure_payload(
+                        "clip", rec.get("note") or rec["error"], crash=rec["error"]
+                    ),
+                    score=0.0,
+                )
+                _circuit_note("clip", rec, matched=False)
+            else:
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="clip",
+                    provider="open-clip",
+                    payload={"space": "clip", "identity": "not facekit"},
+                    embedding=rec["embedding"],
+                    modality="clip",
+                    pack_id=rec["pack_id"],
+                    dim=rec["dim"],
+                )
+                counts["clip"] += 1
+                _circuit_note("clip", rec, matched=True)
     if "pose" in wanted:
-        rec = pose_landmarks(img)
-        if rec is None:
+        paused = _circuit_paused("pose")
+        if paused is not None:
             persist_item(
                 conn,
                 observation_id=observation_id,
                 run_id=run_id,
                 kind="pose",
                 provider=POSE_PROVIDER,
-                payload=_extra_failure_payload(
-                    "pose", optional_status()["notes"].get("pose", "unavailable")
-                ),
-                score=0.0,
-            )
-        elif rec.get("error"):
-            persist_item(
-                conn,
-                observation_id=observation_id,
-                run_id=run_id,
-                kind="pose",
-                provider=POSE_PROVIDER,
-                payload=_extra_failure_payload(
-                    "pose", rec.get("note") or rec["error"], crash=rec["error"]
-                ),
+                payload=_paused_payload(paused),
                 score=0.0,
             )
         else:
-            persist_item(
-                conn,
-                observation_id=observation_id,
-                run_id=run_id,
-                kind="pose",
-                provider=POSE_PROVIDER,
-                payload={"landmarks": rec.get("landmarks") or [], "identity": "not facekit"},
-                bbox=rec.get("bbox"),
-                score=rec.get("score"),
-            )
-            counts["pose"] += 1
+            rec = pose_landmarks(img)
+            if rec is None:
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="pose",
+                    provider=POSE_PROVIDER,
+                    payload=_extra_failure_payload(
+                        "pose", optional_status()["notes"].get("pose", "unavailable")
+                    ),
+                    score=0.0,
+                )
+                _circuit_note("pose", None, matched=False)
+            elif rec.get("error"):
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="pose",
+                    provider=POSE_PROVIDER,
+                    payload=_extra_failure_payload(
+                        "pose", rec.get("note") or rec["error"], crash=rec["error"]
+                    ),
+                    score=0.0,
+                )
+                _circuit_note("pose", rec, matched=False)
+            else:
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="pose",
+                    provider=POSE_PROVIDER,
+                    payload={"landmarks": rec.get("landmarks") or [], "identity": "not facekit"},
+                    bbox=rec.get("bbox"),
+                    score=rec.get("score"),
+                )
+                counts["pose"] += 1
+                _circuit_note("pose", rec, matched=True)
     return counts
 
 

@@ -1229,6 +1229,10 @@ class HomeApp:
             actions, VERB_LABEL_IGNORE, self._inspector_ignore, kind="secondary"
         )
         self.btn_ignore.pack(fill=tk.X, pady=1)
+        self.btn_region = _button(
+            actions, "Select a region", self._open_region_select, kind="secondary"
+        )
+        self.btn_region.pack(fill=tk.X, pady=1)
         ttk.Label(insp, textvariable=self._verb_reason, wraplength=260).pack(
             anchor=tk.W, pady=(4, 0)
         )
@@ -1319,6 +1323,22 @@ class HomeApp:
         self._set_inspector(title, evidence_lines)
         if hasattr(self, "_sel_heading"):
             self._sel_heading.set(title)
+
+    def _open_region_select(self) -> None:
+        from semblon.selection import media_file, open_region_window
+
+        path = media_file(self.store, getattr(self, "_insp_media_id", None))
+        if path is None:
+            self._set_inspector(
+                "Select a region",
+                ["Choose a photo first. Nothing was searched."],
+            )
+            return
+
+        def done(lines: list[str]) -> None:
+            self._set_inspector("Select a region", lines or ["Nothing was searched."])
+
+        open_region_window(self.root, path, done)
 
     def _on_inspector_sel_change(self) -> None:
         idxs = list(self._sel_list.curselection())

@@ -77,6 +77,18 @@ def main(argv: list[str] | None = None) -> int:
     integ.add_argument("--store", required=True, type=Path)
     mods = lab_sub.add_parser("models", help="report local buffalo_l weights (does not download)")
     lab_sub.add_parser("providers", help="list observation providers and availability")
+    install = lab_sub.add_parser(
+        "install",
+        help="atomically install a local model file (does not download)",
+    )
+    install.add_argument("--from", dest="source", required=True, type=Path)
+    install.add_argument("--into", dest="dest", required=True, type=Path)
+    install.add_argument("--sha256", default=None)
+    index_cmd = lab_sub.add_parser(
+        "index",
+        help="rebuild the derived visual index from non-face embeddings",
+    )
+    index_cmd.add_argument("--store", required=True, type=Path)
     query = lab_sub.add_parser(
         "query",
         help="Lens query on a file region (no model download; missing providers stay unavailable)",
@@ -613,6 +625,26 @@ def main(argv: list[str] | None = None) -> int:
             "contract": status_report(model_overrides=overrides),
         }
         print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "install":
+        from semblon.model_install import InstallError, install_model
+
+        try:
+            rec = install_model(args.source, args.dest, expected_sha256=args.sha256)
+        except InstallError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "index":
+        from semblon.ann_index import build_index
+
+        if not args.store.is_file():
+            print(f"store not found: {args.store}", file=sys.stderr)
+            return 2
+        print(json.dumps(build_index(args.store), indent=2))
         return 0
 
     if args.cmd == "lab" and args.labcmd in {"query", "capture"}:
