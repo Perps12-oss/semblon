@@ -2,6 +2,7 @@
 
 Lens never writes faces.person_id or embeddings.modality='face'. Inference runs
 off the UI thread when a schedule callback is provided.
+The user's rectangle is authoritative. Models may add a second observation.
 """
 
 from __future__ import annotations
@@ -11,10 +12,10 @@ import threading
 from pathlib import Path
 from typing import Callable
 
+from semblon.geometry import widget_to_image
 from semblon.lens import query_image
 from semblon.runtime_contract import failure_disguised_as_empty
 
-# Soft product copy for the Lens workspace (no capability / provider ids).
 LENS_HEADLINE = "Lens"
 LENS_SUBCOPY = (
     "Ask about something in a photo. Semblon uses whatever understanding "
@@ -25,6 +26,8 @@ LENS_BUSY = "Looking…"
 LENS_SELECT_HINT = (
     "Drag a box on the photo. Semblon uses whatever understanding is available."
 )
+UNKNOWN_HEADLINE = "Unknown selection"
+UNKNOWN_BODY = "We couldn't identify this yet."
 
 
 def widget_drag_to_image(
@@ -38,52 +41,46 @@ def widget_drag_to_image(
     image_w: int,
     image_h: int,
 ) -> dict | None:
-    """Map a widget drag into image pixels. Zero-area drags are not a search."""
-    if view_w <= 0 or view_h <= 0 or image_w <= 0 or image_h <= 0:
-        return None
-    left, right = sorted((int(x0), int(x1)))
-    top, bottom = sorted((int(y0), int(y1)))
-    if right <= left or bottom <= top:
-        return None
-
-    def scale_x(value: int) -> int:
-        return int(round(value * image_w / view_w))
-
-    def scale_y(value: int) -> int:
-        return int(round(value * image_h / view_h))
-
-    ix, iy = scale_x(left), scale_y(top)
-    iw, ih = scale_x(right) - ix, scale_y(bottom) - iy
-    if iw <= 0 or ih <= 0:
-        return None
-    return {"x": ix, "y": iy, "w": iw, "h": ih}
+    """Map a widget drag into image pixels. Letterboxed views keep image space true."""
+    return widget_to_image(
+        x0,
+        y0,
+        x1,
+        y1,
+        view_w=view_w,
+        view_h=view_h,
+        image_w=image_w,
+        image_h=image_h,
+        letterbox=True,
+    )
 
 
 def _capability_plain(capability_id: str) -> str:
-    """Product verb for a capability — never provider / internal ids."""
     try:
         from semblon.runtime_contract import default_catalog
 
         spec = default_catalog().get(capability_id)
         return spec.label
-    except Exception:  # noqa: BLE001 — soft fallback
+    except Exception:  # noqa: BLE001
         return (capability_id or "Result").replace("_", " ").strip().capitalize()
 
 
 def format_query_lines(report) -> list[str]:
-    """Lens result lines for normal UX. No embed_siglip / ground_selection names."""
+    """Lens result lines. No embed_siglip / ground_selection names."""
     lines = ["Lens"]
     region = report.region or {}
     w, h = region.get("w"), region.get("h")
     if w and h:
         lines.append(f"Selected area · {w}×{h}")
+    identified = False
     for row in report.results:
         if failure_disguised_as_empty(row):
             raise RuntimeError(row.capability_id)
+        if row.capability_id == "grounding" and row.fallback == "RECTANGULAR_CROP":
+            continue
         plain = _capability_plain(row.capability_id)
         if row.status == "SUCCESS":
             hit = row.items[0].label if row.items else ""
-            # Prefer catalog/product labels; strip provider tokens from item labels.
             if hit and hit.lower() not in {
                 "siglip",
                 "sam2",
@@ -91,21 +88,24 @@ def format_query_lines(report) -> list[str]:
                 "vlm",
                 "argos",
                 "tesseract",
+                "watch",
             }:
                 lines.append(f"{plain}: {hit}")
+                identified = True
             else:
                 lines.append(f"{plain}: found something")
+                identified = True
         elif row.status == "NO_RESULT":
-            lines.append(f"{plain}: ran, nothing matched")
+            continue
         else:
-            lines.append(row.reason or f"{plain} did not run")
-    if len(lines) == 1:
-        lines.append("Nothing was searched.")
+            continue
+    if not identified:
+        lines.append(UNKNOWN_HEADLINE)
+        lines.append(UNKNOWN_BODY)
     return lines
 
 
 def lens_result_summary(report) -> dict:
-    """Compact last-result payload for the Home shell (honest status)."""
     results = list(getattr(report, "results", ()) or ())
     if not results:
         return {
@@ -113,7 +113,13 @@ def lens_result_summary(report) -> dict:
             "reason": "Nothing was searched.",
             "item_count": 0,
         }
-    success = [r for r in results if r.status == "SUCCESS" and r.items]
+    success = [
+        r
+        for r in results
+        if r.status == "SUCCESS"
+        and r.items
+        and not (r.capability_id == "grounding" and r.fallback == "RECTANGULAR_CROP")
+    ]
     if success:
         n = sum(len(r.items) for r in success)
         return {
@@ -122,24 +128,12 @@ def lens_result_summary(report) -> dict:
             "item_count": n,
             "items": [{"label": i.label} for r in success for i in r.items],
         }
-    no_result = [r for r in results if r.status == "NO_RESULT"]
-    if no_result and all(r.status == "NO_RESULT" for r in results):
-        return {
-            "status": "NO_RESULT",
-            "reason": "Semblon looked and found nothing in that area.",
-            "item_count": 0,
-        }
-    failed = next(
-        (r for r in results if r.status in {"UNAVAILABLE", "ERROR", "TIMEOUT", "CANCELLED"}),
-        None,
-    )
-    if failed is not None:
-        return {
-            "status": failed.status,
-            "reason": failed.reason or "It did not run.",
-            "item_count": 0,
-        }
-    return {"status": "NO_RESULT", "reason": "Nothing matched.", "item_count": 0}
+    return {
+        "status": "NO_RESULT",
+        "reason": UNKNOWN_BODY,
+        "headline": UNKNOWN_HEADLINE,
+        "item_count": 0,
+    }
 
 
 def media_file(store: Path, media_id: str | None) -> Path | None:
@@ -159,7 +153,6 @@ def media_file(store: Path, media_id: str | None) -> Path | None:
 
 
 def media_basename(store: Path, media_id: str | None) -> str | None:
-    """Display name for the current Lens asset — basename only, never a store path dump."""
     path = media_file(store, media_id)
     if path is None:
         return None
@@ -179,17 +172,11 @@ def run_lens_query(
     on_error: Callable[[BaseException], None] | None = None,
     on_busy: Callable[[bool], None] | None = None,
 ) -> None:
-    """Load pixels and run Lens query. When ``schedule`` is set, work is off the UI thread.
-
-    ``schedule`` is typically ``lambda fn: root.after(0, fn)``. Without it the
-    query runs synchronously (tests / lab). Never writes the store.
-    """
-
     def _finish_ok(report) -> None:
         if on_report is not None:
             try:
                 on_report(report)
-            except Exception:  # noqa: BLE001 — UI path must still show lines
+            except Exception:  # noqa: BLE001
                 pass
         if on_lines is not None:
             try:
@@ -208,12 +195,7 @@ def run_lens_query(
             except Exception:  # noqa: BLE001
                 pass
         if on_lines is not None:
-            on_lines(
-                [
-                    "Semblon could not finish looking.",
-                    "Nothing was searched.",
-                ]
-            )
+            on_lines(["Semblon could not finish looking.", "Nothing was searched."])
 
     def work() -> None:
         try:
@@ -245,7 +227,7 @@ def run_lens_query(
                 schedule(_ok)
             else:
                 _ok()
-        except Exception as exc:  # noqa: BLE001 — surface honestly; do not crash Home
+        except Exception as exc:  # noqa: BLE001
 
             def _err() -> None:
                 if on_busy is not None:
@@ -266,7 +248,6 @@ def run_lens_query(
 
 
 def _prepare_view(image_path: Path):
-    """Load + scale for a Lens drag canvas. Returns None when the file cannot be read."""
     import cv2
 
     image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
@@ -298,10 +279,6 @@ def mount_region_select(
     on_close: Callable[[], None] | None = None,
     hint_text: str = LENS_SELECT_HINT,
 ) -> object | None:
-    """Embed a drag-rectangle canvas in ``parent``. Returns the frame, or None on read fail.
-
-    Inference is scheduled off the UI thread when ``schedule`` is provided.
-    """
     import tempfile
     import tkinter as tk
 
@@ -363,6 +340,7 @@ def mount_region_select(
         if rect is None:
             on_lines(["Draw a region first. Nothing was searched."])
             return
+        # Keep the same canvas rectangle. Do not replace it with a model box.
 
         def _busy(flag: bool) -> None:
             state["busy"] = flag
@@ -401,7 +379,6 @@ def open_region_window(
     on_busy=None,
     schedule: Callable[[Callable[[], None]], None] | None = None,
 ) -> None:
-    """Tk Toplevel drag rectangle — same pipeline as the embedded Lens pane."""
     import tkinter as tk
 
     win = tk.Toplevel(master)
@@ -413,7 +390,6 @@ def open_region_window(
         except tk.TclError:
             pass
 
-    # Prefer off-thread when the caller did not pass schedule (Home always should).
     if schedule is None and hasattr(master, "after"):
         schedule = lambda fn: master.after(0, fn)  # noqa: E731
 
