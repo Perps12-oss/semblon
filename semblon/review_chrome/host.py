@@ -52,6 +52,7 @@ def host_review_chrome(
     strong_min_intra: float = STRONG_MIN_INTRA,
     on_add_folder=None,
     force_tk: bool | None = None,
+    focus_cluster_id: str | None = None,
 ) -> dict:
     """Host Cluster Review for Home / ``review-ui``.
 
@@ -81,6 +82,7 @@ def host_review_chrome(
                 kind=kind or "webview",
                 strong_min_intra=strong_min_intra,
                 html_path=html_path,
+                focus_cluster_id=focus_cluster_id,
             )
         except Exception as e:  # noqa: BLE001 — fall back to tk
             log.warning(
@@ -104,6 +106,7 @@ def host_review_chrome(
         run_id,
         parent=parent,
         on_add_folder=on_add_folder,
+        focus_cluster_id=focus_cluster_id,
     )
     app.run()
     return {
@@ -123,6 +126,7 @@ def _host_in_webview(
     kind: str,
     strong_min_intra: float,
     html_path: Path,
+    focus_cluster_id: str | None = None,
 ) -> dict:
     """Embed live document in an HtmlFrame Toplevel on ``parent``."""
     import tkinter as tk
@@ -141,16 +145,29 @@ def _host_in_webview(
     win.title("Semblon Cluster Review")
     win.geometry("1440x900")
 
-    html_text = render_review_document_from_store(
-        store, run_id, mode="live", strong_min_intra=strong_min_intra
+    def _decorate(doc: str) -> str:
+        if focus_cluster_id and "<body" in doc:
+            return doc.replace(
+                "<body",
+                f'<body data-focus-cluster="{focus_cluster_id}"',
+                1,
+            )
+        return doc
+
+    html_text = _decorate(
+        render_review_document_from_store(
+            store, run_id, mode="live", strong_min_intra=strong_min_intra
+        )
     )
     frame = frame_cls(win, messages_enabled=True)
     frame.pack(fill=tk.BOTH, expand=True)
     frame.load_html(html_text)
 
     def _reload() -> None:
-        doc = render_review_document_from_store(
-            store, run_id, mode="live", strong_min_intra=strong_min_intra
+        doc = _decorate(
+            render_review_document_from_store(
+                store, run_id, mode="live", strong_min_intra=strong_min_intra
+            )
         )
         frame.load_html(doc)
         write_snapshot_html(store, run_id, html_path, strong_min_intra=strong_min_intra)

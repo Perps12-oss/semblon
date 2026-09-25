@@ -257,14 +257,14 @@ def build_chrome_board(
 
         thumbs = [
             _thumb_obj(m, include_data_uri=include_thumbs)
-            for m in members[: max(CARD_THUMB_MAX, INSPECTOR_THUMB_MAX)]
+            for m in members
         ]
         cluster_rows.append(
             {
                 "cluster_id": c["cluster_id"],
                 "display_index": index_by_id[c["cluster_id"]],
                 "classification": classification,
-                "face_count": c["face_count"],
+                "face_count": len(members),
                 "min_intra": float(mi) if mi is not None else None,
                 "sim_min": sim_min,
                 "sim_max": sim_max,

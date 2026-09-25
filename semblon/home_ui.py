@@ -1809,6 +1809,17 @@ class HomeApp:
         self._insp_selected = [
             self._insp_available[i] for i in idxs if 0 <= i < len(self._insp_available)
         ]
+        # Cluster row alone: point the user at full-face comparison in Review.
+        if (
+            len(self._insp_selected) == 1
+            and self._insp_selected[0].get("kind") == "cluster"
+        ):
+            members = self._insp_selected[0].get("members") or []
+            n = len(members)
+            if n > 1:
+                self.status.set(
+                    f"{n} faces in this group — Open Review to compare all."
+                )
         self._refresh_inspector_verbs()
 
     def _refresh_inspector_verbs(self) -> None:
@@ -3669,6 +3680,11 @@ class HomeApp:
     def _open_review_ui(self) -> None:
         from semblon.review_ui import ReviewUiError, run_review_ui
 
+        focus = None
+        for it in getattr(self, "_insp_selected", None) or []:
+            if it.get("kind") == "cluster" and it.get("cluster_id"):
+                focus = it["cluster_id"]
+                break
         try:
             # Toplevel on Home's root. Home keeps pumping events. No nested mainloop.
             # Shared Cluster Review chrome when WebView exists; else tk + review.html.
@@ -3677,6 +3693,7 @@ class HomeApp:
                 run_id=self._last_run_id,
                 parent=self.root,
                 on_add_folder=self._choose_folder,
+                focus_cluster_id=focus,
             )
             html_out = (rec or {}).get("review_html") if isinstance(rec, dict) else None
             if html_out:

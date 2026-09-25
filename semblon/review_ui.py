@@ -46,6 +46,7 @@ try:
         BG_SUBTLE,
         BODY,
         BODY_STRONG,
+        CAPTION,
         H1,
         H2,
         INK_ON_ACCENT,
@@ -66,6 +67,7 @@ except ImportError:  # pragma: no cover
     BG_SUBTLE = "#F6F4EF"
     BODY = ("Segoe UI", 13)
     BODY_STRONG = ("Segoe UI", 13, "bold")
+    CAPTION = ("Segoe UI", 11)
     H1 = ("Segoe UI", 24, "bold")
     H2 = ("Segoe UI", 18, "bold")
     INK_ON_ACCENT = "#FFFFFF"
@@ -366,7 +368,8 @@ def load_board(
                 "kind": "cluster",
                 "cluster_id": c["cluster_id"],
                 "band": band,
-                "face_count": c["face_count"],
+                # Honest count = faces on the board, not a possibly-stale clusters.face_count.
+                "face_count": len(members),
                 "min_intra": mi,
                 "status": c["status"],
                 "person_names": person_names,
@@ -852,12 +855,14 @@ class ReviewApp:
         parent=None,
         empty_reason: str | None = None,
         on_add_folder: Callable[[], None] | None = None,
+        focus_cluster_id: str | None = None,
     ):
         _ensure_tk()
         self.store = Path(store)
         self.run_id = run_id
         self.empty_reason = empty_reason
         self.on_add_folder = on_add_folder
+        self._focus_cluster_id = focus_cluster_id
         self._tracks_cache: dict | None = None
         self._photos: list = []
         self._group_photos: list = []
@@ -895,6 +900,23 @@ class ReviewApp:
         self._tracks_cache = self.board.get("_tracks_cache")
         self._build_review_chrome()
         self.reload()
+        self._apply_focus_cluster()
+
+    def _apply_focus_cluster(self) -> None:
+        """Open the full face grid for a cluster when Review was launched from Home."""
+        cid = self._focus_cluster_id
+        if not cid or not self._visible_items:
+            return
+        for i, it in enumerate(self._visible_items):
+            if it.get("kind") == "cluster" and it.get("cluster_id") == cid:
+                self._sel_indices = {i}
+                self._primary_index = i
+                self._selected_faces.clear()
+                self._redraw_group_list()
+                members = list(it.get("members") or [])
+                self._set_face_panel_title(it, members)
+                self._draw_faces(members)
+                return
 
     def _build_entry_empty(self) -> None:
         """§8 — coaching empty state when there is no store / no runs."""
@@ -1024,6 +1046,12 @@ class ReviewApp:
         ttk.Label(
             right, text="Faces (click to mark for Split · scroll for all)", font=_FONT_UI
         ).pack(anchor=tk.W)
+        self._face_panel_title = tk.StringVar(
+            value="Select a group to see every face for comparison."
+        )
+        ttk.Label(
+            right, textvariable=self._face_panel_title, font=CAPTION
+        ).pack(anchor=tk.W, pady=(0, 4))
         face_wrap = ttk.Frame(right)
         face_wrap.pack(fill=tk.BOTH, expand=True)
         self.canvas = tk.Canvas(
@@ -1188,7 +1216,11 @@ class ReviewApp:
                 tags=(tag,),
             )
             label = item_label(item, detail=self._detail_mode)
-            text_x = 12 + GROUP_REPR_FACES * (GROUP_THUMB + 4)
+            members = item.get("members") or []
+            reps = representative_members(item, GROUP_REPR_FACES)
+            extra = max(0, len(members) - len(reps))
+            thumb_slots = len(reps) + (1 if extra > 0 and reps else 0)
+            text_x = 12 + max(GROUP_REPR_FACES, thumb_slots) * (GROUP_THUMB + 4)
             if item.get("named"):
                 # Named progress cue — accent check notch on the row.
                 cx = 292 - 18
@@ -1220,7 +1252,6 @@ class ReviewApp:
                 width=150 if item.get("named") else 160,
                 tags=(tag,),
             )
-            reps = representative_members(item, GROUP_REPR_FACES)
             for j, m in enumerate(reps):
                 sx = 10 + j * (GROUP_THUMB + 4)
                 sy = y + 8
@@ -1234,6 +1265,27 @@ class ReviewApp:
                     tags=(tag,),
                 )
                 slots.append((gen, m, sx, sy, rect, tag))
+            if extra > 0 and reps:
+                # Overflow chip — list previews are capped; click opens the full grid.
+                ox = 10 + len(reps) * (GROUP_THUMB + 4)
+                oy = y + 8
+                self.group_canvas.create_rectangle(
+                    ox,
+                    oy,
+                    ox + GROUP_THUMB,
+                    oy + GROUP_THUMB,
+                    fill=INK_PRIMARY,
+                    outline=INK_PRIMARY,
+                    tags=(tag,),
+                )
+                self.group_canvas.create_text(
+                    ox + GROUP_THUMB / 2,
+                    oy + GROUP_THUMB / 2,
+                    text=f"+{extra}",
+                    fill=BG_CANVAS,
+                    font=("Segoe UI", 10, "bold"),
+                    tags=(tag,),
+                )
             if not reps:
                 self.group_canvas.create_text(
                     14,
@@ -1314,8 +1366,11 @@ class ReviewApp:
         item = self._current_item()
         if item is None:
             self._set_empty_canvas("Select a group, track, or single face.")
+            self._set_face_panel_title(None)
             return
-        self._draw_faces(item["members"])
+        members = list(item.get("members") or [])
+        self._set_face_panel_title(item, members)
+        self._draw_faces(members)
 
     def reload(self, *, invalidate_tracks: bool = True) -> None:
         if self.empty_reason is not None or self.run_id is None:
@@ -1335,8 +1390,34 @@ class ReviewApp:
                 if not self._visible_items
                 else "Select a group, track, or single face."
             )
+            self._set_face_panel_title(None)
         else:
-            self._draw_faces(item["members"])
+            members = list(item.get("members") or [])
+            self._set_face_panel_title(item, members)
+            self._draw_faces(members)
+
+    def _set_face_panel_title(self, item: dict | None, members: list[dict] | None = None) -> None:
+        """Right-pane copy: full member count when a group is open."""
+        title = getattr(self, "_face_panel_title", None)
+        if title is None:
+            return
+        if item is None:
+            title.set("Select a group to see every face for comparison.")
+            return
+        rows = list(members if members is not None else (item.get("members") or []))
+        n = len(rows)
+        if item.get("kind") == "cluster":
+            if n <= 0:
+                title.set("This group has no faces to show.")
+            elif n == 1:
+                title.set("1 face in this group.")
+            else:
+                title.set(f"{n} faces in this group — scroll to compare all.")
+            return
+        if item.get("kind") == "track":
+            title.set(f"{n} faces on this video track — scroll to compare all." if n else "No faces.")
+            return
+        title.set("1 face." if n <= 1 else f"{n} faces — scroll to compare all.")
 
     def _set_empty_canvas(self, text: str) -> None:
         self.canvas.delete("all")
@@ -1600,7 +1681,9 @@ class ReviewApp:
             self._selected_faces.add(fid)
         item = self._current_item()
         if item:
-            self._draw_faces(item["members"])
+            members = list(item.get("members") or [])
+            self._set_face_panel_title(item, members)
+            self._draw_faces(members)
         else:
             self._update_action_buttons()
 
@@ -1940,6 +2023,7 @@ def run_review_ui(
     *,
     parent=None,
     on_add_folder: Callable[[], None] | None = None,
+    focus_cluster_id: str | None = None,
 ) -> dict:
     """Open Review. Expected empty (no store / no runs) shows coaching UI, not Error.
 
@@ -1972,11 +2056,16 @@ def run_review_ui(
             rid,
             parent=parent,
             on_add_folder=on_add_folder,
+            focus_cluster_id=focus_cluster_id,
         )
     except Exception:
         # Absolute last resort: tk only (host already logs WebView miss).
         app = ReviewApp(
-            store_path, rid, parent=parent, on_add_folder=on_add_folder
+            store_path,
+            rid,
+            parent=parent,
+            on_add_folder=on_add_folder,
+            focus_cluster_id=focus_cluster_id,
         )
         app.run()
         return {"store": str(store_path.resolve()), "run_id": rid}
