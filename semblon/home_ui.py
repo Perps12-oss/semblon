@@ -981,8 +981,6 @@ class HomeApp:
         )
         # Pack later via _sync_chrome_for_route (hidden on cold home; CTA is on landing).
         self.btn_review = _button(jobs, "Open Review", self._open_review_ui, kind="secondary")
-        # review.html retained for Advanced/export only — not product chrome.
-        self.btn_html = _button(jobs, "Open review.html", self._open_html, kind="tertiary")
         self.btn_cancel = _button(jobs, "Cancel", self._request_cancel, kind="tertiary")
         self.btn_cancel.configure(state=tk.DISABLED)
         # Pause/Resume live next to the progress bar as a single toggle (§3 / §10).
@@ -997,6 +995,7 @@ class HomeApp:
             jobs, "Canvas", lambda: self._navigate("canvas"), kind="tertiary", icon="images"
         )
         # Secondary surfaces live under More — not equal-weight job chrome.
+        # review.html is SUPERSEDED as UX — Settings → Advanced export only.
         self._overflow = ttk.Menubutton(jobs, text="More")
         self._overflow.pack(side=tk.RIGHT, padx=(SP_8, 0))
         self._overflow_menu = tk.Menu(self._overflow, tearoff=0)
@@ -2836,7 +2835,6 @@ class HomeApp:
         for w in (
             self.btn_folder,
             self.btn_review,
-            self.btn_html,
             self.btn_live,
             self.btn_canvas,
         ):
@@ -3016,8 +3014,7 @@ class HomeApp:
         }
         for key, btn in buttons.items():
             btn.configure(state=tk.NORMAL if states[key] == "normal" else tk.DISABLED)
-        # Secondary / export-only widgets stay reachable but are not product chrome.
-        self.btn_html.configure(state=tk.DISABLED)
+        # Secondary canvas control stays enabled for More → Explore; never packed here.
         self.btn_canvas.configure(state=tk.NORMAL)
         # Landing CTA tracks folder availability; processing Home has no Add-folder CTA.
         if hasattr(self, "btn_landing_cta"):

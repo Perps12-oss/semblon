@@ -59,13 +59,10 @@ def test_home_product_chrome_drops_review_html_and_job_bar_canvas():
     import semblon.home_ui as home_ui
 
     init = inspect.getsource(home_ui.HomeApp.__init__)
-    assert 'label="Open review.html"' not in init
-    # Widget may exist for Advanced export, but More menu must not advertise it.
-    overflow = init[init.find("_overflow_menu") :]
-    assert "Open review.html" not in overflow.split("configure(menu=")[0]
+    assert "Open review.html" not in init
     sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
     assert "btn_canvas.pack" not in sync
-    assert "btn_html.pack" not in sync
+    assert "btn_html" not in sync
     settings = inspect.getsource(home_ui.HomeApp._show_settings)
     assert "Open export review page" in settings
     assert "Advanced" in settings
@@ -73,6 +70,7 @@ def test_home_product_chrome_drops_review_html_and_job_bar_canvas():
     assert "canvas" not in home_ui.HOME_CONTROLS_ALWAYS_ON
     forbidden = product_chrome_forbidden_labels()
     assert "Open review.html" in forbidden
+    assert hasattr(home_ui.HomeApp, "_open_html")
 
 
 def test_interactive_launcher_opens_home_only():
