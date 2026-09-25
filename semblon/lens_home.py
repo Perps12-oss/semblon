@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 
 def open_region_select(home) -> None:
     """Production Lens release path: persist the box and find similar photos."""
@@ -26,7 +28,6 @@ def open_region_select(home) -> None:
             home._set_inspector("Lens", lines or ["Nothing was searched."])
         except Exception:  # noqa: BLE001
             pass
-        # Do not rebuild _lens_stage — that would erase the user's rectangle.
 
     def on_rect(rect: dict) -> None:
         from semblon.lens_release import remember_selection
@@ -96,3 +97,11 @@ def open_region_select(home) -> None:
 def install(home_cls):
     home_cls._open_region_select = open_region_select
     return home_cls
+
+
+def run_product_home(store: Path | None = None) -> int:
+    """Canonical Home launch. Installs Lens persist+find, then starts Tk."""
+    from semblon.home_ui import HomeApp, run_home_ui
+
+    install(HomeApp)
+    return run_home_ui(store=store)

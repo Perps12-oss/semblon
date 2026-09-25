@@ -1124,9 +1124,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "home":
-        from semblon.home_ui import run_home_ui
+        from semblon.lens_home import run_product_home
 
-        return run_home_ui(store=args.store)
+        return run_product_home(store=args.store)
 
     if args.cmd == "shell":
         from semblon.native_shell import run_native_shell
