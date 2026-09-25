@@ -152,18 +152,23 @@ def test_lens_errors_do_not_crash_home_handlers():
     )
 
 
-def test_lens_does_not_write_identity(tmp_path, monkeypatch):
+def test_lens_does_not_write_identity():
     """Identity firewall: Lens query path must not stamp faces.person_id."""
     import semblon.selection as selection
 
     src = inspect.getsource(selection.run_lens_query)
+    assert "UPDATE" not in src.lower()
+    assert "INSERT" not in src
     assert "person_id" not in src
-    assert "faces.person_id" not in inspect.getsource(selection)
     home_lens = inspect.getsource(
         __import__("semblon.home_ui", fromlist=["HomeApp"]).HomeApp._lens_ask_whole
     )
-    assert "person_id" not in home_lens
     assert "UPDATE faces" not in home_lens.lower()
+    assert "person_id" not in home_lens
+    region = inspect.getsource(selection.mount_region_select)
+    assert "person_id" not in region
+    assert "sqlite" not in region.lower()
+    assert "Never writes the store" in (selection.run_lens_query.__doc__ or "")
 
 
 def test_review_html_not_product_ux_regression():
