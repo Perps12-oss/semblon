@@ -205,3 +205,38 @@ class Application:
     def canvas(self, run_id: str | None = None) -> dict:
         rid = resolve_run_id(self.store, run_id)
         return load_canvas(self.store, rid)
+
+    def remember_region(
+        self,
+        media_id: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        *,
+        run_id: str | None = None,
+        report=None,
+    ) -> dict:
+        """Persist a user box. Observation, not a person."""
+        from semblon.user_region import persist_user_region
+
+        return persist_user_region(
+            self.store,
+            media_id=media_id,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
+            run_id=run_id,
+            report=report,
+        )
+
+    def regions(self, run_id: str | None = None) -> list[dict]:
+        from semblon.user_region import list_user_regions
+
+        return list_user_regions(self.store, run_id=run_id)
+
+    def name_region(self, item_id: str, name: str) -> dict:
+        from semblon.user_region import name_user_region
+
+        return name_user_region(self.store, item_id, name)
