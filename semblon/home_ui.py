@@ -1257,7 +1257,7 @@ class HomeApp:
         actions.pack(fill=tk.X, pady=(4, 0))
         self._verb_reason = tk.StringVar(value="")
 
-        # Primary action first: name the person you selected.
+        # Primary: type a name and save it. Add-to-person is for an existing person.
         name_row = ttk.Frame(actions)
         name_row.pack(fill=tk.X, pady=1)
         ttk.Label(name_row, text=VERB_LABEL_NAME).pack(side=tk.LEFT)
@@ -1266,9 +1266,14 @@ class HomeApp:
         self._name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
         self._name_entry.bind("<Return>", lambda _e: self._inspector_name_commit())
         self._name_entry.bind("<Escape>", lambda _e: self._inspector_name_cancel())
+        self._name_var.trace_add("write", lambda *_a: self._sync_name_save_button())
 
+        self.btn_name = _button(
+            actions, VERB_LABEL_NAME, self._inspector_name_commit, kind="primary"
+        )
+        self.btn_name.pack(fill=tk.X, pady=1)
         self.btn_assign = _button(
-            actions, VERB_LABEL_ASSIGN, self._inspector_assign, kind="primary"
+            actions, VERB_LABEL_ASSIGN, self._inspector_assign, kind="secondary"
         )
         self.btn_assign.pack(fill=tk.X, pady=1)
         self.btn_merge = _button(
@@ -1742,7 +1747,18 @@ class HomeApp:
             self._name_var.set("")
             if name_st.get("reason"):
                 reasons.append(f"Name: {name_st['reason']}")
+        self._sync_name_save_button()
         self._verb_reason.set(" · ".join(reasons[:3]) if reasons else "")
+
+    def _sync_name_save_button(self) -> None:
+        """Name this person is enabled when a nameable selection has typed text."""
+        btn = getattr(self, "btn_name", None)
+        if btn is None:
+            return
+        name_st = (getattr(self, "_verb_states", None) or {}).get("name") or {}
+        name_on = bool(name_st.get("enabled"))
+        typed = bool((self._name_var.get() or "").strip())
+        btn.configure(state=tk.NORMAL if (name_on and typed) else tk.DISABLED)
 
     def _inspector_run_id(self) -> str | None:
         return self._insp_run_id or self._last_run_id
@@ -1750,7 +1766,9 @@ class HomeApp:
     def _inspector_after_mutation(self) -> None:
         """Refresh Canvas / Unknown after a successful Inspector verb."""
         rid = self._inspector_run_id()
-        if self._nav in {"home", "canvas", "photos", "videos"}:
+        if self._nav == "home":
+            self._show_home_landing()
+        elif self._nav in {"canvas", "photos", "videos"}:
             types = None
             if self._nav == "photos":
                 types = ("folder",)
@@ -1846,11 +1864,17 @@ class HomeApp:
 
         st = self._verb_states.get("name") or {}
         if not st.get("enabled"):
+            messagebox.showinfo(
+                "Semblon", st.get("reason") or "Select a face or cluster to name."
+            )
             return
         rid = self._inspector_run_id()
         item = st.get("item")
         name = (self._name_var.get() or "").strip()
-        if not rid or item is None or not name:
+        if not name:
+            messagebox.showinfo("Semblon", "Type a name, then click Name this person.")
+            return
+        if not rid or item is None:
             return
         try:
             apply_inspector_name(self.store, rid, item, name)
