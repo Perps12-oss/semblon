@@ -227,8 +227,8 @@ def processing_home_headline(
 
 def processing_home_activity(*, paused: bool = False) -> str:
     if paused:
-        return "Semblon stopped between files. Resume to continue this job."
-    return "Finding people and building your visual library."
+        return "Paused between photos. Resume to continue, or cancel to stop."
+    return "Finding faces and preparing your library. Pause or cancel anytime."
 
 
 def product_status_text(
@@ -313,7 +313,7 @@ def processing_home_snapshot(
         "faces": soft_faces_found_line(faces_found),
         "eta": card["meta"],
         "folder_note": (
-            "Semblon is analysing your library. You can add another folder when this finishes."
+            "Getting your library ready. You can add another folder when this finishes."
             if not paused
             else "Paused. Resume to continue, or cancel to stop this scan."
         ),

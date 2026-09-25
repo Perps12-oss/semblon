@@ -84,7 +84,8 @@ def test_groups_waiting_line():
 
 def test_format_unknown_demotes_known_unknown_codes():
     soft = format_unknown_lines({"counts": {"KNOWN": 1, "UNKNOWN": 4}}, "r1")
-    assert soft == ["4 people to name."]
+    assert soft[0] == "4 people to name."
+    assert "Unknown is fine" in "\n".join(soft)
     assert "KNOWN=" not in "\n".join(soft)
     adv = format_unknown_lines(
         {"counts": {"KNOWN": 1, "UNKNOWN": 4}}, "r1", advanced=True

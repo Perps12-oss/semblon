@@ -75,14 +75,18 @@ def test_eta_uses_ema_and_is_absent_without_a_rate():
         elapsed_s=15,
         pace=pace,
     )
-    assert card["title"] == "Reading photos…"
+    assert card["title"] == "Getting your library ready…"
     assert card["stats"] == "20 of 30 files · 5 faces found"
     assert card["meta"].startswith("66.7%, Elapsed 0:00:15 · ETA ")
 
 
 def test_titles_match_the_deck_and_do_not_call_failure_completed():
-    assert scan_title(stage="discover", kind="progress", paused=False) == "Scanning"
-    assert scan_title(stage="ingest", kind="progress", paused=False) == "Reading photos…"
+    assert scan_title(stage="discover", kind="progress", paused=False) == (
+        "Getting your library ready…"
+    )
+    assert scan_title(stage="ingest", kind="progress", paused=False) == (
+        "Getting your library ready…"
+    )
     assert scan_title(stage="ingest", kind="progress", paused=True) == "Paused"
     assert scan_title(stage="cluster", kind="completed", paused=False) == "Completed"
     assert scan_title(stage="ingest", kind="failed", paused=False) == "Couldn't finish"

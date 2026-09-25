@@ -88,7 +88,7 @@ class ScanPace:
 
 
 def scan_title(*, stage: str | None, kind: str | None, paused: bool) -> str:
-    """Scan card title. Deck labels, plus failed/cancelled when those are real."""
+    """Scan card title. Product copy; failed/cancelled stay explicit."""
     if paused and kind not in {"completed", "failed", "cancelled"}:
         return "Paused"
     if kind == "completed":
@@ -97,9 +97,13 @@ def scan_title(*, stage: str | None, kind: str | None, paused: bool) -> str:
         return "Couldn't finish"
     if kind == "cancelled":
         return "Cancelled"
+    if stage == "cluster" and (kind in _RUNNING or kind is None):
+        return "Getting your library ready…"
     if stage == "ingest" and (kind in _RUNNING or kind is None):
-        return "Reading photos…"
-    return "Scanning"
+        return "Getting your library ready…"
+    if kind in _RUNNING or kind is None:
+        return "Getting your library ready…"
+    return "Getting your library ready"
 
 
 def scan_stats(

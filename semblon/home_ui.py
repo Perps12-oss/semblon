@@ -212,14 +212,13 @@ def shell_is_condensed(width: int) -> bool:
     return int(width) < CONDENSED_BELOW
 
 # Job control, not an application lock. These stay usable while ingest runs.
+# review.html / Canvas are not product chrome keys (secondary / export only).
 HOME_CONTROLS_ALWAYS_ON = (
     "review",
-    "html",
     "people",
     "unknown",
     "activity",
     "settings",
-    "canvas",
     "search",
     "live",
 )
@@ -450,19 +449,24 @@ def format_people_lines(rec: dict) -> list[str]:
     items = rec.get("items") or []
     if not items:
         return people_empty().as_lines()
-    return [
-        f"{i.get('display_name') or i.get('person_id')}  ({i.get('faces', 0)} photos)"
-        for i in items
+    lines = [
+        "Named people — a group is not a person until you name them.",
     ]
+    for i in items:
+        name = (i.get("display_name") or "").strip() or "Named person"
+        faces = int(i.get("faces") or 0)
+        lines.append(f"{name}  ({faces} photos)" if faces else name)
+    return lines
 
 
 def format_unknown_lines(
     rec: dict, run_id: str, *, advanced: bool = False
 ) -> list[str]:
-    """§13 To review — soft counts by default; KNOWN=/UNKNOWN= only when advanced."""
+    """People to name — soft counts by default; KNOWN=/UNKNOWN= only when advanced."""
     c = rec.get("counts") or {}
     waiting = int(c.get("UNKNOWN", 0) or 0) + int(c.get("REVIEW_REQUIRED", 0) or 0)
     lines = [groups_waiting_line(waiting)]
+    lines.append("Unknown is fine. Name someone only when you are sure.")
     if advanced:
         lines.extend(
             [
@@ -977,7 +981,6 @@ class HomeApp:
         )
         # Pack later via _sync_chrome_for_route (hidden on cold home; CTA is on landing).
         self.btn_review = _button(jobs, "Open Review", self._open_review_ui, kind="secondary")
-        self.btn_html = _button(jobs, "Open review.html", self._open_html, kind="tertiary")
         self.btn_cancel = _button(jobs, "Cancel", self._request_cancel, kind="tertiary")
         self.btn_cancel.configure(state=tk.DISABLED)
         # Pause/Resume live next to the progress bar as a single toggle (§3 / §10).
@@ -987,16 +990,17 @@ class HomeApp:
         self.btn_pause.configure(state=tk.DISABLED)
         self.btn_resume = self.btn_pause  # alias: one toggle control
         self.btn_live = _button(jobs, "Live…", self._open_live_overlay, kind="tertiary")
+        # Canvas widget kept for secondary navigate; never packed as primary chrome.
         self.btn_canvas = _button(
             jobs, "Canvas", lambda: self._navigate("canvas"), kind="tertiary", icon="images"
         )
-        # Advanced actions stay off the top bar. The menu is on the job row.
+        # Secondary surfaces live under More — not equal-weight job chrome.
+        # review.html is SUPERSEDED as UX — Settings → Advanced export only.
         self._overflow = ttk.Menubutton(jobs, text="More")
         self._overflow.pack(side=tk.RIGHT, padx=(SP_8, 0))
         self._overflow_menu = tk.Menu(self._overflow, tearoff=0)
         self._overflow_menu.add_command(label="Open Review", command=self._open_review_ui)
         self._overflow_menu.add_command(label="Live…", command=self._open_live_overlay)
-        self._overflow_menu.add_command(label="Open review.html", command=self._open_html)
         self._overflow_menu.add_command(
             label="Browse photos", command=lambda: self._navigate("photos")
         )
@@ -1377,20 +1381,62 @@ class HomeApp:
             self._sel_heading.set(title)
 
     def _open_region_select(self) -> None:
-        from semblon.selection import media_file, open_region_window
+        from semblon.selection import lens_result_summary, media_file, open_region_window
 
         path = media_file(self.store, getattr(self, "_insp_media_id", None))
         if path is None:
             self._set_inspector(
-                "Select a region",
-                ["Choose a photo first. Nothing was searched."],
+                "Lens",
+                [
+                    "Open a photo first.",
+                    "Then use Lens and drag a box. Semblon uses available understanding.",
+                    "Nothing was searched.",
+                ],
             )
             return
 
         def done(lines: list[str]) -> None:
-            self._set_inspector("Select a region", lines or ["Nothing was searched."])
+            self._set_inspector("Lens", lines or ["Nothing was searched."])
 
-        open_region_window(self.root, path, done)
+        def on_report(report) -> None:
+            self._last_lens_result = lens_result_summary(report)
+            if hasattr(self, "_refresh_library_shell"):
+                try:
+                    self._refresh_library_shell()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        open_region_window(self.root, path, done, on_report=on_report)
+
+    def _open_lens(self) -> None:
+        """Lens: open photo → select region → available understanding → results."""
+        self._nav = "lens"
+        self._mark_nav_active("lens")
+        media_id = getattr(self, "_insp_media_id", None)
+        if media_id:
+            self._open_region_select()
+            self._sync_chrome_for_route()
+            return
+        # No photo selected — send user to Photos; record honest last-result.
+        self._last_lens_result = {
+            "status": "UNAVAILABLE",
+            "reason": "Open a photo first. Nothing was searched.",
+        }
+        if hasattr(self, "_refresh_library_shell"):
+            try:
+                self._refresh_library_shell()
+            except Exception:  # noqa: BLE001
+                pass
+        self._set_inspector(
+            "Lens",
+            [
+                "Open a photo first.",
+                "Lens asks about that picture — drag a box, then Semblon uses "
+                "whatever understanding is available on this computer.",
+                "Nothing was searched.",
+            ],
+        )
+        self._navigate("photos")
 
     def _on_inspector_sel_change(self) -> None:
         idxs = list(self._sel_list.curselection())
@@ -1936,7 +1982,7 @@ class HomeApp:
         self._proc_eta = tk.StringVar(value="")
         self._proc_folder_note = tk.StringVar(
             value=(
-                "Semblon is analysing your library. You can add another folder "
+                "Getting your library ready. You can add another folder "
                 "when this finishes."
             )
         )
@@ -2772,33 +2818,6 @@ class HomeApp:
             else:
                 self._nav_buttons[str(item)].pack(in_=self._sidebar, fill=tk.X, pady=1, padx=SP_4)
 
-    def _open_lens(self) -> None:
-        """Lens stays on the top bar. It asks about the open photo, or says to open one."""
-        self._nav = "lens"
-        self._mark_nav_active("lens")
-        media_id = getattr(self, "_insp_media_id", None)
-        if media_id:
-            self._open_region_select()
-            return
-        # No photo selected — send user to Photos; record honest last-result.
-        self._last_lens_result = {
-            "status": "UNAVAILABLE",
-            "reason": "Open a photo first. Nothing was searched.",
-        }
-        if hasattr(self, "_refresh_library_shell"):
-            try:
-                self._refresh_library_shell()
-            except Exception:  # noqa: BLE001
-                pass
-        self._set_inspector(
-            "Lens",
-            [
-                "Open a photo first.",
-                "Lens asks about that picture. Nothing was searched.",
-            ],
-        )
-        self._navigate("photos")
-
     def _mark_nav_active(self, nav_id: str) -> None:
         """Best-effort active nav styling in ttk (underline / state)."""
         for nid, btn in self._nav_buttons.items():
@@ -2812,11 +2831,10 @@ class HomeApp:
 
     def _sync_chrome_for_route(self) -> None:
         """Demote job bar on home; restore contextual controls elsewhere (§3)."""
-        # Clear job frame children packing
+        # Clear job frame children packing — never pack review.html / Canvas here.
         for w in (
             self.btn_folder,
             self.btn_review,
-            self.btn_html,
             self.btn_live,
             self.btn_canvas,
         ):
@@ -2839,12 +2857,10 @@ class HomeApp:
                 self._jobs_frame.pack(fill=tk.X, before=self._body)
             except tk.TclError:
                 self._jobs_frame.pack(fill=tk.X)
-            # Photos/Videos: folder only — Review/Canvas live under More (not primary chrome).
+            # Folder only in the job bar. Review / Canvas / Live live under More.
             self.btn_folder.pack(side=tk.LEFT)
-            if self._nav not in {"photos", "videos"}:
+            if self._nav not in {"photos", "videos", "lens"}:
                 self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
-                self.btn_canvas.pack(side=tk.LEFT, padx=(SP_8, 0))
-            # else: browsing photos — no Review/Canvas escape hatch in the job bar.
         # Pause toggle + Cancel sit next to the progress bar when busy off-Home.
         # Idle home has no status strip. Processing Home replaces the strip entirely.
         if busy and not processing_home:
@@ -2989,17 +3005,17 @@ class HomeApp:
         buttons = {
             "folder": self.btn_folder,
             "review": self.btn_review,
-            "html": self.btn_html,
             "people": self.btn_people,
             "unknown": self.btn_unknown,
             "activity": self.btn_activity,
             "settings": self.btn_settings,
-            "canvas": self.btn_canvas,
             "live": self.btn_live,
             "search": self.btn_search,
         }
         for key, btn in buttons.items():
             btn.configure(state=tk.NORMAL if states[key] == "normal" else tk.DISABLED)
+        # Secondary canvas control stays enabled for More → Explore; never packed here.
+        self.btn_canvas.configure(state=tk.NORMAL)
         # Landing CTA tracks folder availability; processing Home has no Add-folder CTA.
         if hasattr(self, "btn_landing_cta"):
             self.btn_landing_cta.configure(
@@ -3356,10 +3372,8 @@ class HomeApp:
         self._insp_available = []
         self._sel_list.delete(0, tk.END)
         for p in people_items:
-            label = (
-                f"person {p.get('display_name') or p.get('person_id')}  "
-                f"({p.get('faces', 0)} photos)"
-            )
+            name = (p.get("display_name") or "").strip() or "Named person"
+            label = f"{name}  ({p.get('faces', 0)} photos)"
             self._sel_list.insert(tk.END, label)
         self._people_items = people_items
         self._sel_list.bind("<<ListboxSelect>>", self._on_people_sel_change)
@@ -3583,7 +3597,6 @@ class HomeApp:
         self._navigate("home")
 
     def _search_person(self) -> None:
-        from semblon.gates import MODALITY_PRODUCT, enabled
         from semblon.search import SearchError, search_people, search_person, search_text
 
         q = (self.search_var.get() or "").strip()
@@ -3591,7 +3604,7 @@ class HomeApp:
         if q in {ph, SEARCH_PLACEHOLDER, SEARCH_PLACEHOLDER_PHOTOS}:
             q = ""
         if not q:
-            messagebox.showinfo("Semblon", "Type a person name or text to search.")
+            messagebox.showinfo("Semblon", "Type a person name or text from a photo.")
             return
         if self.engine.busy:
             # State-aware: library still analysing — don't fail silently.
@@ -3611,10 +3624,21 @@ class HomeApp:
                 self._show_failure(e)
             return
         if not (named.get("items") or []):
+            # Still try text/OCR over owned memory — people search is not the only door.
+            lines: list[str] = []
             if self.engine.busy:
-                self._set_inspector("Search", search_library_analysing().as_lines())
+                lines.extend(search_library_analysing().as_lines())
+                lines.append("")
             else:
-                self._set_inspector("Search", search_no_named_people().as_lines())
+                lines.extend(search_no_named_people().as_lines())
+                lines.append("")
+            try:
+                text_rec = search_text(self.store, q)
+            except SearchError:
+                text_rec = None
+            if text_rec is not None:
+                lines.extend(format_search_lines(text_rec))
+            self._set_inspector("Search", lines)
             return
         try:
             rec = search_person(self.store, q)
@@ -3630,21 +3654,23 @@ class HomeApp:
         lines = format_search_lines(rec)
         if self.engine.busy and int(rec.get("count") or 0) == 0:
             lines = search_library_analysing().as_lines() + [""] + lines
-        if enabled(MODALITY_PRODUCT) and int(rec.get("count") or 0) == 0:
+        # Broader lookup when people miss: OCR/text over owned memory (not ANN theatre).
+        if int(rec.get("count") or 0) == 0:
             try:
                 text_rec = search_text(self.store, q)
             except SearchError:
                 text_rec = None
-            if text_rec is not None and int(text_rec.get("count") or 0) > 0:
-                lines.append("")
-                lines.extend(format_search_lines(text_rec))
-            elif text_rec is not None and text_rec.get("status") in {
-                "UNAVAILABLE",
-                "ERROR",
-                "TIMEOUT",
-                "CANCELLED",
-                "NO_RESULT",
-            }:
+            if text_rec is not None and (
+                int(text_rec.get("count") or 0) > 0
+                or text_rec.get("status")
+                in {
+                    "UNAVAILABLE",
+                    "ERROR",
+                    "TIMEOUT",
+                    "CANCELLED",
+                    "NO_RESULT",
+                }
+            ):
                 lines.append("")
                 lines.extend(format_search_lines(text_rec))
         self._set_inspector("Search", lines)
@@ -3753,14 +3779,39 @@ class HomeApp:
                 command=lambda m=mode: self._set_theme_mode(m),
             ).pack(anchor=tk.W)
 
-        ttk.Label(pad, text="Shortcuts", font=BODY_STRONG).pack(
+        # About — product, not engineering.
+        ttk.Label(pad, text="About", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_24, SP_8))
+        try:
+            from semblon import __version__ as _ver
+        except Exception:  # noqa: BLE001
+            _ver = "1.4.0"
+        ttk.Label(pad, text="Semblon", font=H2).pack(anchor=tk.W)
+        ttk.Label(
+            pad, text=f"Version {_ver}", font=CAPTION, foreground=TEXT_SECONDARY
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+        ttk.Label(
+            pad,
+            text=(
+                "Personal photo library on this computer. Semblon finds faces, "
+                "groups similar ones, and lets you name people. Nothing is uploaded."
+            ),
+            font=BODY,
+            wraplength=480,
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+
+        # Advanced / Diagnostics — tech and export stay out of everyday settings.
+        ttk.Label(pad, text="Advanced", font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
+        ttk.Label(
+            pad,
+            text="Shortcuts, diagnostics, and export tools for power users.",
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+            wraplength=480,
+        ).pack(anchor=tk.W)
         for shortcut, keys in (
-            (
-                getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER),
-                "Ctrl+F",
-            ),
+            ("Search", "Ctrl+F"),
             ("Go to", "Ctrl+K"),
             ("Photos", "Ctrl+1"),
             ("Videos", "Ctrl+2"),
@@ -3774,29 +3825,18 @@ class HomeApp:
             ttk.Label(
                 row, text=keys, font=META, foreground=TEXT_SECONDARY
             ).pack(side=tk.RIGHT)
-
-        # About
-        ttk.Label(pad, text="About", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_24, SP_8))
-        try:
-            from semblon import __version__ as _ver
-        except Exception:  # noqa: BLE001
-            _ver = "1.4.0"
-        ttk.Label(pad, text="Semblon", font=H2).pack(anchor=tk.W)
-        ttk.Label(
-            pad, text=f"Version {_ver}", font=CAPTION, foreground=TEXT_SECONDARY
-        ).pack(anchor=tk.W, pady=(SP_8, 0))
-        ttk.Label(
+        _button(
             pad,
-            text="All processing stays on this computer. Nothing is uploaded.",
-            font=BODY,
-            wraplength=300,
-        ).pack(anchor=tk.W, pady=(SP_8, 0))
+            "Open export review page…",
+            self._open_html,
+            kind="tertiary",
+        ).pack(anchor=tk.W, pady=(SP_12, 0))
         _button(
             pad,
             "Advanced diagnostics…",
             self._open_advanced_diagnostics,
             kind="tertiary",
-        ).pack(anchor=tk.W, pady=(SP_16, 0))
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
 
         def _on_close() -> None:
             self._settings_win = None

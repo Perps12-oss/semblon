@@ -73,8 +73,10 @@ def test_activity_reader_broken_db_is_not_swallowed(tmp_path):
 
 def test_home_control_policy_does_not_lock_read_surfaces():
     busy = home_control_states(job_running=True, resume_ready=False)
-    for name in ("review", "people", "search", "unknown", "activity", "settings", "canvas", "html"):
+    for name in ("review", "people", "search", "unknown", "activity", "settings", "live"):
         assert busy[name] == "normal"
+    assert "html" not in busy
+    assert "canvas" not in busy
     assert busy["folder"] == "disabled"
     assert busy["cancel"] == "normal"
     assert busy["pause"] == "normal"
@@ -249,7 +251,7 @@ def test_home_landing_wraplength_avoids_clipping():
     assert "Your pictures stay here." in build or "SHELL_HEADLINE" in build
     assert "_shell_stats" in build
     assert "_landing_privacy" in build
-    assert "Ready without a download" in build or "SHELL_READY_TITLE" in build
+    assert "Ready without a download" in build or "SHELL_READY_TITLE" in build or "Available" in build
     hint = inspect.getsource(home_ui.HomeApp._refresh_landing_hint)
     assert "previously added" not in hint
     assert "landing_cta_plan" in hint

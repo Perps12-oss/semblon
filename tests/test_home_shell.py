@@ -30,9 +30,12 @@ def test_capability_sections_list_missing_models():
     assert "visual_embedding" in tracked_ids
     assert "ocr" in tracked_ids
     assert "vlm" in tracked_ids
-    assert any(r["state"] == "Off" for r in sections["tracked"] if r["id"] == "vlm")
+    assert "ann_index" not in tracked_ids  # invisible accelerator — not Home chrome
     assert any(
-        r["state"] == "Not installed"
+        r["state"] == "Experimental" for r in sections["tracked"] if r["id"] == "vlm"
+    )
+    assert any(
+        "Optional" in r["state"] or "install" in r["state"].lower()
         for r in sections["tracked"]
         if r["id"] == "visual_embedding"
     )

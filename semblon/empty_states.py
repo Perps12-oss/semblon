@@ -246,11 +246,13 @@ def search_result_lines(rec: dict, *, advanced: bool = False) -> list[str]:
             return search_no_matches(str(rec.get("query") or "")).as_lines()
         lines = []
         for i in items:
-            name = i.get("display_name") or i.get("person_id") or "person"
+            name = i.get("display_name") or "Named person"
             faces = i.get("faces", 0)
             lines.append(f"{name}  ({faces} photos)" if faces else str(name))
             if advanced and i.get("why"):
                 lines.append(f"  {i.get('why')}")
+            if advanced and i.get("person_id"):
+                lines.append(f"  person_id={i.get('person_id')}")
         return lines
     if kind == "similar":
         status = str(rec.get("status") or "")

@@ -432,7 +432,7 @@ def main(argv: list[str] | None = None) -> int:
 
     rui = sub.add_parser(
         "review-ui",
-        help="S8 Interactive Review slice (tkinter; Name/Merge/Split/Ignore over review APIs)",
+        help="secondary Review workspace (tk; Name/Merge/Split/Ignore — not product Home)",
     )
     rui.add_argument(
         "--store",
@@ -521,7 +521,7 @@ def main(argv: list[str] | None = None) -> int:
 
     canv = sub.add_parser(
         "canvas",
-        help="observation overlay (boxes + tracks; not identity; not the S8 shell)",
+        help="secondary observation workspace (boxes + tracks; not identity; not product Home)",
     )
     canv.add_argument("--store", default=None, type=Path)
     canv.add_argument("--run", default=None)
