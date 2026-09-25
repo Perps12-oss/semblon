@@ -1,0 +1,206 @@
+"""Home library shell — presentation for the local-first dashboard.
+
+Matches the product Home: stats, ready vs not-installed capabilities,
+and last-result honesty. Never invents model availability. Never writes
+the store.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+# Caps shown under "Ready without a download" when the model is AVAILABLE.
+_READY_IDS = frozenset({"library_query"})
+
+# Caps listed under "Not installed · still tracked" (product Home order).
+_TRACKED_IDS = (
+    "visual_embedding",
+    "ocr",
+    "translation",
+    "grounding",
+    "barcode",
+    "vlm",
+    "lkg",
+    "screen_capture",
+    "ann_index",
+)
+
+SHELL_HEADLINE = "Your pictures stay here."
+SHELL_SUBCOPY = (
+    "Faces already in the library can be reviewed. "
+    "Anything that still needs a model is listed, and it will say so "
+    "instead of pretending the library is empty."
+)
+SHELL_READY_TITLE = "Ready without a download"
+SHELL_TRACKED_TITLE = "Not installed · still tracked"
+SHELL_LAST_TITLE = "Last result"
+SHELL_LAST_EMPTY = "Nothing has been asked yet."
+SHELL_LAST_HINT = (
+    "A failure says it did not run. "
+    "“Nothing matched” only appears after a real run."
+)
+SHELL_SAVED_LINE = "Saved faces, text, and the barcode already in the library"
+
+
+def _state_label(model_state: str, *, disabled_as: str = "Off") -> str:
+    state = (model_state or "").upper()
+    if state == "AVAILABLE":
+        return "Ready"
+    if state == "DISABLED":
+        return disabled_as
+    if state in {"UNSUPPORTED_RUNTIME", "INCOMPATIBLE"}:
+        return "Not installed"
+    if state == "CORRUPT":
+        return "Unavailable"
+    return "Not installed"
+
+
+def capability_sections(
+    *,
+    report: list[dict] | None = None,
+    has_library_content: bool = False,
+) -> dict[str, list[dict[str, str]]]:
+    """Partition runtime_contract status into Ready vs Not installed rows.
+
+    Ready always includes Library search when AVAILABLE. When the store
+    already has local content, add the honesty line about saved faces/text.
+    Deferred / missing models stay listed — never omitted to look empty.
+    """
+    from semblon.runtime_contract import default_catalog, status_report
+
+    rows = list(report if report is not None else status_report())
+    by_id = {str(r.get("capability_id") or ""): r for r in rows}
+    catalog = {spec.id: spec for spec in default_catalog().specs}
+
+    ready: list[dict[str, str]] = []
+    for cap_id in _READY_IDS:
+        row = by_id.get(cap_id) or {}
+        spec = catalog.get(cap_id)
+        label = (spec.label if spec else cap_id) or cap_id
+        if (row.get("model_state") or "").upper() == "AVAILABLE":
+            ready.append({"id": cap_id, "label": label, "state": ""})
+    if has_library_content:
+        ready.append({"id": "saved_local", "label": SHELL_SAVED_LINE, "state": ""})
+
+    tracked: list[dict[str, str]] = []
+    for cap_id in _TRACKED_IDS:
+        row = by_id.get(cap_id) or {}
+        spec = catalog.get(cap_id)
+        label = (spec.label if spec else cap_id) or cap_id
+        model = str(row.get("model_state") or "MISSING")
+        if model.upper() == "AVAILABLE":
+            # Honest: an installed deferred model moves to Ready.
+            ready.append({"id": cap_id, "label": label, "state": "Ready"})
+            continue
+        tracked.append(
+            {
+                "id": cap_id,
+                "label": label,
+                "state": _state_label(model),
+            }
+        )
+
+    return {"ready": ready, "tracked": tracked}
+
+
+def shell_stats(summary: dict | None) -> list[dict[str, Any]]:
+    """Stat tiles for the Home shell. Zeros are real."""
+    s = summary or {}
+    return [
+        {"key": "photos", "label": "Photos", "value": int(s.get("photos") or 0)},
+        {
+            "key": "video_frames",
+            "label": "Video frames",
+            "value": int(s.get("video_frames") or 0),
+        },
+        {"key": "named", "label": "Named", "value": int(s.get("named_people") or 0)},
+        {
+            "key": "to_name",
+            "label": "To name",
+            "value": int(s.get("unnamed_groups") or 0),
+        },
+        {
+            "key": "observations",
+            "label": "Observations",
+            "value": int(s.get("observations") or 0),
+        },
+    ]
+
+
+def last_result_copy(last: dict | None) -> tuple[str, str]:
+    """(body, hint) for the Last result card. Never invents a match."""
+    if not last:
+        return SHELL_LAST_EMPTY, SHELL_LAST_HINT
+    status = str(last.get("status") or "").upper()
+    reason = (last.get("reason") or "").strip()
+    if status in {"UNAVAILABLE", "ERROR", "TIMEOUT", "CANCELLED"}:
+        body = reason or "It did not run."
+        return body, SHELL_LAST_HINT
+    if status == "NO_RESULT":
+        return "Nothing matched.", SHELL_LAST_HINT
+    if status == "SUCCESS":
+        n = int(last.get("item_count") or len(last.get("items") or []) or 0)
+        if n <= 0:
+            return "Nothing matched.", SHELL_LAST_HINT
+        label = last.get("summary") or f"{n} result{'s' if n != 1 else ''}"
+        return str(label), SHELL_LAST_HINT
+    return reason or SHELL_LAST_EMPTY, SHELL_LAST_HINT
+
+
+def enrich_summary_counts(store: Path, summary: dict | None) -> dict | None:
+    """Add photos / video_frames / observations when the store can answer."""
+    if summary is None:
+        return None
+    out = dict(summary)
+    path = Path(store)
+    if not path.is_file():
+        return out
+    import sqlite3
+
+    conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
+    try:
+        conn.execute("PRAGMA busy_timeout=5000")
+        photos = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM media WHERE source_type='folder' OR source_type IS NULL OR source_type=''"
+            ).fetchone()[0]
+        )
+        # Prefer explicit video; otherwise non-folder media.
+        try:
+            videos = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM media WHERE source_type='video'"
+                ).fetchone()[0]
+            )
+        except sqlite3.OperationalError:
+            videos = 0
+        try:
+            observations = int(
+                conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+            )
+        except sqlite3.OperationalError:
+            observations = int(out.get("faces") or 0)
+        # Video frames ≈ observations on video media when frame rows exist.
+        try:
+            video_frames = int(
+                conn.execute(
+                    """
+                    SELECT COUNT(*) FROM observations o
+                    JOIN media m ON m.media_id = o.media_id
+                    WHERE m.source_type='video'
+                    """
+                ).fetchone()[0]
+            )
+        except sqlite3.OperationalError:
+            video_frames = videos
+        out["photos"] = photos if photos else int(out.get("files") or 0)
+        out["video_frames"] = video_frames
+        out["observations"] = observations
+    except sqlite3.OperationalError:
+        out.setdefault("photos", int(out.get("files") or 0))
+        out.setdefault("video_frames", 0)
+        out.setdefault("observations", int(out.get("faces") or 0))
+    finally:
+        conn.close()
+    return out

@@ -8,20 +8,24 @@ from semblon import ui_tokens as t
 
 
 def test_type_scale_sizes_and_family():
-    assert t.HERO == ("Segoe UI", 32, "bold")
-    assert t.TITLE == ("Segoe UI", 20, "bold")
+    assert t.HERO == ("Segoe UI", 22, "bold")
+    assert t.TITLE == ("Segoe UI", 15, "bold")
     assert t.DISPLAY == t.HERO
     assert t.H1 == t.TITLE
-    assert t.BODY == ("Segoe UI", 16)
-    assert t.BODY_SM == ("Segoe UI", 15)
-    assert t.UI == ("Segoe UI", 14)
-    assert t.META == ("Segoe UI", 13)
-    assert t.CAPTION == ("Segoe UI", 12)
+    assert t.BODY == ("Segoe UI", 12)
+    assert t.BODY_SM == ("Segoe UI", 11)
+    assert t.UI == ("Segoe UI", 12)
+    assert t.META == ("Segoe UI", 11)
+    assert t.CAPTION == ("Segoe UI", 10)
+    assert t.STAT == ("Segoe UI", 20, "bold")
     assert t.BODY_STRONG[0] == "Segoe UI"
     assert "bold" not in t.BODY
-    assert t.CAPTION[1] >= 12
+    assert t.CAPTION[1] >= 10
     assert t.MONO[0] == "Cascadia Code"
-    assert t.MONO[1] == 13
+    assert t.MONO[1] == 11
+    # Product type stays compact — oversized Tk fonts look soft on Windows DPI.
+    assert t.HERO[1] <= 24
+    assert t.BODY[1] <= 13
 
 
 def test_spacing_rhythm_4px_base():
@@ -71,10 +75,10 @@ def test_color_tokens_match_visual_design():
 
 
 def test_button_heights_four_classes():
-    assert t.PRIMARY_HEIGHT == 40
-    assert t.SECONDARY_HEIGHT == 36
-    assert t.TERTIARY_HEIGHT == 28
-    assert t.NAV_HEIGHT == 36
+    assert t.PRIMARY_HEIGHT == 32
+    assert t.SECONDARY_HEIGHT == 28
+    assert t.TERTIARY_HEIGHT == 24
+    assert t.NAV_HEIGHT == 28
     assert t.BUTTON_RADIUS_PX == 8
 
 
