@@ -15,7 +15,6 @@ from semblon.empty_states import (
 )
 from semblon.home_ui import format_people_lines, format_search_lines, format_unknown_lines
 from semblon.product_surface import (
-    SETTINGS_DIAGNOSTICS,
     settings_forbidden_product_vocab,
     settings_product_section_titles,
     soft_people_header_lines,
