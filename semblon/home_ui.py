@@ -87,6 +87,7 @@ try:
         H1,
         H2,
         H3,
+        INK_SECONDARY,
         INK_TERTIARY,
         SIDEBAR_WIDTH,
         SP_4,
@@ -127,6 +128,7 @@ except ImportError:  # pragma: no cover - mid-merge stub
     H1 = ("Segoe UI", 20, "bold")
     H2 = ("Segoe UI", 20, "bold")
     H3 = ("Segoe UI", 14)
+    INK_SECONDARY = "#565656"
     INK_TERTIARY = "#8A8A8A"
     META = ("Segoe UI", 13)
     MONO = ("Cascadia Code", 13)
