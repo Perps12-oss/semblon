@@ -417,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
     r_ro = rev_sub.add_parser(
         "rule-out",
         help=(
-            "durable Ruled out (not Ignore); default ON; opt out SEMBLON_RULED_OUT=0 — "
+            "durable Ruled out (not Ignore); default ON; opt out SEMBLON_RULED_OUT=0 -- "
             "see docs/CONTRACTS-RULED-OUT.md"
         ),
     )
@@ -432,7 +432,7 @@ def main(argv: list[str] | None = None) -> int:
 
     rui = sub.add_parser(
         "review-ui",
-        help="secondary Review workspace (tk; Name/Merge/Split/Ignore — not product Home)",
+        help="secondary Review workspace (tk; Name/Merge/Split/Ignore; not product Home)",
     )
     rui.add_argument(
         "--store",

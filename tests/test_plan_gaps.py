@@ -145,8 +145,11 @@ def test_library_lines_filter(tmp_path):
 
 def test_home_controls_still_open_during_ingest():
     busy = home_control_states(job_running=True, resume_ready=False)
-    for name in ("review", "people", "search", "unknown", "activity", "settings", "canvas"):
+    # Canvas is not product chrome; live stays usable. Lens is a nav route, not a lock key.
+    for name in ("review", "people", "search", "unknown", "activity", "settings", "live"):
         assert busy[name] == "normal"
+    assert "canvas" not in busy
+    assert "html" not in busy
 
 
 # ── Gap 3: OCR/CLIP/pose productization ────────────────────────────────────
