@@ -6,8 +6,6 @@ import inspect
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 from semblon.empty_states import lens_empty
 from semblon.home_shell import lens_understanding_rows
 from semblon.home_ui import HOME_NAV
