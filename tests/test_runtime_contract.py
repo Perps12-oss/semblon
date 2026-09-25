@@ -3,9 +3,11 @@
 from semblon.runtime_contract import (
     REQUIRED_IDS,
     contract_checks,
+    declare,
     default_catalog,
     failure_disguised_as_empty,
     invoke,
+    status_report,
 )
 
 
@@ -23,7 +25,19 @@ def test_contract_checks_hold():
     assert failed == []
 
 
-def test_missing_visual_embedding_is_not_an_empty_match():
+def test_declare_does_not_pretend_a_run():
+    ready = declare("ocr", model_state="AVAILABLE")
+    assert ready.status == "UNAVAILABLE"
+    assert ready.provider_state == "READY"
+    assert ready.error_id == "ocr.NOT_INVOKED"
+    assert ready.items == ()
+    missing = declare("visual_embedding")
+    assert missing.status == "UNAVAILABLE"
+    assert missing.provider_state == "FAILED"
+    report = status_report()
+    assert [row["capability_id"] for row in report] == list(REQUIRED_IDS)
+    assert all(row["status"] != "SUCCESS" for row in report)
+    assert all(row["status"] != "NO_RESULT" for row in report)
     result, _ = invoke("visual_embedding")
     assert result.status == "UNAVAILABLE"
     assert result.items == ()

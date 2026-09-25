@@ -96,6 +96,8 @@ def test_search_text_is_readonly_not_identity(tmp_path):
     assert "not a person" in rec["items"][0]["why"]
     miss = search_text(store, "nope-xyz")
     assert miss["count"] == 0
+    assert miss["status"] == "NO_RESULT"
+    assert miss["provider_state"] == "READY"
     conn = connect(store)
     after_persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
     n_face = conn.execute("SELECT COUNT(*) FROM embeddings WHERE modality='face'").fetchone()[0]
@@ -216,7 +218,13 @@ def test_ocr_unavailable_is_a_stub_not_a_person(tmp_path):
     conn.close()
     assert row is not None
     assert "unavailable" in row["payload_json"]
+    assert "UNAVAILABLE" in row["payload_json"]
     assert persons == 0
+    missed = search_text(store, "anything")
+    assert missed["count"] == 0
+    assert missed["status"] == "UNAVAILABLE"
+    assert missed["status"] != "NO_RESULT"
+    assert missed["provider_state"] == "FAILED"
 
 
 def test_ocr_text_does_not_identify(tmp_path):

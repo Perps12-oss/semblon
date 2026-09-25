@@ -189,11 +189,31 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10) -> dict:
     }
 
 
+def _text_evidence(payload: dict) -> str:
+    """evidence | ran-empty | failed | ignore. Failures are not empty reads."""
+    status = str(payload.get("contract_status") or "").upper()
+    raw = str(payload.get("status") or "").lower()
+    if status in {"UNAVAILABLE", "TIMEOUT", "CANCELLED", "ERROR"} or raw in {
+        "unavailable",
+        "error",
+    }:
+        return "failed"
+    text = payload.get("text")
+    if isinstance(text, str) and text.strip():
+        return "evidence"
+    if isinstance(text, str) or status in {"SUCCESS", "NO_RESULT"}:
+        return "ran-empty"
+    return "ignore"
+
+
 def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
     """Substring lookup over OCR observation_items payloads. Not identity.
 
     No new columns. Reads ``kind='text'`` payload_json only. Does not write
     the store and never touches faces.person_id or face embeddings.
+
+    A library with no completed read is UNAVAILABLE, not an empty match.
+    A completed read with no hit is NO_RESULT. SUCCESS requires items.
     """
     q = (query or "").strip()
     if not q:
@@ -210,6 +230,9 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
     finally:
         conn.close()
     items = []
+    saw_evidence = False
+    saw_ran = False
+    saw_failed = False
     for r in rows:
         try:
             payload = json.loads(r["payload_json"] or "{}")
@@ -217,9 +240,17 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
             payload = {}
         if not isinstance(payload, dict):
             continue
-        text = payload.get("text")
-        if not isinstance(text, str) or not text:
+        kind = _text_evidence(payload)
+        if kind == "failed":
+            saw_failed = True
             continue
+        if kind == "ran-empty":
+            saw_ran = True
+            continue
+        if kind != "evidence":
+            continue
+        saw_evidence = True
+        text = payload.get("text")
         if q_lower not in text.lower():
             continue
         items.append(
@@ -235,10 +266,57 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
         )
         if len(items) >= limit:
             break
+    note = "OCR text lookup is observation evidence only; not identity."
+    if items:
+        return {
+            "kind": "text",
+            "query": q,
+            "count": len(items),
+            "items": items,
+            "status": "SUCCESS",
+            "model_state": "AVAILABLE",
+            "provider_state": "READY",
+            "reason": "Read text ran.",
+            "error_id": None,
+            "note": note,
+        }
+    if saw_evidence or saw_ran:
+        return {
+            "kind": "text",
+            "query": q,
+            "count": 0,
+            "items": [],
+            "status": "NO_RESULT",
+            "model_state": "AVAILABLE",
+            "provider_state": "READY",
+            "reason": "Read text ran and nothing matched.",
+            "error_id": None,
+            "note": note,
+        }
+    from semblon.runtime_contract import invoke
+
+    if saw_failed:
+        result, _ = invoke("ocr")
+        reason = "Read text did not run. Nothing was searched."
+        error_id = result.error_id or "ocr.UNAVAILABLE"
+        model_state = result.model_state
+        provider_state = "FAILED"
+        status = "UNAVAILABLE" if result.status != "ERROR" else "ERROR"
+    else:
+        reason = "Read text has no stored reads in this library. Nothing was searched."
+        error_id = "ocr.NO_STORED_READ"
+        model_state = "MISSING"
+        provider_state = "FAILED"
+        status = "UNAVAILABLE"
     return {
         "kind": "text",
         "query": q,
-        "count": len(items),
-        "items": items,
-        "note": "OCR text lookup is observation evidence only; not identity.",
+        "count": 0,
+        "items": [],
+        "status": status,
+        "model_state": model_state,
+        "provider_state": provider_state,
+        "reason": reason,
+        "error_id": error_id,
+        "note": note,
     }
