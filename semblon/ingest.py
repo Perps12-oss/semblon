@@ -13,6 +13,7 @@ import hashlib
 import json
 import platform
 import signal
+import sqlite3
 import sys
 import time
 import uuid
@@ -158,12 +159,27 @@ def media_skip_reason(
     if row is None:
         return None, None
     media_id = row[0]
+    observation_count = conn.execute(
+        "SELECT COUNT(*) FROM observations WHERE media_id=?",
+        (media_id,),
+    ).fetchone()[0]
+    if observation_count == 0:
+        return None, media_id
+
     same = conn.execute(
         "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NULL",
         (media_id, run_id),
     ).fetchone()
     if same:
         return "same_run", media_id
+
+    same_video = conn.execute(
+        "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NOT NULL",
+        (media_id, run_id),
+    ).fetchone()
+    if same_video:
+        return None, media_id
+
     if not reprocess:
         return "seen", media_id
     return None, media_id
@@ -720,10 +736,13 @@ def ingest(
                         n_media += 1
                         dirty += 1
                 obs_id = uuid.uuid4().hex
-                conn.execute(
-                    "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
-                    (obs_id, media_id, int(frame_id), int(t_ms), run_id),
-                )
+                try:
+                    conn.execute(
+                        "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                        (obs_id, media_id, int(frame_id), int(t_ms), run_id),
+                    )
+                except sqlite3.IntegrityError:
+                    continue
                 dirty += 1
                 try:
                     faces = embed_bgr(app, img)
