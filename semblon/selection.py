@@ -64,13 +64,18 @@ def _capability_plain(capability_id: str) -> str:
 
 
 def format_query_lines(report) -> list[str]:
-    """Lens result lines. No embed_siglip / ground_selection names."""
+    """Lens result lines. No embed_siglip / ground_selection names.
+
+    Soft unknown is only for a true empty identification. UNAVAILABLE / NO_RESULT
+    stay honest — never hide 'Nothing was searched' / 'ran, nothing matched'.
+    """
     lines = ["Lens"]
     region = report.region or {}
     w, h = region.get("w"), region.get("h")
     if w and h:
         lines.append(f"Selected area · {w}×{h}")
     identified = False
+    honest = False
     for row in report.results:
         if failure_disguised_as_empty(row):
             raise RuntimeError(row.capability_id)
@@ -94,10 +99,16 @@ def format_query_lines(report) -> list[str]:
                 lines.append(f"{plain}: found something")
                 identified = True
         elif row.status == "NO_RESULT":
-            continue
+            lines.append(f"{plain}: ran, nothing matched")
+            honest = True
         else:
-            continue
-    if not identified:
+            reason = (getattr(row, "reason", None) or "").strip()
+            if reason:
+                lines.append(reason)
+            else:
+                lines.append(f"{plain}: did not run")
+            honest = True
+    if not identified and not honest:
         lines.append(UNKNOWN_HEADLINE)
         lines.append(UNKNOWN_BODY)
     return lines
@@ -125,6 +136,14 @@ def lens_result_summary(report) -> dict:
             "summary": f"{n} result{'s' if n != 1 else ''}",
             "item_count": n,
             "items": [{"label": i.label} for r in success for i in r.items],
+        }
+    unavailable = [r for r in results if r.status == "UNAVAILABLE"]
+    if unavailable:
+        reason = (unavailable[0].reason or "").strip() or "Nothing was searched."
+        return {
+            "status": "UNAVAILABLE",
+            "reason": reason,
+            "item_count": 0,
         }
     return {
         "status": "NO_RESULT",

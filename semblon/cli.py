@@ -1168,6 +1168,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "home":
+        # Production path: Lens mouse-up install, then run_home_ui (via product launch).
         from semblon.lens_home import run_product_home
 
         return run_product_home(store=args.store)
