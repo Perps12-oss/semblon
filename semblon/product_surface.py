@@ -385,6 +385,19 @@ def soft_person_label(face: dict | None, *, board: dict | None = None) -> str:
 
 
 def soft_object_label(item: dict) -> str:
+    # VisualSegment payload carries a human-readable label.
+    payload = item.get("payload") if isinstance(item.get("payload"), dict) else None
+    if payload is None and isinstance(item.get("payload_json"), str):
+        try:
+            import json
+
+            payload = json.loads(item.get("payload_json") or "{}")
+        except Exception:
+            payload = None
+    if isinstance(payload, dict):
+        label = payload.get("label") or payload.get("visual_label")
+        if isinstance(label, str) and label.strip():
+            return label.strip()
     kind = (item.get("kind") or "object").replace("_", " ")
     if kind == "face":
         return "Face"
@@ -392,6 +405,22 @@ def soft_object_label(item: dict) -> str:
     if kind in {"object", "color", "ocr", "clip", "pose"}:
         return kind.capitalize()
     return "Something in the photo"
+
+
+def soft_inspector_for_visual_segment(seg: dict) -> list[str]:
+    """Inspector copy for an open-vocabulary VisualSegment. Never invents a person name."""
+    label = (seg.get("label") or "region").strip() or "region"
+    conf = seg.get("confidence")
+    provider = seg.get("source_provider") or seg.get("provider") or ""
+    titled = label[0].upper() + label[1:] if label else "Region"
+    lines = [titled, ""]
+    lines.append("Semblon recognised a visual region here. This is not a person identity.")
+    if isinstance(conf, (int, float)) and conf > 0:
+        lines.append(f"Confidence {conf:.0%}")
+    if provider and provider not in {"local_opencv", "semantic_visual"}:
+        lines.append(f"Source: {provider}")
+    lines.append("Press Esc or click empty space to clear the selection.")
+    return lines
 
 
 def soft_inspector_for_media(board: dict, media_id: str | None) -> list[str]:
@@ -465,6 +494,15 @@ def soft_inspector_for_face(face: dict, board: dict) -> list[str]:
 
 
 def soft_inspector_for_item(item: dict) -> list[str]:
+    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+    if payload.get("visual_segment") or payload.get("label"):
+        return soft_inspector_for_visual_segment(
+            {
+                "label": payload.get("label") or soft_object_label(item),
+                "confidence": item.get("score") or payload.get("confidence"),
+                "source_provider": item.get("provider"),
+            }
+        )
     return [
         soft_object_label(item),
         "",

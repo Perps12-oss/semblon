@@ -66,6 +66,30 @@ def widget_to_image(
     return {"x": px, "y": py, "w": px2 - px, "h": py2 - py}
 
 
+def widget_point_to_image(
+    x: float,
+    y: float,
+    *,
+    ox: float,
+    oy: float,
+    scale: float,
+    image_w: int,
+    image_h: int,
+) -> tuple[int, int] | None:
+    """Map one widget/display point to source-image pixels (Canvas open-photo path).
+
+    Uses the same ox/oy/scale convention as CanvasWorkspace (_ox, _oy, _scale).
+    Returns None when the point falls outside the image.
+    """
+    if scale <= 0 or image_w <= 0 or image_h <= 0:
+        return None
+    ix = (float(x) - float(ox)) / float(scale)
+    iy = (float(y) - float(oy)) / float(scale)
+    if ix < 0 or iy < 0 or ix >= image_w or iy >= image_h:
+        return None
+    return int(ix), int(iy)
+
+
 def normalize_pixels(x: int, y: int, w: int, h: int, image_w: int, image_h: int) -> dict:
     if image_w <= 0 or image_h <= 0 or w <= 0 or h <= 0:
         raise ValueError("region has no area")

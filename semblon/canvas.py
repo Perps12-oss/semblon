@@ -405,6 +405,8 @@ else:
             show_chrome: bool = True,
             source_types: tuple[str, ...] | None = None,
             advanced: bool = False,
+            job_engine=None,
+            enable_visual: bool = True,
         ):
             from semblon.ui_tokens import (
                 ACCENT,
@@ -421,6 +423,8 @@ else:
             self._on_select = on_select
             self._source_types = source_types
             self._advanced = bool(advanced)
+            self._job_engine = job_engine
+            self._enable_visual = bool(enable_visual)
             self.board: dict | None = None
             self._media: list[dict] = []
             self._photo = None
@@ -430,6 +434,7 @@ else:
             self._current_media: dict | None = None
             self._hit_regions: list[dict] = []  # display-space hits
             self._hover_id: str | None = None
+            self._hover_seg = None  # VisualSegment under pointer
             self._selected: dict | None = None
             self._drag_origin: tuple[float, float] | None = None
             self._drag_rect_id = None
@@ -443,6 +448,13 @@ else:
             self._ox = 0.0
             self._oy = 0.0
             self._fit_size: tuple[int, int] | None = None
+            self._visual_index = None
+            self._visual_masks: dict = {}
+            self._visual_segments: list = []
+            self._visual_analyzing = False
+            self._visual_gen = 0
+            self._overlay_photo = None
+            self._store_path: Path | None = None
             self.status = tk.StringVar(value="Photos")
 
             if show_chrome:
@@ -481,7 +493,7 @@ else:
 
             self._preview_wrap = ttk.Frame(body)
             self._tip_var = tk.StringVar(
-                value="Explore this photo — move over a person, or drag around anything you're curious about."
+                value="Explore this photo — move over anything to see what Semblon recognises."
             )
             self._tip = ttk.Label(
                 self._preview_wrap,
@@ -606,6 +618,8 @@ else:
                 self._call_on_select(None, soft_lines_empty=True)
                 return
             board = load_canvas(path, run_id)
+            board["_store"] = str(path.resolve())
+            self._store_path = path.resolve()
             media = list(board.get("media") or [])
             if self._source_types is not None:
                 media = [m for m in media if (m.get("source_type") or "") in self._source_types]
@@ -781,9 +795,15 @@ else:
             self._current_media = media
             self._selected = None
             self._hover_id = None
+            self._hover_seg = None
             self._hit_regions = []
             self._img = None
             self._fit_size = None
+            self._visual_index = None
+            self._visual_masks = {}
+            self._visual_segments = []
+            self._overlay_photo = None
+            self._visual_gen += 1
             mid = media.get("media_id")
             path = media.get("path")
             self._enter_open()
@@ -806,6 +826,180 @@ else:
             self._img = img
             self._paint_fitted()
             self._emit_inspector(media_id=mid)
+            self._start_visual_analyze(mid)
+
+        def _start_visual_analyze(self, media_id: str | None) -> None:
+            """Load cached VisualSegments or schedule background analysis via JobEngine."""
+            if not self._enable_visual or not media_id or self._img is None:
+                return
+            store = None
+            if self.board and self.board.get("_store"):
+                store = Path(self.board["_store"])
+            elif getattr(self, "_store_path", None):
+                store = Path(self._store_path)
+            if store is None:
+                # Best-effort: analyze without cache persistence.
+                self._run_visual_inline(media_id, persist=False)
+                return
+            from semblon.visual_cache import load_analysis
+
+            cached = load_analysis(store, media_id)
+            if cached is not None:
+                self._apply_visual_result(cached, media_id=media_id)
+                return
+            faces = [
+                f
+                for f in (self.board.get("faces") or [])
+                if f.get("media_id") == media_id
+            ]
+            gen = self._visual_gen
+            self._visual_analyzing = True
+            self.status.set("Understanding this photo…")
+
+            def _done(job_result):
+                def _apply():
+                    if gen != self._visual_gen:
+                        return
+                    self._visual_analyzing = False
+                    if job_result.status != "completed" or not job_result.result:
+                        if self._open:
+                            self.status.set("Photos")
+                        return
+                    self._apply_visual_result(job_result.result, media_id=media_id)
+
+                try:
+                    self.frame.after(0, _apply)
+                except tk.TclError:
+                    pass
+
+            engine = self._job_engine
+            if engine is None:
+                # Inline worker so Canvas still works without Home's JobEngine.
+                import threading
+
+                def _worker():
+                    try:
+                        from semblon.visual_analyze import analyze_and_cache
+                        from semblon.jobs import VisualJobResult
+
+                        rec = analyze_and_cache(
+                            store,
+                            media_id=media_id,
+                            image=self._img.copy(),
+                            existing_faces=faces,
+                        )
+                        _done(
+                            VisualJobResult(
+                                status="completed", media_id=media_id, result=rec
+                            )
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        from semblon.jobs import VisualJobResult
+
+                        _done(
+                            VisualJobResult(
+                                status="failed", media_id=media_id, error=e
+                            )
+                        )
+
+                threading.Thread(
+                    target=_worker, daemon=True, name="semblon-canvas-visual"
+                ).start()
+                return
+            try:
+                engine.submit_visual_analyze(
+                    media_id=media_id,
+                    image=self._img.copy(),
+                    existing_faces=faces,
+                    on_done=_done,
+                )
+            except Exception:
+                self._visual_analyzing = False
+                self._run_visual_inline(media_id, persist=True, store=store, faces=faces)
+
+        def _run_visual_inline(
+            self,
+            media_id: str,
+            *,
+            persist: bool,
+            store: Path | None = None,
+            faces: list | None = None,
+        ) -> None:
+            if self._img is None:
+                return
+            try:
+                if persist and store is not None:
+                    from semblon.visual_analyze import analyze_and_cache
+
+                    rec = analyze_and_cache(
+                        store,
+                        media_id=media_id,
+                        image=self._img,
+                        existing_faces=faces or [],
+                    )
+                else:
+                    from semblon.visual_analyze import analyze_image
+
+                    rec = analyze_image(
+                        self._img, media_id=media_id, existing_faces=faces or []
+                    )
+                self._apply_visual_result(rec, media_id=media_id)
+            except Exception:
+                self._visual_analyzing = False
+
+        def _apply_visual_result(self, rec: dict, *, media_id: str) -> None:
+            if not self._open or (self._current_media or {}).get("media_id") != media_id:
+                return
+            self._visual_segments = list(rec.get("segments") or [])
+            self._visual_index = rec.get("index")
+            self._visual_masks = dict(rec.get("masks") or {})
+            self._visual_analyzing = False
+            n = len(self._visual_segments)
+            labels = sorted({s.label for s in self._visual_segments if s.label})
+            if n:
+                preview = ", ".join(labels[:5])
+                more = f" +{len(labels) - 5}" if len(labels) > 5 else ""
+                self.status.set(f"Understood · {n} regions" + (f" · {preview}{more}" if preview else ""))
+            else:
+                self.status.set("Photos")
+            self._merge_visual_hit_regions()
+            self._paint_interaction()
+
+        def _merge_visual_hit_regions(self) -> None:
+            """Add VisualSegments into hit regions (display space) for click fallback."""
+            if not self._visual_segments:
+                return
+            existing = {h.get("id") for h in self._hit_regions}
+            for seg in self._visual_segments:
+                if seg.segment_id in existing:
+                    continue
+                x1, y1, x2, y2 = seg.bbox
+                rect = (
+                    x1 * self._scale + self._ox,
+                    y1 * self._scale + self._oy,
+                    x2 * self._scale + self._ox,
+                    y2 * self._scale + self._oy,
+                )
+                self._hit_regions.append(
+                    {
+                        "kind": "visual_segment",
+                        "id": seg.segment_id,
+                        "segment": seg,
+                        "item": {
+                            "item_id": seg.segment_id,
+                            "kind": "object",
+                            "provider": seg.source_provider,
+                            "score": seg.confidence,
+                            "payload": {
+                                "visual_segment": True,
+                                "label": seg.label,
+                                "confidence": seg.confidence,
+                            },
+                        },
+                        "rect": rect,
+                        "label": seg.label,
+                    }
+                )
 
         def _paint_fitted(self) -> None:
             if self._img is None:
@@ -895,6 +1089,46 @@ else:
             return (x - self._ox) / scale, (y - self._oy) / scale
 
         def _hit_at(self, x: float, y: float) -> dict | None:
+            # Prefer pixel-map VisualSegment when available (instant, mask-accurate).
+            if self._visual_index is not None and self._img is not None:
+                from semblon.geometry import widget_point_to_image
+
+                ih, iw = self._img.shape[:2]
+                pt = widget_point_to_image(
+                    x,
+                    y,
+                    ox=self._ox,
+                    oy=self._oy,
+                    scale=self._scale,
+                    image_w=iw,
+                    image_h=ih,
+                )
+                if pt is not None:
+                    seg = self._visual_index.lookup(pt[0], pt[1])
+                    if seg is not None:
+                        return {
+                            "kind": "visual_segment",
+                            "id": seg.segment_id,
+                            "segment": seg,
+                            "item": {
+                                "item_id": seg.segment_id,
+                                "kind": "object",
+                                "provider": seg.source_provider,
+                                "score": seg.confidence,
+                                "payload": {
+                                    "visual_segment": True,
+                                    "label": seg.label,
+                                    "confidence": seg.confidence,
+                                },
+                            },
+                            "rect": (
+                                seg.bbox[0] * self._scale + self._ox,
+                                seg.bbox[1] * self._scale + self._oy,
+                                seg.bbox[2] * self._scale + self._ox,
+                                seg.bbox[3] * self._scale + self._oy,
+                            ),
+                            "label": seg.label,
+                        }
             # Prefer faces; smallest containing box wins when nested.
             candidates = []
             for h in self._hit_regions:
@@ -911,6 +1145,7 @@ else:
         def _clear_overlay_tags(self) -> None:
             self.preview.delete("overlay")
             self.preview.delete("drag")
+            self.preview.delete("seg_label")
 
         def _draw_outline(self, hit: dict, *, color: str, width: int = 2) -> None:
             x1, y1, x2, y2 = hit["rect"]
@@ -918,14 +1153,92 @@ else:
                 x1, y1, x2, y2, outline=color, width=width, tags=("overlay",)
             )
 
+        def _draw_segment_highlight(self, hit: dict, *, color: str, selected: bool = False) -> None:
+            """Translucent mask fill + soft outline + floating label."""
+            import cv2
+
+            seg = hit.get("segment")
+            mask = None
+            if seg is not None:
+                mask = self._visual_masks.get(seg.segment_id)
+            if mask is not None and self._img is not None:
+                h, w = mask.shape[:2]
+                nw = max(1, int(round(w * self._scale)))
+                nh = max(1, int(round(h * self._scale)))
+                small = cv2.resize(
+                    (mask > 0).astype("uint8") * 255,
+                    (nw, nh),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+                contours, _ = cv2.findContours(
+                    small, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+                )
+                for cnt in contours:
+                    if len(cnt) < 3:
+                        continue
+                    pts = []
+                    for p in cnt.reshape(-1, 2):
+                        pts.extend([float(p[0]) + self._ox, float(p[1]) + self._oy])
+                    if len(pts) >= 6:
+                        self.preview.create_polygon(
+                            *pts,
+                            fill=color,
+                            outline=color,
+                            width=2 if selected else 1,
+                            stipple="gray50",
+                            tags=("overlay",),
+                        )
+            else:
+                self._draw_outline(hit, color=color, width=3 if selected else 2)
+            label = hit.get("label") or (seg.label if seg is not None else None)
+            if label:
+                x1, y1, x2, y2 = hit["rect"]
+                lx = max(self._ox + 4, x1)
+                ly = max(self._oy + 4, y1 - 4)
+                self.preview.create_text(
+                    lx,
+                    ly,
+                    anchor=tk.SW,
+                    text=str(label),
+                    fill="#F4F2EC",
+                    font=self._caption_font,
+                    tags=("overlay", "seg_label"),
+                )
+
         def _paint_interaction(self) -> None:
             self._clear_overlay_tags()
             if self._selected is not None:
-                self._draw_outline(self._selected, color=self._SELECT_COLOR, width=3)
+                if self._selected.get("kind") == "visual_segment":
+                    self._draw_segment_highlight(
+                        self._selected, color=self._SELECT_COLOR, selected=True
+                    )
+                else:
+                    self._draw_outline(self._selected, color=self._SELECT_COLOR, width=3)
             elif self._hover_id is not None:
-                hit = next((h for h in self._hit_regions if h["id"] == self._hover_id), None)
+                hit = None
+                if self._hover_seg is not None:
+                    hit = {
+                        "kind": "visual_segment",
+                        "id": self._hover_seg.segment_id,
+                        "segment": self._hover_seg,
+                        "rect": (
+                            self._hover_seg.bbox[0] * self._scale + self._ox,
+                            self._hover_seg.bbox[1] * self._scale + self._oy,
+                            self._hover_seg.bbox[2] * self._scale + self._ox,
+                            self._hover_seg.bbox[3] * self._scale + self._oy,
+                        ),
+                        "label": self._hover_seg.label,
+                    }
+                if hit is None:
+                    hit = next(
+                        (h for h in self._hit_regions if h["id"] == self._hover_id),
+                        None,
+                    )
                 if hit is not None:
-                    self._draw_outline(hit, color=self._HOVER_COLOR, width=2)
+                    if hit.get("kind") == "visual_segment":
+                        self._draw_segment_highlight(hit, color=self._HOVER_COLOR)
+                    else:
+                        self._draw_outline(hit, color=self._HOVER_COLOR, width=2)
 
         def _dismiss_tip(self) -> None:
             if self._tip_shown:
@@ -959,6 +1272,13 @@ else:
             if self._selected is not None:
                 if self._selected.get("kind") == "face":
                     lines = soft_inspector_for_face(self._selected["face"], board)
+                elif self._selected.get("kind") == "visual_segment":
+                    from semblon.product_surface import soft_inspector_for_visual_segment
+
+                    seg = self._selected.get("segment")
+                    lines = soft_inspector_for_visual_segment(
+                        seg.as_dict() if hasattr(seg, "as_dict") else (seg or {})
+                    )
                 else:
                     lines = soft_inspector_for_item(self._selected.get("item") or {})
                 self._call_on_select(mid, lines, self._selected)
@@ -976,15 +1296,18 @@ else:
                 return
             hit = self._hit_at(event.x, event.y)
             new_id = hit["id"] if hit else None
-            if new_id == self._hover_id:
+            new_seg = hit.get("segment") if hit and hit.get("kind") == "visual_segment" else None
+            if new_id == self._hover_id and new_seg is self._hover_seg:
                 return
             self._hover_id = new_id
+            self._hover_seg = new_seg
             self._paint_interaction()
 
         def _on_leave(self, _event=None) -> None:
             if self._drag_active:
                 return
             self._hover_id = None
+            self._hover_seg = None
             if self._selected is None:
                 self._paint_interaction()
 
@@ -1061,20 +1384,116 @@ else:
             self._drag_active = False
             hit = self._hit_at(event.x, event.y)
             if hit is None:
-                self._selected = None
-                self._hover_id = None
-                self._paint_interaction()
-                self._emit_inspector()
-                return
+                # Unknown-region interaction: refine from point when analysis is ready.
+                refined = self._try_refine_unknown(event.x, event.y)
+                if refined is not None:
+                    hit = refined
+                else:
+                    self._selected = None
+                    self._hover_id = None
+                    self._hover_seg = None
+                    self._paint_interaction()
+                    self._emit_inspector()
+                    return
             self._dismiss_tip()
             self._selected = hit
             self._hover_id = None
+            self._hover_seg = hit.get("segment") if hit.get("kind") == "visual_segment" else None
             self._paint_interaction()
             self._emit_inspector()
+
+        def _try_refine_unknown(self, wx: float, wy: float) -> dict | None:
+            """Click on unclassified area → interactive segment via provider."""
+            if self._img is None or not self._enable_visual:
+                return None
+            from semblon.geometry import widget_point_to_image
+            from semblon.semantic_visual import default_provider
+
+            ih, iw = self._img.shape[:2]
+            pt = widget_point_to_image(
+                wx,
+                wy,
+                ox=self._ox,
+                oy=self._oy,
+                scale=self._scale,
+                image_w=iw,
+                image_h=ih,
+            )
+            if pt is None:
+                return None
+            # Skip if pixel map already has a segment here.
+            if self._visual_index is not None and self._visual_index.lookup(pt[0], pt[1]):
+                return None
+            try:
+                raw = default_provider().refine_from_point(self._img, pt[0], pt[1])
+            except Exception:
+                return None
+            if not raw or not raw.get("bbox"):
+                return None
+            from semblon.visual_segment import LABEL_TYPE_UNKNOWN, VisualSegment, new_segment_id
+
+            mid = (self._current_media or {}).get("media_id") or ""
+            seg = VisualSegment(
+                segment_id=new_segment_id(),
+                observation_id=None,
+                media_id=mid,
+                frame_id=None,
+                label=str(raw.get("label") or "unknown region"),
+                label_type=str(raw.get("label_type") or LABEL_TYPE_UNKNOWN),
+                confidence=float(raw.get("confidence") or 0.35),
+                bbox=tuple(float(x) for x in raw["bbox"]),  # type: ignore[arg-type]
+                source_provider=str(raw.get("source_provider") or "local_opencv"),
+                payload={"refine": True},
+            )
+            mask = raw.get("mask")
+            if mask is not None:
+                self._visual_masks[seg.segment_id] = mask
+            self._visual_segments.append(seg)
+            if self._visual_index is not None:
+                # Patch map for this region only (cheap).
+                x1, y1, x2, y2 = [int(round(v)) for v in seg.bbox]
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(iw, x2), min(ih, y2)
+                if mask is not None and getattr(mask, "shape", None) == (ih, iw):
+                    # Append into order
+                    self._visual_index.order.append(seg.segment_id)
+                    idx = len(self._visual_index.order)
+                    self._visual_index.map[mask.astype(bool)] = idx
+                    self._visual_index.by_id[seg.segment_id] = seg
+                elif x2 > x1 and y2 > y1:
+                    self._visual_index.order.append(seg.segment_id)
+                    idx = len(self._visual_index.order)
+                    self._visual_index.map[y1:y2, x1:x2] = idx
+                    self._visual_index.by_id[seg.segment_id] = seg
+            self._merge_visual_hit_regions()
+            return {
+                "kind": "visual_segment",
+                "id": seg.segment_id,
+                "segment": seg,
+                "item": {
+                    "item_id": seg.segment_id,
+                    "kind": "object",
+                    "provider": seg.source_provider,
+                    "score": seg.confidence,
+                    "payload": {
+                        "visual_segment": True,
+                        "label": seg.label,
+                        "confidence": seg.confidence,
+                    },
+                },
+                "rect": (
+                    seg.bbox[0] * self._scale + self._ox,
+                    seg.bbox[1] * self._scale + self._oy,
+                    seg.bbox[2] * self._scale + self._ox,
+                    seg.bbox[3] * self._scale + self._oy,
+                ),
+                "label": seg.label,
+            }
 
         def _on_escape(self, _event=None):
             self._selected = None
             self._hover_id = None
+            self._hover_seg = None
             self._drag_active = False
             self._drag_origin = None
             self.preview.delete("drag")

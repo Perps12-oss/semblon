@@ -1,0 +1,190 @@
+[
+  {
+    "kind": "portrait",
+    "n_segments": 3,
+    "labels": [
+      "earth",
+      "skin tone",
+      "water"
+    ],
+    "coverage_frac": 0.4584,
+    "analysis_s": 0.0192,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 1.084
+  },
+  {
+    "kind": "group",
+    "n_segments": 5,
+    "labels": [
+      "earth",
+      "skin tone",
+      "water"
+    ],
+    "coverage_frac": 0.5428,
+    "analysis_s": 0.0047,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.93
+  },
+  {
+    "kind": "pet",
+    "n_segments": 1,
+    "labels": [
+      "earth"
+    ],
+    "coverage_frac": 0.1652,
+    "analysis_s": 0.003,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.508
+  },
+  {
+    "kind": "street",
+    "n_segments": 5,
+    "labels": [
+      "earth",
+      "elongated object",
+      "hard surface",
+      "muddy bank",
+      "sky"
+    ],
+    "coverage_frac": 1.0,
+    "analysis_s": 0.005,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.828
+  },
+  {
+    "kind": "interior",
+    "n_segments": 2,
+    "labels": [
+      "earth",
+      "hard surface"
+    ],
+    "coverage_frac": 1.0,
+    "analysis_s": 0.0035,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.686
+  },
+  {
+    "kind": "kitchen",
+    "n_segments": 4,
+    "labels": [
+      "bright warm region",
+      "grass"
+    ],
+    "coverage_frac": 0.1528,
+    "analysis_s": 0.0036,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.755
+  },
+  {
+    "kind": "landscape",
+    "n_segments": 6,
+    "labels": [
+      "grass",
+      "sky",
+      "vegetation"
+    ],
+    "coverage_frac": 1.0,
+    "analysis_s": 0.005,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 1.005
+  },
+  {
+    "kind": "forest",
+    "n_segments": 4,
+    "labels": [
+      "tree canopy",
+      "vegetation"
+    ],
+    "coverage_frac": 0.2189,
+    "analysis_s": 0.0039,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.735
+  },
+  {
+    "kind": "urban",
+    "n_segments": 4,
+    "labels": [
+      "hard surface",
+      "sky"
+    ],
+    "coverage_frac": 1.0,
+    "analysis_s": 0.0054,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.775
+  },
+  {
+    "kind": "product",
+    "n_segments": 6,
+    "labels": [
+      "bright warm region",
+      "mid-tone grey region",
+      "muddy bank",
+      "shadow",
+      "skin tone"
+    ],
+    "coverage_frac": 0.2479,
+    "analysis_s": 0.0043,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 1.0
+  },
+  {
+    "kind": "screenshot",
+    "n_segments": 2,
+    "labels": [
+      "hard surface",
+      "sky"
+    ],
+    "coverage_frac": 0.193,
+    "analysis_s": 0.0032,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.601
+  },
+  {
+    "kind": "clutter",
+    "n_segments": 29,
+    "labels": [
+      "sky",
+      "water"
+    ],
+    "coverage_frac": 0.343,
+    "analysis_s": 0.0131,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 3.155
+  },
+  {
+    "kind": "unusual",
+    "n_segments": 2,
+    "labels": [
+      "bright magenta region",
+      "water"
+    ],
+    "coverage_frac": 0.1855,
+    "analysis_s": 0.003,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.539
+  },
+  {
+    "kind": "reflection",
+    "n_segments": 3,
+    "labels": [
+      "tree canopy",
+      "water"
+    ],
+    "coverage_frac": 0.8348,
+    "analysis_s": 0.0045,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.686
+  },
+  {
+    "kind": "overlap",
+    "n_segments": 2,
+    "labels": [
+      "earth",
+      "skin tone"
+    ],
+    "coverage_frac": 0.3719,
+    "analysis_s": 0.0037,
+    "hover_ms": 0.0005,
+    "cache_reopen_ms": 0.579
+  }
+]
