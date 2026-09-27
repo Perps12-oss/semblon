@@ -623,7 +623,14 @@ def main(argv: list[str] | None = None) -> int:
             "observers": optional_status(),
             "execution": select_execution_provider(prefer_gpu=True),
             "contract": status_report(model_overrides=overrides),
+            "visual": None,
         }
+        try:
+            from semblon.visual.engine import capabilities
+
+            rec["visual"] = capabilities()
+        except Exception as exc:  # noqa: BLE001 — providers list must still print
+            rec["visual"] = {"state": "FAILED", "note": type(exc).__name__}
         print(json.dumps(rec, indent=2))
         return 0
 

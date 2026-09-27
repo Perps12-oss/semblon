@@ -1196,6 +1196,7 @@ class HomeApp:
             run_id=None,
             on_select=self._on_canvas_select,
             show_chrome=True,
+            on_image_open=self._on_image_open,
         )
 
         # Inspector — contextual result for the current interaction.
@@ -2540,9 +2541,15 @@ class HomeApp:
         if hasattr(self, "_activity"):
             self._activity.pack_forget()
 
+    def _ingest_running(self) -> bool:
+        engine = getattr(self, "engine", None)
+        if engine is None:
+            return False
+        return bool(getattr(engine, "ingest_busy", False))
+
     def _home_state(self) -> str:
         """FIRST_RUN | PROCESSING | READY | EXPLORE — Home hierarchy gate."""
-        busy = bool(getattr(self, "engine", None) and self.engine.busy)
+        busy = self._ingest_running()
         if busy:
             return "PROCESSING"
         if self._completion_kind in {"done", "cancelled"} and self._completion is not None:
@@ -3242,7 +3249,7 @@ class HomeApp:
                 w.pack_forget()
             except tk.TclError:
                 pass
-        busy = bool(getattr(self, "engine", None) and self.engine.busy)
+        busy = self._ingest_running()
         on_home = self._nav == "home"
         processing_home = on_home and busy
         if on_home:
@@ -3515,6 +3522,48 @@ class HomeApp:
         except JobBusy:
             self._set_busy(False)
             self.status.set("Job busy — ingest already running.")
+
+    def _on_image_open(self, media: dict, image) -> None:
+        """Start understanding beside the open photo. Never on pointer movement."""
+        if image is None or media is None or self.engine.busy:
+            return
+        run_id = self._last_run_id
+        media_id = media.get("media_id")
+        if not run_id or not media_id:
+            return
+        board = getattr(self._canvas_ws, "board", None) or {}
+        if any(
+            item.get("media_id") == media_id and item.get("provider") == "visual.region"
+            for item in (board.get("items") or [])
+        ):
+            return
+        try:
+            self.engine.submit_visual(
+                media_id=media_id,
+                image=image,
+                run_id=run_id,
+                color="bgr",
+                on_done=self._on_visual_done,
+            )
+        except JobBusy:
+            return
+
+    def _on_visual_done(self, result) -> None:
+        def hop() -> None:
+            if getattr(result, "status", None) != "completed":
+                return
+            ws = getattr(self, "_canvas_ws", None)
+            if ws is None:
+                return
+            try:
+                ws.refresh_open_hits()
+            except Exception:  # noqa: BLE001
+                return
+
+        try:
+            self.root.after(0, hop)
+        except Exception:  # noqa: BLE001
+            return
 
     def _choose_folder(self) -> None:
         if self.engine.busy:

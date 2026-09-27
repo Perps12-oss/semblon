@@ -405,6 +405,7 @@ else:
             show_chrome: bool = True,
             source_types: tuple[str, ...] | None = None,
             advanced: bool = False,
+            on_image_open=None,
         ):
             from semblon.ui_tokens import (
                 ACCENT,
@@ -419,6 +420,7 @@ else:
 
             self.frame = ttk.Frame(master)
             self._on_select = on_select
+            self._on_image_open = on_image_open
             self._source_types = source_types
             self._advanced = bool(advanced)
             self.board: dict | None = None
@@ -440,6 +442,8 @@ else:
             self._thumb_job = 0
             self._open = False
             self._img = None
+            self._store_path: Path | None = None
+            self._run_id: str | None = None
             self._ox = 0.0
             self._oy = 0.0
             self._fit_size: tuple[int, int] | None = None
@@ -596,6 +600,9 @@ else:
             if source_types is not None:
                 self._source_types = source_types
             path = Path(store) if store is not None else None
+            self._store_path = path if path is not None and path.is_file() else self._store_path
+            if run_id is not None:
+                self._run_id = run_id
             if path is None or not path.is_file():
                 self.board = None
                 self._media = []
@@ -806,6 +813,23 @@ else:
             self._img = img
             self._paint_fitted()
             self._emit_inspector(media_id=mid)
+            if self._on_image_open is not None:
+                try:
+                    self._on_image_open(media, self._img)
+                except Exception:  # noqa: BLE001 — the photograph stays up if understanding cannot start
+                    pass
+
+        def refresh_open_hits(self) -> None:
+            """Reload observations for the open photo. Does not leave the photograph."""
+            if not self._open or self._store_path is None or self._current_media is None:
+                return
+            try:
+                board = load_canvas(self._store_path, self._run_id)
+            except Exception:  # noqa: BLE001
+                return
+            self.board = board
+            self._build_hit_regions(self._current_media.get("media_id"))
+            self._paint_interaction()
 
         def _paint_fitted(self) -> None:
             if self._img is None:
@@ -880,29 +904,43 @@ else:
                     continue
                 x1, y1, x2, y2 = rect
                 rect = (x1 + self._ox, y1 + self._oy, x2 + self._ox, y2 + self._oy)
+                payload = it.get("payload") or {}
+                if it.get("provider") == "visual.region":
+                    label = payload.get("selected_label") or ""
+                else:
+                    label = soft_object_label(it)
                 self._hit_regions.append(
                     {
-                        "kind": it.get("kind") or "object",
+                        "kind": payload.get("kind") or it.get("kind") or "object",
                         "id": it.get("item_id"),
                         "item": it,
                         "rect": rect,
-                        "label": soft_object_label(it),
+                        "label": label,
+                        "rows": payload.get("rows") or None,
                     }
                 )
 
         def _to_image(self, x: float, y: float) -> tuple[float, float]:
-            scale = self._scale if self._scale else 1.0
-            return (x - self._ox) / scale, (y - self._oy) / scale
+            from semblon.visual.hover import display_to_image
+
+            return display_to_image(x, y, ox=self._ox, oy=self._oy, scale=self._scale if self._scale else 1.0)
 
         def _hit_at(self, x: float, y: float) -> dict | None:
-            # Prefer faces; smallest containing box wins when nested.
+            # Smallest region that actually owns the pixel. Boxes are only a reject.
+            from semblon.visual.masks import point_in_rows
+
+            ix, iy = self._to_image(x, y)
             candidates = []
             for h in self._hit_regions:
                 x1, y1, x2, y2 = h["rect"]
-                if x1 <= x <= x2 and y1 <= y <= y2:
-                    area = max(1.0, (x2 - x1) * (y2 - y1))
-                    pri = 0 if h["kind"] == "face" else 1
-                    candidates.append((pri, area, h))
+                if not (x1 <= x <= x2 and y1 <= y <= y2):
+                    continue
+                rows = h.get("rows")
+                if rows and not point_in_rows(rows, ix, iy):
+                    continue
+                area = max(1.0, (x2 - x1) * (y2 - y1))
+                pri = 0 if h["kind"] in {"part", "face", "text", "mark"} else 1
+                candidates.append((pri, area, h))
             if not candidates:
                 return None
             candidates.sort(key=lambda t: (t[0], t[1]))
@@ -918,14 +956,39 @@ else:
                 x1, y1, x2, y2, outline=color, width=width, tags=("overlay",)
             )
 
+        def _draw_highlight(self, hit: dict, *, color: str, width: int = 2) -> None:
+            rows = hit.get("rows")
+            if rows:
+                from semblon.visual.render import display_runs
+
+                for rx1, ry1, rx2, ry2 in display_runs(
+                    rows, scale=self._scale or 1.0, ox=self._ox, oy=self._oy
+                ):
+                    self.preview.create_rectangle(
+                        rx1, ry1, rx2, ry2, outline="", fill=color, stipple="gray25", tags=("overlay",)
+                    )
+            self._draw_outline(hit, color=color, width=width)
+            label = (hit.get("label") or "").strip()
+            if not label or hit.get("kind") == "face":
+                return
+            x1, y1, _x2, _y2 = hit["rect"]
+            chip_w = max(36, 7 * len(label) + 12)
+            top = max(2, y1 - 18)
+            self.preview.create_rectangle(
+                x1, top, x1 + chip_w, top + 16, outline="", fill=color, tags=("overlay",)
+            )
+            self.preview.create_text(
+                x1 + 6, top + 8, anchor=tk.W, fill="#F7F4EE", text=label, tags=("overlay",)
+            )
+
         def _paint_interaction(self) -> None:
             self._clear_overlay_tags()
             if self._selected is not None:
-                self._draw_outline(self._selected, color=self._SELECT_COLOR, width=3)
+                self._draw_highlight(self._selected, color=self._SELECT_COLOR, width=3)
             elif self._hover_id is not None:
                 hit = next((h for h in self._hit_regions if h["id"] == self._hover_id), None)
                 if hit is not None:
-                    self._draw_outline(hit, color=self._HOVER_COLOR, width=2)
+                    self._draw_highlight(hit, color=self._HOVER_COLOR, width=2)
 
         def _dismiss_tip(self) -> None:
             if self._tip_shown:
