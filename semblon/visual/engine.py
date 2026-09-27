@@ -463,6 +463,8 @@ def _slice(regions, cfg: VisualConfig, *, image_w, image_h, view_w, view_h) -> l
         if display_area < cfg.display_min_px:
             continue
         parent = by_id.get(region.parent_id) if region.parent_id else None
+        if parent is not None and parent.label and not region.label and region.method == "color":
+            continue
         if parent is not None and parent.area > 0:
             ratio = region.area / parent.area
             distinctive = bool(region.label) and region.label != parent.label and region.label not in {"fabric", "skin"}
