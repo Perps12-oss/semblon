@@ -13,6 +13,7 @@ import hashlib
 import json
 import platform
 import signal
+import sqlite3
 import sys
 import time
 import uuid
@@ -154,16 +155,38 @@ def media_skip_reason(
     `seen` → already ingested on an earlier run (FACE-005 incremental).
     `same_run` → already observed on this run.
     """
-    row = conn.execute("SELECT media_id FROM media WHERE sha256=?", (digest,)).fetchone()
+    row = conn.execute("SELECT media_id, source_type FROM media WHERE sha256=?", (digest,)).fetchone()
     if row is None:
         return None, None
-    media_id = row[0]
-    same = conn.execute(
-        "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NULL",
-        (media_id, run_id),
+    media_id, source_type = row
+    any_observation = conn.execute(
+        "SELECT 1 FROM observations WHERE media_id=? LIMIT 1",
+        (media_id,),
     ).fetchone()
-    if same:
-        return "same_run", media_id
+    if any_observation is None:
+        return None, media_id
+
+    if source_type == "video":
+        same_video_run = conn.execute(
+            "SELECT 1 FROM observations WHERE media_id=? AND run_id=? LIMIT 1",
+            (media_id, run_id),
+        ).fetchone()
+        if same_video_run:
+            return None, media_id
+    else:
+        same = conn.execute(
+            "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NULL",
+            (media_id, run_id),
+        ).fetchone()
+        if same:
+            return "same_run", media_id
+        same_video = conn.execute(
+            "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NOT NULL",
+            (media_id, run_id),
+        ).fetchone()
+        if same_video:
+            return None, media_id
+
     if not reprocess:
         return "seen", media_id
     return None, media_id
@@ -720,10 +743,13 @@ def ingest(
                         n_media += 1
                         dirty += 1
                 obs_id = uuid.uuid4().hex
-                conn.execute(
-                    "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
-                    (obs_id, media_id, int(frame_id), int(t_ms), run_id),
-                )
+                try:
+                    conn.execute(
+                        "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                        (obs_id, media_id, int(frame_id), int(t_ms), run_id),
+                    )
+                except sqlite3.IntegrityError:
+                    continue
                 dirty += 1
                 try:
                     faces = embed_bgr(app, img)

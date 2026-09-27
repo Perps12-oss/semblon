@@ -39,6 +39,37 @@ def test_media_skip_seen_across_runs(tmp_path):
     conn.close()
 
 
+def test_media_row_without_observation_is_not_seen(tmp_path):
+    """P1-01: a hash with a media row and zero observations is incomplete."""
+    store = tmp_path / "s.sqlite"
+    conn = _seed(store)
+    conn.execute("INSERT INTO media VALUES ('m-inc','folder','/z.jpg','zzz',100,100,0,1)")
+    conn.commit()
+    reason, mid = media_skip_reason(conn, "zzz", "r2", reprocess=False)
+    assert reason is None
+    assert mid == "m-inc"
+    reason, mid = media_skip_reason(conn, "aaa", "r2", reprocess=False)
+    assert reason == "seen"
+    assert mid == "m1"
+    conn.close()
+
+
+def test_partial_video_same_run_is_not_skipped(tmp_path):
+    """P1-02: video frames on this run must not look like a finished still."""
+    store = tmp_path / "s.sqlite"
+    conn = _seed(store)
+    conn.execute("INSERT INTO media VALUES ('mv','video','/v.mp4','vidhash',1920,1080,0,1)")
+    conn.execute("INSERT INTO observations VALUES ('ov1','mv',0,0,'r1')")
+    conn.commit()
+    reason, mid = media_skip_reason(conn, "vidhash", "r1", reprocess=False)
+    assert reason is None
+    assert mid == "mv"
+    reason, mid = media_skip_reason(conn, "vidhash", "r2", reprocess=False)
+    assert reason == "seen"
+    assert mid == "mv"
+    conn.close()
+
+
 def test_identify_gallery_is_cross_run(tmp_path):
     store = tmp_path / "s.sqlite"
     assigned = _clustered(store)
