@@ -57,20 +57,55 @@ def _state_label(model_state: str, *, disabled_as: str = "Experimental") -> str:
     return "Optional · install needed"
 
 
+def probe_model_overrides() -> dict[str, str]:
+    """Disk/runtime facts only. Never download. Never add sidebar rows."""
+    overrides: dict[str, str] = {}
+    try:
+        from semblon.observers import probe_ocr_status
+
+        ready, _ = probe_ocr_status()
+        if ready:
+            overrides["ocr"] = "AVAILABLE"
+    except Exception:
+        pass
+    try:
+        import os
+
+        pack = os.environ.get("SEMBLON_LKG_PACK")
+        if pack and Path(pack).is_file():
+            overrides["lkg"] = "AVAILABLE"
+    except Exception:
+        pass
+    try:
+        from semblon.sam2_runtime import sam2_ready
+
+        if callable(sam2_ready) and sam2_ready():
+            overrides["grounding"] = "AVAILABLE"
+    except Exception:
+        pass
+    return overrides
+
+
 def capability_sections(
     *,
     report: list[dict] | None = None,
     has_library_content: bool = False,
+    model_overrides: dict[str, str] | None = None,
 ) -> dict[str, list[dict[str, str]]]:
     """Partition runtime_contract status into Ready vs Not installed rows.
 
     Ready always includes Library search when AVAILABLE. When the store
     already has local content, add the honesty line about saved faces/text.
     Deferred / missing models stay listed — never omitted to look empty.
+    Live ``model_overrides`` (from a disk probe) may move a row to Available.
     """
     from semblon.runtime_contract import default_catalog, status_report
 
-    rows = list(report if report is not None else status_report())
+    if report is not None:
+        rows = list(report)
+    else:
+        overrides = model_overrides if model_overrides is not None else probe_model_overrides()
+        rows = list(status_report(model_overrides=overrides or None))
     by_id = {str(r.get("capability_id") or ""): r for r in rows}
     catalog = {spec.id: spec for spec in default_catalog().specs}
 
@@ -91,7 +126,6 @@ def capability_sections(
         label = (spec.label if spec else cap_id) or cap_id
         model = str(row.get("model_state") or "MISSING")
         if model.upper() == "AVAILABLE":
-            # Honest: an installed deferred model moves to Available.
             ready.append({"id": cap_id, "label": label, "state": "Available"})
             continue
         tracked.append(
@@ -149,7 +183,6 @@ def last_result_copy(last: dict | None) -> tuple[str, str]:
     return reason or SHELL_LAST_EMPTY, SHELL_LAST_HINT
 
 
-# Lens workspace — same honesty vocabulary as the library shell, catalog labels only.
 LENS_UNDERSTANDING_TITLE = "Available understanding"
 _LENS_IDS = (
     "ocr",
@@ -165,11 +198,16 @@ _LENS_IDS = (
 def lens_understanding_rows(
     *,
     report: list[dict] | None = None,
+    model_overrides: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
     """Soft rows for the Lens pane. Labels from the catalog — never capability ids."""
     from semblon.runtime_contract import default_catalog, status_report
 
-    rows = list(report if report is not None else status_report())
+    if report is not None:
+        rows = list(report)
+    else:
+        overrides = model_overrides if model_overrides is not None else probe_model_overrides()
+        rows = list(status_report(model_overrides=overrides or None))
     by_id = {str(r.get("capability_id") or ""): r for r in rows}
     catalog = {spec.id: spec for spec in default_catalog().specs}
     out: list[dict[str, str]] = []
@@ -206,7 +244,6 @@ def enrich_summary_counts(store: Path, summary: dict | None) -> dict | None:
                 "SELECT COUNT(*) FROM media WHERE source_type='folder' OR source_type IS NULL OR source_type=''"
             ).fetchone()[0]
         )
-        # Prefer explicit video; otherwise non-folder media.
         try:
             videos = int(
                 conn.execute(
@@ -221,7 +258,6 @@ def enrich_summary_counts(store: Path, summary: dict | None) -> dict | None:
             )
         except sqlite3.OperationalError:
             observations = int(out.get("faces") or 0)
-        # Video frames ≈ observations on video media when frame rows exist.
         try:
             video_frames = int(
                 conn.execute(
