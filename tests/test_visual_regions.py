@@ -346,9 +346,18 @@ def test_visual_job_holds_the_single_door(tmp_path, monkeypatch):
 
 
 def test_protocol_sheet_is_blank():
+    from semblon.visual.protocol import session_header
+
     rows = sheet(["a.jpg", "b.jpg"])
-    assert len(rows) == 2 and rows[0]["meaningful"] is None
-    assert "NAMING" in FAILURE_CLASSES and "PROVIDER" in FAILURE_CLASSES
+    assert len(rows) == 2
+    row = rows[0]
+    assert row["image"] == "a.jpg"
+    assert row["proposed"] is None and row["highlight_matched"] is None
+    assert row["failure_class"] == "" and row["scene"] == ""
+    assert row["label_correct"] is None and row["analysis_time"] is None
+    assert set(FAILURE_CLASSES) == {"DISCOVERY", "LATTICE", "SLICE", "RENDERER", "NAMING"}
+    header = session_header()
+    assert header["home_launched"] is None and header["windows_version"] is None
 
 
 def test_stored_rows_rebuild_the_owner_map():

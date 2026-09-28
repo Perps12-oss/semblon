@@ -1,42 +1,67 @@
-"""Human evaluation sheet. The model does not fill in the judgement."""
+"""Blank sheet for a real Home session. Nothing in here is a judgement.
+
+The person at the photograph fills the row. A model must not.
+One bad interaction gets one primary class. Performance and the
+machine belong on the session header, not as a reason to retune hover.
+"""
 
 from __future__ import annotations
 
+# Primary class for one bad pointer interaction. Not a score.
 FAILURE_CLASSES = (
     "DISCOVERY",
-    "FILTERING",
-    "NAMING",
-    "GRANULARITY",
+    "LATTICE",
     "SLICE",
-    "OWNERSHIP",
-    "COORDINATE",
-    "RENDERING",
-    "PERFORMANCE",
-    "PROVIDER",
+    "RENDERER",
+    "NAMING",
 )
 
 STEPS = (
     "Open the photograph. It should appear before analysis finishes.",
-    "Move the pointer across the picture. Do not click Analyse.",
-    "Does the highlight match a piece you would point at?",
-    "Is the piece too big, too small, or about right?",
-    "If a word appears, is it useful? If no word appears, should it have stayed quiet?",
-    "Note a piece you expected and did not get.",
-    "Note a highlight that felt wrong or awkward.",
-    "Name the first layer that failed. Do not retune a later layer to hide it.",
+    "Move the pointer. Do not click Analyse. Do not draw a box.",
+    "Does the lit boundary match a piece you would naturally point at?",
+    "If it does not, name the first layer only: discovery, lattice, slice, renderer, or naming.",
+    "A lit piece with no word is allowed. Do not invent a word to make the row look finished.",
+    "Reopen the same photograph. The stored regions should come back without a second wait.",
 )
+
+
+def session_header() -> dict:
+    """Facts from the Windows process. Leave None until that process is the one running."""
+    return {
+        "windows_version": None,
+        "python_version": None,
+        "python_arch": None,
+        "process_arch": None,
+        "execution": None,
+        "torch_backend": None,
+        "directml": None,
+        "sam2_runtime": None,
+        "checkpoint": None,
+        "naming": None,
+        "home_launched": None,
+        "blocker": None,
+    }
 
 
 def blank_row(image: str) -> dict:
     return {
         "image": image,
-        "meaningful": None,
-        "granularity": None,
-        "label_useful": None,
-        "should_have_abstained": None,
-        "missed": "",
-        "awkward": "",
+        "scene": "",
+        "expected": "",
+        "proposed": None,
+        "retained": None,
+        "exposed": None,
+        "highlight_matched": None,
+        "too_fragmented": None,
+        "too_broad": None,
+        "nested_missing": None,
+        "unnamed": None,
+        "label_correct": None,
+        "analysis_time": None,
+        "rendering_notes": "",
         "failure_class": "",
+        "note": "",
     }
 
 

@@ -37,7 +37,7 @@ When SAM2 weights are present the job publishes a coarse map first, then replace
 
 ## Tests that need a window
 
-These collect only when Tk can load. On a machine without `libtk` they fail at import, which is the environment, not a visual-region regression. Run them on Windows with the production Home:
+Importing Home succeeds when Tk is missing. Opening the window does not. `libtk8.6` has to be present, and the pass that matters is production Home on Windows, not a headless suite.
 
 - `tests/test_home_ui.py` (window tests; headless readers import once Tk's import error is caught)
 - `tests/test_jobs.py` where a test constructs `HomeApp` or `ReviewApp`
@@ -47,4 +47,6 @@ These collect only when Tk can load. On a machine without `libtk` they fail at i
 
 ## Not claimed
 
-SAM2 quality on the owner’s Windows machine. Human scores on a real photo set (`semblon.visual.protocol`). GPU highlight compositing. A second GUI.
+SAM2 quality on the owner’s Windows machine. A filled sheet (`semblon.visual.protocol`). GPU highlight compositing. A second GUI.
+
+The sheet starts blank: image, scene, what you expected to point at, whether that piece was proposed, kept, exposed, and whether the highlight matched. Too fragmented, too broad, a missing nested part, unnamed, and whether a word was right, are separate notes. Analysis time and a rendering note sit on the same row. One bad interaction gets one class: `DISCOVERY`, `LATTICE`, `SLICE`, `RENDERER`, or `NAMING`. Windows version, process architecture, native or emulated, torch, DirectML, checkpoint, and whether Home launched belong on `session_header()`, which is also blank until that machine fills it.
