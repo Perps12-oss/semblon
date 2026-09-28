@@ -10,7 +10,7 @@ from __future__ import annotations
 try:
     import tkinter as tk
     from tkinter import font as tkfont
-except ModuleNotFoundError:  # pragma: no cover
+except (ModuleNotFoundError, ImportError):  # pragma: no cover
     tk = None
     tkfont = None
 

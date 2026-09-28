@@ -385,7 +385,6 @@ def soft_person_label(face: dict | None, *, board: dict | None = None) -> str:
 
 
 def soft_object_label(item: dict) -> str:
-    # VisualSegment payload carries a human-readable label.
     payload = item.get("payload") if isinstance(item.get("payload"), dict) else None
     if payload is None and isinstance(item.get("payload_json"), str):
         try:
@@ -394,10 +393,14 @@ def soft_object_label(item: dict) -> str:
             payload = json.loads(item.get("payload_json") or "{}")
         except Exception:
             payload = None
-    if isinstance(payload, dict):
-        label = payload.get("label") or payload.get("visual_label")
-        if isinstance(label, str) and label.strip():
-            return label.strip()
+    if not isinstance(payload, dict):
+        payload = {}
+    if item.get("provider") == "visual.region" or payload.get("class") == "visual_region":
+        label = payload.get("selected_label")
+        return label if label else ""
+    label = payload.get("label") or payload.get("visual_label")
+    if isinstance(label, str) and label.strip():
+        return label.strip()
     kind = (item.get("kind") or "object").replace("_", " ")
     if kind == "face":
         return "Face"
@@ -495,6 +498,24 @@ def soft_inspector_for_face(face: dict, board: dict) -> list[str]:
 
 def soft_inspector_for_item(item: dict) -> list[str]:
     payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+    if item.get("provider") == "visual.region" or payload.get("class") == "visual_region":
+        label = (payload.get("selected_label") or "").strip()
+        lines = [label if label else "This part of the photo", ""]
+        parent = (payload.get("parent_label") or "").strip()
+        if parent:
+            lines.append(f"Part of: {parent}")
+        related = [
+            text
+            for text in (payload.get("related_labels") or [])
+            if text and text != label
+        ]
+        if related:
+            lines.append("Related: " + ", ".join(related[:4]))
+        if payload.get("proper_name_proposals"):
+            lines.append("A name was suggested. It is not a person identity.")
+        lines.append("This is not a person identity.")
+        lines.append("Press Esc or click empty space to clear the selection.")
+        return lines
     if payload.get("visual_segment") or payload.get("label"):
         return soft_inspector_for_visual_segment(
             {
