@@ -17,18 +17,132 @@ from typing import Callable
 import numpy as np
 
 from semblon.pixel_index import PixelSegmentIndex, build_pixel_index
-from semblon.semantic_visual import LocalSemanticVisualProvider, SemanticVisualProvider
+from semblon.semantic_visual import SemanticVisualProvider, describe_region_appearance
 from semblon.visual_cache import load_analysis, save_analysis
 from semblon.visual_segment import (
     LABEL_TYPE_FACE,
+    LABEL_TYPE_UNKNOWN,
     SaliencePolicy,
     VisualSegment,
     apply_salience,
+    link_segment_lattice,
     new_segment_id,
     reconcile_sources,
 )
 
+# Appearance proposals below this confidence stay unnamed. SAM 2 does not name.
+_NAME_BIND_MIN = 0.55
+_UNNAMED_LABELS = {"", "region", "unknown", "unknown region"}
+
 OnProgress = Callable[[str, dict], None]
+
+READINESS_L0 = "L0"
+READINESS_L1 = "L1"
+READINESS_L2 = "L2"
+READINESS_L3 = "L3"
+READINESS_L4 = "L4"
+
+
+def attach_region_names(
+    image: np.ndarray,
+    regions: list[dict],
+    *,
+    only_unlabeled: bool = True,
+) -> tuple[list[dict], dict]:
+    """Propose a local appearance name, bind it, or abstain.
+
+    This is not SAM 2. A bound label is an appearance proposal. Unknown stays
+    valid when the proposal is weak or generic.
+    """
+    t0 = time.perf_counter()
+    arr = np.asarray(image)
+    h, w = arr.shape[:2]
+    proposed = bound = abstained = 0
+    named: list[dict] = []
+    for reg in regions:
+        payload = dict(reg.get("payload") or {})
+        label = str(reg.get("label") or "").strip()
+        if only_unlabeled and label.lower() not in _UNNAMED_LABELS:
+            payload.setdefault("naming", "provider")
+            named.append({**reg, "payload": payload})
+            continue
+        x1, y1, x2, y2 = [int(round(float(v))) for v in reg["bbox"]]
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w, x2), min(h, y2)
+        crop = arr[y1:y2, x1:x2] if x2 > x1 and y2 > y1 else arr[:0, :0]
+        if crop.size == 0:
+            payload["naming"] = "abstain"
+            abstained += 1
+            named.append(
+                {
+                    **reg,
+                    "label": "region",
+                    "label_type": LABEL_TYPE_UNKNOWN,
+                    "payload": payload,
+                }
+            )
+            continue
+        bw, bh = max(1, x2 - x1), max(1, y2 - y1)
+        proposal, conf = describe_region_appearance(
+            crop,
+            cy_frac=((y1 + y2) / 2) / float(max(h, 1)),
+            area_frac=(bw * bh) / float(max(w * h, 1)),
+            aspect=bw / float(bh),
+        )
+        proposed += 1
+        payload["namer"] = "appearance"
+        payload["proposed_label"] = proposal
+        payload["proposal_confidence"] = float(conf)
+        generic = (not proposal) or ("region" in proposal.lower())
+        if float(conf) >= _NAME_BIND_MIN and not generic:
+            payload["naming"] = "bind"
+            bound += 1
+            named.append(
+                {
+                    **reg,
+                    "label": proposal,
+                    "label_type": "region",
+                    "payload": payload,
+                }
+            )
+        else:
+            payload["naming"] = "abstain"
+            abstained += 1
+            named.append(
+                {
+                    **reg,
+                    "label": "region",
+                    "label_type": LABEL_TYPE_UNKNOWN,
+                    "payload": payload,
+                }
+            )
+    return named, {
+        "proposed": proposed,
+        "bound": bound,
+        "abstained": abstained,
+        "naming_s": time.perf_counter() - t0,
+    }
+
+
+def _bind_names_on_segments(image: np.ndarray, segments: list[VisualSegment]) -> dict:
+    """Name surviving segments in place. Does not add or drop regions."""
+    regions = [
+        {
+            "bbox": seg.bbox,
+            "label": seg.label,
+            "label_type": seg.label_type,
+            "confidence": seg.confidence,
+            "payload": dict(seg.payload),
+            "source_provider": seg.source_provider,
+        }
+        for seg in segments
+    ]
+    named, stats = attach_region_names(image, regions, only_unlabeled=True)
+    for seg, reg in zip(segments, named):
+        seg.label = str(reg["label"])
+        seg.label_type = str(reg["label_type"])
+        seg.payload = dict(reg.get("payload") or {})
+    return stats
 
 
 def analyze_image(
@@ -44,7 +158,12 @@ def analyze_image(
 ) -> dict:
     """Full vertical slice. Returns segments, index, masks, metrics."""
     t0 = time.perf_counter()
-    prov = provider or LocalSemanticVisualProvider()
+    sam2_status = None
+    if provider is None:
+        from semblon.sam2_runtime import provider_for_discovery
+
+        provider, sam2_status = provider_for_discovery()
+    prov = provider
     pol = policy or SaliencePolicy()
     arr = np.asarray(image)
     if arr.ndim != 3:
@@ -56,6 +175,8 @@ def analyze_image(
         "model_version": prov.info.model_version,
         "image_h": h,
         "image_w": w,
+        "readiness": READINESS_L1,
+        "sam2_state": getattr(sam2_status, "state", "") if sam2_status else "",
     }
 
     def _prog(stage: str, **extra):
@@ -90,18 +211,30 @@ def analyze_image(
                 payload={"face_id": f.get("face_id"), "observation_only": True},
             )
         )
+    _prog("L1", readiness=READINESS_L1, n=len(face_segs))
     _prog("t0_faces", n=len(face_segs))
     t_faces = time.perf_counter()
 
-    # T1 — class-agnostic regions.
+    # T1 — class-agnostic regions. SAM 2 when the runtime is READY.
     t_reg0 = time.perf_counter()
     regions = list(prov.discover_regions(arr))
     t_regions = time.perf_counter() - t_reg0
-    _prog("t1_regions", n=len(regions), seconds=t_regions)
+    _prog("t1_regions", n=len(regions), seconds=t_regions, readiness=READINESS_L1)
+    discovery_stats = dict(getattr(prov, "last_stats", {}) or {})
     metrics["region_discovery_s"] = t_regions
-    metrics["n_raw_regions"] = len(regions)
+    metrics["discovery_s"] = float(discovery_stats.get("discovery_s", t_regions))
+    metrics["normalize_s"] = float(discovery_stats.get("normalize_s", 0.0))
+    metrics["n_raw_masks"] = int(discovery_stats.get("n_raw", len(regions)))
+    metrics["n_raw_regions"] = metrics["n_raw_masks"]
+    metrics["n_quality_kept"] = int(discovery_stats.get("n_quality_kept", len(regions)))
+    metrics["n_removed_quality"] = int(discovery_stats.get("n_removed_quality", 0))
+    metrics["n_removed_dedupe"] = int(discovery_stats.get("n_removed_dedupe", 0))
+    metrics["n_nested_retained"] = int(discovery_stats.get("n_nested_retained", 0))
+    if discovery_stats.get("sam2_state"):
+        metrics["sam2_state"] = discovery_stats["sam2_state"]
+    metrics["decode_s"] = 0.0
 
-    # T2 — semantic inventory (may include CLIP/VLM when available).
+    # Concepts stay on the OpenCV path. SAM 2's provider returns none on purpose.
     t_con0 = time.perf_counter()
     concepts = list(prov.discover_concepts(arr, regions=regions))
     # Ground ungrounded concepts via segment_concept.
@@ -137,7 +270,16 @@ def analyze_image(
     segments = apply_salience(
         face_segs + segments, image_w=w, image_h=h, policy=pol
     )
-    _prog("t3_reconcile", n=len(segments))
+    t_lat0 = time.perf_counter()
+    lattice = link_segment_lattice(segments)
+    metrics["lattice_s"] = time.perf_counter() - t_lat0
+    metrics["n_contains"] = len(lattice["contains"])
+    metrics["n_overlaps"] = len(lattice["overlaps"])
+    metrics["n_nested_retained"] = max(
+        int(metrics.get("n_nested_retained") or 0),
+        sum(1 for seg in segments if seg.parent_segment_id),
+    )
+    _prog("t3_reconcile", n=len(segments), readiness=READINESS_L2)
 
     # Collect masks (source image coords).
     masks: dict[str, np.ndarray] = {}
@@ -168,8 +310,35 @@ def analyze_image(
             masks[seg.segment_id] = m
         seg.mask_ref = f"cache:{seg.segment_id}"
 
+    t_map0 = time.perf_counter()
     index = build_pixel_index(segments, height=h, width=w, masks=masks)
+    metrics["owner_map_s"] = time.perf_counter() - t_map0
+    metrics["readiness"] = READINESS_L2
+    spatial = {
+        "segments": segments,
+        "index": index,
+        "masks": masks,
+        "metrics": dict(metrics),
+        "provider": prov.info.name,
+        "model_id": prov.info.model_id,
+        "model_version": prov.info.model_version,
+    }
+    _prog("L2", readiness=READINESS_L2, partial=spatial)
+
+    t_name0 = time.perf_counter()
+    name_stats = _bind_names_on_segments(arr, segments)
+    metrics["naming_s"] = float(name_stats.get("naming_s") or (time.perf_counter() - t_name0))
+    metrics["names_proposed"] = int(name_stats.get("proposed") or 0)
+    metrics["names_bound"] = int(name_stats.get("bound") or 0)
+    metrics["names_abstained"] = int(name_stats.get("abstained") or 0)
+    metrics["readiness"] = READINESS_L3
+    _prog("L3", readiness=READINESS_L3, partial=spatial)
+
+    t_hover0 = time.perf_counter()
+    _ = index.lookup(w // 2, h // 2)
+    metrics["hover_lookup_s"] = time.perf_counter() - t_hover0
     elapsed = time.perf_counter() - t0
+    metrics["readiness"] = READINESS_L4
     metrics.update(
         {
             "analysis_s": elapsed,
@@ -180,6 +349,7 @@ def analyze_image(
             "labels": sorted({s.label for s in segments}),
         }
     )
+    _prog("L4", readiness=READINESS_L4, partial=spatial)
     _prog("done", **metrics)
     return {
         "segments": segments,
@@ -206,7 +376,11 @@ def analyze_and_cache(
     force: bool = False,
 ) -> dict:
     """Load cache if valid; else analyze and persist sidecar."""
-    prov = provider or LocalSemanticVisualProvider()
+    if provider is None:
+        from semblon.sam2_runtime import provider_for_discovery
+
+        provider, _status = provider_for_discovery()
+    prov = provider
     if not force:
         cached = load_analysis(
             store,

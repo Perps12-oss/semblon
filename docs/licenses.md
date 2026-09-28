@@ -18,7 +18,7 @@ Do not bundle buffalo_l into a frozen installer until that decision exists. `too
 | PySide6 | optional `.[gui]` — native `semblon shell` + S8 spike reference | LGPL; not required for Tk Home/review-ui | optional extra only |
 | OpenCV local visual understanding | open-vocab VisualSegment default provider | already a Semblon runtime dep | yes (code path) |
 | open_clip / CLIP weights | optional concept ranking | model licences separate; Semblon does not bundle | **no weights** |
-| SAM2 checkpoints | optional refine/grounding | env-provided only; code typically Apache-2.0 | **no checkpoints** |
+| SAM 2 (`SAM-2` 1.0 from `facebookresearch/sam2`) | optional class-agnostic spatial discovery | code Apache-2.0; checkpoints are Meta weights, not Semblon redistribution | **no checkpoints** |
 | SAM3 | not integrated | verify before any pack decision | **no** |
 
 Future candidates (MediaPipe, CLIP/successors, other packs) need a separate code **and** model licence check before they enter the plan as more than a name. A licence veto beats a technically attractive model.

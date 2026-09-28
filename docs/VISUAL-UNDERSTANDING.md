@@ -97,15 +97,35 @@ Gate: ≥8 distinct label-set inventories across the 15 scenes (not one fixed vo
 
 Covered: empty/dark/bright, low/high res, overlap/nest, tiny/huge salience reject, JobBusy on second visual job, coordinate zoom/pan/portrait/landscape/square.
 
-## Q. SAM2 / SAM3 feasibility
+## Q. SAM 2 / SAM 3
 
-| | SAM2 | SAM3 |
+Official package: `facebookresearch/sam2`, distribution `SAM-2` (installed 1.0 in the dev venv). Not an arbitrary PyPI `sam2` fork.
+
+| | SAM 2 | SAM 3 |
 |---|---|---|
-| In repo today | Optional Lens grounding (`SEMBLON_SAM2_*`) | **Not present** |
-| Role | Interactive / box/point refine candidate | Future open-vocab segmenter candidate |
-| Architecture | Provider backend only | Must not become the product architecture |
-| Load | Heavy; CPU OK for occasional refine | Unknown package maturity on Windows ARM64 |
-| Graceful degrade | Rectangle / flood-fill / OpenCV regions | N/A — not wired |
+| In repo today | `semblon/sam2_runtime.py` automatic masks when `SAM2_READY`; Lens grounding still separate | **Not present** |
+| Role | Class-agnostic spatial discovery. It does not name objects | Future candidate only |
+| Checkpoint | `SEMBLON_SAM2_CHECKPOINT` local file. Config `SEMBLON_SAM2_CONFIG` or inferred from the filename. Optional `SEMBLON_SAM2_SHA256` | — |
+| States | `SAM2_NOT_INSTALLED`, `SAM2_AVAILABLE` (import + file, not loaded), `SAM2_NOT_CONFIGURED`, `SAM2_WEIGHTS_MISSING`, `SAM2_LOAD_FAILURE`, `SAM2_READY` | — |
+| Download | Never. Semblon does not fetch weights | — |
+| Device | CUDA if `torch.cuda` is available, else CPU. DirectML is not used | — |
+| Hover | Owner-map lookup. Pointer motion does not call SAM 2 | — |
+
+Example local layout (operator-provided, not shipped):
+
+```text
+set SEMBLON_SAM2_CHECKPOINT=%LOCALAPPDATA%\Semblon\weights\sam2.1_hiera_small.pt
+```
+
+Config for that file is `configs/sam2.1/sam2.1_hiera_s.yaml` when `SEMBLON_SAM2_CONFIG` is unset.
+
+Dev install (CPU wheel first, then the official repo). This is not a core `requirements.txt` dependency:
+
+```text
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+set SAM2_BUILD_CUDA=0
+pip install git+https://github.com/facebookresearch/sam2.git
+```
 
 ## R. Hardware / deployment
 
