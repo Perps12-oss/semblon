@@ -17,6 +17,7 @@ from semblon.home_ui import home_control_states, read_activity_snapshot
 from semblon.inbox import inbox
 from semblon.jobs import (
     KIND_INGEST,
+    KIND_VISUAL,
     STATE_CANCELLING,
     STATE_IDLE,
     STATE_PAUSED,
@@ -43,6 +44,7 @@ from semblon.search import search_people, search_person
 
 __all__ = [
     "KIND_INGEST",
+    "KIND_VISUAL",
     "STATE_CANCELLING",
     "STATE_IDLE",
     "STATE_PAUSED",
@@ -154,6 +156,53 @@ class Application:
             prefer_gpu=prefer_gpu,
             open_review=open_review,
         )
+
+    def analyse_visual(
+        self,
+        media_id: str,
+        image,
+        *,
+        run_id: str,
+        nouns: list[str] | None = None,
+        score_fn=None,
+        view_w: int | None = None,
+        view_h: int | None = None,
+        color: str = "rgb",
+    ) -> dict:
+        """Synchronous visual understanding. Does not enrol a person."""
+        import numpy as np
+
+        from semblon.visual.engine import analyse
+        from semblon.visual.persist import load_scene_inputs, persist_analysis
+
+        frame = np.asarray(image)
+        rgb = np.ascontiguousarray(frame[:, :, :3][:, :, ::-1]) if color == "bgr" else frame
+        height, width = int(rgb.shape[0]), int(rgb.shape[1])
+        scene = load_scene_inputs(self.store, media_id=media_id, run_id=run_id, height=height, width=width)
+        analysis = analyse(
+            rgb,
+            nouns=nouns,
+            score_fn=score_fn,
+            view_w=view_w,
+            view_h=view_h,
+            user_regions=scene["user_regions"],
+            face_boxes=scene["face_boxes"],
+            revision=f"visual-{run_id}",
+        )
+        rec = persist_analysis(self.store, analysis, media_id=media_id, run_id=run_id)
+        rec["level"] = analysis.level
+        rec["regions"] = len(analysis.regions)
+        rec["named"] = sum(1 for region in analysis.regions if region.label)
+        rec["persons_touched"] = False
+        return rec
+
+    def submit_visual(self, media_id: str, image, *, run_id: str, **kwargs):
+        return self.engine.submit_visual(media_id=media_id, image=image, run_id=run_id, **kwargs)
+
+    def visual_capabilities(self) -> dict:
+        from semblon.visual.engine import capabilities
+
+        return capabilities()
 
     def pause_job(self) -> None:
         self.engine.pause()

@@ -147,12 +147,19 @@ def test_activity_headline_and_subcopy_are_soft():
 
 
 def test_home_activity_uses_memory_facade_and_workspace():
+    import semblon.features.activity_feature as activity_feature
     import semblon.home_ui as home_ui
 
     src = inspect.getsource(home_ui.HomeApp)
     assert "_build_activity_workspace" in src
     assert "_show_activity_workspace" in src
     show = inspect.getsource(home_ui.HomeApp._show_activity)
-    assert "activity_memory" in show
-    assert "format_activity_lines(" not in show
-    assert "observation_groups" not in show
+    assert "show_activity_page" in show
+    page = inspect.getsource(activity_feature.show_activity_page)
+    assert "activity_memory" in page
+    assert "format_activity_lines(" not in page
+    assert "observation_groups" not in page
+    # Registry owns the activity route.
+    from semblon.gui_registry import default_registry
+
+    assert default_registry().resolve_route("activity") is activity_feature.show_activity_page
