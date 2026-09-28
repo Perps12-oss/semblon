@@ -71,6 +71,16 @@ class VisualJobResult:
     error: BaseException | None = None
 
 
+def _process_rss_kb() -> int | None:
+    """Peak RSS in KiB on platforms that provide ``resource``. Windows does not."""
+    try:
+        import resource
+
+        return int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    except Exception:
+        return None
+
+
 class JobEngine:
     """Single door for ingest + visual analysis. UIs submit; they do not own workers."""
 
@@ -225,8 +235,6 @@ class JobEngine:
         view_w,
         view_h,
     ) -> None:
-        import resource
-
         import numpy as np
 
         from semblon.progress import ProgressEvent
@@ -283,7 +291,9 @@ class JobEngine:
                         "naming": analysis.diagnostics.get("naming"),
                         "timings_ms": analysis.diagnostics.get("timings_ms"),
                     }
-                    rec["rss_kb"] = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+                    rss = _process_rss_kb()
+                    if rss is not None:
+                        rec["rss_kb"] = rss
                     return rec
 
                 first = _once(False if two_pass else None)
