@@ -25,13 +25,25 @@ No new columns.
 
 Expensive understanding runs in `JobEngine.submit_visual` (same single-job door as ingest, different kind). Home does not switch to the library-processing screen for that kind.
 
-Opening a photograph calls `on_image_open`. Pointer movement does not. Hover in `CanvasWorkspace` is a coordinate transform plus a cached row test. The highlight is a stippled mask on the existing tk canvas, plus a chip only when `selected_label` is set.
+Opening a photograph paints first, then calls `on_image_open`. That submits `JobEngine.submit_visual` only when the single job door is free and this still has no `visual.region` rows yet. Pointer movement does not submit. The fitted photo size is the slice's view, so a speck that is not pointable on screen is dropped.
+
+When SAM2 weights are present the job publishes a coarse map first, then replaces it with the precise pass. Cancel during the precise pass does not delete the coarse rows. Hover in `CanvasWorkspace` rebuilds the uint16 owner map from stored row-runs and looks up the pixel. The highlight is one cached mask overlay, with a chip only when `selected_label` is set. A visual face can still open the FaceKit inspector. It does not write a person.
 
 ## Providers
 
-`visual.discovery.sam2` is `UNAVAILABLE` until a local checkpoint is present (`SEMBLON_SAM2_WEIGHTS` or `~/.cache/semblon/sam2`). Nothing is downloaded. Classical colour regions are `PARTIAL` and do not invent names. SigLIP and VLM are `UNAVAILABLE`. Naming is propose → bind → abstain; abstain leaves the chip blank.
+`visual.discovery.sam2` is `UNAVAILABLE` until a local checkpoint is present (`SEMBLON_SAM2_WEIGHTS` or `~/.cache/semblon/sam2`). Nothing is downloaded. A bad checkpoint becomes `FAILED` and does not take Home down. AMG uses `box_nms_thresh=0.95`; containment-preserving dedupe is still the product filter. Diagnostics keep `proposed` and `kept`. Classical colour regions are `PARTIAL` and do not invent names.
 
-Stock box-NMS and containment-preserving dedupe are both implemented. Production default is containment. Thresholds live on `VisualConfig`.
+`visual.naming.siglip` is `UNAVAILABLE` without a local checkpoint (`SEMBLON_SIGLIP_WEIGHTS` or `~/.cache/semblon/siglip`) and a local `open_clip` or `transformers` install. Nothing is downloaded. Proposals are the hint list plus an optional `SEMBLON_NOUNS` file. A noun that does not beat an unnamed prompt stays off the chip. Proper names are not enrolled.
+
+## Tests that need a window
+
+These collect only when Tk can load. On a machine without `libtk` they fail at import, which is the environment, not a visual-region regression. Run them on Windows with the production Home:
+
+- `tests/test_home_ui.py` (window tests; headless readers import once Tk's import error is caught)
+- `tests/test_jobs.py` where a test constructs `HomeApp` or `ReviewApp`
+- `tests/test_application.py` only if a test opens a window
+
+`tests/test_visual_regions.py` does not need Tk. It does not prove a hand on a real photograph.
 
 ## Not claimed
 

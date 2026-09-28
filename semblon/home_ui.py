@@ -22,7 +22,7 @@ from pathlib import Path
 try:
     import tkinter as tk
     from tkinter import filedialog, messagebox, simpledialog, ttk
-except ModuleNotFoundError:  # pragma: no cover - depends on host Python build
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - host without libtk
     tk = None
     filedialog = messagebox = simpledialog = ttk = None
 
@@ -3525,33 +3525,49 @@ class HomeApp:
 
     def _on_image_open(self, media: dict, image) -> None:
         """Start understanding beside the open photo. Never on pointer movement."""
-        if image is None or media is None or self.engine.busy:
+        if image is None or media is None:
             return
         run_id = self._last_run_id
         media_id = media.get("media_id")
-        if not run_id or not media_id:
-            return
         board = getattr(self._canvas_ws, "board", None) or {}
-        if any(
-            item.get("media_id") == media_id and item.get("provider") == "visual.region"
-            for item in (board.get("items") or [])
+        from semblon.visual.persist import should_submit_visual
+
+        if not should_submit_visual(
+            busy=bool(self.engine.busy),
+            items=board.get("items") or [],
+            media_id=media_id,
+            run_id=run_id,
         ):
             return
+        ws = self._canvas_ws
+        view_w = int(getattr(ws, "_nw", 0) or 0) or None
+        view_h = int(getattr(ws, "_nh", 0) or 0) or None
         try:
             self.engine.submit_visual(
                 media_id=media_id,
                 image=image,
                 run_id=run_id,
                 color="bgr",
+                view_w=view_w,
+                view_h=view_h,
+                on_event=self._on_visual_progress,
                 on_done=self._on_visual_done,
             )
         except JobBusy:
             return
 
+    def _on_visual_progress(self, event) -> None:
+        if getattr(event, "kind", None) != "partial":
+            return
+        self._refresh_open_visual()
+
     def _on_visual_done(self, result) -> None:
+        if getattr(result, "status", None) != "completed":
+            return
+        self._refresh_open_visual()
+
+    def _refresh_open_visual(self) -> None:
         def hop() -> None:
-            if getattr(result, "status", None) != "completed":
-                return
             ws = getattr(self, "_canvas_ws", None)
             if ws is None:
                 return

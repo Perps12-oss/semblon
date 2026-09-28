@@ -23,7 +23,7 @@ from semblon.state_triple import (
 try:
     import tkinter as tk
     from tkinter import ttk
-except ModuleNotFoundError:  # pragma: no cover - depends on host Python build
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - host without libtk
     tk = None
     ttk = None
 
@@ -447,6 +447,9 @@ else:
             self._ox = 0.0
             self._oy = 0.0
             self._fit_size: tuple[int, int] | None = None
+            self._visual_owner = None
+            self._visual_by_region: dict[int, dict] = {}
+            self._overlay_cache: dict = {}
             self.status = tk.StringVar(value="Photos")
 
             if show_chrome:
@@ -789,6 +792,9 @@ else:
             self._selected = None
             self._hover_id = None
             self._hit_regions = []
+            self._visual_owner = None
+            self._visual_by_region = {}
+            self._overlay_cache = {}
             self._img = None
             self._fit_size = None
             mid = media.get("media_id")
@@ -919,6 +925,30 @@ else:
                         "rows": payload.get("rows") or None,
                     }
                 )
+            self._visual_owner = None
+            self._visual_by_region = {}
+            if self._img is None:
+                return
+            visual_items = []
+            for hit in self._hit_regions:
+                item = hit.get("item") or {}
+                if item.get("provider") != "visual.region" or not hit.get("rows"):
+                    continue
+                payload = item.get("payload") or {}
+                region_id = payload.get("region_id")
+                try:
+                    region_id = int(region_id)
+                except (TypeError, ValueError):
+                    continue
+                visual_items.append(
+                    {"region_id": region_id, "kind": payload.get("kind") or hit.get("kind"), "rows": hit["rows"]}
+                )
+                self._visual_by_region[region_id] = hit
+            if visual_items:
+                from semblon.visual.hover import owner_from_stored
+
+                height, width = self._img.shape[:2]
+                self._visual_owner = owner_from_stored(height, width, visual_items)
 
         def _to_image(self, x: float, y: float) -> tuple[float, float]:
             from semblon.visual.hover import display_to_image
@@ -926,17 +956,34 @@ else:
             return display_to_image(x, y, ox=self._ox, oy=self._oy, scale=self._scale if self._scale else 1.0)
 
         def _hit_at(self, x: float, y: float) -> dict | None:
-            # Smallest region that actually owns the pixel. Boxes are only a reject.
+            # Exclusive owner map when a visual analysis is stored. Boxes only reject.
+            from semblon.visual.hover import canvas_point_to_native
             from semblon.visual.masks import point_in_rows
 
-            ix, iy = self._to_image(x, y)
+            if self._img is not None:
+                height, width = self._img.shape[:2]
+                native = canvas_point_to_native(
+                    x, y, ox=self._ox, oy=self._oy, scale=self._scale or 1.0, width=width, height=height
+                )
+            else:
+                native = None
+            if self._visual_owner is not None and native is not None:
+                ix, iy = native
+                region_id = int(self._visual_owner[iy, ix])
+                if region_id:
+                    hit = self._visual_by_region.get(region_id)
+                    if hit is not None:
+                        return self._with_face(hit, ix, iy)
+            ix_f, iy_f = self._to_image(x, y)
             candidates = []
             for h in self._hit_regions:
+                if self._visual_owner is not None and (h.get("item") or {}).get("provider") == "visual.region":
+                    continue
                 x1, y1, x2, y2 = h["rect"]
                 if not (x1 <= x <= x2 and y1 <= y <= y2):
                     continue
                 rows = h.get("rows")
-                if rows and not point_in_rows(rows, ix, iy):
+                if rows and not point_in_rows(rows, ix_f, iy_f):
                     continue
                 area = max(1.0, (x2 - x1) * (y2 - y1))
                 pri = 0 if h["kind"] in {"part", "face", "text", "mark"} else 1
@@ -945,6 +992,24 @@ else:
                 return None
             candidates.sort(key=lambda t: (t[0], t[1]))
             return candidates[0][2]
+
+        def _with_face(self, hit: dict, ix: int, iy: int) -> dict:
+            """A visual face keeps FaceKit's person for the inspector. It does not enrol one."""
+            if hit.get("kind") != "face" or hit.get("face"):
+                return hit
+            for other in self._hit_regions:
+                face = other.get("face")
+                if not face:
+                    continue
+                x1, y1 = face.get("bbox_x1"), face.get("bbox_y1")
+                x2, y2 = face.get("bbox_x2"), face.get("bbox_y2")
+                if x1 is None or y1 is None or x2 is None or y2 is None:
+                    continue
+                if float(x1) <= ix < float(x2) and float(y1) <= iy < float(y2):
+                    merged = dict(hit)
+                    merged["face"] = face
+                    return merged
+            return hit
 
         def _clear_overlay_tags(self) -> None:
             self.preview.delete("overlay")
@@ -958,16 +1023,24 @@ else:
 
         def _draw_highlight(self, hit: dict, *, color: str, width: int = 2) -> None:
             rows = hit.get("rows")
-            if rows:
-                from semblon.visual.render import display_runs
+            drawn = False
+            if rows and self._img is not None:
+                try:
+                    photo = self._overlay_photo(hit)
+                    self.preview.create_image(self._ox, self._oy, anchor=tk.NW, image=photo, tags=("overlay",))
+                    drawn = True
+                except Exception:  # noqa: BLE001 — stipple is the fallback, not a second viewer
+                    from semblon.visual.render import display_runs
 
-                for rx1, ry1, rx2, ry2 in display_runs(
-                    rows, scale=self._scale or 1.0, ox=self._ox, oy=self._oy
-                ):
-                    self.preview.create_rectangle(
-                        rx1, ry1, rx2, ry2, outline="", fill=color, stipple="gray25", tags=("overlay",)
-                    )
-            self._draw_outline(hit, color=color, width=width)
+                    for rx1, ry1, rx2, ry2 in display_runs(
+                        rows, scale=self._scale or 1.0, ox=self._ox, oy=self._oy
+                    ):
+                        self.preview.create_rectangle(
+                            rx1, ry1, rx2, ry2, outline="", fill=color, stipple="gray25", tags=("overlay",)
+                        )
+                    drawn = True
+            if not drawn:
+                self._draw_outline(hit, color=color, width=width)
             label = (hit.get("label") or "").strip()
             if not label or hit.get("kind") == "face":
                 return
@@ -980,6 +1053,23 @@ else:
             self.preview.create_text(
                 x1 + 6, top + 8, anchor=tk.W, fill="#F7F4EE", text=label, tags=("overlay",)
             )
+
+        def _overlay_photo(self, hit: dict):
+            import base64
+
+            from semblon.visual.render import mask_png
+
+            key = (hit.get("id"), round(float(self._scale or 1.0), 3))
+            photo = self._overlay_cache.get(key)
+            if photo is not None:
+                return photo
+            height, width = self._img.shape[:2]
+            png = mask_png(hit.get("rows") or {}, width=width, height=height, scale=float(self._scale or 1.0))
+            photo = tk.PhotoImage(data=base64.b64encode(png).decode("ascii"))
+            if len(self._overlay_cache) > 12:
+                self._overlay_cache.clear()
+            self._overlay_cache[key] = photo
+            return photo
 
         def _paint_interaction(self) -> None:
             self._clear_overlay_tags()
@@ -1020,7 +1110,7 @@ else:
                 return
 
             if self._selected is not None:
-                if self._selected.get("kind") == "face":
+                if self._selected.get("kind") == "face" and self._selected.get("face"):
                     lines = soft_inspector_for_face(self._selected["face"], board)
                 else:
                     lines = soft_inspector_for_item(self._selected.get("item") or {})

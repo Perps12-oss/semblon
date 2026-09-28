@@ -11,13 +11,22 @@ import numpy as np
 from semblon.jobs import JobBusy, JobEngine
 from semblon.product_surface import soft_inspector_for_item, soft_object_label
 from semblon.store import connect, init_db
+from semblon.visual.discovery import Sam2AmgDiscovery, clear_sam2_runtime, mark_sam2_failed, sam2_capability
 from semblon.visual.engine import analyse, capabilities
-from semblon.visual.hover import HoverIndex, buffer_pixel, widget_point_to_native
+from semblon.visual.hover import (
+    HoverIndex,
+    buffer_pixel,
+    canvas_point_to_native,
+    owner_from_stored,
+    widget_point_to_native,
+)
+from semblon.visual.masks import MaskCand
 from semblon.visual.model import VisualConfig, VisualRegion
 from semblon.visual.naming import bind_label, split_proposals
-from semblon.visual.persist import load_hover_rows, persist_analysis
+from semblon.visual.naming_local import gated_similarity
+from semblon.visual.persist import load_hover_rows, persist_analysis, should_submit_visual
 from semblon.visual.protocol import FAILURE_CLASSES, sheet
-from semblon.visual.render import display_runs
+from semblon.visual.render import display_runs, mask_png
 
 
 def _scene():
@@ -197,7 +206,11 @@ def test_pointer_outside_is_unassigned():
 
 def test_colour_does_not_invent_a_name():
     rgb, *_ = _scene()
-    analysis = analyse(rgb, config=VisualConfig(min_area_frac=0.001, display_min_px=1))
+    analysis = analyse(
+        rgb,
+        config=VisualConfig(min_area_frac=0.001, display_min_px=1),
+        allow_local_naming=False,
+    )
     assert all(region.label is None for region in analysis.regions)
     assert any(region.kind == "stuff" for region in analysis.regions)
 
@@ -336,3 +349,199 @@ def test_protocol_sheet_is_blank():
     rows = sheet(["a.jpg", "b.jpg"])
     assert len(rows) == 2 and rows[0]["meaningful"] is None
     assert "NAMING" in FAILURE_CLASSES and "PROVIDER" in FAILURE_CLASSES
+
+
+def test_stored_rows_rebuild_the_owner_map():
+    rgb, person, hood, hand = _scene()
+    def score(region, noun, parent=None):
+        x, _y, w, h = region.bbox
+        if noun == "hood" and h < 20 and x < 70:
+            return 0.92
+        if noun == "hand" and x >= 68:
+            return 0.9
+        if noun == "person" and w > 30 and h > 30:
+            return 0.85
+        return 0.04
+
+    analysis = analyse(
+        rgb,
+        config=VisualConfig(min_area_frac=0.001, display_min_px=1, name_margin=0.05),
+        user_masks=[person, hood, hand],
+        nouns=["hood", "hand", "person", "fabric"],
+        score_fn=score,
+        allow_local_naming=False,
+    )
+    items = [
+        {"region_id": region.region_id, "kind": region.kind, "rows": analysis.rows[region.region_id]}
+        for region in analysis.regions
+    ]
+    rebuilt = owner_from_stored(analysis.height, analysis.width, items)
+    assert np.array_equal(rebuilt, analysis.owner)
+    piece = analysis.region(int(rebuilt[35, 55]))
+    assert piece is not None and piece.label == "hood" and piece.kind == "part"
+    hand_piece = analysis.region(int(rebuilt[55, 80]))
+    assert hand_piece is not None and hand_piece.label == "hand"
+    assert hand_piece.label != "fabric"
+
+
+def test_open_photo_gate_and_reloaded_pointer(tmp_path):
+    assert should_submit_visual(busy=True, items=[], media_id="m1", run_id="r1") is False
+    assert should_submit_visual(busy=False, items=[], media_id="m1", run_id=None) is False
+    assert should_submit_visual(busy=False, items=[], media_id="m1", run_id="r1") is True
+    stored = [{"media_id": "m1", "provider": "visual.region"}]
+    assert should_submit_visual(busy=False, items=stored, media_id="m1", run_id="r1") is False
+
+    rgb, person, hood, _hand = _scene()
+    store = tmp_path / "s.sqlite"
+    _seed(store)
+    engine = JobEngine(store)
+    done = threading.Event()
+    box: dict = {}
+
+    def score(region, noun, parent=None):
+        return 0.05
+
+    engine.submit_visual(
+        media_id="m1",
+        image=rgb,
+        run_id="r1",
+        score_fn=score,
+        view_w=rgb.shape[1],
+        view_h=rgb.shape[0],
+        on_done=lambda result: (box.__setitem__("result", result), done.set()),
+    )
+    assert done.wait(8)
+    assert box["result"].status == "completed"
+    assert box["result"].rec["persons"] == 0
+    loaded = load_hover_rows(store, media_id="m1", run_id="r1")
+    assert loaded
+    owner = owner_from_stored(rgb.shape[0], rgb.shape[1], loaded)
+    ys, xs = np.nonzero(owner)
+    assert len(ys)
+    region_id = int(owner[int(ys[0]), int(xs[0])])
+    assert any(int(row["region_id"]) == region_id for row in loaded)
+    native = canvas_point_to_native(55, 35, ox=0, oy=0, scale=1, width=rgb.shape[1], height=rgb.shape[0])
+    assert native == (55, 35)
+    assert canvas_point_to_native(-1, 0, ox=10, oy=0, scale=1, width=20, height=20) is None
+    again = load_hover_rows(store, media_id="m1", run_id="r1")
+    assert len(again) == len(loaded)
+    assert should_submit_visual(
+        busy=False,
+        items=[{"media_id": "m1", "provider": "visual.region"}],
+        media_id="m1",
+        run_id="r1",
+    ) is False
+
+
+def test_weak_similarity_abstains():
+    assert gated_similarity(0.21, 0.20) == 0.0
+    assert gated_similarity(0.40, 0.20) == 0.40
+    region = VisualRegion(region_id=1, bbox=(0, 0, 4, 4), area=16, kind="thing")
+
+    def weak(_region, noun, parent=None, context=None):
+        return gated_similarity(0.22 if noun == "water" else 0.1, 0.21)
+
+    bind_label(region, ["water", "grass"], weak, parent=None, config=VisualConfig())
+    assert region.label is None
+
+
+def test_sam2_failure_is_not_ready(tmp_path):
+    clear_sam2_runtime()
+    weight = tmp_path / "sam2.1_hiera_tiny.pt"
+    weight.write_bytes(b"not-a-checkpoint")
+    try:
+        os_environ = __import__("os").environ
+        os_environ["SEMBLON_SAM2_WEIGHTS"] = str(weight)
+        assert sam2_capability()["state"] == "READY"
+        mark_sam2_failed("RuntimeError: bad checkpoint", str(weight))
+        failed = sam2_capability()
+        assert failed["state"] == "FAILED"
+        assert "bad checkpoint" in failed["note"]
+    finally:
+        __import__("os").environ.pop("SEMBLON_SAM2_WEIGHTS", None)
+        clear_sam2_runtime()
+    assert sam2_capability()["state"] != "READY"
+
+
+def test_sam2_proposed_count_is_kept_through_containment(monkeypatch):
+    clear_sam2_runtime()
+
+    def ready():
+        return {"state": "READY", "note": "test", "weights": "w", "params": {"box_nms_thresh": 0.95}}
+
+    def fake_discover(self, rgb, config):
+        _h, w = rgb.shape[:2]
+        person = np.zeros(rgb.shape[:2], dtype=bool)
+        person[10:70, 10:70] = True
+        hood = np.zeros(rgb.shape[:2], dtype=bool)
+        hood[12:28, 16:50] = True
+        return [
+            MaskCand(person, "sam2", "amg", 0.9, 0.9, "raw"),
+            MaskCand(hood, "sam2", "amg", 0.91, 0.9, "raw"),
+        ], None
+
+    monkeypatch.setattr("semblon.visual.engine.sam2_capability", ready)
+    monkeypatch.setattr(Sam2AmgDiscovery, "discover", fake_discover)
+    rgb, *_ = _scene()
+    analysis = analyse(
+        rgb,
+        config=VisualConfig(min_area_frac=0.001, display_min_px=1),
+        use_sam2=True,
+        allow_local_naming=False,
+    )
+    assert analysis.diagnostics["sam2"]["proposed"] == 2
+    assert analysis.diagnostics["sam2"]["kept"] == 2
+    assert analysis.diagnostics["sam2"]["params"]["box_nms_thresh"] == 0.95
+
+
+def test_coarse_pass_publishes_before_sam2(tmp_path, monkeypatch):
+    calls = []
+    real = analyse
+
+    def wrapped(image, **kwargs):
+        calls.append(kwargs.get("use_sam2"))
+        return real(image, **kwargs)
+
+    def ready():
+        return {"state": "READY", "note": "test", "weights": "w", "params": {}}
+
+    def fake_discover(self, rgb, config):
+        mask = np.zeros(rgb.shape[:2], dtype=bool)
+        mask[28:42, 46:72] = True
+        return [MaskCand(mask, "sam2", "amg", 0.9, 0.9, "raw")], None
+
+    monkeypatch.setattr("semblon.visual.engine.analyse", wrapped)
+    monkeypatch.setattr("semblon.visual.discovery.sam2_capability", ready)
+    monkeypatch.setattr(Sam2AmgDiscovery, "discover", fake_discover)
+    store = tmp_path / "s.sqlite"
+    _seed(store)
+    engine = JobEngine(store)
+    events = []
+    done = threading.Event()
+    box: dict = {}
+    rgb, *_ = _scene()
+    engine.submit_visual(
+        media_id="m1",
+        image=rgb,
+        run_id="r1",
+        on_event=lambda event: events.append(event.kind),
+        on_done=lambda result: (box.__setitem__("result", result), done.set()),
+    )
+    assert done.wait(8)
+    assert box["result"].status == "completed"
+    assert calls[:2] == [False, True]
+    assert "partial" in events
+    assert box["result"].rec["persons"] == 0
+    assert engine.ingest_busy is False
+
+
+def test_mask_overlay_is_empty_off_the_piece():
+    png = mask_png({"1": [[0, 2]]}, width=4, height=3, scale=1, alpha=200)
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    from PIL import Image
+    import io
+
+    img = np.asarray(Image.open(io.BytesIO(png)))
+    assert img[1, 0, 3] == 200
+    assert img[0, 0, 3] == 0
+    assert img[1, 3, 3] == 0

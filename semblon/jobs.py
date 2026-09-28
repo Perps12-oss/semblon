@@ -198,13 +198,16 @@ class JobEngine:
         view_w,
         view_h,
     ) -> None:
+        import resource
+
         import numpy as np
 
         from semblon.progress import ProgressEvent
+        from semblon.visual.discovery import sam2_capability
         from semblon.visual.engine import analyse
         from semblon.visual.persist import load_scene_inputs, persist_analysis
 
-        result = JobResult(status="failed")
+        result = JobResult(status="failed", run_id=run_id)
         try:
             if on_event:
                 on_event(ProgressEvent(stage="visual", kind="started", message="understanding"))
@@ -212,38 +215,73 @@ class JobEngine:
                 result = JobResult(status="cancelled", run_id=run_id)
             else:
                 frame = np.asarray(image)
-                rgb = np.ascontiguousarray(frame[:, :, :3][:, :, ::-1]) if color == "bgr" else frame
+                rgb = (
+                    np.ascontiguousarray(frame[:, :, :3][:, :, ::-1])
+                    if color == "bgr"
+                    else np.ascontiguousarray(frame[:, :, :3])
+                )
                 height, width = int(rgb.shape[0]), int(rgb.shape[1])
                 scene = load_scene_inputs(
                     self.store, media_id=handle.media_id or "", run_id=run_id, height=height, width=width
                 )
-                analysis = analyse(
-                    rgb,
-                    config=config,
-                    nouns=nouns,
-                    score_fn=score_fn,
-                    view_w=view_w,
-                    view_h=view_h,
-                    user_regions=scene["user_regions"],
-                    face_boxes=scene["face_boxes"],
-                    revision=f"visual-{run_id}",
-                    cancel=self._gate,
-                )
-                rec = persist_analysis(
-                    self.store,
-                    analysis,
-                    media_id=handle.media_id or "",
-                    run_id=run_id,
-                )
-                rec["diagnostics"] = {
-                    "stages": analysis.diagnostics.get("stages"),
-                    "level": analysis.level,
-                    "sam2": analysis.diagnostics.get("sam2"),
-                    "timings_ms": analysis.diagnostics.get("timings_ms"),
-                }
-                result = JobResult(status="completed", rec=rec, run_id=run_id)
-                if on_event:
-                    on_event(ProgressEvent(stage="visual", kind="completed", message=str(analysis.level)))
+                cap = sam2_capability()
+                two_pass = cap.get("state") == "READY"
+
+                def _once(use_sam2):
+                    return analyse(
+                        rgb,
+                        config=config,
+                        nouns=nouns,
+                        score_fn=score_fn,
+                        view_w=view_w,
+                        view_h=view_h,
+                        user_regions=scene["user_regions"],
+                        face_boxes=scene["face_boxes"],
+                        revision=f"visual-{run_id}",
+                        cancel=self._gate,
+                        use_sam2=use_sam2,
+                    )
+
+                def _pack(analysis) -> dict:
+                    rec = persist_analysis(
+                        self.store,
+                        analysis,
+                        media_id=handle.media_id or "",
+                        run_id=run_id,
+                    )
+                    rec["diagnostics"] = {
+                        "stages": analysis.diagnostics.get("stages"),
+                        "level": analysis.level,
+                        "sam2": analysis.diagnostics.get("sam2"),
+                        "naming": analysis.diagnostics.get("naming"),
+                        "timings_ms": analysis.diagnostics.get("timings_ms"),
+                    }
+                    rec["rss_kb"] = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+                    return rec
+
+                first = _once(False if two_pass else None)
+                if first.level == 0 and self._gate():
+                    result = JobResult(status="cancelled", run_id=run_id)
+                else:
+                    rec = _pack(first)
+                    result = JobResult(status="completed", rec=rec, run_id=run_id)
+                    if two_pass and on_event:
+                        on_event(ProgressEvent(stage="visual", kind="partial", message=f"L{first.level}"))
+                    if two_pass and result.status == "completed" and not self._gate():
+                        try:
+                            second = _once(True)
+                        except Exception as exc:  # noqa: BLE001 — coarse map stays
+                            rec = dict(result.rec or {})
+                            rec["sam2_error"] = f"{type(exc).__name__}: {exc}"
+                            result = JobResult(status="completed", rec=rec, run_id=run_id)
+                        else:
+                            if second.level == 0 and self._gate():
+                                result = JobResult(status="cancelled", rec=result.rec, run_id=run_id)
+                            else:
+                                result = JobResult(status="completed", rec=_pack(second), run_id=run_id)
+                    if result.status == "completed" and on_event:
+                        level = (result.rec or {}).get("level")
+                        on_event(ProgressEvent(stage="visual", kind="completed", message=str(level)))
         except Exception as e:  # noqa: BLE001 — surface to the submitting UI
             result = JobResult(status="failed", error=e, run_id=run_id)
         finally:

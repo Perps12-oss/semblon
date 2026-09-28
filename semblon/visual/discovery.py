@@ -16,6 +16,8 @@ from semblon.visual.masks import MaskCand, area_of, connected_labels
 from semblon.visual.model import VisualConfig
 
 _SAM2_MISSING = "SAM2 weights are not on this machine. Discovery does not pretend otherwise."
+_SAM2_PARAMS = {"box_nms_thresh": 0.95, "points_per_side": 16, "crop_n_layers": 0, "pred_iou_thresh": 0.7, "stability_score_thresh": 0.8}
+_RUNTIME: dict = {"weights": None, "error": None, "generator": None, "config": None}
 
 
 def sam2_weights_path() -> Path | None:
@@ -33,21 +35,44 @@ def sam2_weights_path() -> Path | None:
     return found[0] if found else None
 
 
+def clear_sam2_runtime() -> None:
+    _RUNTIME["weights"] = None
+    _RUNTIME["error"] = None
+    _RUNTIME["generator"] = None
+    _RUNTIME["config"] = None
+
+
+def mark_sam2_failed(message: str, weights: str | None = None) -> None:
+    _RUNTIME["error"] = message
+    _RUNTIME["generator"] = None
+    if weights is not None:
+        _RUNTIME["weights"] = str(weights)
+
+
 def sam2_capability() -> dict:
     try:
         import sam2  # type: ignore  # noqa: F401
     except Exception:
-        return {"state": "UNAVAILABLE", "note": _SAM2_MISSING}
+        return {"state": "UNAVAILABLE", "note": _SAM2_MISSING, "params": dict(_SAM2_PARAMS)}
     weights = sam2_weights_path()
     if weights is None:
         return {
             "state": "UNAVAILABLE",
             "note": "sam2 imports, but no local checkpoint (SEMBLON_SAM2_WEIGHTS or ~/.cache/semblon/sam2)",
+            "params": dict(_SAM2_PARAMS),
+        }
+    if _RUNTIME.get("error") and _RUNTIME.get("weights") == str(weights):
+        return {
+            "state": "FAILED",
+            "note": _RUNTIME["error"],
+            "weights": str(weights),
+            "params": dict(_SAM2_PARAMS),
         }
     return {
         "state": "READY",
         "note": f"local checkpoint {weights.name}; masks are candidates, not hover truth",
         "weights": str(weights),
+        "params": dict(_SAM2_PARAMS),
     }
 
 
@@ -121,30 +146,38 @@ class Sam2AmgDiscovery:
         try:
             masks = _generate_sam2(rgb, cap["weights"])
         except Exception as exc:  # noqa: BLE001 — capability said ready; this run failed
-            return [], f"{type(exc).__name__}: {exc}"
+            message = f"{type(exc).__name__}: {exc}"
+            mark_sam2_failed(message, str(cap["weights"]))
+            return [], message
         return masks, None
 
 
 def _generate_sam2(rgb: np.ndarray, weights: str) -> list[MaskCand]:
     """Call SAM2 AMG. box_nms_thresh is high so nested parts survive to our dedupe.
 
-    This function is not imported unless a checkpoint is present.
+    The generator is cached for this checkpoint. Stock box-NMS is not the product filter.
     """
     import torch
     from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
     from sam2.build_sam import build_sam2
 
+    config = _config_for(weights)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = build_sam2(config_file=_config_for(weights), ckpt_path=weights, device=device)
-    generator = SAM2AutomaticMaskGenerator(
-        model,
-        points_per_side=16,
-        pred_iou_thresh=0.7,
-        stability_score_thresh=0.8,
-        box_nms_thresh=0.95,
-        crop_n_layers=0,
-    )
-    records = generator.generate(np.ascontiguousarray(rgb))
+    key = (str(weights), config, device)
+    if _RUNTIME.get("generator") is None or _RUNTIME.get("config") != key:
+        model = build_sam2(config_file=config, ckpt_path=weights, device=device)
+        _RUNTIME["generator"] = SAM2AutomaticMaskGenerator(
+            model,
+            points_per_side=_SAM2_PARAMS["points_per_side"],
+            pred_iou_thresh=_SAM2_PARAMS["pred_iou_thresh"],
+            stability_score_thresh=_SAM2_PARAMS["stability_score_thresh"],
+            box_nms_thresh=_SAM2_PARAMS["box_nms_thresh"],
+            crop_n_layers=_SAM2_PARAMS["crop_n_layers"],
+        )
+        _RUNTIME["config"] = key
+        _RUNTIME["weights"] = str(weights)
+        _RUNTIME["error"] = None
+    records = _RUNTIME["generator"].generate(np.ascontiguousarray(rgb))
     out: list[MaskCand] = []
     for rec in records:
         seg = np.asarray(rec.get("segmentation"), dtype=bool)
@@ -165,10 +198,15 @@ def _generate_sam2(rgb: np.ndarray, weights: str) -> list[MaskCand]:
 
 def _config_for(weights: str) -> str:
     name = Path(weights).name.lower()
+    family = "sam2.1" if ("sam2.1" in name or "2.1" in name) else "sam2"
     if "large" in name:
-        return "configs/sam2.1/sam2.1_hiera_l.yaml"
-    if "base" in name:
-        return "configs/sam2.1/sam2.1_hiera_b+.yaml"
-    if "tiny" in name or "hiera_t" in name:
-        return "configs/sam2.1/sam2.1_hiera_t.yaml"
-    return "configs/sam2.1/sam2.1_hiera_s.yaml"
+        size = "l"
+    elif "base" in name or "b+" in name:
+        size = "b+"
+    elif "tiny" in name or "hiera_t" in name:
+        size = "t"
+    else:
+        size = "s"
+    if family == "sam2.1":
+        return f"configs/sam2.1/sam2.1_hiera_{size}.yaml"
+    return f"configs/sam2/sam2_hiera_{size}.yaml"

@@ -6,7 +6,7 @@ try:
     import tkinter as tk
     from tkinter import font as tkfont
     from tkinter import ttk
-except ModuleNotFoundError:  # pragma: no cover
+except (ModuleNotFoundError, ImportError):  # pragma: no cover
     tk = None
     ttk = None
     tkfont = None

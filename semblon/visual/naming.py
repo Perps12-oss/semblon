@@ -31,8 +31,9 @@ def bind_label(
     *,
     parent: VisualRegion | None,
     config: VisualConfig,
+    context: list[str] | None = None,
 ) -> None:
-    """score_fn(region_id, noun) -> float in 0..1. Abstain leaves label None."""
+    """score_fn(region, noun, parent) -> float in 0..1. Abstain leaves label None."""
     concepts, proper = split_proposals(nouns)
     region.proper_name_proposals = proper
     if not concepts or score_fn is None:
@@ -42,7 +43,7 @@ def bind_label(
         return
     scored = []
     for noun in concepts:
-        scored.append((noun, _invoke_score(score_fn, region, noun, parent)))
+        scored.append((noun, _invoke_score(score_fn, region, noun, parent, context)))
     scored.sort(key=lambda t: t[1], reverse=True)
     region.label_candidates = scored[:5]
     best, best_s = scored[0]
@@ -63,8 +64,12 @@ def bind_label(
     region.fate = "named"
 
 
-def _invoke_score(score_fn, region: VisualRegion, noun: str, parent: VisualRegion | None) -> float:
-    """Prefer (region, noun, parent). Fall back to (region_id, noun)."""
+def _invoke_score(score_fn, region: VisualRegion, noun: str, parent: VisualRegion | None, context=None) -> float:
+    """Prefer (region, noun, parent, context). Fall back to shorter call shapes."""
+    try:
+        return float(score_fn(region, noun, parent, context))
+    except TypeError:
+        pass
     try:
         return float(score_fn(region, noun, parent))
     except TypeError:

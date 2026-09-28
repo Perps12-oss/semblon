@@ -93,6 +93,65 @@ def widget_point_to_native(
     return ix, iy
 
 
+def canvas_point_to_native(
+    x: float,
+    y: float,
+    *,
+    ox: float,
+    oy: float,
+    scale: float,
+    width: int,
+    height: int,
+) -> tuple[int, int] | None:
+    """Fitted-canvas point → native pixel. Letterbox and outside are None.
+
+    Truncates toward zero, which is floor for the positive pixels inside the photo.
+    The production canvas draws the OpenCV buffer at (ox, oy) with this scale.
+    """
+    if scale <= 0 or width <= 0 or height <= 0:
+        return None
+    ix = (x - ox) / scale
+    iy = (y - oy) / scale
+    if ix < 0 or iy < 0 or ix >= width or iy >= height:
+        return None
+    return int(ix), int(iy)
+
+
+def owner_from_stored(height: int, width: int, items: list[dict]) -> np.ndarray:
+    """Rebuild the exclusive hover map from persisted row runs.
+
+    Paint order matches the analysis map. The raster is not a stored column.
+    """
+    from semblon.visual.model import PAINT_ORDER
+
+    owner = np.zeros((int(height), int(width),), dtype=np.uint16)
+    rank = {kind: index for index, kind in enumerate(PAINT_ORDER)}
+    ordered = sorted(items, key=lambda item: rank.get(item.get("kind") or "unknown", 0))
+    for item in ordered:
+        try:
+            region_id = int(item.get("region_id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if region_id <= 0 or region_id > 65535:
+            continue
+        rows = item.get("rows") or {}
+        for key, spans in rows.items():
+            try:
+                y = int(key)
+            except (TypeError, ValueError):
+                continue
+            if y < 0 or y >= height:
+                continue
+            for span in spans or []:
+                if not span or len(span) < 2:
+                    continue
+                x0 = max(0, int(span[0]))
+                x1 = min(width, int(span[1]))
+                if x1 > x0:
+                    owner[y, x0:x1] = np.uint16(region_id)
+    return owner
+
+
 def display_to_image(x: float, y: float, *, ox: float, oy: float, scale: float) -> tuple[float, float]:
     """Canvas point → image pixel, using the same origin the photograph was drawn at."""
     if scale == 0:

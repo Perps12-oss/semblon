@@ -162,6 +162,20 @@ def persist_analysis(
     }
 
 
+def visual_already_stored(items, media_id: str) -> bool:
+    for item in items or []:
+        if item.get("media_id") == media_id and item.get("provider") == PROVIDER:
+            return True
+    return False
+
+
+def should_submit_visual(*, busy: bool, items, media_id: str | None, run_id: str | None) -> bool:
+    """Home's open-photo gate. Pointer movement never reaches this."""
+    if busy or not media_id or not run_id:
+        return False
+    return not visual_already_stored(items, media_id)
+
+
 def load_hover_rows(store: Path, *, media_id: str, run_id: str) -> list[dict]:
     conn = connect(store)
     try:

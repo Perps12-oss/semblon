@@ -27,12 +27,18 @@ from semblon.visual.naming import bind_label, split_proposals
 
 
 def capabilities() -> dict:
+    from semblon.visual.naming_local import siglip_capability
+
     sam2 = sam2_capability()
+    naming = siglip_capability()
     return {
         "visual.discovery": {"state": "PARTIAL", "note": "classical colour regions run locally"},
         "visual.discovery.sam2": sam2,
-        "visual.naming": {"state": "PARTIAL", "note": "bind/abstain ready; no embedder loaded"},
-        "visual.naming.siglip": {"state": "UNAVAILABLE", "note": "no local SigLIP weights"},
+        "visual.naming": {
+            "state": "PARTIAL" if naming["state"] != "READY" else "READY",
+            "note": "bind/abstain ready; a local verifier is optional",
+        },
+        "visual.naming.siglip": naming,
         "visual.naming.vlm": {"state": "UNAVAILABLE", "note": "no local VLM"},
         "visual.ocr": {"state": "UNAVAILABLE", "note": "use the existing text observer when present"},
         "visual.stuff": {"state": "PARTIAL", "note": "large residual areas stay unnamed unless a verifier binds them"},
@@ -74,6 +80,8 @@ def analyse(
     face_boxes: list[tuple[int, int, int, int]] | None = None,
     revision: str = "visual-1",
     cancel=None,
+    use_sam2: bool | None = None,
+    allow_local_naming: bool = True,
 ) -> Analysis:
     """Full slow path. `cancel()` true aborts between stages. Never a pointer hook."""
     cfg = config or VisualConfig()
@@ -99,13 +107,25 @@ def analyse(
     raw = ClassicalColorDiscovery().discover(rgb, cfg)
     diag["stages"]["classical"] = len(raw)
     sam2_cap = sam2_capability()
-    diag["sam2"] = {"state": sam2_cap["state"], "proposed": None, "note": sam2_cap["note"], "error": None}
-    if sam2_cap["state"] == "READY":
+    diag["sam2"] = {
+        "state": sam2_cap["state"],
+        "proposed": None,
+        "kept": None,
+        "note": sam2_cap["note"],
+        "error": None,
+        "weights": sam2_cap.get("weights"),
+        "params": sam2_cap.get("params"),
+    }
+    run_sam2 = use_sam2 is not False and sam2_cap["state"] == "READY"
+    if use_sam2 is False:
+        diag["sam2"]["note"] = "coarse pass; precise masks deferred"
+    if run_sam2:
         sam2_masks, err = Sam2AmgDiscovery().discover(rgb, cfg)
         diag["sam2"]["proposed"] = len(sam2_masks)
         diag["sam2"]["error"] = err
         if err:
             diag["sam2"]["state"] = "FAILED"
+            diag["sam2"]["note"] = err
         raw.extend(sam2_masks)
     _mark("discovery", started)
     diag["stages"]["raw"] = len(raw)
@@ -150,9 +170,11 @@ def analyse(
         if i in kept:
             survivors.append(cand)
         else:
-            diag["removed"].append({"stage": "dedupe", "fate": notes[i], "method": cand.method})
+            diag["removed"].append({"stage": "dedupe", "fate": notes[i], "method": cand.method, "provider": cand.provider})
     diag["stages"]["deduped"] = len(survivors)
     diag["dedupe"] = cfg.dedupe
+    if diag["sam2"]["proposed"] is not None:
+        diag["sam2"]["kept"] = sum(1 for cand in survivors if cand.provider == "sam2")
     _mark("dedupe", started)
 
     started = time.perf_counter()
@@ -164,11 +186,34 @@ def analyse(
         return _empty(w, h, revision, cfg, diag, "cancelled")
 
     started = time.perf_counter()
+    naming_info: dict = {"state": "UNAVAILABLE", "note": "no verifier"}
+    if score_fn is not None and nouns:
+        naming_info = {"state": "READY", "note": "caller verifier"}
+    elif score_fn is None and allow_local_naming:
+        from semblon.visual.naming_local import prepare_naming
+
+        prepared = prepare_naming()
+        naming_info = prepared.status()
+        if prepared.available:
+            try:
+                nouns, score_fn = prepared.scorer(rgb, masks)
+                naming_info = prepared.status()
+            except Exception as exc:  # noqa: BLE001 — unnamed highlight is valid
+                naming_info = {"state": "FAILED", "note": f"{type(exc).__name__}: {exc}"}
+                nouns, score_fn = None, None
+    diag["naming"] = naming_info
     if nouns and score_fn is not None:
         by_id = {region.region_id: region for region in regions}
         for region in _parents_first(regions, by_id):
             parent = by_id.get(region.parent_id) if region.parent_id else None
-            bind_label(region, nouns, score_fn, parent=parent, config=cfg)
+            bind_label(
+                region,
+                nouns,
+                score_fn,
+                parent=parent,
+                config=cfg,
+                context=_context_labels(region, by_id),
+            )
     else:
         for region in regions:
             region.label = None
@@ -224,6 +269,20 @@ def analyse(
         level=level,
         config=cfg,
     )
+
+
+def _context_labels(region: VisualRegion, by_id: dict[int, VisualRegion]) -> list[str]:
+    labels: list[str] = []
+    parent = by_id.get(region.parent_id) if region.parent_id else None
+    if parent is not None and parent.label:
+        labels.append(parent.label)
+    for other in by_id.values():
+        if other.region_id == region.region_id or not other.label or other.label in labels:
+            continue
+        labels.append(other.label)
+        if len(labels) >= 4:
+            break
+    return labels
 
 
 def _parents_first(regions: list[VisualRegion], by_id: dict[int, VisualRegion]) -> list[VisualRegion]:
