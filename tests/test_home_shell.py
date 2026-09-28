@@ -22,7 +22,7 @@ def test_shell_headline_matches_product_home():
 
 
 def test_capability_sections_list_missing_models():
-    sections = capability_sections(has_library_content=False)
+    sections = capability_sections(has_library_content=False, model_overrides={})
     ready_ids = {r["id"] for r in sections["ready"]}
     tracked_ids = {r["id"] for r in sections["tracked"]}
     assert "library_query" in ready_ids
@@ -30,7 +30,7 @@ def test_capability_sections_list_missing_models():
     assert "visual_embedding" in tracked_ids
     assert "ocr" in tracked_ids
     assert "vlm" in tracked_ids
-    assert "ann_index" not in tracked_ids  # invisible accelerator — not Home chrome
+    assert "ann_index" not in tracked_ids
     assert any(
         r["state"] == "Experimental" for r in sections["tracked"] if r["id"] == "vlm"
     )
@@ -42,7 +42,7 @@ def test_capability_sections_list_missing_models():
 
 
 def test_capability_sections_add_saved_line_when_library_has_content():
-    sections = capability_sections(has_library_content=True)
+    sections = capability_sections(has_library_content=True, model_overrides={})
     labels = [r["label"] for r in sections["ready"]]
     assert SHELL_SAVED_LINE in labels
 
