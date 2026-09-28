@@ -1,7 +1,7 @@
 # Capability inventory, hidden register, and exposure matrix
 
-**Date:** 2026-09-27  
-**Source:** `main` at `142e36f`.  
+**Date:** 2026-09-27. **Retest:** 2026-09-28 against `origin/main` `646d44b` and PR #112 (`cursor/gui-feature-registry-c466`, not merged).  
+**Source of the tables below:** `main` at `142e36f`, adjusted by the retest notes.  
 **Rule:** a capability is listed because a function, CLI parser, schema table, or test exists. Docs alone are not evidence.  
 **This audit did not execute the Windows GUI or pytest.** “Production-ready” means the shipping Tk path calls it and the module is on the product side of `semblon lab`. It does not mean this environment re-verified Windows.
 
@@ -90,8 +90,10 @@ Identity firewall (unchanged by this research): FaceKit is the only identity com
 | Schema v4 tables | Yes | Store | Not a screen | No schema browser in product UI | `store.py:9-237` | tables: runs, media, observations, clusters, persons, faces, cluster_person, decisions, eval_*, observation_items, embeddings, tracks, track_members, observation_groups, group_members, relationships, events |
 | Duplicate file browser | No separate feature | n/a | n/a | Missing | Skip is ingest policy, not a library view | `ingest.py:145` |
 | Collections / albums | No | n/a | n/a | Missing | No module | |
-| Command / action registry | No | n/a | n/a | Missing | Actions are methods | `home_ui.py` |
-| Context menu | No | n/a | n/a | Missing | No `Button-3` binding in `semblon/` | grep of `semblon/` |
+| Command / action registry | No on `main`. Yes on PR #112 | `FeatureRegistry` on #112 only | No | Not in the shipping Home | `home_ui.py` methods on `main`; `product_features.py` on #112 | see retest row below |
+| Context menu | No on `main` | n/a | n/a | Missing | No `Button-3` binding. PR #112 names a `"context"` surface and does not bind a menu | grep of `home_ui.py` on both trees |
+| Open-vocabulary region hover (`VisualSegment`) | Yes on `main` `646d44b` | Partial (`JobEngine.submit_visual_analyze`) | Partial (`semblon` visual CLI added in #109) | Yes, once a photo is open on the canvas | Canvas hover/click. Sidebar Photos still opens the dashboard, not this grid | `visual_segment.py`, `canvas.py`, `tests/test_visual_understanding.py` (10 passed) |
+| GUI feature registry | Yes on PR #112 only | `FeatureRegistry` | No | Not on `main` | Sidebar / palette / overflow / inspector commands from `product_features.py` | `gui_registry.py`; `tests/test_gui_registry.py` 12 passed on `1c40dd0` |
 
 ---
 

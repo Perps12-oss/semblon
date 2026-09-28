@@ -1,7 +1,22 @@
 # GUI migration plan
 
-**Date:** 2026-09-27  
+**Date:** 2026-09-27. **Retest:** 2026-09-28.  
 **Constraint:** the Tk Home that `semblon home` opens stays usable after every step. No visual redesign is required for steps 1–3. No framework change. No plugin host. No schema change. No identity-threshold change.
+
+## Retest against PR #112
+
+`origin/cursor/gui-feature-registry-c466` (`1c40dd0`, PR #112, not merged) already does most of steps 1–5 on top of `main` `646d44b`. `tests/test_gui_registry.py`: 12 passed in this environment.
+
+| Step in this plan | On #112 |
+|---|---|
+| 1. Registry beside the shell, same nav labels | Done. `HOME_NAV` is derived (`refresh_home_nav`). |
+| 2. Activity as its own module | Done. `semblon/features/activity_feature.py`. |
+| 3. Shell reads the registry | Done for sidebar, `_navigate` (registry first, fallback remains), More, Ctrl+1…5, Ctrl+K with type-to-filter. Settings body is still inline. `Application` is still not the Home session object. |
+| 4. Person history command | Done as `person.history`. Also registered: identify (`record=False`), backup, export views, watch-as-ingest, lens commands. |
+| 5. Drop the Lens monkeypatch | Not done. `lens.find_similar` calls `_open_region_select`. |
+| 6. Delete the `_navigate` fallback and the Photos label fix | Not done. Fallback remains. Pages are wrappers around `HomeApp` methods. |
+
+Do not re-implement #112 on this research branch. Remaining work is the list in that branch’s `docs/GUI-REGISTRY-IMPLEMENTATION.md`: identity verbs as commands, settings contributions, context-menu host (the `"context"` surface has no widget), Qt nav, Photos-versus-grid label.
 
 Architecture this plan implements, when a later slice chooses to: `docs/GUI-TARGET-ARCHITECTURE.md`.  
 Evidence for the current seams: `docs/GUI-ARCHITECTURE-FORENSIC-AUDIT.md`.  

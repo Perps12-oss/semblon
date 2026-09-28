@@ -1,9 +1,20 @@
 # GUI architecture forensic audit
 
-**Date:** 2026-09-27  
-**Source:** `main` at `142e36f` (Merge pull request #108).  
-**Method:** production launch path and Python sources. Documentation was used only as a pointer, then checked against code.  
+**Date:** 2026-09-27. **Retest:** 2026-09-28.  
+**Source of the anatomy below:** `main` at `142e36f`, then rechecked on `origin/main` `646d44b` and `origin/cursor/gui-feature-registry-c466` `1c40dd0` (PR #112, not merged).  
+**Method:** production launch path and Python sources, then a fetch of every remote branch.  
 **Scope:** research. This file does not authorize a GUI rewrite, a second product shell, schema changes, or identity-threshold changes.
+
+### Retest delta
+
+`main` since `142e36f` (PR #109) adds open-vocabulary hover on the photo canvas. It does not add a feature registry.
+
+- `CanvasWorkspace` keeps a `VisualSegment` under the pointer (`canvas.py` `_hover_seg`) and schedules `JobEngine.submit_visual_analyze`.
+- Masks live in `visual_cache` sidecars, not new SQLite columns (`docs/VISUAL-UNDERSTANDING.md`).
+- Home’s only edit is passing `job_engine=self.engine` into `CanvasWorkspace`.
+- `tests/test_visual_understanding.py` on `646d44b`: **10 passed** (this environment, 2026-09-28).
+
+PR #112 (`cursor/gui-feature-registry-c466`) is the registry this audit said did not exist. It is not on `main`. `tests/test_gui_registry.py` on `1c40dd0`: **12 passed**. Details and the corrected shell answer are in `docs/GUI-TARGET-ARCHITECTURE.md` (Retest). The anatomy in the rest of this file describes `main`, not #112.
 
 This audit did not launch the Windows Tk process and did not re-run pytest. Claims below are source evidence (`path:line`). Windows live status for ingest remains the owner record in `docs/COMPLETION-MATRIX.md`; that record was not re-executed here.
 

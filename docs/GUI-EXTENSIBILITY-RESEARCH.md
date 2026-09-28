@@ -1,6 +1,6 @@
 # Extensibility research
 
-**Date:** 2026-09-27  
+**Date:** 2026-09-27. **Retest:** 2026-09-28. The pattern in this file is what PR #112 (`cursor/gui-feature-registry-c466`, not on `main`) implemented as `semblon/gui_registry.py`. That branch is an internal tuple, not a plugin host. It does not bind a context menu even though commands declare a `"context"` surface. See `docs/GUI-TARGET-ARCHITECTURE.md` (Retest) for the test results.  
 **Question this file answers:** how mature desktop apps add a feature without editing the shell, which of those ideas fit Semblon, and which UX principles apply whether the widgets stay Tk or move later.
 
 This is not a framework selection. Production GUI remains Tk Home (`semblon home`). Optional Qt `semblon shell` stays optional. Electron, Tauri, a permanent Tk AppShell, CustomTkinter, and FastAPI are out of scope.

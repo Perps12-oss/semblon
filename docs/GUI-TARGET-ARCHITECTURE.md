@@ -1,15 +1,52 @@
 # Target GUI architecture
 
-**Date:** 2026-09-27  
-**Status:** proposal. Not implemented. Does not replace `docs/SEM-ARCH-V1.4.md` and does not open a new identity or schema queue.
+**Date:** 2026-09-27. **Retest:** 2026-09-28 against `origin/main` (`646d44b`) and open branches.  
+**Status:** proposal on this branch. An implementation of the registry exists on unmerged PR #112. Does not replace `docs/SEM-ARCH-V1.4.md`.
 
 ---
+
+## Retest (2026-09-28)
+
+The first pass read `main` at `142e36f` only. A second pass fetched every remote branch and re-ran the relevant tests.
+
+| Branch | What it contains | Registry? |
+|---|---|---|
+| `origin/main` `646d44b` | PR #109 open-vocabulary `VisualSegment` on Canvas. `JobEngine.submit_visual_analyze`. Home passes `job_engine` into `CanvasWorkspace` (`home_ui.py` one-line change). | No `gui_registry.py`. Shell coupling from the first audit still holds. |
+| `origin/cursor/gui-feature-registry-c466` `1c40dd0` | PR #112. `semblon/gui_registry.py`, `semblon/product_features.py`, Activity page moved to `semblon/features/activity_feature.py`. Built on current main. | **Yes. Not merged.** |
+| `origin/cursor/final-branch-reconciliation-c466` | Docs only: archive/delete four leftover branches. Not a GUI registry. | No |
+| `origin/cursor/gui-extensibility-research-2b41` | This research, plus a merge of #109. | No |
+
+Commands run in this environment:
+
+- `/tmp/semblon-registry` (`1c40dd0`): `python3 -m pytest tests/test_gui_registry.py` → **12 passed**.
+- Same tree: `tests/test_activity_surface.py` and `tests/test_home_launch.py` → **10 passed**.
+- `/tmp/semblon-main` (`646d44b`): `python3 -m pytest tests/test_visual_understanding.py` → **10 passed**.
+
+Windows Tk was not launched.
+
+### Answer after the retest
+
+**On `main`: no.** A new destination still means editing `HomeApp`. Visual understanding landed by editing `canvas.py`, `jobs.py`, and the Canvas constructor call. That is the shell-and-viewer coupling the research described.
+
+**On PR #112: yes, for a page or command registered before the window is built.** `tests/test_gui_registry.py::test_demo_feature_registers_without_editing_homeapp` passed. `HomeApp` source does not contain `registry_demo`. Sidebar, More, Ctrl+K, and Ctrl+1…5 read `FeatureRegistry`. `_navigate` calls `registry.resolve_route` first (`home_ui.py` on that branch). Activity’s page lives in `features/activity_feature.py`.
+
+Limits that the passing test does not remove:
+
+- Existing routes are thin `page()` wrappers that still call `HomeApp` methods (`_show_home_landing`, `_show_people`, `_open_lens`, …) in `product_features.py`.
+- Name / Assign / Merge / Split / Rule out / Ignore are still widgets built in `HomeApp.__init__`, not `GuiCommand`s.
+- `surfaces` includes `"context"`, and nothing in that branch’s `home_ui.py` binds a right-click or Shift+F10 menu. Context is a label, not a host.
+- Sidebar, overflow, and inspector command buttons are created in `HomeApp.__init__`. A feature registered after the window exists is visible to `_navigate` and to the next Ctrl+K open, and is not inserted into the sidebar until the next launch.
+- `lens_home.install` is unchanged. `lens.find_similar` calls `_open_region_select`, the same mouse-up as “Select a region”.
+- Qt `semblon shell` is not on the registry.
+- Hidden engines that #112 does register for the GUI: `person.history` (`memory.history`), `person.identify_face` (`identify_face(..., record=False)` — no decision write), `library.backup` (`store.backup_store`), `library.export_person_folders` (`export_views`), `library.watch_folder` (starts the same ingest as Add folder, then tells the user continuous watch is still `semblon watch`).
+
+`store.backup_store` already exists on `main` (`store.py:352`) and is only the lab CLI there (`cli.py` `lab backup`). The GUI button is only on #112.
 
 ## Executive summary
 
 ### Can Semblon gain a major new user-facing capability without modifying the fundamental shell?
 
-**Not in the code that ships today.** After the migration proposed here, **yes**, for a capability that is a page, a command, or a contextual action.
+**Not on `main`.** On unmerged PR #112, a new registered feature can appear in navigation and the command surfaces without another `HomeApp` branch. That is the migration this document describes, already started, not yet the product default.
 
 Evidence that the current shell must be edited:
 
