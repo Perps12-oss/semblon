@@ -119,8 +119,13 @@ def _cmd_ask_lens(host: Any, _ctx: Any = None) -> None:
 
 
 def _cmd_lens_find_similar(host: Any, _ctx: Any = None) -> None:
-    """Region similarity — product mouse-up path (non-face appearance)."""
-    host._open_region_select()
+    """Histogram region search via lens_home → region_search.remember_and_find.
+
+    This is not search.search_similar (embedding stack). Do not merge stacks.
+    """
+    from semblon.lens_home import open_region_select
+
+    open_region_select(host)
 
 
 def _person_history_available(host: Any, context: Any = None) -> bool:
@@ -151,9 +156,9 @@ def _cmd_person_history(host: Any, context: Any = None) -> None:
         return
     lines: list[str] = [str(rec.get("display_name") or key)]
     for it in list(rec.get("items") or [])[:16]:
-        when = it.get("when") or ""
-        folder = it.get("folder") or ""
-        bit = " · ".join(p for p in (when, folder) if p)
+        when = it.get("when") or it.get("date") or ""
+        where = it.get("where") or it.get("folder") or it.get("place") or ""
+        bit = " · ".join(p for p in (when, where) if p)
         if bit:
             lines.append(bit)
     if len(lines) == 1:
@@ -201,17 +206,16 @@ def _cmd_identify_face(host: Any, context: Any = None) -> None:
     score = rec.get("score_top1")
     if name and decision in {"accept", "ACCEPT", "match", None} and score is not None:
         try:
-            lines.append(f"{name} ({float(score):.2f})")
+            lines.append(f"Suggestion: {name} ({float(score):.2f})")
         except (TypeError, ValueError):
-            lines.append(str(name))
+            lines.append(f"Suggestion: {name}")
     elif name:
-        lines.append(str(name))
+        lines.append(f"Suggestion: {name}")
         if score is not None:
             lines.append(f"score {score}")
     else:
         lines.append("No named match yet. Unknown is valid.")
-    if decision:
-        lines.append(f"Result: {decision}")
+    lines.append("Suggestion only — use Name or Assign. Semblon does not auto-assign.")
     host._set_inspector("Identify", lines)
 
 
@@ -245,7 +249,9 @@ def _cmd_backup_library(host: Any, _ctx: Any = None) -> None:
         rec = backup_store(Path(host.store), out)
         messagebox.showinfo(
             "Semblon",
-            f"Library backup saved.\n{rec.get('out') or out}",
+            "Library backup saved.\n"
+            f"{rec.get('out') or out}\n\n"
+            "Restore stays a lab command (not this window).",
             parent=host.root,
         )
     except Exception as e:  # noqa: BLE001
@@ -256,7 +262,7 @@ def _cmd_watch_folder(host: Any, _ctx: Any = None) -> None:
     """Expose folder update: GUI starts JobEngine ingest; continuous watch stays CLI."""
     from tkinter import filedialog, messagebox
 
-    folder = filedialog.askdirectory(parent=host.root, title="Choose folder to add or update")
+    folder = filedialog.askdirectory(parent=host.root, title="Add or update this folder")
     if not folder:
         return
     try:
@@ -290,13 +296,27 @@ def _cmd_export_person_views(host: Any, _ctx: Any = None) -> None:
         return
     rid = latest_run_id(host.store)
     if not rid:
-        messagebox.showinfo("Semblon", "Nothing to export yet.", parent=host.root)
+        messagebox.showinfo(
+            "Semblon",
+            "Nothing to export yet. Add a folder and name someone first.",
+            parent=host.root,
+        )
         return
     try:
         rec = export_views(Path(host.store), rid, Path(dest))
+        views = rec.get("views") or dest
+        written = rec.get("written") or rec.get("count") or rec.get("persons")
+        if written == 0 or rec.get("empty"):
+            messagebox.showinfo(
+                "Semblon",
+                "No named-person folders to write for this run.\n"
+                "Originals stay put.",
+                parent=host.root,
+            )
+            return
         messagebox.showinfo(
             "Semblon",
-            f"Person folders written.\nOriginals stay put.\n{rec.get('views') or dest}",
+            f"Person folders written.\nOriginals stay put.\n{views}",
             parent=host.root,
         )
     except Exception as e:  # noqa: BLE001
@@ -324,13 +344,13 @@ def build_product_registry() -> FeatureRegistry:
                 ),
                 GuiCommand(
                     id="lens.find_similar",
-                    label="Find similar photos",
+                    label="Find similar-looking regions",
                     run=_cmd_lens_find_similar,
                     surfaces=frozenset({"inspector", "palette", "context"}),
                 ),
                 GuiCommand(
                     id="lens.ask",
-                    label="Ask with Lens",
+                    label="Ask about this photo",
                     run=_cmd_ask_lens,
                     surfaces=frozenset({"inspector", "palette", "context"}),
                 ),
@@ -347,11 +367,11 @@ def build_product_registry() -> FeatureRegistry:
     reg.register(
         Feature(
             id="library_home",
-            label="Photos",
+            label="Library",
             nav=NavContribution(
                 section="LIBRARY",
                 route_id="home",
-                label="Photos",
+                label="Library",
                 shortcut="1",
                 order=0,
             ),
@@ -372,7 +392,7 @@ def build_product_registry() -> FeatureRegistry:
                 ),
                 GuiCommand(
                     id="library.watch_folder",
-                    label="Watch a folder…",
+                    label="Add or update this folder…",
                     run=_cmd_watch_folder,
                     surfaces=frozenset({"overflow", "palette"}),
                 ),
