@@ -22,7 +22,8 @@ from typing import Callable
 from semblon.progress import ProgressEvent
 
 KIND_INGEST = "ingest"
-KIND_VISUAL = "visual_analyze"
+KIND_VISUAL = "visual"
+KIND_VISUAL_ANALYZE = "visual_analyze"
 
 STATE_IDLE = "idle"
 STATE_RUNNING = "running"
@@ -44,6 +45,7 @@ class JobHandle:
     folder: Path
     resume: bool
     store: Path
+    media_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,12 @@ class JobEngine:
         self._visual_thread: threading.Thread | None = None
         self._visual_current: VisualJobHandle | None = None
         self._visual_cancel = threading.Event()
+
+    @property
+    def ingest_busy(self) -> bool:
+        """True only for library ingest. Visual understanding must not flip Home to PROCESSING."""
+        with self._lock:
+            return self._current is not None and self._current.kind == KIND_INGEST
 
     @property
     def busy(self) -> bool:
@@ -162,6 +170,152 @@ class JobEngine:
         thread.start()
         return handle
 
+    def submit_visual(
+        self,
+        *,
+        media_id: str,
+        image,
+        run_id: str,
+        on_event: OnEvent | None = None,
+        on_done: OnDone | None = None,
+        nouns: list[str] | None = None,
+        score_fn=None,
+        config=None,
+        color: str = "rgb",
+        view_w: int | None = None,
+        view_h: int | None = None,
+    ) -> JobHandle:
+        """Background visual-region analysis. Same door as ingest. Not pointer-time."""
+        handle = JobHandle(
+            kind=KIND_VISUAL,
+            folder=self.store,
+            resume=False,
+            store=self.store,
+            media_id=media_id,
+        )
+        with self._lock:
+            if self._current is not None:
+                raise JobBusy("a job is already running")
+            self._cancel.clear()
+            self._pause.clear()
+            self._cancelling = False
+            self._current = handle
+        thread = threading.Thread(
+            target=self._run_visual_regions,
+            args=(handle, image, run_id, on_event, on_done, nouns, score_fn, config, color, view_w, view_h),
+            daemon=True,
+            name="semblon-job-visual-regions",
+        )
+        with self._lock:
+            self._thread = thread
+        thread.start()
+        return handle
+
+    def _run_visual_regions(
+        self,
+        handle: JobHandle,
+        image,
+        run_id: str,
+        on_event,
+        on_done,
+        nouns,
+        score_fn,
+        config,
+        color,
+        view_w,
+        view_h,
+    ) -> None:
+        import resource
+
+        import numpy as np
+
+        from semblon.progress import ProgressEvent
+        from semblon.visual.discovery import sam2_capability
+        from semblon.visual.engine import analyse
+        from semblon.visual.persist import load_scene_inputs, persist_analysis
+
+        result = JobResult(status="failed", run_id=run_id)
+        try:
+            if on_event:
+                on_event(ProgressEvent(stage="visual", kind="started", message="understanding"))
+            if self._gate():
+                result = JobResult(status="cancelled", run_id=run_id)
+            else:
+                frame = np.asarray(image)
+                rgb = (
+                    np.ascontiguousarray(frame[:, :, :3][:, :, ::-1])
+                    if color == "bgr"
+                    else np.ascontiguousarray(frame[:, :, :3])
+                )
+                height, width = int(rgb.shape[0]), int(rgb.shape[1])
+                scene = load_scene_inputs(
+                    self.store, media_id=handle.media_id or "", run_id=run_id, height=height, width=width
+                )
+                cap = sam2_capability()
+                two_pass = cap.get("state") == "READY"
+
+                def _once(use_sam2):
+                    return analyse(
+                        rgb,
+                        config=config,
+                        nouns=nouns,
+                        score_fn=score_fn,
+                        view_w=view_w,
+                        view_h=view_h,
+                        user_regions=scene["user_regions"],
+                        face_boxes=scene["face_boxes"],
+                        revision=f"visual-{run_id}",
+                        cancel=self._gate,
+                        use_sam2=use_sam2,
+                    )
+
+                def _pack(analysis) -> dict:
+                    rec = persist_analysis(
+                        self.store,
+                        analysis,
+                        media_id=handle.media_id or "",
+                        run_id=run_id,
+                    )
+                    rec["diagnostics"] = {
+                        "stages": analysis.diagnostics.get("stages"),
+                        "level": analysis.level,
+                        "sam2": analysis.diagnostics.get("sam2"),
+                        "naming": analysis.diagnostics.get("naming"),
+                        "timings_ms": analysis.diagnostics.get("timings_ms"),
+                    }
+                    rec["rss_kb"] = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+                    return rec
+
+                first = _once(False if two_pass else None)
+                if first.level == 0 and self._gate():
+                    result = JobResult(status="cancelled", run_id=run_id)
+                else:
+                    rec = _pack(first)
+                    result = JobResult(status="completed", rec=rec, run_id=run_id)
+                    if two_pass and on_event:
+                        on_event(ProgressEvent(stage="visual", kind="partial", message=f"L{first.level}"))
+                    if two_pass and result.status == "completed" and not self._gate():
+                        try:
+                            second = _once(True)
+                        except Exception as exc:  # noqa: BLE001 — coarse map stays
+                            rec = dict(result.rec or {})
+                            rec["sam2_error"] = f"{type(exc).__name__}: {exc}"
+                            result = JobResult(status="completed", rec=rec, run_id=run_id)
+                        else:
+                            if second.level == 0 and self._gate():
+                                result = JobResult(status="cancelled", rec=result.rec, run_id=run_id)
+                            else:
+                                result = JobResult(status="completed", rec=_pack(second), run_id=run_id)
+                    if result.status == "completed" and on_event:
+                        level = (result.rec or {}).get("level")
+                        on_event(ProgressEvent(stage="visual", kind="completed", message=str(level)))
+        except Exception as e:  # noqa: BLE001 — surface to the submitting UI
+            result = JobResult(status="failed", error=e, run_id=run_id)
+        finally:
+            self._release(handle)
+            if on_done is not None:
+                on_done(result)
+
     def submit_visual_analyze(
         self,
         *,
@@ -179,7 +333,7 @@ class JobEngine:
         A second visual submit for any media is JobBusy until the first finishes.
         """
         handle = VisualJobHandle(
-            kind=KIND_VISUAL, media_id=str(media_id), store=self.store
+            kind=KIND_VISUAL_ANALYZE, media_id=str(media_id), store=self.store
         )
         with self._visual_lock:
             if self._visual_current is not None:
@@ -257,6 +411,7 @@ class JobEngine:
                     self._visual_thread = None
             if on_done is not None:
                 on_done(result)
+
 
     def run_ingest(
         self,

@@ -638,7 +638,14 @@ def main(argv: list[str] | None = None) -> int:
                 "identity": False,
                 "note": "VisualSegment observation layer; never writes faces.person_id",
             },
+            "visual": None,
         }
+        try:
+            from semblon.visual.engine import capabilities
+
+            rec["visual"] = capabilities()
+        except Exception as exc:  # noqa: BLE001 — providers list must still print
+            rec["visual"] = {"state": "FAILED", "note": type(exc).__name__}
         print(json.dumps(rec, indent=2))
         return 0
 
