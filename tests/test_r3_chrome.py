@@ -46,6 +46,96 @@ def test_face_axes_do_not_smuggle_person_into_evidence():
     assert face_display_state({"face_id": "f"}, policy_action="ignore") == "Ignored"
 
 
+def test_caller_similarity_is_evidence_not_identity():
+    """Caller scores change the evidence token only. They do not enrol anyone."""
+    from semblon.canvas import face_evidence_tag
+
+    scored = {"face_id": "f", "similarity": 0.71}
+    assert evidence_from_face(scored) == "similar"
+    assert "person_id" not in scored
+    assert decision_from_face(scored) == "undecided"
+    assert face_display_state(scored) == "Possible"
+    assert face_evidence_tag(scored) == "similar"
+
+    assert evidence_from_face({"face_id": "f", "similar_score": 0.55}) == "similar"
+    assert evidence_from_face({"face_id": "f", "candidate_score": "0.2"}) == "similar"
+    assert face_display_state({"face_id": "f", "similar_score": 0.55}) == "Possible"
+
+    bare = {"face_id": "f", "bbox_x1": 0}
+    assert evidence_from_face(bare) == "detected"
+    assert face_display_state(bare) == face_display_state(scored)
+    assert evidence_from_face({"face_id": "f", "similarity": 0}) == "detected"
+    assert evidence_from_face({"face_id": "f", "similarity": -0.4}) == "detected"
+    assert evidence_from_face({"face_id": "f", "similar_score": ""}) == "detected"
+    assert evidence_from_face({"face_id": "f", "candidate_score": None}) == "detected"
+    assert evidence_from_face({"face_id": "f", "similarity": "high"}) == "detected"
+    assert evidence_from_face({"face_id": "f", "similarity": True}) == "detected"
+
+    clustered = {"face_id": "f", "cluster_id": "c", "similarity": 0.99}
+    assert evidence_from_face(clustered) == "clustered"
+    assert "person_id" not in clustered
+    assert decision_from_face(clustered) == "undecided"
+
+    named = {"face_id": "f", "person_id": "p", "similarity": 0.9}
+    assert evidence_from_face(named) == "similar"
+    assert named["person_id"] == "p"
+    assert decision_from_face(named) == "affirmed"
+    assert face_display_state(named) == face_display_state({"face_id": "f", "person_id": "p"})
+    assert decision_from_face({"face_id": "f", "candidate_score": 0.99}) == "undecided"
+    assert face_display_state({"face_id": "f", "candidate_score": 0.99}) != "Confirmed"
+    assert evidence_from_face({"face_id": "f", "status": "low_quality", "similarity": 0.9}) == "none"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (0.8, "similar"),
+        ("0.8", "similar"),
+        (1, "similar"),
+        ("1", "similar"),
+        (0, "detected"),
+        ("0", "detected"),
+        (-0.2, "detected"),
+        ("-0.2", "detected"),
+        (True, "detected"),
+        (False, "detected"),
+        ("", "detected"),
+        (None, "detected"),
+        ("high", "detected"),
+        ("abc", "detected"),
+    ],
+)
+def test_caller_similarity_type_boundary(value, expected):
+    face = {"face_id": "f", "bbox_x1": 1, "similarity": value}
+    assert evidence_from_face(face) == expected
+    assert face == {"face_id": "f", "bbox_x1": 1, "similarity": value}
+    assert "person_id" not in face
+
+
+def test_caller_similarity_does_not_decide_identity():
+    clustered = {"face_id": "f", "cluster_id": "c9", "similarity": 0.8}
+    assert evidence_from_face(clustered) == "clustered"
+    assert clustered["cluster_id"] == "c9"
+    assert "person_id" not in clustered
+    assert decision_from_face(clustered) == "undecided"
+
+    only_person = {"face_id": "f", "person_id": "p1"}
+    assert evidence_from_face(only_person) == "detected"
+    assert only_person == {"face_id": "f", "person_id": "p1"}
+
+    ignored = {"face_id": "f", "similarity": 0.8}
+    assert evidence_from_face(ignored) == "similar"
+    assert decision_from_face(ignored, policy_action="ignore") == "deferred"
+    assert face_display_state(ignored, policy_action="ignore") == "Ignored"
+
+    ruled = {"face_id": "f", "candidate_score": "0.8"}
+    assert evidence_from_face(ruled) == "similar"
+    assert decision_from_face(ruled, policy_action="rule_out") == "rejected"
+    assert face_display_state(ruled, policy_action="rule_out") == "Ruled out"
+    assert "person_id" not in ruled
+    assert face_display_state(ruled) == "Possible"
+
+
 def test_processing_glyph_shape_not_hue():
     assert processing_glyph("queued") == "hollow-ring"
     assert processing_glyph("progress") == "partial-ring-sweep"

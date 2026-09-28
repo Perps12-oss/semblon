@@ -118,13 +118,44 @@ def processing_glyph(kind: str, *, paused: bool = False) -> ProcessingGlyph:
     return PROCESSING_GLYPH.get(kind, "partial-ring-sweep")
 
 
+_CALLER_SIMILARITY_KEYS = ("similarity", "similar_score", "candidate_score")
+
+
+def _caller_supplied_similarity(face: dict) -> bool:
+    """True when the caller attached a positive numeric score.
+
+    Non-numeric values, booleans, zero, and negatives are not evidence.
+    This does not invent a score and does not read or write ``person_id``.
+    """
+    for key in _CALLER_SIMILARITY_KEYS:
+        val = face.get(key)
+        if val is None or val == "":
+            continue
+        if isinstance(val, bool):
+            continue
+        try:
+            number = float(val)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            return True
+    return False
+
+
 def evidence_from_face(face: dict) -> Evidence:
-    """Evidence axis only — never treat person_id as evidence chrome."""
+    """Evidence axis only — never treat person_id as evidence chrome.
+
+    Optional caller-supplied keys (``similarity``, ``similar_score``,
+    ``candidate_score``) map to **similar** when numeric and ``> 0``, and only
+    when the face is not already clustered. Similarity is evidence, not a person.
+    """
     status = str(face.get("status") or "").lower()
     if status and status not in {"ok", ""}:
         return "none"
     if face.get("cluster_id"):
         return "clustered"
+    if _caller_supplied_similarity(face):
+        return "similar"
     # Detected face observation without a group hypothesis.
     if face.get("face_id") or face.get("bbox") or face.get("bbox_x1") is not None:
         return "detected"
