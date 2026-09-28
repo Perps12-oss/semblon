@@ -180,6 +180,7 @@ __all__ = [
     "home_control_states",
     "landing_cta_plan",
     "landing_step_states",
+    "refresh_home_nav",
     "resolve_home_observers",
     "run_home_ui",
 ]
@@ -196,12 +197,25 @@ HOME_OBSERVERS = "face,color,object"
 # Dashboard route id stays "home". The sidebar label is Photos — Home was
 # the redundant item. The photo grid remains route id "photos".
 # Lens is its own section so LIBRARY / PEOPLE / ACTIVITY ids stay put.
-HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
-    ("ASK", (("lens", "Lens"),)),
-    ("LIBRARY", (("home", "Photos"), ("videos", "Videos"))),
-    ("PEOPLE", (("people", "People"), ("unknown", "People to name"))),
-    ("ACTIVITY", (("activity", "Recent activity"),)),
-)
+HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = ()
+
+
+def _product_home_nav() -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
+    """Sidebar destinations from the feature registry (keeps HOME_NAV in sync)."""
+    from semblon.gui_registry import default_registry
+
+    return default_registry().home_nav_tuple()
+
+
+def refresh_home_nav() -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
+    """Rebuild module HOME_NAV from the current default registry."""
+    global HOME_NAV
+    HOME_NAV = _product_home_nav()
+    return HOME_NAV
+
+
+# Seed at import — registry describes today's routes.
+refresh_home_nav()
 
 # Below this window width the rail sits under the top bar, Lens included.
 CONDENSED_BELOW = 1100
@@ -873,6 +887,10 @@ class HomeApp:
             raise RuntimeError("tkinter is required for home-ui")
         self.store = Path(store) if store is not None else default_store_path()
         self.engine = JobEngine(self.store)
+        from semblon.gui_registry import default_registry
+
+        self._registry = default_registry()
+        refresh_home_nav()
         self._busy = False
         self._exit_after_cancel = False
         self._wd = Watchdog(stall_s=120.0)
@@ -972,11 +990,15 @@ class HomeApp:
         self._search_entry.bind("<Return>", lambda _e: self._search_person())
         self.root.bind("<Control-f>", lambda _e: self._search_entry.focus_set())
         self.root.bind("<Control-k>", self._open_command_palette)
-        self.root.bind("<Control-Key-1>", lambda _e: self._navigate("home"))
-        self.root.bind("<Control-Key-2>", lambda _e: self._navigate("videos"))
-        self.root.bind("<Control-Key-3>", lambda _e: self._navigate("people"))
-        self.root.bind("<Control-Key-4>", lambda _e: self._navigate("unknown"))
-        self.root.bind("<Control-Key-5>", lambda _e: self._navigate("activity"))
+        # Number shortcuts come from registry nav contributions (Photos…Activity).
+        for nav in self._registry.nav_contributions():
+            if not nav.shortcut:
+                continue
+            key = nav.shortcut
+            self.root.bind(
+                f"<Control-Key-{key}>",
+                lambda _e, n=nav.route_id: self._navigate(n),
+            )
 
         # ── Job controls (demoted on home — UX Rescue §3) ──
         jobs = ttk.Frame(self._main, padding=(12, 0, 12, 4))
@@ -1000,19 +1022,11 @@ class HomeApp:
         self.btn_canvas = _button(
             jobs, "Canvas", lambda: self._navigate("canvas"), kind="tertiary", icon="images"
         )
-        # Secondary surfaces live under More — not equal-weight job chrome.
+        # Secondary surfaces live under More — fed by registry overflow commands.
         # review.html is SUPERSEDED as UX — Settings → Advanced export only.
         self._overflow = ttk.Menubutton(jobs, text="More")
         self._overflow.pack(side=tk.RIGHT, padx=(SP_8, 0))
-        self._overflow_menu = tk.Menu(self._overflow, tearoff=0)
-        self._overflow_menu.add_command(label="Open Review", command=self._open_review_ui)
-        self._overflow_menu.add_command(label="Live…", command=self._open_live_overlay)
-        self._overflow_menu.add_command(
-            label="Browse photos", command=lambda: self._navigate("photos")
-        )
-        self._overflow_menu.add_command(
-            label="Explore workspace", command=lambda: self._navigate("canvas")
-        )
+        self._rebuild_overflow_menu()
         self._overflow.configure(menu=self._overflow_menu)
 
         # Aliases rebound after sidebar build.
@@ -1119,7 +1133,7 @@ class HomeApp:
             "PEOPLE": "People",
             "ACTIVITY": "Activity",
         }
-        for section, items in HOME_NAV:
+        for section, items in self._registry.nav_sections():
             heading = _section_labels.get(section, section.title())
             if heading:
                 section_lbl = tk.Label(
@@ -1135,7 +1149,8 @@ class HomeApp:
                     padx=(SP_16, SP_8),
                 )
                 self._nav_rows.append(("label", section_lbl))
-            for nav_id, label in items:
+            for nav in items:
+                nav_id, label = nav.route_id, nav.label
                 icon_name = "images" if nav_id == "home" else NAV_ICONS.get(nav_id)
                 btn = _button(
                     self._shell,
@@ -1197,6 +1212,7 @@ class HomeApp:
             on_select=self._on_canvas_select,
             show_chrome=True,
             on_image_open=self._on_image_open,
+            job_engine=self.engine,
         )
 
         # Inspector — contextual result for the current interaction.
@@ -1309,6 +1325,25 @@ class HomeApp:
             actions, "Ask with Lens", self._ask_with_lens, kind="secondary", icon="lens"
         )
         self.btn_ask_lens.pack(fill=tk.X, pady=1)
+        # Registry contextual commands (person.history, identify, …) — same widgets
+        # pattern; labels/enablement come from GuiCommand metadata.
+        self._registry_cmd_buttons: dict[str, object] = {}
+        for cmd in self._registry.commands(surface="inspector"):
+            if cmd.id in {
+                "lens.select_region",
+                "lens.ask",
+                "lens.find_similar",
+            }:
+                # Already packed as Select a region / Ask with Lens above.
+                continue
+            btn = _button(
+                actions,
+                cmd.label,
+                lambda c=cmd: self._run_registry_command(c),
+                kind="secondary",
+            )
+            btn.pack(fill=tk.X, pady=1)
+            self._registry_cmd_buttons[cmd.id] = btn
         ttk.Label(insp, textvariable=self._verb_reason, wraplength=260).pack(
             anchor=tk.W, pady=(4, 0)
         )
@@ -1719,91 +1754,178 @@ class HomeApp:
         self._lens.pack(fill=tk.BOTH, expand=True)
         self._refresh_lens_workspace()
 
-    def _build_activity_workspace(self) -> None:
-        """Activity / Memory pane — soft history, not the database model."""
-        from semblon.activity_surface import ACTIVITY_HEADLINE, ACTIVITY_SUBCOPY
-
-        for child in self._activity.winfo_children():
-            child.destroy()
-        shell = ttk.Frame(self._activity, padding=(SP_24, SP_20))
-        shell.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(shell, text=ACTIVITY_HEADLINE, font=H1).pack(anchor=tk.W)
-        ttk.Label(
-            shell,
-            text=ACTIVITY_SUBCOPY,
-            font=BODY,
-            foreground=TEXT_SECONDARY,
-            wraplength=560,
-        ).pack(anchor=tk.W, pady=(SP_4, SP_16))
-
-        actions = ttk.Frame(shell)
-        actions.pack(anchor=tk.W, pady=(0, SP_12))
-        self.btn_activity_review = _button(
-            actions, "Review people", lambda: self._navigate("unknown"), kind="secondary"
-        )
-        self.btn_activity_review.pack(side=tk.LEFT, padx=(0, SP_8))
-        self.btn_activity_people = _button(
-            actions, "Open People", lambda: self._navigate("people"), kind="tertiary"
-        )
-        self.btn_activity_people.pack(side=tk.LEFT)
-
-        self._activity_body = ttk.Frame(shell)
-        self._activity_body.pack(anchor=tk.W, fill=tk.BOTH, expand=True)
-        self._last_activity_view: dict | None = None
-
-    def _refresh_activity_workspace(self, view: dict | None = None) -> None:
-        from semblon.activity_surface import (
-            ACTIVITY_HEADLINE,
-            activity_workspace_sections,
-            format_activity_memory_lines,
-        )
-
-        if view is None:
-            view = self._last_activity_view
-        if view is None:
-            return
-        self._last_activity_view = view
-        body = getattr(self, "_activity_body", None)
-        if body is None:
-            return
-        for child in body.winfo_children():
-            child.destroy()
-
-        sections = activity_workspace_sections(view)
-        for sec in sections:
-            title = str(sec.get("title") or "")
-            ttk.Label(body, text=title, font=CAPTION).pack(
-                anchor=tk.W, pady=(SP_12, SP_4)
+    def _rebuild_overflow_menu(self) -> None:
+        """More menu from registry overflow commands (deduped labels)."""
+        self._overflow_menu = tk.Menu(self._overflow, tearoff=0)
+        seen: set[str] = set()
+        for cmd in self._registry.commands(surface="overflow"):
+            if cmd.label in seen:
+                continue
+            seen.add(cmd.label)
+            self._overflow_menu.add_command(
+                label=cmd.label,
+                command=lambda c=cmd: self._run_registry_command(c),
             )
-            rows = list(sec.get("rows") or [])
-            emptyish = bool(sec.get("empty"))
-            for row in rows:
-                ttk.Label(
-                    body,
-                    text=str(row),
-                    font=BODY,
-                    foreground=TEXT_SECONDARY if emptyish else TEXT_PRIMARY,
-                    wraplength=560,
-                ).pack(anchor=tk.W, pady=(0, SP_4))
+        if hasattr(self, "_overflow"):
+            self._overflow.configure(menu=self._overflow_menu)
 
-        # Soft CTA visibility — Review people only when unnamed groups exist.
-        if hasattr(self, "btn_activity_review"):
-            show_review = bool(view.get("has_unnamed")) and not view.get("empty")
+    def _inspector_context(self) -> dict:
+        return {
+            "selected": list(getattr(self, "_insp_selected", []) or []),
+            "run_id": getattr(self, "_insp_run_id", None),
+            "media_id": getattr(self, "_insp_media_id", None),
+        }
+
+    def _run_registry_command(self, cmd) -> None:
+        cmd.execute(self, self._inspector_context())
+
+    def _sync_registry_inspector_commands(self) -> None:
+        ctx = self._inspector_context()
+        for cmd_id, btn in list(getattr(self, "_registry_cmd_buttons", {}).items()):
+            cmd = self._registry.get_command(cmd_id)
+            if cmd is None:
+                continue
+            ok = cmd.is_available(self, ctx)
             try:
-                if show_review:
-                    self.btn_activity_review.configure(state=tk.NORMAL)
-                else:
-                    self.btn_activity_review.configure(state=tk.DISABLED)
+                btn.configure(state=tk.NORMAL if ok else tk.DISABLED)
             except tk.TclError:
                 pass
 
-        # Keep inspector aligned with the workspace (soft lines only).
-        self._set_inspector(ACTIVITY_HEADLINE, format_activity_memory_lines(view))
+    def _build_activity_workspace(self) -> None:
+        """Activity / Memory pane — soft history, not the database model."""
+        from semblon.features.activity_feature import build_activity_workspace
+
+        build_activity_workspace(self)
+
+    def _refresh_activity_workspace(self, view: dict | None = None) -> None:
+        from semblon.features.activity_feature import refresh_activity_workspace
+
+        refresh_activity_workspace(self, view)
 
     def _show_activity_workspace(self) -> None:
         self._hide_workspace_panes()
         self._set_inspector_collapsed(False)
         self._activity.pack(fill=tk.BOTH, expand=True)
+
+    def _open_command_palette(self, _event=None):
+        """Jump to a real destination. Not a second navigation model."""
+        if tk is None:
+            return "break"
+        win = tk.Toplevel(self.root)
+        win.title("Semblon")
+        win.transient(self.root)
+        win.geometry("360x320")
+        if apply_theme is not None:
+            apply_theme(win)
+        try:
+            win.configure(bg=BG_CANVAS)
+        except tk.TclError:
+            pass
+        ttk.Label(win, text="Go to", font=H3).pack(anchor=tk.W, padx=SP_16, pady=(SP_16, SP_8))
+        filter_var = tk.StringVar()
+        entry = ttk.Entry(win, textvariable=filter_var)
+        entry.pack(fill=tk.X, padx=SP_16, pady=(0, SP_8))
+        box = tk.Listbox(win, exportselection=False, activestyle="none")
+        if style_listbox is not None:
+            style_listbox(box)
+        box.pack(fill=tk.BOTH, expand=True, padx=SP_16, pady=(0, SP_16))
+
+        # Destinations from nav + Settings + palette commands (dedupe by label).
+        rows: list[tuple[str, str, object | None]] = []
+        for nav in self._registry.nav_contributions():
+            rows.append((nav.label, "nav", nav.route_id))
+        rows.append(("Settings", "nav", "settings"))
+        seen_labels = {r[0] for r in rows}
+        for cmd in self._registry.commands(surface="palette"):
+            if cmd.label in seen_labels:
+                continue
+            if cmd.requires_context and not cmd.is_available(self, self._inspector_context()):
+                continue
+            seen_labels.add(cmd.label)
+            rows.append((cmd.label, "cmd", cmd))
+
+        def _repaint(*_a) -> None:
+            q = (filter_var.get() or "").strip().lower()
+            box.delete(0, tk.END)
+            box._palette_rows = []  # type: ignore[attr-defined]
+            for label, kind, payload in rows:
+                if q and q not in label.lower():
+                    continue
+                box.insert(tk.END, label)
+                box._palette_rows.append((kind, payload))  # type: ignore[attr-defined]
+
+        def _go(_e=None) -> None:
+            sel = box.curselection()
+            if not sel:
+                return
+            kind, payload = box._palette_rows[sel[0]]  # type: ignore[attr-defined]
+            win.destroy()
+            if kind == "nav":
+                if payload == "settings":
+                    self._show_settings()
+                else:
+                    self._navigate(str(payload))
+            else:
+                self._run_registry_command(payload)
+
+        filter_var.trace_add("write", lambda *_a: _repaint())
+        _repaint()
+        box.bind("<Return>", _go)
+        box.bind("<Double-Button-1>", _go)
+        box.bind("<Escape>", lambda _e: win.destroy())
+        entry.bind("<Return>", _go)
+        entry.bind("<Escape>", lambda _e: win.destroy())
+        entry.focus_set()
+        return "break"
+
+    def _navigate(self, nav_id: str) -> None:
+        self._nav = nav_id
+        self._mark_nav_active(nav_id)
+        self._refresh_library_chrome()
+        page = self._registry.resolve_route(nav_id)
+        if page is not None:
+            page(self)
+            self._sync_chrome_for_route()
+            self._refresh_job_controls()
+            return
+        # Compatibility fallback for any route not yet registered.
+        if nav_id == "home":
+            self._show_home_landing()
+        elif nav_id == "canvas":
+            self._show_workspace_canvas(reload=True, source_types=None)
+            self._set_inspector("Canvas", list(INSPECTOR_EMPTY))
+        elif nav_id == "photos":
+            self._show_workspace_canvas(reload=True, source_types=("folder",))
+            lib = format_library_lines(self.store, source_type="folder")
+            if not library_has_media_lines(lib):
+                self._set_inspector("Photos", photos_empty().as_lines())
+        elif nav_id == "videos":
+            self._show_workspace_canvas(reload=True, source_types=("video",))
+            lib = format_library_lines(self.store, source_type="video")
+            if not library_has_media_lines(lib):
+                self._set_inspector("Videos", videos_empty().as_lines())
+        elif nav_id == "lens":
+            self._open_lens()
+            self._refresh_job_controls()
+            return
+        elif nav_id == "people":
+            self._welcome_title.set("People")
+            self._show_workspace_welcome()
+            self._show_people()
+        elif nav_id == "unknown":
+            self._welcome_title.set("People to name")
+            self._show_workspace_welcome()
+            self._show_unknown()
+        elif nav_id == "activity":
+            self._show_activity()
+        self._sync_chrome_for_route()
+        self._refresh_job_controls()
+
+    def _show_activity(self) -> None:
+        """Canonical Activity / Memory workspace — soft history, not schema dump."""
+        from semblon.features.activity_feature import show_activity_page
+
+        show_activity_page(self)
 
     def _on_inspector_sel_change(self) -> None:
         idxs = list(self._sel_list.curselection())
@@ -1854,6 +1976,7 @@ class HomeApp:
                 reasons.append(f"Name: {name_st['reason']}")
         self._sync_name_save_button()
         self._verb_reason.set(" · ".join(reasons[:3]) if reasons else "")
+        self._sync_registry_inspector_commands()
 
     def _sync_name_save_button(self) -> None:
         """Name this person is enabled when a nameable selection has typed text."""
@@ -3039,52 +3162,6 @@ class HomeApp:
         self._navigate(self._nav)
         self._refresh_job_controls()
 
-    def _open_command_palette(self, _event=None):
-        """Jump to a real destination. Not a second navigation model."""
-        if tk is None:
-            return "break"
-        win = tk.Toplevel(self.root)
-        win.title("Semblon")
-        win.transient(self.root)
-        win.geometry("360x280")
-        if apply_theme is not None:
-            apply_theme(win)
-        try:
-            win.configure(bg=BG_CANVAS)
-        except tk.TclError:
-            pass
-        ttk.Label(win, text="Go to", font=H3).pack(anchor=tk.W, padx=SP_16, pady=(SP_16, SP_8))
-        box = tk.Listbox(win, exportselection=False, activestyle="none")
-        if style_listbox is not None:
-            style_listbox(box)
-        commands: list[tuple[str, str]] = []
-        for _section, items in HOME_NAV:
-            for nav_id, label in items:
-                commands.append((label, nav_id))
-        commands.append(("Settings", "settings"))
-        for label, _nav in commands:
-            box.insert(tk.END, label)
-        box.pack(fill=tk.BOTH, expand=True, padx=SP_16, pady=(0, SP_16))
-
-        def _go(_e=None) -> None:
-            sel = box.curselection()
-            if not sel:
-                return
-            _label, nav_id = commands[sel[0]]
-            win.destroy()
-            if nav_id == "settings":
-                self._show_settings()
-            else:
-                self._navigate(nav_id)
-
-        box.bind("<Return>", _go)
-        box.bind("<Double-Button-1>", _go)
-        box.bind("<Escape>", lambda _e: win.destroy())
-        if commands:
-            box.selection_set(0)
-            box.focus_set()
-        return "break"
-
     def _fill_result_card(self) -> None:
         kind = self._completion_kind
         data = self._completion or {}
@@ -3322,64 +3399,6 @@ class HomeApp:
         self._hide_workspace_panes()
         self._set_inspector_collapsed(False)
         self._welcome.pack(fill=tk.BOTH, expand=True, anchor=tk.NW)
-
-    def _navigate(self, nav_id: str) -> None:
-        self._nav = nav_id
-        self._mark_nav_active(nav_id)
-        self._refresh_library_chrome()
-        if nav_id == "home":
-            self._show_home_landing()
-            self._sync_chrome_for_route()
-            self._refresh_job_controls()
-            return
-        if nav_id == "canvas":
-            self._show_workspace_canvas(reload=True, source_types=None)
-            self._set_inspector("Canvas", list(INSPECTOR_EMPTY))
-            self._sync_chrome_for_route()
-            self._refresh_job_controls()
-            return
-        if nav_id == "photos":
-            # Stills are typically source_type=folder; exclude video assets.
-            # Canvas reload emits soft inspector via on_select — do not dump library log rows.
-            self._show_workspace_canvas(reload=True, source_types=("folder",))
-            lib = format_library_lines(self.store, source_type="folder")
-            if not library_has_media_lines(lib):
-                self._set_inspector("Photos", photos_empty().as_lines())
-            # else: leave soft canvas inspector (photo / tip) in place
-            self._sync_chrome_for_route()
-            self._refresh_job_controls()
-            return
-        if nav_id == "videos":
-            self._show_workspace_canvas(reload=True, source_types=("video",))
-            lib = format_library_lines(self.store, source_type="video")
-            if not library_has_media_lines(lib):
-                self._set_inspector("Videos", videos_empty().as_lines())
-            self._sync_chrome_for_route()
-            self._refresh_job_controls()
-            return
-        if nav_id == "lens":
-            self._open_lens()
-            self._refresh_job_controls()
-            return
-        if nav_id == "people":
-            self._welcome_title.set("People")
-            self._show_workspace_welcome()
-            self._show_people()
-            self._sync_chrome_for_route()
-            self._refresh_job_controls()
-            return
-        if nav_id == "unknown":
-            self._welcome_title.set("People to name")
-            self._show_workspace_welcome()
-            self._show_unknown()
-            self._sync_chrome_for_route()
-            self._refresh_job_controls()
-            return
-        if nav_id == "activity":
-            self._show_activity()
-            self._sync_chrome_for_route()
-            self._refresh_job_controls()
-            return
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -3944,47 +3963,6 @@ class HomeApp:
         from semblon.activity_surface import _processing_stats
 
         return _processing_stats(self.store, run_id)
-
-    def _show_activity(self) -> None:
-        """Canonical Activity / Memory workspace — soft history, not schema dump."""
-        from semblon.activity_surface import ACTIVITY_HEADLINE, load_activity_memory
-        from semblon.process import latest_run_id
-
-        title = ACTIVITY_HEADLINE
-        self._show_activity_workspace()
-
-        if not self.store.is_file():
-            self._refresh_activity_workspace(load_activity_memory(self.store, None))
-            return
-
-        rid = latest_run_id(self.store)
-        if not rid:
-            self._refresh_activity_workspace(load_activity_memory(self.store, None))
-            return
-
-        try:
-            from semblon.application import activity_memory
-
-            view = activity_memory(self.store, rid)
-        except (sqlite3.DatabaseError, OSError, ValueError) as e:
-            if is_expected_condition(e):
-                self._refresh_activity_workspace(
-                    {
-                        "empty": True,
-                        "partial": False,
-                        "processing": None,
-                        "together_lines": [],
-                        "moment_lines": [],
-                        "has_unnamed": False,
-                        "empty_state": activity_empty(),
-                    }
-                )
-            else:
-                self._show_failure(e)
-            return
-
-        self._refresh_activity_workspace(view)
-        self._inspector_title.set(title)
 
     def _open_canvas(self) -> None:
         """First-class canvas is the Home workspace; keep Toplevel as escape hatch."""

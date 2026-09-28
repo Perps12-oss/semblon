@@ -1,0 +1,557 @@
+"""Product GUI features registered for Tk Home.
+
+Registration is the seam for new destinations and commands. Shell loops
+this registry; it must not grow a per-feature if/elif for every page.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from semblon.features.activity_feature import activity_feature
+from semblon.gui_registry import Feature, FeatureRegistry, GuiCommand, NavContribution
+
+__all__ = ["build_product_registry", "register_demo_feature"]
+
+
+def _page_home(host: Any) -> None:
+    host._show_home_landing()
+
+
+def _page_photos(host: Any) -> None:
+    from semblon.empty_states import library_has_media_lines, photos_empty
+    from semblon.home_ui import format_library_lines
+
+    host._show_workspace_canvas(reload=True, source_types=("folder",))
+    lib = format_library_lines(host.store, source_type="folder")
+    if not library_has_media_lines(lib):
+        host._set_inspector("Photos", photos_empty().as_lines())
+
+def _page_videos(host: Any) -> None:
+    from semblon.empty_states import library_has_media_lines, videos_empty
+    from semblon.home_ui import format_library_lines
+
+    host._show_workspace_canvas(reload=True, source_types=("video",))
+    lib = format_library_lines(host.store, source_type="video")
+    if not library_has_media_lines(lib):
+        host._set_inspector("Videos", videos_empty().as_lines())
+
+
+def _page_canvas(host: Any) -> None:
+    from semblon.home_ui import INSPECTOR_EMPTY
+
+    host._show_workspace_canvas(reload=True, source_types=None)
+    host._set_inspector("Canvas", list(INSPECTOR_EMPTY))
+
+
+def _page_lens(host: Any) -> None:
+    host._open_lens()
+
+
+def _page_people(host: Any) -> None:
+    host._welcome_title.set("People")
+    host._show_workspace_welcome()
+    host._show_people()
+
+
+def _page_unknown(host: Any) -> None:
+    host._welcome_title.set("People to name")
+    host._show_workspace_welcome()
+    host._show_unknown()
+
+
+def _page_settings(host: Any) -> None:
+    host._show_settings()
+
+
+# --- commands (Phase 5–7) -------------------------------------------------
+
+
+def _ctx_selected(context: Any) -> list[dict]:
+    if context is None:
+        return []
+    if isinstance(context, dict):
+        return list(context.get("selected") or [])
+    return list(getattr(context, "selected", None) or [])
+
+
+def _person_from_context(context: Any) -> dict | None:
+    for it in _ctx_selected(context):
+        if it.get("kind") == "person" and (it.get("person_id") or it.get("name")):
+            return it
+    return None
+
+
+def _face_from_context(context: Any) -> dict | None:
+    for it in _ctx_selected(context):
+        if it.get("kind") in {"face", "unassigned"} and it.get("face_id"):
+            return it
+    return None
+
+
+def _cmd_browse_photos(host: Any, _ctx: Any = None) -> None:
+    host._navigate("photos")
+
+
+def _cmd_explore_canvas(host: Any, _ctx: Any = None) -> None:
+    host._navigate("canvas")
+
+
+def _cmd_open_review(host: Any, _ctx: Any = None) -> None:
+    host._open_review_ui()
+
+
+def _cmd_live(host: Any, _ctx: Any = None) -> None:
+    host._open_live_overlay()
+
+
+def _cmd_open_settings(host: Any, _ctx: Any = None) -> None:
+    host._show_settings()
+
+
+def _cmd_select_region(host: Any, _ctx: Any = None) -> None:
+    host._open_region_select()
+
+
+def _cmd_ask_lens(host: Any, _ctx: Any = None) -> None:
+    host._ask_with_lens()
+
+
+def _cmd_lens_find_similar(host: Any, _ctx: Any = None) -> None:
+    """Region similarity — product mouse-up path (non-face appearance)."""
+    host._open_region_select()
+
+
+def _person_history_available(host: Any, context: Any = None) -> bool:
+    return _person_from_context(context) is not None
+
+
+def _person_history_reason(host: Any, context: Any = None) -> str:
+    if _person_from_context(context) is None:
+        return "Select one named person"
+    return ""
+
+
+def _cmd_person_history(host: Any, context: Any = None) -> None:
+    from semblon.memory import history
+
+    person = _person_from_context(context)
+    if person is None:
+        host._set_inspector("History", ["Select one named person."])
+        return
+    key = str(person.get("name") or person.get("display_name") or person.get("person_id") or "").strip()
+    if not key:
+        host._set_inspector("History", ["Select one named person."])
+        return
+    try:
+        rec = history(Path(host.store), person=key)
+    except Exception as e:  # noqa: BLE001 — surface soft failure
+        host._set_inspector("History", [f"Could not load history: {e}"])
+        return
+    lines: list[str] = [str(rec.get("display_name") or key)]
+    for it in list(rec.get("items") or [])[:16]:
+        when = it.get("when") or ""
+        folder = it.get("folder") or ""
+        bit = " · ".join(p for p in (when, folder) if p)
+        if bit:
+            lines.append(bit)
+    if len(lines) == 1:
+        lines.append("No dates or places recorded for this person yet.")
+    host._set_inspector("History", lines)
+
+
+def _identify_available(host: Any, context: Any = None) -> bool:
+    return _face_from_context(context) is not None and Path(host.store).is_file()
+
+
+def _identify_reason(host: Any, context: Any = None) -> str:
+    if _face_from_context(context) is None:
+        return "Select a face first"
+    if not Path(host.store).is_file():
+        return "Add photos first"
+    return ""
+
+
+def _cmd_identify_face(host: Any, context: Any = None) -> None:
+    """Ask whether a selected face matches someone already named."""
+    from semblon.identify import IdentifyError, identify_face
+    from semblon.process import latest_run_id
+
+    face = _face_from_context(context)
+    if face is None:
+        host._set_inspector("Identify", ["Select a face first."])
+        return
+    fid = str(face.get("face_id") or "")
+    rid = getattr(host, "_insp_run_id", None) or latest_run_id(host.store)
+    if not rid:
+        host._set_inspector("Identify", ["Nothing processed yet."])
+        return
+    try:
+        rec = identify_face(Path(host.store), rid, fid, record=False)
+    except IdentifyError as e:
+        host._set_inspector("Identify", [str(e)])
+        return
+    except Exception as e:  # noqa: BLE001
+        host._set_inspector("Identify", [f"Could not identify: {e}"])
+        return
+    lines = ["Is this someone you already named?"]
+    decision = rec.get("decision")
+    name = rec.get("display_name")
+    score = rec.get("score_top1")
+    if name and decision in {"accept", "ACCEPT", "match", None} and score is not None:
+        try:
+            lines.append(f"{name} ({float(score):.2f})")
+        except (TypeError, ValueError):
+            lines.append(str(name))
+    elif name:
+        lines.append(str(name))
+        if score is not None:
+            lines.append(f"score {score}")
+    else:
+        lines.append("No named match yet. Unknown is valid.")
+    if decision:
+        lines.append(f"Result: {decision}")
+    host._set_inspector("Identify", lines)
+
+
+def _cmd_search_text_hint(host: Any, _ctx: Any = None) -> None:
+    """Clear OCR / text-search affordance — focuses the search box."""
+    try:
+        host.search_var.set("")
+        if hasattr(host, "_search_entry"):
+            host._search_entry.focus_set()
+        host._set_inspector(
+            "Search",
+            [
+                "Type in the search box to find people by name.",
+                "If no person matches, Semblon also looks for text in photos (OCR) when available.",
+            ],
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _cmd_backup_library(host: Any, _ctx: Any = None) -> None:
+    from tkinter import filedialog, messagebox
+
+    from semblon.store import backup_store
+
+    dest = filedialog.askdirectory(parent=host.root, title="Choose backup folder")
+    if not dest:
+        return
+    try:
+        out = Path(dest) / "semblon-backup.sqlite"
+        rec = backup_store(Path(host.store), out)
+        messagebox.showinfo(
+            "Semblon",
+            f"Library backup saved.\n{rec.get('out') or out}",
+            parent=host.root,
+        )
+    except Exception as e:  # noqa: BLE001
+        messagebox.showerror("Semblon", f"Backup failed: {e}", parent=host.root)
+
+
+def _cmd_watch_folder(host: Any, _ctx: Any = None) -> None:
+    """Expose folder update: GUI starts JobEngine ingest; continuous watch stays CLI."""
+    from tkinter import filedialog, messagebox
+
+    folder = filedialog.askdirectory(parent=host.root, title="Choose folder to add or update")
+    if not folder:
+        return
+    try:
+        if host.engine.busy:
+            messagebox.showinfo(
+                "Semblon",
+                "Ingest already running. Continuous watch: semblon watch",
+                parent=host.root,
+            )
+            return
+        # Same door as Add a photo folder.
+        host._start_process(Path(folder), resume=False)
+        messagebox.showinfo(
+            "Semblon",
+            "Semblon is scanning that folder.\n"
+            "For continuous watch after this scan, use: semblon watch",
+            parent=host.root,
+        )
+    except Exception as e:  # noqa: BLE001
+        messagebox.showerror("Semblon", str(e), parent=host.root)
+
+
+def _cmd_export_person_views(host: Any, _ctx: Any = None) -> None:
+    from tkinter import filedialog, messagebox
+
+    from semblon.export import export_views
+    from semblon.process import latest_run_id
+
+    dest = filedialog.askdirectory(parent=host.root, title="Export person folders")
+    if not dest:
+        return
+    rid = latest_run_id(host.store)
+    if not rid:
+        messagebox.showinfo("Semblon", "Nothing to export yet.", parent=host.root)
+        return
+    try:
+        rec = export_views(Path(host.store), rid, Path(dest))
+        messagebox.showinfo(
+            "Semblon",
+            f"Person folders written.\nOriginals stay put.\n{rec.get('views') or dest}",
+            parent=host.root,
+        )
+    except Exception as e:  # noqa: BLE001
+        messagebox.showerror("Semblon", f"Export failed: {e}", parent=host.root)
+
+
+def build_product_registry() -> FeatureRegistry:
+    reg = FeatureRegistry()
+
+    reg.register(
+        Feature(
+            id="lens",
+            label="Lens",
+            nav=NavContribution(
+                section="ASK", route_id="lens", label="Lens", shortcut=None, order=0
+            ),
+            route_id="lens",
+            page=_page_lens,
+            commands=(
+                GuiCommand(
+                    id="lens.select_region",
+                    label="Select a region",
+                    run=_cmd_select_region,
+                    surfaces=frozenset({"inspector", "palette", "context"}),
+                ),
+                GuiCommand(
+                    id="lens.find_similar",
+                    label="Find similar photos",
+                    run=_cmd_lens_find_similar,
+                    surfaces=frozenset({"inspector", "palette", "context"}),
+                ),
+                GuiCommand(
+                    id="lens.ask",
+                    label="Ask with Lens",
+                    run=_cmd_ask_lens,
+                    surfaces=frozenset({"inspector", "palette", "context"}),
+                ),
+                GuiCommand(
+                    id="lens.search_text",
+                    label="Search text in photos",
+                    run=_cmd_search_text_hint,
+                    surfaces=frozenset({"palette", "overflow"}),
+                ),
+            ),
+        )
+    )
+
+    reg.register(
+        Feature(
+            id="library_home",
+            label="Photos",
+            nav=NavContribution(
+                section="LIBRARY",
+                route_id="home",
+                label="Photos",
+                shortcut="1",
+                order=0,
+            ),
+            route_id="home",
+            page=_page_home,
+            commands=(
+                GuiCommand(
+                    id="library.browse_photos",
+                    label="Browse photos",
+                    run=_cmd_browse_photos,
+                    surfaces=frozenset({"overflow", "palette"}),
+                ),
+                GuiCommand(
+                    id="library.backup",
+                    label="Back up library…",
+                    run=_cmd_backup_library,
+                    surfaces=frozenset({"overflow", "palette"}),
+                ),
+                GuiCommand(
+                    id="library.watch_folder",
+                    label="Watch a folder…",
+                    run=_cmd_watch_folder,
+                    surfaces=frozenset({"overflow", "palette"}),
+                ),
+            ),
+        )
+    )
+
+    reg.register(
+        Feature(
+            id="videos",
+            label="Videos",
+            nav=NavContribution(
+                section="LIBRARY",
+                route_id="videos",
+                label="Videos",
+                shortcut="2",
+                order=1,
+            ),
+            route_id="videos",
+            page=_page_videos,
+        )
+    )
+
+    reg.register(
+        Feature(
+            id="photos_grid",
+            label="Browse photos",
+            route_id="photos",
+            page=_page_photos,
+            commands=(
+                GuiCommand(
+                    id="library.export_person_folders",
+                    label="Export person folders…",
+                    run=_cmd_export_person_views,
+                    surfaces=frozenset({"overflow", "palette"}),
+                ),
+            ),
+        )
+    )
+
+    reg.register(
+        Feature(
+            id="canvas",
+            label="Explore workspace",
+            route_id="canvas",
+            page=_page_canvas,
+            commands=(
+                GuiCommand(
+                    id="canvas.explore",
+                    label="Explore workspace",
+                    run=_cmd_explore_canvas,
+                    surfaces=frozenset({"overflow", "palette"}),
+                ),
+            ),
+        )
+    )
+
+    reg.register(
+        Feature(
+            id="people",
+            label="People",
+            nav=NavContribution(
+                section="PEOPLE",
+                route_id="people",
+                label="People",
+                shortcut="3",
+                order=0,
+            ),
+            route_id="people",
+            page=_page_people,
+            commands=(
+                GuiCommand(
+                    id="person.history",
+                    label="Show history",
+                    run=_cmd_person_history,
+                    surfaces=frozenset({"inspector", "palette", "context"}),
+                    available=_person_history_available,
+                    reason=_person_history_reason,
+                    requires_context=True,
+                ),
+                GuiCommand(
+                    id="person.identify_face",
+                    label="Is this someone I named?",
+                    run=_cmd_identify_face,
+                    surfaces=frozenset({"inspector", "palette", "context"}),
+                    available=_identify_available,
+                    reason=_identify_reason,
+                    requires_context=True,
+                ),
+            ),
+        )
+    )
+
+    reg.register(
+        Feature(
+            id="unknown",
+            label="People to name",
+            nav=NavContribution(
+                section="PEOPLE",
+                route_id="unknown",
+                label="People to name",
+                shortcut="4",
+                order=1,
+            ),
+            route_id="unknown",
+            page=_page_unknown,
+        )
+    )
+
+    reg.register(activity_feature())
+
+    reg.register(
+        Feature(
+            id="settings",
+            label="Settings",
+            route_id="settings",
+            page=_page_settings,
+            commands=(
+                GuiCommand(
+                    id="shell.open_settings",
+                    label="Settings",
+                    run=_cmd_open_settings,
+                    surfaces=frozenset({"palette"}),
+                ),
+                GuiCommand(
+                    id="shell.open_review",
+                    label="Open Review",
+                    run=_cmd_open_review,
+                    surfaces=frozenset({"overflow", "palette"}),
+                ),
+                GuiCommand(
+                    id="shell.live",
+                    label="Live…",
+                    run=_cmd_live,
+                    surfaces=frozenset({"overflow", "palette"}),
+                ),
+            ),
+        )
+    )
+
+    return reg
+
+
+def register_demo_feature(registry: FeatureRegistry) -> Feature:
+    """Acceptance: register without editing HomeApp / HOME_NAV / menus."""
+
+    def _demo_page(host: Any) -> None:
+        host._welcome_title.set("Registry demo")
+        host._show_workspace_welcome()
+        host._set_inspector(
+            "Registry demo",
+            [
+                "This page was registered without editing HomeApp,",
+                "HOME_NAV, _navigate, More, Ctrl+K, or the inspector.",
+            ],
+        )
+
+    def _demo_ping(host: Any, _ctx: Any = None) -> None:
+        host._set_inspector("Registry demo", ["Demo command ran."])
+
+    feat = Feature(
+        id="registry_demo",
+        label="Registry demo",
+        nav=NavContribution(
+            section="ACTIVITY",
+            route_id="registry_demo",
+            label="Registry demo",
+            order=99,
+        ),
+        route_id="registry_demo",
+        page=_demo_page,
+        commands=(
+            GuiCommand(
+                id="registry_demo.ping",
+                label="Demo ping",
+                run=_demo_ping,
+                surfaces=frozenset({"palette", "overflow", "inspector"}),
+            ),
+        ),
+    )
+    registry.register(feat)
+    return feat

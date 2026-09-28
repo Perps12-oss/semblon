@@ -1,9 +1,10 @@
 """Application job boundary.
 
-UI  →  JobEngine  →  process_folder / review.py
+UI  →  JobEngine  →  process_folder / review.py / visual_analyze
 
-One ingest job at a time. A second submit is JobBusy — not an application lock.
-Review mutations stay on review.py and wait on the existing writer.
+One ingest job at a time. A second ingest submit is JobBusy — not an application lock.
+Visual analysis is a separate cooperative slot on the same engine (not a second
+job system). Review mutations stay on review.py and wait on the existing writer.
 Does not write faces.person_id. Does not touch identity compare.
 
 Pause is cooperative at the same boundaries as cancel (between files / stage
@@ -22,6 +23,7 @@ from semblon.progress import ProgressEvent
 
 KIND_INGEST = "ingest"
 KIND_VISUAL = "visual"
+KIND_VISUAL_ANALYZE = "visual_analyze"
 
 STATE_IDLE = "idle"
 STATE_RUNNING = "running"
@@ -30,6 +32,7 @@ STATE_CANCELLING = "cancelling"
 
 OnEvent = Callable[[ProgressEvent], None]
 OnDone = Callable[["JobResult"], None]
+OnVisualDone = Callable[["VisualJobResult"], None]
 
 
 class JobBusy(RuntimeError):
@@ -53,8 +56,23 @@ class JobResult:
     error: BaseException | None = None
 
 
+@dataclass(frozen=True)
+class VisualJobHandle:
+    kind: str
+    media_id: str
+    store: Path
+
+
+@dataclass(frozen=True)
+class VisualJobResult:
+    status: str
+    media_id: str
+    result: dict | None = None
+    error: BaseException | None = None
+
+
 class JobEngine:
-    """Single door for ingest. UIs submit; they do not own the worker."""
+    """Single door for ingest + visual analysis. UIs submit; they do not own workers."""
 
     def __init__(self, store: Path):
         self.store = Path(store)
@@ -64,6 +82,10 @@ class JobEngine:
         self._thread: threading.Thread | None = None
         self._current: JobHandle | None = None
         self._cancelling = False
+        self._visual_lock = threading.Lock()
+        self._visual_thread: threading.Thread | None = None
+        self._visual_current: VisualJobHandle | None = None
+        self._visual_cancel = threading.Event()
 
     @property
     def ingest_busy(self) -> bool:
@@ -75,6 +97,11 @@ class JobEngine:
     def busy(self) -> bool:
         with self._lock:
             return self._current is not None
+
+    @property
+    def visual_busy(self) -> bool:
+        with self._visual_lock:
+            return self._visual_current is not None
 
     @property
     def paused(self) -> bool:
@@ -158,7 +185,7 @@ class JobEngine:
         view_w: int | None = None,
         view_h: int | None = None,
     ) -> JobHandle:
-        """Background visual analysis. Same single-job door as ingest. Not pointer-time."""
+        """Background visual-region analysis. Same door as ingest. Not pointer-time."""
         handle = JobHandle(
             kind=KIND_VISUAL,
             folder=self.store,
@@ -174,17 +201,17 @@ class JobEngine:
             self._cancelling = False
             self._current = handle
         thread = threading.Thread(
-            target=self._run_visual,
+            target=self._run_visual_regions,
             args=(handle, image, run_id, on_event, on_done, nouns, score_fn, config, color, view_w, view_h),
             daemon=True,
-            name="semblon-job-visual",
+            name="semblon-job-visual-regions",
         )
         with self._lock:
             self._thread = thread
         thread.start()
         return handle
 
-    def _run_visual(
+    def _run_visual_regions(
         self,
         handle: JobHandle,
         image,
@@ -288,6 +315,103 @@ class JobEngine:
             self._release(handle)
             if on_done is not None:
                 on_done(result)
+
+    def submit_visual_analyze(
+        self,
+        *,
+        media_id: str,
+        image,
+        existing_faces: list | None = None,
+        observation_id: str | None = None,
+        force: bool = False,
+        on_progress: Callable | None = None,
+        on_done: OnVisualDone | None = None,
+    ) -> VisualJobHandle:
+        """Open-vocabulary visual analysis on a worker thread (non-identity).
+
+        Concurrent with ingest is allowed — visual does not take the ingest lock.
+        A second visual submit for any media is JobBusy until the first finishes.
+        """
+        handle = VisualJobHandle(
+            kind=KIND_VISUAL_ANALYZE, media_id=str(media_id), store=self.store
+        )
+        with self._visual_lock:
+            if self._visual_current is not None:
+                raise JobBusy("visual analysis already running")
+            self._visual_cancel.clear()
+            self._visual_current = handle
+            thread = threading.Thread(
+                target=self._run_visual,
+                args=(
+                    handle,
+                    image,
+                    existing_faces,
+                    observation_id,
+                    force,
+                    on_progress,
+                    on_done,
+                ),
+                daemon=True,
+                name="semblon-job-visual",
+            )
+            self._visual_thread = thread
+        thread.start()
+        return handle
+
+    def cancel_visual(self) -> None:
+        self._visual_cancel.set()
+
+    def _run_visual(
+        self,
+        handle: VisualJobHandle,
+        image,
+        existing_faces: list | None,
+        observation_id: str | None,
+        force: bool,
+        on_progress: Callable | None,
+        on_done: OnVisualDone | None,
+    ) -> None:
+        result = VisualJobResult(status="failed", media_id=handle.media_id)
+        try:
+            if self._visual_cancel.is_set():
+                result = VisualJobResult(status="cancelled", media_id=handle.media_id)
+            else:
+                from semblon.visual_analyze import analyze_and_cache
+
+                def _prog(stage: str, extra: dict):
+                    if self._visual_cancel.is_set():
+                        raise InterruptedError("visual cancelled")
+                    if on_progress is not None:
+                        on_progress(stage, extra)
+
+                rec = analyze_and_cache(
+                    handle.store,
+                    media_id=handle.media_id,
+                    image=image,
+                    observation_id=observation_id,
+                    existing_faces=existing_faces,
+                    force=force,
+                    on_progress=_prog,
+                )
+                result = VisualJobResult(
+                    status="completed", media_id=handle.media_id, result=rec
+                )
+        except InterruptedError as e:
+            result = VisualJobResult(
+                status="cancelled", media_id=handle.media_id, error=e
+            )
+        except Exception as e:  # noqa: BLE001 — surface to the submitting UI
+            result = VisualJobResult(
+                status="failed", media_id=handle.media_id, error=e
+            )
+        finally:
+            with self._visual_lock:
+                if self._visual_current is handle:
+                    self._visual_current = None
+                    self._visual_thread = None
+            if on_done is not None:
+                on_done(result)
+
 
     def run_ingest(
         self,
