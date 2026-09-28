@@ -582,78 +582,16 @@ def _vlm_image_concepts(image: np.ndarray, *, existing: set[str]) -> list[dict]:
 
 
 def _try_sam_point(image: np.ndarray, x: int, y: int) -> dict | None:
-    """SAM2 point prompt when checkpoint is configured; else None."""
-    import os
-    from pathlib import Path
+    """SAM 2 point prompt when the shared runtime is READY. Else None."""
+    from semblon.sam2_runtime import predict_point
 
-    ckpt = os.environ.get("SEMBLON_SAM2_CHECKPOINT")
-    config = os.environ.get("SEMBLON_SAM2_CONFIG")
-    if not ckpt or not config or not Path(ckpt).is_file():
-        return None
-    try:
-        from sam2.build_sam import build_sam2
-        from sam2.sam2_image_predictor import SAM2ImagePredictor
-
-        model = build_sam2(config, ckpt, device="cpu")
-        predictor = SAM2ImagePredictor(model)
-        predictor.set_image(image[:, :, ::-1])
-        masks, scores, _ = predictor.predict(
-            point_coords=np.array([[x, y]], dtype=np.float32),
-            point_labels=np.array([1], dtype=np.int32),
-            multimask_output=False,
-        )
-        mask = np.asarray(masks[0]) > 0
-        if not bool(mask.any()):
-            return None
-        ys, xs = np.where(mask)
-        return {
-            "bbox": (float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)),
-            "label": "region",
-            "label_type": LABEL_TYPE_REGION,
-            "confidence": float(scores[0]) if scores is not None else 0.6,
-            "mask": mask.astype(np.uint8) * 255,
-            "source_provider": "sam2",
-            "payload": {"refine": "sam2_point"},
-        }
-    except Exception:
-        return None
+    return predict_point(image, x, y)
 
 
 def _try_sam_box(image: np.ndarray, bbox: tuple[int, int, int, int]) -> dict | None:
-    import os
-    from pathlib import Path
+    from semblon.sam2_runtime import predict_box
 
-    ckpt = os.environ.get("SEMBLON_SAM2_CHECKPOINT")
-    config = os.environ.get("SEMBLON_SAM2_CONFIG")
-    if not ckpt or not config or not Path(ckpt).is_file():
-        return None
-    try:
-        from sam2.build_sam import build_sam2
-        from sam2.sam2_image_predictor import SAM2ImagePredictor
-
-        model = build_sam2(config, ckpt, device="cpu")
-        predictor = SAM2ImagePredictor(model)
-        predictor.set_image(image[:, :, ::-1])
-        x1, y1, x2, y2 = bbox
-        masks, scores, _ = predictor.predict(
-            box=np.array([x1, y1, x2 - 1, y2 - 1], dtype=np.float32),
-            multimask_output=False,
-        )
-        mask = np.asarray(masks[0]) > 0
-        if not bool(mask.any()):
-            return None
-        ys, xs = np.where(mask)
-        return {
-            "bbox": (float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)),
-            "label": "region",
-            "label_type": LABEL_TYPE_REGION,
-            "confidence": float(scores[0]) if scores is not None else 0.6,
-            "mask": mask.astype(np.uint8) * 255,
-            "source_provider": "sam2",
-            "payload": {"refine": "sam2_box"},
-        }
-    except Exception:
-        return None
+    return predict_box(image, bbox)
 
 
 def default_provider() -> LocalSemanticVisualProvider:

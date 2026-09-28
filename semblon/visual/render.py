@@ -46,10 +46,8 @@ def mask_png(
     alpha: int = 110,
 ) -> bytes:
     """One cached overlay for a region. Empty where the mask is not."""
-    import io
-
+    import cv2
     import numpy as np
-    from PIL import Image
 
     if scale <= 0 or width <= 0 or height <= 0:
         scale = 1.0
@@ -77,6 +75,8 @@ def mask_png(
             img[y1:y2, xa:xb, 1] = color[1]
             img[y1:y2, xa:xb, 2] = color[2]
             img[y1:y2, xa:xb, 3] = alpha
-    buf = io.BytesIO()
-    Image.fromarray(img, "RGBA").save(buf, format="PNG")
-    return buf.getvalue()
+    bgra = np.ascontiguousarray(img[:, :, [2, 1, 0, 3]])
+    ok, encoded = cv2.imencode(".png", bgra)
+    if not ok:
+        raise RuntimeError("mask png encode failed")
+    return encoded.tobytes()

@@ -459,6 +459,7 @@ else:
             self._visual_masks: dict = {}
             self._visual_segments: list = []
             self._visual_analyzing = False
+            self._visual_readiness = "L0"
             self._visual_gen = 0
             self._overlay_photo = None
             self.status = tk.StringVar(value="Photos")
@@ -539,6 +540,13 @@ else:
                     self.reload(store, run_id)
                 except CanvasError as e:
                     self.status.set(str(e))
+
+        def _post_ui(self, fn) -> None:
+            """Schedule UI work on the Tk thread. A missing main loop must not fail analysis."""
+            try:
+                self.frame.after(0, fn)
+            except (tk.TclError, RuntimeError):
+                return
 
         def pack(self, **kwargs):
             return self.frame.pack(**kwargs)
@@ -816,6 +824,7 @@ else:
             self._visual_segments = []
             self._overlay_photo = None
             self._visual_gen += 1
+            self._visual_readiness = "L0"
             mid = media.get("media_id")
             path = media.get("path")
             self._enter_open()
@@ -871,9 +880,17 @@ else:
                 # Best-effort: analyze without cache persistence.
                 self._run_visual_inline(media_id, persist=False)
                 return
+            from semblon.sam2_runtime import discovery_cache_identity
             from semblon.visual_cache import load_analysis
 
-            cached = load_analysis(store, media_id)
+            ident = discovery_cache_identity()
+            cached = load_analysis(
+                store,
+                media_id,
+                provider=ident["provider"],
+                model_id=ident["model_id"],
+                model_version=ident["model_version"],
+            )
             if cached is not None:
                 self._apply_visual_result(cached, media_id=media_id)
                 return
@@ -884,7 +901,26 @@ else:
             ]
             gen = self._visual_gen
             self._visual_analyzing = True
+            self._visual_readiness = "L1"
             self.status.set("Understanding this photo…")
+
+            def _on_progress(stage, extra):
+                partial = (extra or {}).get("partial") if isinstance(extra, dict) else None
+                if stage not in {"L2", "L3", "L4"} or not partial:
+                    if stage == "L1" and gen == self._visual_gen:
+                        self._visual_readiness = "L1"
+                        self._post_ui(lambda: self.status.set("Understanding this photo…"))
+                    return
+
+                def _apply_partial(stage=stage, partial=partial):
+                    if gen != self._visual_gen:
+                        return
+                    self._visual_readiness = stage
+                    self._apply_visual_result(
+                        partial, media_id=media_id, readiness=stage
+                    )
+
+                self._post_ui(_apply_partial)
 
             def _done(job_result):
                 def _apply():
@@ -897,10 +933,7 @@ else:
                         return
                     self._apply_visual_result(job_result.result, media_id=media_id)
 
-                try:
-                    self.frame.after(0, _apply)
-                except tk.TclError:
-                    pass
+                self._post_ui(_apply)
 
             engine = self._job_engine
             if engine is None:
@@ -917,6 +950,7 @@ else:
                             media_id=media_id,
                             image=self._img.copy(),
                             existing_faces=faces,
+                            on_progress=_on_progress,
                         )
                         _done(
                             VisualJobResult(
@@ -942,6 +976,7 @@ else:
                     image=self._img.copy(),
                     existing_faces=faces,
                     on_done=_done,
+                    on_progress=_on_progress,
                 )
             except Exception:
                 self._visual_analyzing = False
@@ -977,14 +1012,30 @@ else:
             except Exception:
                 self._visual_analyzing = False
 
-        def _apply_visual_result(self, rec: dict, *, media_id: str) -> None:
+        def _apply_visual_result(
+            self, rec: dict, *, media_id: str, readiness: str | None = None
+        ) -> None:
             if not self._open or (self._current_media or {}).get("media_id") != media_id:
                 return
             self._visual_segments = list(rec.get("segments") or [])
             self._visual_index = rec.get("index")
             self._visual_masks = dict(rec.get("masks") or {})
-            self._visual_analyzing = False
+            stage = readiness or (rec.get("metrics") or {}).get("readiness") or "L4"
+            self._visual_readiness = stage
+            # L2/L3 are usable while a later stage is still running.
+            self._visual_analyzing = stage in {"L1", "L2", "L3"}
             n = len(self._visual_segments)
+            if stage == "L2":
+                self.status.set("Regions are ready.")
+                self._merge_visual_hit_regions()
+                self._paint_interaction()
+                return
+            if stage == "L3":
+                self.status.set("Naming regions…")
+                self._merge_visual_hit_regions()
+                self._paint_interaction()
+                return
+            self._visual_analyzing = False
             labels = sorted({s.label for s in self._visual_segments if s.label})
             if n:
                 preview = ", ".join(labels[:5])
@@ -1446,7 +1497,11 @@ else:
                 self.show_index(int(sel[0]))
 
         def _on_motion(self, event) -> None:
+            # Pointer movement is a lookup. No SAM2, naming, or image analysis.
             if self._drag_active or self._selected is not None:
+                return
+            if self._visual_analyzing and self._visual_index is None:
+                self.status.set("Understanding this photo…")
                 return
             hit = self._hit_at(event.x, event.y)
             new_id = hit["id"] if hit else None
@@ -1559,6 +1614,9 @@ else:
         def _try_refine_unknown(self, wx: float, wy: float) -> dict | None:
             """Click on unclassified area → interactive segment via provider."""
             if self._img is None or not self._enable_visual:
+                return None
+            if self._visual_analyzing:
+                self.status.set("Understanding this photo…")
                 return None
             from semblon.geometry import widget_point_to_image
             from semblon.semantic_visual import default_provider

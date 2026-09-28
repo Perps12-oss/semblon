@@ -317,6 +317,24 @@ def test_visual_job_finishes_without_a_person(tmp_path):
     assert engine.ingest_busy is False
 
 
+def test_rss_kb_is_absent_without_resource(monkeypatch):
+    import builtins
+    import sys
+
+    from semblon.jobs import _process_rss_kb
+
+    real_import = builtins.__import__
+
+    def blocked(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "resource":
+            raise ModuleNotFoundError("No module named 'resource'")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.delitem(sys.modules, "resource", raising=False)
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    assert _process_rss_kb() is None
+
+
 def test_visual_job_holds_the_single_door(tmp_path, monkeypatch):
     started = threading.Event()
     release = threading.Event()
@@ -454,20 +472,25 @@ def test_weak_similarity_abstains():
     assert region.label is None
 
 
-def test_sam2_failure_is_not_ready(tmp_path):
+def test_sam2_failure_is_not_ready(tmp_path, monkeypatch):
+    import sys
+    import types
+
     clear_sam2_runtime()
     weight = tmp_path / "sam2.1_hiera_tiny.pt"
     weight.write_bytes(b"not-a-checkpoint")
+    monkeypatch.setenv("SEMBLON_SAM2_WEIGHTS", str(weight))
     try:
-        os_environ = __import__("os").environ
-        os_environ["SEMBLON_SAM2_WEIGHTS"] = str(weight)
+        monkeypatch.setitem(sys.modules, "sam2", None)
+        assert sam2_capability()["state"] == "UNAVAILABLE"
+        monkeypatch.setitem(sys.modules, "sam2", types.ModuleType("sam2"))
         assert sam2_capability()["state"] == "READY"
         mark_sam2_failed("RuntimeError: bad checkpoint", str(weight))
         failed = sam2_capability()
         assert failed["state"] == "FAILED"
         assert "bad checkpoint" in failed["note"]
     finally:
-        __import__("os").environ.pop("SEMBLON_SAM2_WEIGHTS", None)
+        monkeypatch.delenv("SEMBLON_SAM2_WEIGHTS", raising=False)
         clear_sam2_runtime()
     assert sam2_capability()["state"] != "READY"
 
@@ -547,10 +570,9 @@ def test_coarse_pass_publishes_before_sam2(tmp_path, monkeypatch):
 def test_mask_overlay_is_empty_off_the_piece():
     png = mask_png({"1": [[0, 2]]}, width=4, height=3, scale=1, alpha=200)
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
-    from PIL import Image
-    import io
+    import cv2
 
-    img = np.asarray(Image.open(io.BytesIO(png)))
-    assert img[1, 0, 3] == 200
+    img = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+    assert img[1, 0].tolist() == [202, 94, 40, 200]
     assert img[0, 0, 3] == 0
     assert img[1, 3, 3] == 0

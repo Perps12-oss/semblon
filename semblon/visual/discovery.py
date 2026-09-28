@@ -15,7 +15,7 @@ import numpy as np
 from semblon.visual.masks import MaskCand, area_of, connected_labels
 from semblon.visual.model import VisualConfig
 
-_SAM2_MISSING = "SAM2 weights are not on this machine. Discovery does not pretend otherwise."
+_SAM2_NOT_INSTALLED = "SAM2 is not installed. Discovery does not pretend otherwise."
 _SAM2_PARAMS = {"box_nms_thresh": 0.95, "points_per_side": 16, "crop_n_layers": 0, "pred_iou_thresh": 0.7, "stability_score_thresh": 0.8}
 _RUNTIME: dict = {"weights": None, "error": None, "generator": None, "config": None}
 
@@ -53,7 +53,7 @@ def sam2_capability() -> dict:
     try:
         import sam2  # type: ignore  # noqa: F401
     except Exception:
-        return {"state": "UNAVAILABLE", "note": _SAM2_MISSING, "params": dict(_SAM2_PARAMS)}
+        return {"state": "UNAVAILABLE", "note": _SAM2_NOT_INSTALLED, "params": dict(_SAM2_PARAMS)}
     weights = sam2_weights_path()
     if weights is None:
         return {

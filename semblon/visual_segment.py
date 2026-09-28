@@ -106,18 +106,74 @@ def bbox_area(bbox: tuple[float, float, float, float]) -> float:
     return max(0.0, x2 - x1) * max(0.0, y2 - y1)
 
 
-def bbox_iou(
+def _intersection_area(
     a: tuple[float, float, float, float], b: tuple[float, float, float, float]
 ) -> float:
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
     ix1, iy1 = max(ax1, bx1), max(ay1, by1)
     ix2, iy2 = min(ax2, bx2), min(ay2, by2)
-    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    return max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+
+
+def bbox_iou(
+    a: tuple[float, float, float, float], b: tuple[float, float, float, float]
+) -> float:
+    inter = _intersection_area(a, b)
     if inter <= 0:
         return 0.0
     union = bbox_area(a) + bbox_area(b) - inter
     return inter / union if union > 0 else 0.0
+
+
+def nested_relation(
+    a: tuple[float, float, float, float], b: tuple[float, float, float, float]
+) -> str:
+    """``a_in_b`` when *a* is a smaller box mostly inside *b*.
+
+    Near-equal boxes are ``overlap``, not containment, so a generic mask can
+    still be deduped without erasing a nested part.
+    """
+    aa, ba = bbox_area(a), bbox_area(b)
+    if aa <= 0 or ba <= 0:
+        return "separate"
+    inter = _intersection_area(a, b)
+    if inter <= 0:
+        return "separate"
+    if aa < ba * 0.90 and inter / aa >= 0.80:
+        return "a_in_b"
+    if ba < aa * 0.90 and inter / ba >= 0.80:
+        return "b_in_a"
+    if inter / (aa + ba - inter) >= 0.15:
+        return "overlap"
+    return "separate"
+
+
+def link_segment_lattice(segments: list[VisualSegment]) -> dict[str, list[tuple[str, str]]]:
+    """Set ``parent_segment_id`` to the smallest container. Record overlaps.
+
+    Does not drop segments. A parent mask does not erase its children.
+    """
+    contains: list[tuple[str, str]] = []
+    overlaps: list[tuple[str, str]] = []
+    for seg in segments:
+        containers: list[VisualSegment] = []
+        for other in segments:
+            if other is seg:
+                continue
+            rel = nested_relation(seg.bbox, other.bbox)
+            if rel == "a_in_b":
+                containers.append(other)
+            elif rel == "overlap":
+                pair = tuple(sorted((seg.segment_id, other.segment_id)))
+                if pair not in overlaps:
+                    overlaps.append(pair)  # type: ignore[arg-type]
+        if not containers:
+            continue
+        parent = min(containers, key=lambda item: bbox_area(item.bbox))
+        seg.parent_segment_id = parent.segment_id
+        contains.append((seg.segment_id, parent.segment_id))
+    return {"contains": contains, "overlaps": overlaps}
 
 
 def apply_salience(
@@ -150,8 +206,21 @@ def apply_salience(
     for seg in kept:
         dup = False
         for other in merged:
+            rel = nested_relation(seg.bbox, other.bbox)
+            if rel in {"a_in_b", "b_in_a"}:
+                if rel == "a_in_b":
+                    seg.parent_segment_id = seg.parent_segment_id or other.segment_id
+                else:
+                    other.parent_segment_id = other.parent_segment_id or seg.segment_id
+                merged.append(seg)
+                dup = True
+                break
             iou = bbox_iou(seg.bbox, other.bbox)
-            same_label = seg.label.strip().lower() == other.label.strip().lower()
+            generic = seg.label.strip().lower() in {"", "region", "unknown"}
+            same_label = (
+                not generic
+                and seg.label.strip().lower() == other.label.strip().lower()
+            )
             if iou >= policy.iou_merge or (
                 same_label and iou >= policy.duplicate_label_iou
             ):
@@ -168,7 +237,21 @@ def apply_salience(
     # Cap count: keep highest confidence, but always keep labelled faces.
     faces = [s for s in merged if s.label_type == LABEL_TYPE_FACE]
     rest = [s for s in merged if s.label_type != LABEL_TYPE_FACE]
-    rest.sort(key=lambda s: (-s.confidence, -s.area_frac))
+
+    def _nested_rank(seg: VisualSegment) -> tuple:
+        child = any(
+            nested_relation(seg.bbox, other.bbox) == "a_in_b"
+            for other in rest
+            if other is not seg
+        )
+        parent = any(
+            nested_relation(other.bbox, seg.bbox) == "a_in_b"
+            for other in rest
+            if other is not seg
+        )
+        return (0 if child or parent else 1, -seg.confidence, -seg.area_frac)
+
+    rest.sort(key=_nested_rank)
     budget = max(0, policy.max_segments - len(faces))
     out = faces + rest[:budget]
     return out
