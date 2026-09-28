@@ -77,6 +77,15 @@ def main(argv: list[str] | None = None) -> int:
     integ.add_argument("--store", required=True, type=Path)
     mods = lab_sub.add_parser("models", help="report local buffalo_l weights (does not download)")
     lab_sub.add_parser("providers", help="list observation providers and availability")
+    vu = lab_sub.add_parser(
+        "visual-understand",
+        help="open-vocabulary visual analysis (non-identity; writes visual_cache sidecars)",
+    )
+    vu.add_argument("--image", required=True, type=Path)
+    vu.add_argument("--store", required=True, type=Path)
+    vu.add_argument("--media-id", default="adhoc")
+    vu.add_argument("--force", action="store_true")
+    vu.add_argument("--json", action="store_true")
     install = lab_sub.add_parser(
         "install",
         help="atomically install a local model file (does not download)",
@@ -623,8 +632,43 @@ def main(argv: list[str] | None = None) -> int:
             "observers": optional_status(),
             "execution": select_execution_provider(prefer_gpu=True),
             "contract": status_report(model_overrides=overrides),
+            "semantic_visual": {
+                "provider": "local_opencv",
+                "open_vocabulary": True,
+                "identity": False,
+                "note": "VisualSegment observation layer; never writes faces.person_id",
+            },
         }
         print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "lab" and args.labcmd == "visual-understand":
+        from semblon.temporal import read_bgr
+        from semblon.visual_analyze import analyze_and_cache
+
+        img = read_bgr(args.image)
+        if img is None:
+            print(f"could not read image: {args.image}", file=sys.stderr)
+            return 2
+        args.store.parent.mkdir(parents=True, exist_ok=True)
+        if not args.store.is_file():
+            args.store.write_bytes(b"")
+        rec = analyze_and_cache(
+            args.store,
+            media_id=str(args.media_id),
+            image=img,
+            force=bool(args.force),
+        )
+        out = {
+            "media_id": args.media_id,
+            "n_segments": len(rec.get("segments") or []),
+            "labels": sorted({s.label for s in (rec.get("segments") or [])}),
+            "metrics": rec.get("metrics") or {},
+            "cache_hit": (rec.get("metrics") or {}).get("cache_hit"),
+        }
+        if args.json:
+            out["segments"] = [s.as_dict() for s in (rec.get("segments") or [])]
+        print(json.dumps(out, indent=2))
         return 0
 
     if args.cmd == "lab" and args.labcmd == "install":
@@ -1124,6 +1168,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "home":
+        # Production path: Lens mouse-up install, then run_home_ui (via product launch).
         from semblon.lens_home import run_product_home
 
         return run_product_home(store=args.store)

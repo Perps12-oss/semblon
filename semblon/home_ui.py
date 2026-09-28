@@ -1196,6 +1196,7 @@ class HomeApp:
             run_id=None,
             on_select=self._on_canvas_select,
             show_chrome=True,
+            job_engine=getattr(self, "engine", None),
         )
 
         # Inspector — contextual result for the current interaction.
