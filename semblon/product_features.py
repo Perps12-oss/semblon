@@ -11,8 +11,32 @@ from typing import Any
 
 from semblon.features.activity_feature import activity_feature
 from semblon.gui_registry import Feature, FeatureRegistry, GuiCommand, NavContribution
+from semblon.product_surface import (
+    VERB_LABEL_ASSIGN,
+    VERB_LABEL_IGNORE,
+    VERB_LABEL_MERGE,
+    VERB_LABEL_NAME,
+    VERB_LABEL_RULE_OUT,
+    VERB_LABEL_SPLIT,
+)
 
-__all__ = ["build_product_registry", "register_demo_feature"]
+__all__ = [
+    "INSPECTOR_VERB_SPECS",
+    "build_product_registry",
+    "register_demo_feature",
+]
+
+# Item 22: Inspector verb buttons render from this list.
+# (verb key, command id, label, HomeApp method). Mutation stays on HomeApp
+# -> inspector_verbs.apply_* -> review.py. Not a second mutation path.
+INSPECTOR_VERB_SPECS: tuple[tuple[str, str, str, str], ...] = (
+    ("name", "inspector.verb.name", VERB_LABEL_NAME, "_inspector_name_commit"),
+    ("assign", "inspector.verb.assign", VERB_LABEL_ASSIGN, "_inspector_assign"),
+    ("merge", "inspector.verb.merge", VERB_LABEL_MERGE, "_inspector_merge"),
+    ("split", "inspector.verb.split", VERB_LABEL_SPLIT, "_inspector_split"),
+    ("rule_out", "inspector.verb.rule_out", VERB_LABEL_RULE_OUT, "_inspector_rule_out"),
+    ("ignore", "inspector.verb.ignore", VERB_LABEL_IGNORE, "_inspector_ignore"),
+)
 
 
 def _page_home(host: Any) -> None:
@@ -323,6 +347,28 @@ def _cmd_export_person_views(host: Any, _ctx: Any = None) -> None:
         messagebox.showerror("Semblon", f"Export failed: {e}", parent=host.root)
 
 
+def _inspector_verb_run(method_name: str):
+    """Thin registry adapter. Does not name, merge, or assign itself."""
+
+    def _run(host: Any, _ctx: Any = None) -> None:
+        getattr(host, method_name)()
+
+    return _run
+
+
+def _inspector_verb_commands() -> tuple[GuiCommand, ...]:
+    return tuple(
+        GuiCommand(
+            id=cmd_id,
+            label=label,
+            run=_inspector_verb_run(method),
+            surfaces=frozenset({"inspector"}),
+            requires_context=True,
+        )
+        for _key, cmd_id, label, method in INSPECTOR_VERB_SPECS
+    )
+
+
 def build_product_registry() -> FeatureRegistry:
     reg = FeatureRegistry()
 
@@ -530,6 +576,15 @@ def build_product_registry() -> FeatureRegistry:
                     surfaces=frozenset({"overflow", "palette"}),
                 ),
             ),
+        )
+    )
+
+    # No nav. Home renders these; it does not own the verb list.
+    reg.register(
+        Feature(
+            id="inspector_verbs",
+            label="Inspector verbs",
+            commands=_inspector_verb_commands(),
         )
     )
 

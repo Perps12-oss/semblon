@@ -1292,31 +1292,31 @@ class HomeApp:
         self._name_entry.bind("<Escape>", lambda _e: self._inspector_name_cancel())
         self._name_var.trace_add("write", lambda *_a: self._sync_name_save_button())
 
-        self.btn_name = _button(
-            actions, VERB_LABEL_NAME, self._inspector_name_commit, kind="primary"
-        )
-        self.btn_name.pack(fill=tk.X, pady=1)
-        self.btn_assign = _button(
-            actions, VERB_LABEL_ASSIGN, self._inspector_assign, kind="secondary"
-        )
-        self.btn_assign.pack(fill=tk.X, pady=1)
-        self.btn_merge = _button(
-            actions, VERB_LABEL_MERGE, self._inspector_merge, kind="secondary"
-        )
-        self.btn_merge.pack(fill=tk.X, pady=1)
-        self.btn_split = _button(
-            actions, VERB_LABEL_SPLIT, self._inspector_split, kind="secondary"
-        )
-        self.btn_split.pack(fill=tk.X, pady=1)
+        # Item 22: Inspector verbs are registry commands. Labels and click
+        # dispatch come from GuiCommand; enablement stays inspector_verb_states.
+        # Name entry stays here — it is an input, not a command button.
+        from semblon.product_features import INSPECTOR_VERB_SPECS
 
-        self.btn_rule_out = _button(
-            actions, VERB_LABEL_RULE_OUT, self._inspector_rule_out, kind="destructive"
-        )
-        self.btn_rule_out.pack(fill=tk.X, pady=1)
-        self.btn_ignore = _button(
-            actions, VERB_LABEL_IGNORE, self._inspector_ignore, kind="secondary"
-        )
-        self.btn_ignore.pack(fill=tk.X, pady=1)
+        verb_cmds = {
+            c.id: c for c in self._registry.commands(surface="inspector")
+        }
+        self._verb_buttons: dict[str, object] = {}
+        _verb_kind = {
+            "name": "primary",
+            "rule_out": "destructive",
+        }
+        for key, cmd_id, fallback, _method in INSPECTOR_VERB_SPECS:
+            cmd = verb_cmds.get(cmd_id)
+            label = cmd.label if cmd is not None else fallback
+            btn = _button(
+                actions,
+                label,
+                lambda c=cmd, k=key: self._run_inspector_verb(k, c),
+                kind=_verb_kind.get(key, "secondary"),
+            )
+            btn.pack(fill=tk.X, pady=1)
+            setattr(self, f"btn_{key}", btn)
+            self._verb_buttons[key] = btn
         self.btn_region = _button(
             actions, "Select a region", self._open_region_select, kind="secondary"
         )
@@ -1328,13 +1328,14 @@ class HomeApp:
         # Registry contextual commands (person.history, identify, …) — same widgets
         # pattern; labels/enablement come from GuiCommand metadata.
         self._registry_cmd_buttons: dict[str, object] = {}
+        _verb_ids = {spec[1] for spec in INSPECTOR_VERB_SPECS}
         for cmd in self._registry.commands(surface="inspector"):
-            if cmd.id in {
+            if cmd.id in _verb_ids or cmd.id in {
                 "lens.select_region",
                 "lens.ask",
                 "lens.find_similar",
             }:
-                # Already packed as Select a region / Ask with Lens above.
+                # Verbs packed from INSPECTOR_VERB_SPECS. Region / Ask packed above.
                 continue
             btn = _button(
                 actions,
@@ -1779,6 +1780,22 @@ class HomeApp:
     def _run_registry_command(self, cmd) -> None:
         cmd.execute(self, self._inspector_context())
 
+    def _run_inspector_verb(self, key: str, cmd) -> None:
+        """Dispatch a registry Inspector verb. Review remains the mutation path."""
+        if cmd is not None:
+            cmd.execute(self, self._inspector_context())
+            return
+        fallback = {
+            "name": self._inspector_name_commit,
+            "assign": self._inspector_assign,
+            "merge": self._inspector_merge,
+            "split": self._inspector_split,
+            "rule_out": self._inspector_rule_out,
+            "ignore": self._inspector_ignore,
+        }.get(key)
+        if fallback is not None:
+            fallback()
+
     def _sync_registry_inspector_commands(self) -> None:
         ctx = self._inspector_context()
         for cmd_id, btn in list(getattr(self, "_registry_cmd_buttons", {}).items()):
@@ -1953,13 +1970,16 @@ class HomeApp:
             run_id=self._insp_run_id or self._last_run_id,
             target_person_id=self._insp_target_person_id,
         )
-        buttons = {
-            "merge": self.btn_merge,
-            "assign": self.btn_assign,
-            "split": self.btn_split,
-            "rule_out": self.btn_rule_out,
-            "ignore": self.btn_ignore,
-        }
+        buttons = dict(getattr(self, "_verb_buttons", {}) or {})
+        buttons.pop("name", None)
+        if not buttons:
+            buttons = {
+                "merge": self.btn_merge,
+                "assign": self.btn_assign,
+                "split": self.btn_split,
+                "rule_out": self.btn_rule_out,
+                "ignore": self.btn_ignore,
+            }
         reasons: list[str] = []
         for key, btn in buttons.items():
             st = self._verb_states.get(key) or {}
@@ -4050,22 +4070,16 @@ class HomeApp:
     def _show_settings(self) -> None:
         """Product Settings. Runtime/provider/model/schema/job live in Diagnostics."""
         from semblon.product_surface import (
-            SETTINGS_ABOUT,
-            SETTINGS_ABOUT_BODY,
             SETTINGS_ADVANCED,
             SETTINGS_ADVANCED_HINT,
-            SETTINGS_APPEARANCE,
             SETTINGS_DIAGNOSTICS,
             SETTINGS_DIAGNOSTICS_HINT,
             SETTINGS_EXPORT_REVIEW,
             SETTINGS_GPU,
-            SETTINGS_LIBRARY,
-            SETTINGS_LIBRARY_HINT,
             SETTINGS_OPEN_DIAGNOSTICS,
-            SETTINGS_PROCESSING,
-            SETTINGS_PROCESSING_CPU,
             SETTINGS_SHORTCUTS,
             SETTINGS_TITLE,
+            settings_contributions,
         )
 
         if self._settings_win is not None:
@@ -4117,13 +4131,19 @@ class HomeApp:
         close_btn = _button(head, "Close", win.destroy, kind="tertiary", icon="x")
         close_btn.pack(side=tk.RIGHT)
 
-        # ── Product settings ──
-        ttk.Label(pad, text=SETTINGS_LIBRARY, font=BODY_STRONG).pack(
+        # Product sections come from settings_contributions(). Home still draws them.
+        sections = {s.id: s for s in settings_contributions()}
+        library = sections["library"]
+        processing = sections["processing"]
+        appearance = sections["appearance"]
+        about = sections["about"]
+
+        ttk.Label(pad, text=library.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_16, SP_8)
         )
         ttk.Label(
             pad,
-            text=SETTINGS_LIBRARY_HINT,
+            text=library.hint,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
             wraplength=480,
@@ -4145,7 +4165,7 @@ class HomeApp:
             loc_row, "Change…", self._settings_change_library, kind="secondary"
         ).pack(side=tk.RIGHT)
 
-        ttk.Label(pad, text=SETTINGS_PROCESSING, font=BODY_STRONG).pack(
+        ttk.Label(pad, text=processing.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
         gpu_available = False
@@ -4175,12 +4195,12 @@ class HomeApp:
         else:
             ttk.Label(
                 pad,
-                text=SETTINGS_PROCESSING_CPU,
+                text=processing.hint,
                 font=CAPTION,
                 foreground=TEXT_SECONDARY,
             ).pack(anchor=tk.W)
 
-        ttk.Label(pad, text=SETTINGS_APPEARANCE, font=BODY_STRONG).pack(
+        ttk.Label(pad, text=appearance.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
         from semblon.ui_prefs import load_theme_mode
@@ -4199,7 +4219,7 @@ class HomeApp:
                 command=lambda m=mode: self._set_theme_mode(m),
             ).pack(anchor=tk.W)
 
-        ttk.Label(pad, text=SETTINGS_ABOUT, font=BODY_STRONG).pack(
+        ttk.Label(pad, text=about.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
         try:
@@ -4212,7 +4232,7 @@ class HomeApp:
         ).pack(anchor=tk.W, pady=(SP_8, 0))
         ttk.Label(
             pad,
-            text=SETTINGS_ABOUT_BODY,
+            text=about.hint,
             font=BODY,
             wraplength=480,
         ).pack(anchor=tk.W, pady=(SP_8, 0))

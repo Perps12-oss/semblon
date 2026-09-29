@@ -649,9 +649,28 @@ def display_rect_for_bbox(
     return (x1 * scale, y1 * scale, x2 * scale, y2 * scale)
 
 
+class SettingsSection:
+    """One Settings body Home already draws. Not a second window or catalogue."""
+
+    def __init__(self, id: str, title: str, hint: str = ""):
+        self.id = id
+        self.title = title
+        self.hint = hint
+
+
+def settings_contributions() -> tuple[SettingsSection, ...]:
+    """Product sections. Home still builds the window."""
+    return (
+        SettingsSection("library", SETTINGS_LIBRARY, SETTINGS_LIBRARY_HINT),
+        SettingsSection("processing", SETTINGS_PROCESSING, SETTINGS_PROCESSING_CPU),
+        SettingsSection("appearance", SETTINGS_APPEARANCE),
+        SettingsSection("about", SETTINGS_ABOUT, SETTINGS_ABOUT_BODY),
+    )
+
+
 def settings_product_section_titles() -> tuple[str, ...]:
     """Everyday Settings sections a non-technical user understands."""
-    return (SETTINGS_LIBRARY, SETTINGS_PROCESSING, SETTINGS_APPEARANCE, SETTINGS_ABOUT)
+    return tuple(section.title for section in settings_contributions())
 
 
 def settings_forbidden_product_vocab() -> tuple[str, ...]:
