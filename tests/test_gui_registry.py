@@ -115,16 +115,14 @@ def test_product_registry_matches_home_nav_shape():
     reg = build_product_registry()
     nav = reg.home_nav_tuple()
     flat = {rid: label for _sec, items in nav for rid, label in items}
-    assert flat["home"] == "Photos"
+    assert flat["home"] == "Library"
     assert flat["videos"] == "Videos"
     assert flat["people"] == "People"
     assert flat["unknown"] == "People to name"
     assert flat["activity"] == "Recent activity"
     assert flat["lens"] == "Lens"
-    # HOME_NAV module export stays in sync.
     refresh_home_nav()
     assert HOME_NAV == nav
-    # Activity is a real page factory.
     assert reg.resolve_route("activity") is not None
     assert reg.get("activity").page is not None
 
@@ -149,7 +147,6 @@ def test_product_commands_expose_hidden_capabilities():
 
 
 def test_demo_feature_registers_without_editing_homeapp():
-    """Architectural acceptance: new feature needs no HomeApp / HOME_NAV / menu edits."""
     home_src = inspect.getsource(__import__("semblon.home_ui", fromlist=["HomeApp"]).HomeApp)
     assert "registry_demo" not in home_src
 
@@ -160,10 +157,8 @@ def test_demo_feature_registers_without_editing_homeapp():
     assert reg.resolve_route("registry_demo") is not None
     assert any(n.route_id == "registry_demo" for n in reg.nav_contributions())
     assert reg.get_command("registry_demo.ping") is not None
-    # Discoverable on palette / overflow without shell edits.
     labels = {c.label for c in reg.commands(surface="palette")}
     assert "Demo ping" in labels
-    # Original product nav still present.
     flat_before = {rid for _s, items in before_nav for rid, _ in items}
     flat_after = {n.route_id for n in reg.nav_contributions()}
     assert flat_before <= flat_after

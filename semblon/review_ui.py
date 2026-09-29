@@ -1312,23 +1312,39 @@ class ReviewApp:
                     source_type=m.get("source_type"),
                 )
                 results.append((g, sx, sy, rect, tag, b64))
-            self.root.after(0, lambda: self._apply_group_crops(results))
+            try:
+                self.root.after(0, lambda: self._apply_group_crops(results))
+            except tk.TclError:
+                return
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _group_canvas_alive(self) -> bool:
+        """False once Review or its group canvas has been destroyed."""
+        try:
+            root = self.root
+            canvas = self.group_canvas
+            return bool(root.winfo_exists() and canvas.winfo_exists())
+        except tk.TclError:
+            return False
+
     def _apply_group_crops(self, results) -> None:
+        if not self._group_canvas_alive():
+            return
         for gen, x, y, rect, tag, b64 in results:
             if gen != self._group_draw_gen:
                 continue
             if b64 is None:
                 continue
+            if not self._group_canvas_alive():
+                return
             try:
                 photo = tk.PhotoImage(data=b64)
+                self._group_photos.append(photo)
+                self.group_canvas.delete(rect)
+                self.group_canvas.create_image(x, y, anchor=tk.NW, image=photo, tags=(tag,))
             except tk.TclError:
-                continue
-            self._group_photos.append(photo)
-            self.group_canvas.delete(rect)
-            self.group_canvas.create_image(x, y, anchor=tk.NW, image=photo, tags=(tag,))
+                return
 
     def _on_group_click(self, event, *, additive: bool = False) -> None:
         items = self.group_canvas.find_overlapping(

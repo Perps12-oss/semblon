@@ -27,7 +27,7 @@ def build_activity_workspace(host: Any) -> None:
 
     from semblon.activity_surface import ACTIVITY_HEADLINE, ACTIVITY_SUBCOPY
     from semblon.ui_tokens import BODY, H1, SP_4, SP_8, SP_12, SP_16, SP_20, SP_24, TEXT_SECONDARY
-    from semblon.ui_widgets import _button
+    from semblon.ui_widgets import Button
 
     frame = host._activity
     for child in frame.winfo_children():
@@ -45,17 +45,17 @@ def build_activity_workspace(host: Any) -> None:
 
     actions = ttk.Frame(shell)
     actions.pack(anchor=tk.W, pady=(0, SP_12))
-    host.btn_activity_review = _button(
+    host.btn_activity_review = Button(
         actions,
-        "Review people",
-        lambda: host._navigate("unknown"),
+        text="Review people",
+        command=lambda: host._navigate("unknown"),
         kind="secondary",
     )
     host.btn_activity_review.pack(side=tk.LEFT, padx=(0, SP_8))
-    host.btn_activity_people = _button(
+    host.btn_activity_people = Button(
         actions,
-        "Open People",
-        lambda: host._navigate("people"),
+        text="Open People",
+        command=lambda: host._navigate("people"),
         kind="tertiary",
     )
     host.btn_activity_people.pack(side=tk.LEFT)

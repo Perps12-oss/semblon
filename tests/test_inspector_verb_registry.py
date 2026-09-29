@@ -31,6 +31,7 @@ def test_inspector_verbs_registered_on_inspector_only():
         assert cmds[cmd_id].label == label
         assert cmds[cmd_id].surfaces == frozenset({"inspector"})
         assert cmds[cmd_id].requires_context is True
+    # Palette must not grow a second verb row.
     palette = {c.id for c in reg.commands(surface="palette")}
     assert not palette & set(expected)
 
@@ -58,4 +59,5 @@ def test_home_ui_renders_verbs_from_registry_not_literals():
     assert "self.btn_name = _button(" not in text
     assert "self.btn_merge = _button(" not in text
     assert "self.btn_rule_out = _button(" not in text
+    # Name field stays; it is an input, not a command.
     assert "self._name_entry" in text
