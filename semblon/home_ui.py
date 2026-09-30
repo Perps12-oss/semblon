@@ -1094,12 +1094,6 @@ class HomeApp:
             fg=TEXT_PRIMARY,
         )
         self._sidebar_brand.pack(anchor=tk.W, padx=SP_16, pady=(SP_16, SP_8))
-        self.btn_lens = _button(
-            side, "Lens", self._open_lens, kind="nav", icon="lens", plate=BG_SUBTLE
-        )
-        self.btn_lens.pack(fill=tk.X, pady=1, padx=SP_4)
-        self._nav_buttons["lens"] = self.btn_lens
-        self._nav_rows.append(("nav", "lens"))
         self._sidebar_footer = tk.Label(
             side,
             text="Local only — nothing is uploaded",
