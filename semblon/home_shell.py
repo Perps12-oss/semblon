@@ -27,11 +27,9 @@ _TRACKED_IDS = (
 )
 
 SHELL_HEADLINE = "Your pictures stay here."
-SHELL_SUBCOPY = (
-    "Semblon finds faces in your photos on this computer, groups similar ones, "
-    "and lets you name the people. Add a folder to begin. "
-    "Available vs optional below is honest — missing a model is not an empty library."
-)
+SHELL_SUBCOPY = "On this computer. Nothing is uploaded."
+SHELL_ACTIVITY_TITLE = "Recent activity"
+SHELL_ACTIVITY_EMPTY = "No recent activity."
 SHELL_READY_TITLE = "Available"
 SHELL_TRACKED_TITLE = "Optional · component required"
 SHELL_LAST_TITLE = "Last result"
@@ -137,6 +135,25 @@ def capability_sections(
         )
 
     return {"ready": ready, "tracked": tracked}
+
+
+def recent_activity_lines(store: Path, *, limit: int = 5) -> list[str]:
+    """Short Home lines. Empty is a quiet sentence, not a failure explanation."""
+    try:
+        from semblon.application import activity_memory
+
+        view = activity_memory(Path(store), None)
+    except Exception:
+        return [SHELL_ACTIVITY_EMPTY]
+    lines: list[str] = []
+    proc = (view.get("processing") or {}).get("lines") or []
+    for line in list(proc) + list(view.get("moment_lines") or []):
+        text = str(line).strip()
+        if text and text not in lines:
+            lines.append(text)
+        if len(lines) >= limit:
+            break
+    return lines or [SHELL_ACTIVITY_EMPTY]
 
 
 def shell_stats(summary: dict | None) -> list[dict[str, Any]]:

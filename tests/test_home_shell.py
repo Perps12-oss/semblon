@@ -7,9 +7,11 @@ from pathlib import Path
 from semblon.home_shell import (
     SHELL_HEADLINE,
     SHELL_SAVED_LINE,
+    SHELL_SUBCOPY,
     capability_sections,
     enrich_summary_counts,
     last_result_copy,
+    recent_activity_lines,
     shell_stats,
 )
 from semblon.library_status import library_summary
@@ -19,6 +21,14 @@ from tests.test_review import _clustered
 
 def test_shell_headline_matches_product_home():
     assert SHELL_HEADLINE == "Your pictures stay here."
+    assert "missing a model" not in SHELL_SUBCOPY.lower()
+    assert "nothing is uploaded" in SHELL_SUBCOPY.lower()
+
+
+def test_recent_activity_empty_is_quiet(tmp_path):
+    lines = recent_activity_lines(tmp_path / "missing.sqlite")
+    assert lines == ["No recent activity."]
+    assert "Nothing matched" not in " ".join(lines)
 
 
 def test_capability_sections_list_missing_models():
