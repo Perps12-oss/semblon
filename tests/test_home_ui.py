@@ -253,9 +253,10 @@ def test_home_landing_wraplength_avoids_clipping():
     assert "justify=tk.CENTER" not in build
     assert "width=48" not in build
     assert "Your pictures stay here." in build or "SHELL_HEADLINE" in build
-    assert "_shell_stats" in build
+    assert "_shell_activity" in build
     assert "_landing_privacy" in build
-    assert "Ready without a download" in build or "SHELL_READY_TITLE" in build or "Available" in build
+    assert "SHELL_READY_TITLE" not in build
+    assert "Observations" not in build
     hint = inspect.getsource(home_ui.HomeApp._refresh_landing_hint)
     assert "previously added" not in hint
     assert "landing_cta_plan" in hint

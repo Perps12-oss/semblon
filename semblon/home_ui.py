@@ -932,39 +932,16 @@ class HomeApp:
         self._workspace_role = self._PANE_WORKSPACE
         self._inspector_role = self._PANE_INSPECTOR
 
-        # Sidebar is full height. Search and Settings sit over the content only.
+        # Sidebar is full height. Search sits over the content only.
         self._shell = tk.Frame(self.root, bg=BG_CANVAS)
         self._shell.pack(fill=tk.BOTH, expand=True)
         self._main = ttk.Frame(self._shell)
         self._main.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        # ── Top bar: brand stays. Lens stays. Search sits under it. ──
-        brand = ttk.Frame(self._main, padding=(SP_20, SP_16, SP_20, SP_8))
-        brand.pack(fill=tk.X)
-        self._brand = brand
-        self.btn_lens = _button(brand, "Lens", self._open_lens, kind="secondary", icon="lens")
-        self.btn_lens.pack(side=tk.RIGHT)
-        self._to_name = tk.StringVar(value="")
-        ttk.Label(brand, textvariable=self._to_name, font=BODY_SMALL, foreground=INK_SECONDARY).pack(
-            side=tk.RIGHT, padx=(0, SP_12)
-        )
-        title_col = ttk.Frame(brand)
-        title_col.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Label(title_col, text="Semblon", font=H1).pack(anchor=tk.W)
-        ttk.Label(
-            title_col,
-            text="Local library · one window",
-            font=CAPTION,
-            foreground=INK_SECONDARY,
-        ).pack(anchor=tk.W)
-
-        top = ttk.Frame(self._main, padding=(SP_20, SP_4, SP_20, SP_12))
+        top = ttk.Frame(self._main, padding=(SP_20, SP_16, SP_20, SP_12))
         top.pack(fill=tk.X)
         self._top = top
-        self.btn_settings = _button(
-            top, "Settings", self._show_settings, kind="secondary", icon="settings"
-        )
-        self.btn_settings.pack(side=tk.RIGHT)
+        self._to_name = tk.StringVar(value="")
         search_row = ttk.Frame(top)
         search_row.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, SP_12))
         self.search_var = tk.StringVar()
@@ -1117,6 +1094,12 @@ class HomeApp:
             fg=TEXT_PRIMARY,
         )
         self._sidebar_brand.pack(anchor=tk.W, padx=SP_16, pady=(SP_16, SP_8))
+        self.btn_lens = _button(
+            side, "Lens", self._open_lens, kind="nav", icon="lens", plate=BG_SUBTLE
+        )
+        self.btn_lens.pack(fill=tk.X, pady=1, padx=SP_4)
+        self._nav_buttons["lens"] = self.btn_lens
+        self._nav_rows.append(("nav", "lens"))
         self._sidebar_footer = tk.Label(
             side,
             text="Local only — nothing is uploaded",
@@ -1163,6 +1146,12 @@ class HomeApp:
                 btn.pack(fill=tk.X, pady=1, padx=SP_4)
                 self._nav_buttons[nav_id] = btn
                 self._nav_rows.append(("nav", nav_id))
+        self.btn_settings = _button(
+            side, "Settings", self._show_settings, kind="nav", icon="settings", plate=BG_SUBTLE
+        )
+        self.btn_settings.pack(fill=tk.X, pady=1, padx=SP_4)
+        self._nav_buttons["settings"] = self.btn_settings
+        self._nav_rows.append(("nav", "settings"))
         self.root.bind("<Configure>", self._on_root_configure, add="+")
 
         # Keep job-control map keys: people/unknown/activity point at sidebar buttons.
@@ -2253,31 +2242,14 @@ class HomeApp:
         )
 
     def _build_home_landing(self) -> None:
-        """Local-first library shell (grok Home): headline, stats, capabilities, last result."""
-        from semblon.home_shell import (
-            SHELL_HEADLINE,
-            SHELL_LAST_HINT,
-            SHELL_LAST_TITLE,
-            SHELL_READY_TITLE,
-            SHELL_SUBCOPY,
-            SHELL_TRACKED_TITLE,
-        )
+        """Library home: one next step, then recent activity. Packs stay in Settings."""
+        from semblon.home_shell import SHELL_ACTIVITY_TITLE, SHELL_HEADLINE, SHELL_SUBCOPY
 
         for child in self._landing.winfo_children():
             child.destroy()
         root = tk.Frame(self._landing, bg=BG_CANVAS)
         root.pack(fill=tk.BOTH, expand=True, padx=SP_24, pady=SP_20)
         self._shell_root = root
-
-        # Brand mark stays small — headline is the product statement.
-        tk.Label(
-            root,
-            text="Semblon",
-            font=CAPTION,
-            bg=BG_CANVAS,
-            fg=INK_TERTIARY,
-            anchor="w",
-        ).pack(anchor=tk.W)
 
         tk.Label(
             root,
@@ -2322,75 +2294,20 @@ class HomeApp:
             actions,
             "Browse photos",
             lambda: self._navigate("photos"),
-            kind="secondary",
+            kind="tertiary",
             plate=BG_CANVAS,
         )
 
-        # Stat tiles
-        self._shell_stats = tk.Frame(root, bg=BG_CANVAS)
-        self._shell_stats.pack(anchor=tk.W, fill=tk.X, pady=(SP_20, 0))
-        self._shell_stat_vars: list[tk.StringVar] = []
-        self._shell_stat_cards: list[tk.Frame] = []
-
-        cols = tk.Frame(root, bg=BG_CANVAS)
-        cols.pack(anchor=tk.W, fill=tk.BOTH, expand=True, pady=(SP_20, 0))
-        left = tk.Frame(cols, bg=BG_CANVAS)
-        left.pack(side=tk.LEFT, anchor=tk.N, fill=tk.BOTH, expand=True, padx=(0, SP_24))
-        right = tk.Frame(cols, bg=BG_CANVAS)
-        right.pack(side=tk.LEFT, anchor=tk.N, fill=tk.BOTH, expand=True)
-
         tk.Label(
-            left,
-            text=SHELL_READY_TITLE,
+            root,
+            text=SHELL_ACTIVITY_TITLE,
             font=BODY_STRONG,
             bg=BG_CANVAS,
             fg=TEXT_PRIMARY,
             anchor="w",
-        ).pack(anchor=tk.W)
-        self._shell_ready = tk.Frame(left, bg=BG_CANVAS)
-        self._shell_ready.pack(anchor=tk.W, fill=tk.X, pady=(SP_8, 0))
-
-        tk.Label(
-            left,
-            text=SHELL_TRACKED_TITLE,
-            font=BODY_STRONG,
-            bg=BG_CANVAS,
-            fg=TEXT_PRIMARY,
-            anchor="w",
-        ).pack(anchor=tk.W, pady=(SP_16, 0))
-        self._shell_tracked = tk.Frame(left, bg=BG_CANVAS)
-        self._shell_tracked.pack(anchor=tk.W, fill=tk.X, pady=(SP_8, 0))
-
-        tk.Label(
-            right,
-            text=SHELL_LAST_TITLE,
-            font=BODY_STRONG,
-            bg=BG_CANVAS,
-            fg=TEXT_PRIMARY,
-            anchor="w",
-        ).pack(anchor=tk.W)
-        self._shell_last_body = tk.StringVar(value="")
-        self._shell_last_hint = tk.StringVar(value=SHELL_LAST_HINT)
-        tk.Label(
-            right,
-            textvariable=self._shell_last_body,
-            font=BODY,
-            bg=BG_CANVAS,
-            fg=TEXT_PRIMARY,
-            wraplength=320,
-            justify=tk.LEFT,
-            anchor="w",
-        ).pack(anchor=tk.W, pady=(SP_8, 0))
-        tk.Label(
-            right,
-            textvariable=self._shell_last_hint,
-            font=CAPTION,
-            bg=BG_CANVAS,
-            fg=TEXT_SECONDARY,
-            wraplength=320,
-            justify=tk.LEFT,
-            anchor="w",
-        ).pack(anchor=tk.W, pady=(SP_8, 0))
+        ).pack(anchor=tk.W, pady=(SP_20, 0))
+        self._shell_activity = tk.Frame(root, bg=BG_CANVAS)
+        self._shell_activity.pack(anchor=tk.W, fill=tk.X, pady=(SP_8, 0))
 
         privacy = tk.Frame(root, bg=BG_CANVAS)
         self._landing_privacy = privacy
@@ -2414,95 +2331,25 @@ class HomeApp:
         self._refresh_library_shell()
 
     def _refresh_library_shell(self, summary: dict | None = None) -> None:
-        """Push live counts + capability honesty into the Home shell."""
-        from semblon.home_shell import (
-            capability_sections,
-            enrich_summary_counts,
-            last_result_copy,
-            shell_stats,
-        )
+        """Recent activity on Home. Capability lists are not drawn here."""
+        from semblon.home_shell import recent_activity_lines
 
-        if not hasattr(self, "_shell_stats"):
+        frame = getattr(self, "_shell_activity", None)
+        if frame is None:
             return
-        if summary is None:
-            summary = self._library_summary()
-        summary = enrich_summary_counts(self.store, summary)
-        files = 0 if summary is None else int(summary.get("files") or 0)
-
-        for child in self._shell_stats.winfo_children():
+        for child in frame.winfo_children():
             child.destroy()
-        self._shell_stat_vars = []
-        for tile in shell_stats(summary):
-            card = tk.Frame(
-                self._shell_stats,
-                bg=BG_SUBTLE,
-                highlightbackground=BORDER_SUBTLE,
-                highlightthickness=1,
-                padx=SP_12,
-                pady=SP_12,
-            )
-            card.pack(side=tk.LEFT, padx=(0, SP_8), anchor=tk.N)
-            var = tk.StringVar(value=str(tile["value"]))
-            self._shell_stat_vars.append(var)
+        for line in recent_activity_lines(self.store):
             tk.Label(
-                card,
-                textvariable=var,
-                font=STAT,
-                bg=BG_SUBTLE,
-                fg=TEXT_PRIMARY,
-                anchor="w",
-            ).pack(anchor=tk.W)
-            tk.Label(
-                card,
-                text=tile["label"],
-                font=CAPTION,
-                bg=BG_SUBTLE,
+                frame,
+                text=line,
+                font=BODY,
+                bg=BG_CANVAS,
                 fg=TEXT_SECONDARY,
+                wraplength=640,
+                justify=tk.LEFT,
                 anchor="w",
-            ).pack(anchor=tk.W, pady=(SP_4, 0))
-
-        sections = capability_sections(has_library_content=files > 0)
-        for frame, rows in (
-            (self._shell_ready, sections["ready"]),
-            (self._shell_tracked, sections["tracked"]),
-        ):
-            for child in frame.winfo_children():
-                child.destroy()
-            if not rows:
-                tk.Label(
-                    frame,
-                    text="—",
-                    font=BODY,
-                    bg=BG_CANVAS,
-                    fg=TEXT_SECONDARY,
-                    anchor="w",
-                ).pack(anchor=tk.W)
-                continue
-            for row in rows:
-                line = tk.Frame(frame, bg=BG_CANVAS)
-                line.pack(anchor=tk.W, fill=tk.X, pady=(0, SP_4))
-                tk.Label(
-                    line,
-                    text=row["label"],
-                    font=BODY,
-                    bg=BG_CANVAS,
-                    fg=TEXT_PRIMARY,
-                    anchor="w",
-                ).pack(side=tk.LEFT)
-                if row.get("state"):
-                    tk.Label(
-                        line,
-                        text=row["state"],
-                        font=CAPTION,
-                        bg=BG_CANVAS,
-                        fg=TEXT_SECONDARY,
-                        anchor="e",
-                    ).pack(side=tk.RIGHT)
-
-        body, hint = last_result_copy(getattr(self, "_last_lens_result", None))
-        if hasattr(self, "_shell_last_body"):
-            self._shell_last_body.set(body)
-            self._shell_last_hint.set(hint)
+            ).pack(anchor=tk.W, pady=(0, SP_4))
 
     def _build_processing_home(self) -> None:
         """PROCESSING state — results framing while a job runs (not marketing + telemetry)."""
@@ -2999,9 +2846,7 @@ class HomeApp:
                     "primary" if plan["primary"] == "review" else "secondary"
                 )
         if browse is not None and hasattr(browse, "set_kind"):
-            browse.set_kind(
-                "primary" if plan["primary"] == "browse" else "secondary"
-            )
+            browse.set_kind("primary" if plan["primary"] == "browse" else "tertiary")
 
         # Pack primary first, then secondary actions.
         order: list[tuple[object | None, bool]] = []
@@ -4164,6 +4009,26 @@ class HomeApp:
         _button(
             loc_row, "Change…", self._settings_change_library, kind="secondary"
         ).pack(side=tk.RIGHT)
+
+        ttk.Label(pad, text="Packs", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_24, SP_8))
+        ttk.Label(
+            pad,
+            text="Missing packs stay missing. They are not an empty library.",
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+            wraplength=480,
+        ).pack(anchor=tk.W)
+        from semblon.home_shell import capability_sections
+
+        cap_rows = capability_sections(has_library_content=False)
+        for row in list(cap_rows["ready"]) + list(cap_rows["tracked"]):
+            state = row.get("state") or "Available"
+            ttk.Label(
+                pad,
+                text=f"{row['label']} — {state}",
+                font=BODY,
+                wraplength=480,
+            ).pack(anchor=tk.W, pady=(SP_4, 0))
 
         ttk.Label(pad, text=processing.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
