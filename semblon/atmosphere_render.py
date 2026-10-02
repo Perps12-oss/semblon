@@ -381,6 +381,7 @@ class PreviewTheatre:
         InteractionState.HOVER,
         InteractionState.SELECTED,
         InteractionState.PROCESSING,
+        InteractionState.DISABLED,
     )
 
     def __init__(

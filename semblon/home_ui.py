@@ -907,7 +907,6 @@ class HomeApp:
         self._last_faces_found: int | None = None
         self._proc_thumbs_faces: int | None = None
         self._inspector_collapsed = False
-        self._settings_win: tk.Toplevel | None = None
         self._last_progress_event: ProgressEvent | None = None
         self._library_filter = "all"
         self._similar_media_ids: list[str] | None = None
@@ -982,7 +981,7 @@ class HomeApp:
         )
         self.btn_folder.pack(side=tk.RIGHT, padx=(SP_8, 0))
         self.btn_settings = _button(
-            top, "Settings", self._show_settings, kind="tertiary", icon="settings"
+            top, "Settings", lambda: self._navigate("settings"), kind="tertiary", icon="settings"
         )
         self.btn_settings.pack(side=tk.RIGHT)
 
@@ -1188,6 +1187,8 @@ class HomeApp:
         self._library_chrome = ttk.Frame(work)
         self._lens = ttk.Frame(work)
         self._activity = ttk.Frame(work)
+        self._settings = ttk.Frame(work)
+        self._atmosphere_tiles: list = []
         self._build_home_landing()
         self._build_processing_home()
         self._build_result_card_shell()
@@ -1195,6 +1196,7 @@ class HomeApp:
         self._build_library_chrome()
         self._build_lens_workspace()
         self._build_activity_workspace()
+        self._build_settings_workspace()
 
         from semblon.canvas import CanvasWorkspace
 
@@ -1887,10 +1889,7 @@ class HomeApp:
             kind, payload = box._palette_rows[sel[0]]  # type: ignore[attr-defined]
             win.destroy()
             if kind == "nav":
-                if payload == "settings":
-                    self._show_settings()
-                else:
-                    self._navigate(str(payload))
+                self._navigate(str(payload))
             else:
                 self._run_registry_command(payload)
 
@@ -2552,6 +2551,8 @@ class HomeApp:
             self._lens.pack_forget()
         if hasattr(self, "_activity"):
             self._activity.pack_forget()
+        if hasattr(self, "_settings"):
+            self._settings.pack_forget()
 
     def _ingest_running(self) -> bool:
         engine = getattr(self, "engine", None)
@@ -3173,14 +3174,9 @@ class HomeApp:
             if apply_theme is not None:
                 reset_theme_for_tests()
                 apply_theme(self.root, force=True)
-                if self._settings_win is not None:
-                    try:
-                        if self._settings_win.winfo_exists():
-                            apply_theme(self._settings_win, force=True)
-                    except tk.TclError:
-                        pass
             self._restyle_chrome()
-            self._refresh_atmosphere_previews()
+            if self._nav != "settings":
+                self._refresh_atmosphere_previews()
 
         transition_to(self.root, aid, on_done=_finish)
 
@@ -4151,8 +4147,45 @@ class HomeApp:
                 lines.extend(format_search_lines(text_rec))
         self._set_inspector("Search", lines)
 
-    def _show_settings(self) -> None:
-        """Product Settings. Runtime/provider/model/schema/job live in Diagnostics."""
+    def _build_settings_workspace(self) -> None:
+        """Settings is a first-class workspace route — not a Toplevel popup."""
+        for child in self._settings.winfo_children():
+            child.destroy()
+        outer = ttk.Frame(self._settings)
+        outer.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(outer, highlightthickness=0, bg=BG_CANVAS)
+        scroll = ttk.Scrollbar(outer, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        pad = ttk.Frame(canvas, padding=(SP_32, SP_24))
+        pad_id = canvas.create_window((0, 0), window=pad, anchor=tk.NW)
+        self._settings_canvas = canvas
+        self._settings_pad = pad
+        self._settings_pad_id = pad_id
+
+        def _sync_scroll(_event=None) -> None:
+            try:
+                canvas.configure(scrollregion=canvas.bbox("all"))
+                canvas.itemconfigure(pad_id, width=canvas.winfo_width())
+            except tk.TclError:
+                pass
+
+        pad.bind("<Configure>", _sync_scroll)
+        canvas.bind("<Configure>", _sync_scroll)
+
+        def _on_mousewheel(event) -> None:
+            try:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            except tk.TclError:
+                pass
+
+        canvas.bind("<Enter>", lambda _e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        canvas.bind("<Leave>", lambda _e: canvas.unbind_all("<MouseWheel>"))
+        self._fill_settings_body()
+
+    def _fill_settings_body(self) -> None:
+        """Rebuild Settings sections inside the workspace scroll body."""
         from semblon.product_surface import (
             SETTINGS_ADVANCED,
             SETTINGS_ADVANCED_HINT,
@@ -4166,56 +4199,30 @@ class HomeApp:
             settings_contributions,
         )
 
-        if self._settings_win is not None:
+        pad = getattr(self, "_settings_pad", None)
+        canvas = getattr(self, "_settings_canvas", None)
+        if pad is None:
+            return
+        for child in pad.winfo_children():
+            child.destroy()
+        # Tear down prior preview theatres so demo after() jobs stop.
+        for tile in getattr(self, "_atmosphere_tiles", None) or []:
             try:
-                if self._settings_win.winfo_exists():
-                    self._settings_win.lift()
-                    self._settings_win.focus_force()
-                    return
-            except tk.TclError:
-                self._settings_win = None
+                tile.destroy()
+            except Exception:  # noqa: BLE001
+                pass
+        self._atmosphere_tiles = []
 
-        win = tk.Toplevel(self.root)
-        self._settings_win = win
-        win.title(SETTINGS_TITLE)
-        win.geometry("640x620")
-        win.minsize(480, 420)
-        if apply_theme is not None:
-            apply_theme(win)
-        try:
-            win.transient(self.root)
-            win.configure(bg=BG_CANVAS)
-        except tk.TclError:
-            pass
-
-        # Scrollable body — large Settings content stays usable.
-        outer = ttk.Frame(win)
-        outer.pack(fill=tk.BOTH, expand=True)
-        canvas = tk.Canvas(outer, highlightthickness=0, bg=BG_CANVAS)
-        scroll = ttk.Scrollbar(outer, orient=tk.VERTICAL, command=canvas.yview)
-        canvas.configure(yscrollcommand=scroll.set)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        pad = ttk.Frame(canvas, padding=(SP_32, SP_24))
-        pad_id = canvas.create_window((0, 0), window=pad, anchor=tk.NW)
-
-        def _sync_scroll(_event=None) -> None:
-            canvas.configure(scrollregion=canvas.bbox("all"))
+        if canvas is not None:
             try:
-                canvas.itemconfigure(pad_id, width=canvas.winfo_width())
+                canvas.configure(bg=BG_CANVAS)
             except tk.TclError:
                 pass
-
-        pad.bind("<Configure>", _sync_scroll)
-        canvas.bind("<Configure>", _sync_scroll)
 
         head = ttk.Frame(pad)
         head.pack(fill=tk.X)
         ttk.Label(head, text=SETTINGS_TITLE, font=H2).pack(side=tk.LEFT)
-        close_btn = _button(head, "Close", win.destroy, kind="tertiary", icon="x")
-        close_btn.pack(side=tk.RIGHT)
 
-        # Product sections come from settings_contributions(). Home still draws them.
         sections = {s.id: s for s in settings_contributions()}
         library = sections["library"]
         processing = sections["processing"]
@@ -4230,7 +4237,7 @@ class HomeApp:
             text=library.hint,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
+            wraplength=640,
         ).pack(anchor=tk.W)
         ttk.Label(pad, text="Library location", font=BODY).pack(
             anchor=tk.W, pady=(SP_8, 0)
@@ -4243,19 +4250,21 @@ class HomeApp:
             textvariable=self._settings_lib_var,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=240,
+            wraplength=420,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
         _button(
             loc_row, "Change…", self._settings_change_library, kind="secondary"
         ).pack(side=tk.RIGHT)
 
-        ttk.Label(pad, text="Packs", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_24, SP_8))
+        ttk.Label(pad, text="Packs", font=BODY_STRONG).pack(
+            anchor=tk.W, pady=(SP_24, SP_8)
+        )
         ttk.Label(
             pad,
             text="Missing packs stay missing. They are not an empty library.",
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
+            wraplength=640,
         ).pack(anchor=tk.W)
         from semblon.home_shell import capability_sections
 
@@ -4266,7 +4275,7 @@ class HomeApp:
                 pad,
                 text=f"{row['label']} — {state}",
                 font=BODY,
-                wraplength=480,
+                wraplength=640,
             ).pack(anchor=tk.W, pady=(SP_4, 0))
 
         ttk.Label(pad, text=processing.title, font=BODY_STRONG).pack(
@@ -4325,13 +4334,12 @@ class HomeApp:
 
         ttk.Label(
             pad,
-            text="Atmospheres",
+            text="Atmospheres — hover a tile to preview states; click to apply",
             font=CAPTION,
             foreground=TEXT_SECONDARY,
         ).pack(anchor=tk.W, pady=(SP_12, SP_8))
         preview_row = ttk.Frame(pad)
         preview_row.pack(anchor=tk.W, fill=tk.X)
-        self._atmosphere_tiles = []
         try:
             from semblon.atmosphere_render import build_atmosphere_previews
 
@@ -4374,10 +4382,9 @@ class HomeApp:
             pad,
             text=about.hint,
             font=BODY,
-            wraplength=480,
+            wraplength=640,
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
-        # ── Advanced (shortcuts / export) — not everyday product chrome ──
         ttk.Label(pad, text=SETTINGS_ADVANCED, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
@@ -4386,7 +4393,7 @@ class HomeApp:
             text=SETTINGS_ADVANCED_HINT,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
+            wraplength=640,
         ).pack(anchor=tk.W)
         for shortcut, keys in SETTINGS_SHORTCUTS:
             row = ttk.Frame(pad)
@@ -4402,7 +4409,6 @@ class HomeApp:
             kind="tertiary",
         ).pack(anchor=tk.W, pady=(SP_12, 0))
 
-        # ── Diagnostics — runtime / provider / model / schema / jobs ──
         ttk.Label(pad, text=SETTINGS_DIAGNOSTICS, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
@@ -4411,7 +4417,7 @@ class HomeApp:
             text=SETTINGS_DIAGNOSTICS_HINT,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
+            wraplength=640,
         ).pack(anchor=tk.W)
         _button(
             pad,
@@ -4420,15 +4426,22 @@ class HomeApp:
             kind="tertiary",
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
-        def _on_close() -> None:
-            self._settings_win = None
-            win.destroy()
-
-        win.protocol("WM_DELETE_WINDOW", _on_close)
-        try:
-            close_btn.focus_set()
-        except tk.TclError:
-            pass
+    def _show_settings(self) -> None:
+        """Product Settings workspace. Runtime/provider/model/schema/job live in Diagnostics."""
+        self._hide_workspace_panes()
+        self._set_inspector_collapsed(True)
+        if not getattr(self, "_settings_pad", None):
+            self._build_settings_workspace()
+        else:
+            self._fill_settings_body()
+        self._settings.pack(fill=tk.BOTH, expand=True)
+        self._set_inspector(
+            "Settings",
+            [
+                "Appearance, library, and processing live here.",
+                "Diagnostics stay under Settings when you need them.",
+            ],
+        )
 
     def _settings_change_library(self) -> None:
         """Pick an existing store.sqlite — presentation path only; no ingest change."""

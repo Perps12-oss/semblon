@@ -63,9 +63,12 @@ def test_home_product_chrome_drops_review_html_and_job_bar_canvas():
     sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
     assert "btn_canvas.pack" not in sync
     assert "btn_html" not in sync
-    settings = inspect.getsource(home_ui.HomeApp._show_settings)
+    settings = inspect.getsource(home_ui.HomeApp._fill_settings_body)
     assert "SETTINGS_EXPORT_REVIEW" in settings or "Open export review page" in settings
     assert "SETTINGS_ADVANCED" in settings or "Advanced" in settings
+    show = inspect.getsource(home_ui.HomeApp._show_settings)
+    assert "Toplevel" not in show
+    assert "_settings_win" not in show
     assert "html" not in home_ui.HOME_CONTROLS_ALWAYS_ON
     assert "canvas" not in home_ui.HOME_CONTROLS_ALWAYS_ON
     forbidden = product_chrome_forbidden_labels()

@@ -102,6 +102,7 @@ def _page_unknown(host: Any) -> None:
 
 def _page_settings(host: Any) -> None:
     host._show_settings()
+    host._set_inspector_collapsed(True)
 
 
 def _page_activity(host: Any) -> None:
@@ -157,7 +158,7 @@ def _cmd_live(host: Any, _ctx: Any = None) -> None:
 
 
 def _cmd_open_settings(host: Any, _ctx: Any = None) -> None:
-    host._show_settings()
+    host._navigate("settings")
 
 
 def _cmd_select_region(host: Any, _ctx: Any = None) -> None:

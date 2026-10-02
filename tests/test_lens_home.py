@@ -185,11 +185,13 @@ def test_review_html_not_product_ux_regression():
     assert "Open review.html" not in init
     sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
     assert "btn_html" not in sync
-    settings = inspect.getsource(home_ui.HomeApp._show_settings)
+    settings = inspect.getsource(home_ui.HomeApp._fill_settings_body)
     assert "SETTINGS_EXPORT_REVIEW" in settings or "Open export review page" in settings
     assert "SETTINGS_ADVANCED" in settings or "Advanced" in settings
     assert "SETTINGS_DIAGNOSTICS" in settings or "Diagnostics" in settings
-
+    show = inspect.getsource(home_ui.HomeApp._show_settings)
+    assert "Toplevel" not in show
+    assert "_settings_win" not in show
 
 def test_widget_drag_and_media_file(tmp_path):
     assert widget_drag_to_image(0, 0, 0, 10, view_w=100, view_h=100, image_w=200, image_h=200) is None

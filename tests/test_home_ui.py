@@ -165,18 +165,27 @@ def test_home_landing_has_no_engineering_leak():
 
 
 def test_home_settings_is_user_panel_not_dump():
-    """§6 — Settings opens a user panel; diagnostics go to Diagnostics."""
+    """§6 — Settings is an in-shell workspace route; diagnostics go to Diagnostics."""
     import semblon.home_ui as home_ui
 
     src = inspect.getsource(home_ui.HomeApp._show_settings)
-    assert "Advanced diagnostics" in src or "SETTINGS_OPEN_DIAGNOSTICS" in src
-    assert "Library location" in src or "SETTINGS_LIBRARY" in src
-    assert "Use GPU when available" in src or "SETTINGS_GPU" in src or "Processing on this computer" in src or "SETTINGS_PROCESSING_CPU" in src
-    assert "SETTINGS_DIAGNOSTICS" in src or "Diagnostics" in src
-    assert "format_execution_status_lines" not in src
-    assert "weights_status" not in src
-    assert "buffalo_l" not in src
-
+    fill = inspect.getsource(home_ui.HomeApp._fill_settings_body)
+    build = inspect.getsource(home_ui.HomeApp._build_settings_workspace)
+    assert "Advanced diagnostics" in fill or "SETTINGS_OPEN_DIAGNOSTICS" in fill
+    assert "Library location" in fill or "SETTINGS_LIBRARY" in fill
+    assert "Use GPU when available" in fill or "SETTINGS_GPU" in fill or "Processing on this computer" in fill or "SETTINGS_PROCESSING_CPU" in fill
+    assert "SETTINGS_DIAGNOSTICS" in fill or "Diagnostics" in fill
+    assert "format_execution_status_lines" not in fill
+    assert "weights_status" not in fill
+    assert "buffalo_l" not in fill
+    # Workspace route — not a popup.
+    assert "Toplevel" not in src
+    assert "_settings_win" not in src
+    assert "_settings.pack" in src or "self._settings.pack" in src
+    assert "_navigate(\"settings\")" in inspect.getsource(home_ui.HomeApp.__init__)
+    assert "build_atmosphere_previews" in fill
+    assert "Canvas" in build
+    assert "_hide_workspace_panes" in src
 
 def test_home_defers_canvas_load_until_inspector_ready():
     """Regression: Canvas on_select during __init__ must not touch missing _canvas_ws."""

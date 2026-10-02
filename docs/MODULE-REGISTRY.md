@@ -145,7 +145,7 @@ Fields are the same for every entry. “State at `35eeb72`” means what the sou
 
 - **Label:** System / Light / Atmospheres (Mica Dark, Cyber Obsidian, Neon Ember, Tokyo Synth).
 - **What it is:** Appearance preference — Atmosphere & Motion System (`docs/ATMOSPHERE.md`).
-- **Where implemented:** `ui_prefs.py` `load_theme_mode` / `save_theme_mode` / `resolve_atmosphere_id`; `atmosphere.py` + `atmosphere_render.py`; Settings System/Light + PreviewTheatre tiles in `home_ui.py`.
+- **Where implemented:** `ui_prefs.py` `load_theme_mode` / `save_theme_mode` / `resolve_atmosphere_id`; `atmosphere.py` + `atmosphere_render.py`; Settings workspace Appearance + PreviewTheatre tiles in `home_ui.py` (`_fill_settings_body`).
 - **Owner:** Home shell.
 - **What it exposes:** Settings → Appearance.
 - **Where the user accesses it:** Settings.
@@ -160,7 +160,7 @@ Fields are the same for every entry. “State at `35eeb72`” means what the sou
 
 - **Label:** Change… (library file).
 - **What it is:** Point Home at a different `store.sqlite`.
-- **Where implemented:** `home_ui.py:4145` `_settings_change_library` (button); settings page `_show_settings` at `home_ui.py:4050`.
+- **Where implemented:** `home_ui.py` `_settings_change_library`; Settings workspace `_show_settings` / `_fill_settings_body` (in-shell route, not a popup).
 - **Owner:** Home shell.
 - **What it exposes:** Settings control.
 - **Where the user accesses it:** Settings.
