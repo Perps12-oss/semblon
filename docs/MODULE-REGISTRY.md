@@ -143,18 +143,18 @@ Fields are the same for every entry. “State at `35eeb72`” means what the sou
 
 #### `theme`
 
-- **Label:** System / Light / Dark.
-- **What it is:** Appearance preference.
-- **Where implemented:** `ui_prefs.py` `load_theme_mode` / `save_theme_mode`; Settings radios `home_ui.py:4183-4194`.
+- **Label:** System / Light / Atmospheres (Mica Dark, Cyber Obsidian, Neon Ember, Tokyo Synth).
+- **What it is:** Appearance preference — Atmosphere & Motion System (`docs/ATMOSPHERE.md`).
+- **Where implemented:** `ui_prefs.py` `load_theme_mode` / `save_theme_mode` / `resolve_atmosphere_id`; `atmosphere.py` + `atmosphere_render.py`; Settings System/Light + PreviewTheatre tiles in `home_ui.py`.
 - **Owner:** Home shell.
 - **What it exposes:** Settings → Appearance.
 - **Where the user accesses it:** Settings.
-- **Dependencies:** On “System”, Windows theme registry when readable; otherwise light (`ui_prefs.py` module docstring).
-- **Persistence:** `appearance.json` beside the library file (`ui_prefs.py:18-24`). Not a SQLite column.
-- **Tests:** Home polish tests exist for settings copy (`tests` mentioned by history; this session did not re-read every assertion). `ui_prefs` behavior was read, not executed.
+- **Dependencies:** On “System”, Windows theme registry when readable; otherwise light. Stored `dark` aliases to `mica_dark`.
+- **Persistence:** `appearance.json` beside the library file (`ui_prefs.py`). Not a SQLite column.
+- **Tests:** `tests/test_atmosphere.py`, `tests/test_ui_prefs.py`.
 - **Platform:** File write is cross-platform. “System” matching Windows theme is Windows-only; elsewhere it resolves to light.
-- **State at `35eeb72`:** Present.
-- **Notes:** Needs verification of the Windows registry read on a real desktop.
+- **State at `35eeb72`:** Present (extended on atmosphere branch).
+- **Notes:** Opaque Tk — no Windows Mica/Acrylic APIs.
 
 #### `settings-library`
 

@@ -1059,16 +1059,41 @@ class HomeApp:
         foot = ttk.Frame(self._main, padding=(SP_20, SP_8))
         foot.pack(side=tk.BOTTOM, fill=tk.X)
         self._status_bar = foot
-        ttk.Label(
-            foot, textvariable=self._footer_local, font=META, foreground=TEXT_SECONDARY
-        ).pack(side=tk.LEFT)
-        ttk.Label(
-            foot, textvariable=self._footer_counts, font=META, foreground=TEXT_SECONDARY
-        ).pack(side=tk.LEFT, padx=(SP_12, 0))
+        self._footer_local_lbl = tk.Label(
+            foot,
+            textvariable=self._footer_local,
+            font=META,
+            fg=TEXT_SECONDARY,
+            bg=BG_CANVAS,
+        )
+        self._footer_local_lbl.pack(side=tk.LEFT)
+        self._footer_counts_lbl = tk.Label(
+            foot,
+            textvariable=self._footer_counts,
+            font=META,
+            fg=TEXT_SECONDARY,
+            bg=BG_CANVAS,
+        )
+        self._footer_counts_lbl.pack(side=tk.LEFT, padx=(SP_12, 0))
         # Keep _library_status for older refresh paths; mirror into counts when set.
-        ttk.Label(
-            foot, textvariable=self._footer_ready, font=META, foreground=TEXT_SECONDARY
-        ).pack(side=tk.RIGHT)
+        self._footer_ready_lbl = tk.Label(
+            foot,
+            textvariable=self._footer_ready,
+            font=META,
+            fg=TEXT_SECONDARY,
+            bg=BG_CANVAS,
+        )
+        self._footer_ready_lbl.pack(side=tk.RIGHT)
+        self._footer_pulse_color = TEXT_SECONDARY
+        self._processing_cue = None
+        try:
+            from semblon.atmosphere_render import ProcessingCue
+
+            self._processing_cue = ProcessingCue(
+                self.root, on_tick=self._on_processing_cue_tick
+            )
+        except Exception:  # noqa: BLE001
+            self._processing_cue = None
         body = ttk.Frame(self._main, padding=(8, 0, 8, 8))
         body.pack(fill=tk.BOTH, expand=True)
         self._body = body
@@ -1455,6 +1480,7 @@ class HomeApp:
                     self._lens_status.set(LENS_BUSY if flag else "")
                 except Exception:  # noqa: BLE001
                     pass
+            self._set_lens_processing(flag)
 
         schedule = lambda fn: self.root.after(0, fn)  # noqa: E731
 
@@ -1484,6 +1510,18 @@ class HomeApp:
             on_busy=on_busy,
             schedule=schedule,
         )
+
+    def _set_lens_processing(self, busy: bool) -> None:
+        """Drive Find Similar / Lens controls into PROCESSING visual state."""
+        for name in ("btn_lens_region", "btn_lens_whole", "btn_lens_browse"):
+            btn = getattr(self, name, None)
+            if btn is None:
+                continue
+            if hasattr(btn, "set_processing"):
+                try:
+                    btn.set_processing(busy)
+                except Exception:  # noqa: BLE001
+                    pass
 
     def _ask_with_lens(self) -> None:
         """Photos/Videos → Lens with the current asset (clear product path)."""
@@ -1620,6 +1658,7 @@ class HomeApp:
                 self.btn_lens_whole.configure(state=state)
             except Exception:  # noqa: BLE001
                 pass
+            self._set_lens_processing(flag)
 
         def on_error(exc: BaseException) -> None:
             try:
@@ -3088,30 +3127,73 @@ class HomeApp:
             except tk.TclError:
                 pass
 
+    def _on_processing_cue_tick(self, color: str, brightness: float) -> None:
+        """Footer illumination while indexing / jobs run."""
+        self._footer_pulse_color = color if brightness > 0 else TEXT_SECONDARY
+        for lbl in (
+            getattr(self, "_footer_ready_lbl", None),
+            getattr(self, "_footer_local_lbl", None),
+        ):
+            if lbl is None:
+                continue
+            try:
+                lbl.configure(fg=self._footer_pulse_color if brightness > 0 else TEXT_SECONDARY)
+            except tk.TclError:
+                pass
+
+    def _sync_processing_cue(self) -> None:
+        cue = getattr(self, "_processing_cue", None)
+        if cue is None:
+            return
+        busy = bool(getattr(self.engine, "busy", False))
+        if busy and not cue.active:
+            from semblon.atmosphere_render import active_atmosphere_id
+
+            cue.start(active_atmosphere_id())
+        elif not busy and cue.active:
+            cue.stop()
+
     def _apply_saved_theme(self) -> None:
         """Publish the saved appearance before widgets are built."""
-        from semblon.ui_prefs import load_theme_mode, resolve_palette
-        from semblon.ui_tokens import publish
+        from semblon.atmosphere_render import publish_atmosphere
+        from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
 
-        publish(resolve_palette(load_theme_mode(self.store)))
+        aid = resolve_atmosphere_id(load_theme_mode(self.store))
+        publish_atmosphere(aid)
 
     def _set_theme_mode(self, mode: str) -> None:
-        from semblon.ui_prefs import resolve_palette, save_theme_mode
+        from semblon.atmosphere_render import transition_to
+        from semblon.ui_prefs import resolve_atmosphere_id, save_theme_mode
         from semblon.ui_theme import apply_theme, reset_theme_for_tests
-        from semblon.ui_tokens import publish
 
         kept = save_theme_mode(mode, self.store)
-        publish(resolve_palette(kept))
-        if apply_theme is not None:
-            reset_theme_for_tests()
-            apply_theme(self.root, force=True)
-            if self._settings_win is not None:
-                try:
-                    if self._settings_win.winfo_exists():
-                        apply_theme(self._settings_win, force=True)
-                except tk.TclError:
-                    pass
-        self._restyle_chrome()
+        aid = resolve_atmosphere_id(kept)
+
+        def _finish() -> None:
+            if apply_theme is not None:
+                reset_theme_for_tests()
+                apply_theme(self.root, force=True)
+                if self._settings_win is not None:
+                    try:
+                        if self._settings_win.winfo_exists():
+                            apply_theme(self._settings_win, force=True)
+                    except tk.TclError:
+                        pass
+            self._restyle_chrome()
+            self._refresh_atmosphere_previews()
+
+        transition_to(self.root, aid, on_done=_finish)
+
+    def _refresh_atmosphere_previews(self) -> None:
+        tiles = getattr(self, "_atmosphere_tiles", None) or []
+        from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
+
+        cur = resolve_atmosphere_id(load_theme_mode(self.store))
+        for tile in tiles:
+            try:
+                tile.set_selected(tile.atmosphere_id == cur)
+            except Exception:  # noqa: BLE001
+                pass
 
     def _restyle_chrome(self) -> None:
         """Repaint surfaces that captured colors when they were created."""
@@ -3119,6 +3201,24 @@ class HomeApp:
             self.root.configure(bg=BG_CANVAS)
         except tk.TclError:
             pass
+        for lbl in (
+            getattr(self, "_footer_local_lbl", None),
+            getattr(self, "_footer_counts_lbl", None),
+            getattr(self, "_footer_ready_lbl", None),
+        ):
+            if lbl is None:
+                continue
+            try:
+                lbl.configure(bg=BG_CANVAS, fg=TEXT_SECONDARY)
+            except tk.TclError:
+                pass
+        # Inspector / contextual drawer — raised surface with accent edge when selected.
+        insp = getattr(self, "_inspector", None)
+        if insp is not None:
+            try:
+                insp.configure(style="Surface.TFrame")
+            except tk.TclError:
+                pass
         side = getattr(self, "_sidebar", None)
         if side is not None:
             try:
@@ -3155,6 +3255,7 @@ class HomeApp:
         self._build_result_card_shell()
         self._navigate(self._nav)
         self._refresh_job_controls()
+        self._sync_processing_cue()
 
     def _fill_result_card(self) -> None:
         kind = self._completion_kind
@@ -3459,13 +3560,14 @@ class HomeApp:
             )
         self._sync_chrome_for_route()
         self._refresh_footer()
+        self._sync_processing_cue()
         if self._nav in {"home", "library", "photos", "videos"} and busy:
             # Stay on Library; footer shows Scanning — do not force old dashboard.
             try:
                 mapped = bool(self._canvas_ws.winfo_ismapped()) or bool(
                     self._landing.winfo_ismapped()
                 )
-            except tk.TclError:
+            except (tk.TclError, AttributeError):
                 mapped = False
             if not mapped:
                 self._show_library_or_onboard()
@@ -4205,13 +4307,13 @@ class HomeApp:
         ttk.Label(pad, text=appearance.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
-        from semblon.ui_prefs import load_theme_mode
+        from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
 
-        self._theme_var = tk.StringVar(value=load_theme_mode(self.store))
+        current_mode = load_theme_mode(self.store)
+        self._theme_var = tk.StringVar(value=current_mode)
         for mode, label in (
             ("system", "System"),
             ("light", "Light"),
-            ("dark", "Dark"),
         ):
             ttk.Radiobutton(
                 pad,
@@ -4220,6 +4322,42 @@ class HomeApp:
                 variable=self._theme_var,
                 command=lambda m=mode: self._set_theme_mode(m),
             ).pack(anchor=tk.W)
+
+        ttk.Label(
+            pad,
+            text="Atmospheres",
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+        ).pack(anchor=tk.W, pady=(SP_12, SP_8))
+        preview_row = ttk.Frame(pad)
+        preview_row.pack(anchor=tk.W, fill=tk.X)
+        self._atmosphere_tiles = []
+        try:
+            from semblon.atmosphere_render import build_atmosphere_previews
+
+            def _pick(aid: str) -> None:
+                self._theme_var.set(aid)
+                self._set_theme_mode(aid)
+
+            tiles = build_atmosphere_previews(
+                preview_row,
+                current=resolve_atmosphere_id(current_mode),
+                on_select=_pick,
+            )
+            self._atmosphere_tiles = tiles
+            for i, tile in enumerate(tiles):
+                tile.widget().grid(row=0, column=i, padx=(0, SP_8), pady=2)
+        except Exception:  # noqa: BLE001 — radios still work without previews
+            from semblon.atmosphere import ATMOSPHERE_LABELS, DARK_ATMOSPHERE_IDS
+
+            for aid in DARK_ATMOSPHERE_IDS:
+                ttk.Radiobutton(
+                    pad,
+                    text=ATMOSPHERE_LABELS.get(aid, aid),
+                    value=aid,
+                    variable=self._theme_var,
+                    command=lambda m=aid: self._set_theme_mode(m),
+                ).pack(anchor=tk.W)
 
         ttk.Label(pad, text=about.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)

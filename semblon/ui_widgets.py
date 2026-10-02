@@ -31,6 +31,7 @@ from semblon.ui_tokens import (
     BORDER_STRONG,
     DANGER,
     INK_DISABLED,
+    INK_ON_ACCENT,
     INK_PRIMARY,
     INK_SECONDARY,
     NAV_HEIGHT,
@@ -99,6 +100,7 @@ else:
             self._hover = False
             self._pressed = False
             self._active = False
+            self._processing = False
             self._badge: str | None = None
             self._plate = plate or BG_SURFACE
             height = px(master, _HEIGHT[self._kind])
@@ -238,44 +240,78 @@ else:
                     return
             self._command()
 
+        def _interaction_state(self):
+            from semblon.atmosphere import InteractionState
+
+            if not self._enabled:
+                return InteractionState.DISABLED
+            if getattr(self, "_processing", False):
+                return InteractionState.PROCESSING
+            if self._active and self._kind == "nav":
+                return InteractionState.SELECTED
+            if self._pressed:
+                return InteractionState.SELECTED
+            if self._hover:
+                return InteractionState.HOVER
+            return InteractionState.RESTING
+
+        def set_processing(self, busy: bool) -> None:
+            """Mark the control as processing (Find Similar, etc.)."""
+            self._processing = bool(busy)
+            self._redraw()
+
         def _palette(self) -> tuple[str, str, str]:
             """Return fill, ink, border for the current interaction state."""
+            from semblon.atmosphere import InteractionState, resolve
+            from semblon.atmosphere_render import active_atmosphere_id
+
             kind = self._kind
-            if not self._enabled:
-                if kind == "primary":
-                    return _blend(INK_PRIMARY, self._plate, 0.40), INK_DISABLED, ""
-                if kind == "destructive":
-                    return self._plate, INK_DISABLED, _blend(DANGER, self._plate, 0.30)
-                return BG_SUBTLE, INK_DISABLED, BORDER_DEFAULT if kind == "secondary" else ""
+            state = self._interaction_state()
+            tokens = resolve(active_atmosphere_id(), state)
             if kind == "primary":
-                # Ink button. Accent stays on progress and status, not on actions.
-                ink = BG_CANVAS
-                if self._pressed:
-                    return _blend(INK_PRIMARY, BG_CANVAS, 0.70), ink, ""
-                if self._hover:
-                    return _blend(INK_PRIMARY, BG_CANVAS, 0.85), ink, ""
-                return INK_PRIMARY, ink, ""
+                if state is InteractionState.DISABLED:
+                    return (
+                        _blend(tokens.text_primary, self._plate, 0.40),
+                        tokens.text_disabled,
+                        "",
+                    )
+                # Accent-forward primary — atmosphere identity, not flat ink block.
+                if state is InteractionState.SELECTED or self._pressed:
+                    return tokens.accent, INK_ON_ACCENT, ""
+                if state is InteractionState.HOVER:
+                    return _blend("#FFFFFF", tokens.accent, 0.18), "#FFFFFF", ""
+                if state is InteractionState.PROCESSING:
+                    return tokens.fill, tokens.ink, tokens.border
+                return tokens.accent, INK_ON_ACCENT, ""
             if kind == "destructive":
-                fill = _blend(DANGER, self._plate, 0.10) if (self._hover or self._pressed) else self._plate
-                return fill, DANGER, _blend(DANGER, self._plate, 0.30)
+                if state is InteractionState.DISABLED:
+                    return self._plate, tokens.text_disabled, _blend(DANGER, self._plate, 0.30)
+                fill = (
+                    _blend(DANGER, self._plate, 0.14)
+                    if state in (InteractionState.HOVER, InteractionState.SELECTED)
+                    else self._plate
+                )
+                return fill, DANGER, _blend(DANGER, self._plate, 0.35)
             if kind == "nav":
-                if self._active:
-                    return NAV_ACTIVE, INK_PRIMARY, ""
-                if self._pressed or self._hover:
-                    return BG_HOVER, INK_PRIMARY, ""
-                return self._plate, INK_SECONDARY, ""
+                if state is InteractionState.DISABLED:
+                    return self._plate, tokens.text_disabled, ""
+                if state is InteractionState.SELECTED:
+                    return tokens.fill, tokens.ink, tokens.border
+                if state is InteractionState.HOVER:
+                    return tokens.fill, tokens.ink, ""
+                return self._plate, tokens.text_secondary, ""
             if kind == "tertiary":
-                if self._pressed:
-                    return BG_PRESSED, INK_PRIMARY, ""
-                if self._hover:
-                    return BG_HOVER, INK_PRIMARY, ""
-                return self._plate, INK_SECONDARY, ""
+                if state is InteractionState.DISABLED:
+                    return self._plate, tokens.text_disabled, ""
+                if state in (InteractionState.HOVER, InteractionState.SELECTED):
+                    return tokens.fill, tokens.ink, ""
+                return self._plate, tokens.text_secondary, ""
             # secondary
-            if self._pressed:
-                return BG_PRESSED, INK_PRIMARY, BORDER_STRONG
-            if self._hover:
-                return BG_HOVER, INK_PRIMARY, BORDER_STRONG
-            return BG_SURFACE, INK_PRIMARY, BORDER_DEFAULT
+            if state is InteractionState.DISABLED:
+                return tokens.surface_muted, tokens.text_disabled, tokens.border
+            if state in (InteractionState.HOVER, InteractionState.SELECTED, InteractionState.PROCESSING):
+                return tokens.fill, tokens.ink, tokens.border
+            return tokens.surface_raised, tokens.text_primary, tokens.border
 
         def _measure(self) -> int:
             if tkfont is None:

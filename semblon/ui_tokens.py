@@ -88,11 +88,13 @@ SP_32 = 32
 SP_48 = 48
 SP_64 = 64
 
-# Motion durations (ms). Tk does not animate these; callers that add
-# motion should read them and skip when reduced motion is on.
+# Motion durations (ms). Atmosphere renderer reads these and skips
+# continuous motion when reduced motion / Capability.REDUCED is active.
 MOTION_FAST_MS = 120
 MOTION_MED_MS = 160
 MOTION_SLOW_MS = 240
+MOTION_THEME_MS = 250
+MOTION_PROCESSING_MS = 1800
 
 # Geometry.
 RADIUS_BUTTON = 8
@@ -249,23 +251,30 @@ LIGHT = Palette(
     focus_ring="#171717",
 )
 
-# Dark focus ring is text-primary. The spec lists a focus ring on light only.
+# Default dark = Mica Dark atmosphere (docs/ATMOSPHERE.md). Name stays
+# "dark" for legacy callers; atmosphere id is mica_dark via ui_prefs.
 DARK = Palette(
     name="dark",
-    text_primary="#F1F1F1",
-    text_secondary="#B4B4B4",
-    text_tertiary="#868686",
-    text_quaternary="#5E5E5E",
-    surface="#1C1C1D",
-    surface_muted="#242425",
-    surface_raised="#2B2B2C",
-    border="#363637",
-    accent="#4C8DFF",
+    text_primary="#E8ECF4",
+    text_secondary="#A8B0C0",
+    text_tertiary="#6E7688",
+    text_quaternary="#4A5160",
+    surface="#12151C",
+    surface_muted="#181C26",
+    surface_raised="#1E2430",
+    border="#2A3140",
+    accent="#5B8DEF",
     danger="#E5484D",
     warning="#D9A13B",
     positive="#3FB27F",
-    focus_ring="#F1F1F1",
+    focus_ring="#E8ECF4",
 )
+
+# Photo stage under media — deeper than chrome so stills stay dominant.
+BG_STAGE = DARK.surface
+BORDER_STRONG_ACTIVE = DARK.border
+ACCENT_B = DARK.accent
+ILLUMINATION_MIST = "#2A3A5C"
 
 _ACTIVE: Palette = LIGHT
 
@@ -329,18 +338,22 @@ _ALIAS_NAMES = (
     "BG_HOVER",
     "BG_INSET",
     "BG_DARK",
+    "BG_STAGE",
     "BORDER_SUBTLE",
     "BORDER_DEFAULT",
     "BORDER_STRONG",
+    "BORDER_STRONG_ACTIVE",
     "INK_PRIMARY",
     "INK_SECONDARY",
     "INK_TERTIARY",
     "INK_DISABLED",
     "INK_ON_DARK",
     "ACCENT",
+    "ACCENT_B",
     "ACCENT_HOVER",
     "ACCENT_PRESSED",
     "ACCENT_SUBTLE",
+    "ILLUMINATION_MIST",
     "NAV_ACTIVE",
     "SUCCESS",
     "WARNING",
@@ -364,6 +377,7 @@ _CONSUMERS = (
     "semblon.empty_states",
     "semblon.live_overlay",
     "semblon.advanced_diagnostics",
+    "semblon.atmosphere_render",
 )
 
 
@@ -375,6 +389,7 @@ def _bind(palette: Palette) -> None:
     """Point the legacy names at ``palette`` inside this module."""
     global _ACTIVE
     global BG_CANVAS, BG_SURFACE, BG_SUBTLE, BG_PRESSED, BG_HOVER, BG_INSET, BG_DARK
+    global BG_STAGE, BORDER_STRONG_ACTIVE, ACCENT_B, ILLUMINATION_MIST
     global BORDER_SUBTLE, BORDER_DEFAULT, BORDER_STRONG
     global INK_PRIMARY, INK_SECONDARY, INK_TERTIARY, INK_DISABLED, INK_ON_DARK
     global ACCENT, ACCENT_HOVER, ACCENT_PRESSED, ACCENT_SUBTLE, NAV_ACTIVE
@@ -383,30 +398,50 @@ def _bind(palette: Palette) -> None:
     global TEXT_DISABLED, BORDER_FOCUS
 
     _ACTIVE = palette
-    # Photo stage stays on the dark surface in both appearances so stills
-    # are not sitting on the page white.
+    # Prefer atmosphere stage when this palette came from an atmosphere id.
     stage = DARK.surface
-    ink_on_stage = DARK.text_secondary
+    mist = ILLUMINATION_MIST
+    accent_b = palette.accent
+    try:
+        from semblon.atmosphere import ATMOSPHERES
+
+        spec = ATMOSPHERES.get(palette.name) or (
+            ATMOSPHERES.get("mica_dark") if palette.name == "dark" else None
+        )
+        if spec is not None:
+            stage = spec.surface_stage
+            mist = spec.mist
+            accent_b = spec.accent_b
+        elif palette.name == "light":
+            stage = ATMOSPHERES["light"].surface_stage
+            mist = ATMOSPHERES["light"].mist
+    except Exception:  # noqa: BLE001 — publish must not fail on import cycles
+        pass
+    ink_on_stage = mix("#FFFFFF", stage, 0.72)
     BG_CANVAS = palette.surface
     BG_SURFACE = palette.surface_raised
     BG_SUBTLE = palette.surface_muted
-    BG_PRESSED = palette.hover
-    BG_HOVER = palette.hover
+    BG_PRESSED = mix(palette.accent, palette.surface_raised, 0.10)
+    BG_HOVER = mix(mist, palette.surface_raised, 0.18)
     BG_INSET = palette.surface_muted
     BG_DARK = stage
+    BG_STAGE = stage
     BORDER_SUBTLE = palette.border
     BORDER_DEFAULT = palette.border
-    BORDER_STRONG = palette.border
+    BORDER_STRONG = mix(palette.accent, palette.border, 0.25)
+    BORDER_STRONG_ACTIVE = mix(palette.accent, palette.border, 0.55)
     INK_PRIMARY = palette.text_primary
     INK_SECONDARY = palette.text_secondary
     INK_TERTIARY = palette.text_tertiary
     INK_DISABLED = palette.text_quaternary
     INK_ON_DARK = ink_on_stage
     ACCENT = palette.accent
+    ACCENT_B = accent_b
     ACCENT_HOVER = palette.accent_hover
     ACCENT_PRESSED = palette.accent_pressed
     ACCENT_SUBTLE = palette.chip_accent
-    NAV_ACTIVE = palette.active_nav
+    ILLUMINATION_MIST = mist
+    NAV_ACTIVE = mix(palette.accent, palette.surface, 0.14)
     SUCCESS = palette.positive
     WARNING = palette.warning
     DANGER = palette.danger

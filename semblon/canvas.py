@@ -413,12 +413,13 @@ else:
                 ACCENT,
                 ACCENT_HOVER,
                 ACCENT_SUBTLE,
-                BG_DARK,
+                BG_STAGE,
                 BG_SUBTLE,
                 CAPTION,
                 INK_ON_DARK,
                 INK_SECONDARY,
             )
+            from semblon.atmosphere_render import Spotlight
 
             self.frame = ttk.Frame(master)
             self._on_select = on_select
@@ -464,6 +465,7 @@ else:
             self._visual_gen = 0
             self._overlay_photo = None
             self.status = tk.StringVar(value="Photos")
+            self._spotlight = None
 
             if show_chrome:
                 ttk.Label(self.frame, textvariable=self.status, wraplength=720).pack(
@@ -512,8 +514,9 @@ else:
             )
             self._tip.pack(anchor=tk.W, pady=(0, 4))
 
-            self.preview = tk.Canvas(self._preview_wrap, background=BG_DARK, highlightthickness=0)
+            self.preview = tk.Canvas(self._preview_wrap, background=BG_STAGE, highlightthickness=0)
             self.preview.pack(fill=tk.BOTH, expand=True)
+            self._spotlight = Spotlight(self.preview)
             self._ink_on_dark = INK_ON_DARK
             self._caption_font = CAPTION
             self._accent = ACCENT
@@ -557,6 +560,9 @@ else:
 
         def grid(self, **kwargs):
             return self.frame.grid(**kwargs)
+
+        def winfo_ismapped(self):
+            return self.frame.winfo_ismapped()
 
         def _enter_grid(self) -> None:
             """Photos fill the stage. The opened picture is not sitting beside a rail."""
@@ -1317,7 +1323,7 @@ else:
                 x1, y1, x2, y2, outline=color, width=width, tags=("overlay",)
             )
 
-        def _draw_highlight(self, hit: dict, *, color: str, width: int = 2) -> None:
+        def _draw_highlight(self, hit: dict, *, color: str, width: int = 2, region=None) -> None:
             rows = hit.get("rows")
             drawn = False
             if rows and self._img is not None:
@@ -1335,10 +1341,18 @@ else:
                             rx1, ry1, rx2, ry2, outline="", fill=color, stipple="gray25", tags=("overlay",)
                         )
                     drawn = True
+            if region is not None and region.aura:
+                x1, y1, x2, y2 = hit["rect"]
+                self.preview.create_rectangle(
+                    x1 - 3, y1 - 3, x2 + 3, y2 + 3, outline=region.aura, width=2, tags=("overlay",)
+                )
             if not drawn:
                 self._draw_outline(hit, color=color, width=width)
             label = (hit.get("label") or "").strip()
-            if not label or hit.get("kind") == "face":
+            show_label = bool(label) and hit.get("kind") != "face"
+            if region is not None:
+                show_label = show_label and region.label_visible
+            if not show_label:
                 return
             x1, y1, _x2, _y2 = hit["rect"]
             chip_w = max(36, 7 * len(label) + 12)
@@ -1346,8 +1360,9 @@ else:
             self.preview.create_rectangle(
                 x1, top, x1 + chip_w, top + 16, outline="", fill=color, tags=("overlay",)
             )
+            label_fg = region.label_fg if region is not None else "#F7F4EE"
             self.preview.create_text(
-                x1 + 6, top + 8, anchor=tk.W, fill="#F7F4EE", text=label, tags=("overlay",)
+                x1 + 6, top + 8, anchor=tk.W, fill=label_fg, text=label, tags=("overlay",)
             )
 
         def _region_overlay_photo(self, hit: dict):
@@ -1419,21 +1434,75 @@ else:
                     tags=("overlay", "seg_label"),
                 )
 
-        def _paint_hit(self, hit: dict, *, color: str, selected: bool = False) -> None:
+        def _atm_tokens(self, state):
+            from semblon.atmosphere import InteractionState, resolve
+            from semblon.atmosphere_render import active_atmosphere_id
+
+            if isinstance(state, str):
+                state = InteractionState(state)
+            return resolve(active_atmosphere_id(), state)
+
+        def _paint_hit(self, hit: dict, *, color: str, selected: bool = False, region=None) -> None:
+            if region is not None:
+                color = region.outline
             if hit.get("kind") == "visual_segment":
                 self._draw_segment_highlight(hit, color=color, selected=selected)
                 return
             item = hit.get("item") or {}
+            width = region.outline_width if region is not None else (3 if selected else 2)
             if hit.get("rows") or item.get("provider") == "visual.region":
-                self._draw_highlight(hit, color=color, width=3 if selected else 2)
+                self._draw_highlight(hit, color=color, width=width, region=region)
                 return
-            self._draw_outline(hit, color=color, width=3 if selected else 2)
+            if region is not None and region.aura:
+                x1, y1, x2, y2 = hit["rect"]
+                self.preview.create_rectangle(
+                    x1 - 3,
+                    y1 - 3,
+                    x2 + 3,
+                    y2 + 3,
+                    outline=region.aura,
+                    width=2,
+                    tags=("overlay",),
+                )
+            if region is not None and region.fill:
+                x1, y1, x2, y2 = hit["rect"]
+                self.preview.create_rectangle(
+                    x1, y1, x2, y2, outline="", fill=region.fill, stipple="gray25", tags=("overlay",)
+                )
+            self._draw_outline(hit, color=color, width=width)
+            if region is not None and region.label_visible:
+                label = (hit.get("label") or "").strip()
+                if label and hit.get("kind") != "face":
+                    x1, y1, _x2, _y2 = hit["rect"]
+                    chip_w = max(36, 7 * len(label) + 12)
+                    top = max(2, y1 - 18)
+                    self.preview.create_rectangle(
+                        x1, top, x1 + chip_w, top + 16, outline="", fill=color, tags=("overlay",)
+                    )
+                    self.preview.create_text(
+                        x1 + 6,
+                        top + 8,
+                        anchor=tk.W,
+                        fill=region.label_fg,
+                        text=label,
+                        tags=("overlay",),
+                    )
 
         def _paint_interaction(self) -> None:
+            from semblon.atmosphere import InteractionState
+
             self._clear_overlay_tags()
             if self._selected is not None:
-                self._paint_hit(self._selected, color=self._SELECT_COLOR, selected=True)
+                tokens = self._atm_tokens(InteractionState.SELECTED)
+                self._paint_hit(
+                    self._selected,
+                    color=tokens.region.outline,
+                    selected=True,
+                    region=tokens.region,
+                )
+                self._SELECT_COLOR = tokens.accent
             elif self._hover_id is not None:
+                tokens = self._atm_tokens(InteractionState.HOVER)
                 hit = None
                 if self._hover_seg is not None:
                     hit = {
@@ -1454,7 +1523,15 @@ else:
                         None,
                     )
                 if hit is not None:
-                    self._paint_hit(hit, color=self._HOVER_COLOR)
+                    self._paint_hit(
+                        hit,
+                        color=tokens.region.outline,
+                        region=tokens.region,
+                    )
+                self._HOVER_COLOR = tokens.accent
+            else:
+                # Resting: no permanent boxes on the photograph.
+                pass
 
         def _dismiss_tip(self) -> None:
             if self._tip_shown:
@@ -1517,6 +1594,13 @@ else:
             hit = self._hit_at(event.x, event.y)
             new_id = hit["id"] if hit else None
             new_seg = hit.get("segment") if hit and hit.get("kind") == "visual_segment" else None
+            from semblon.atmosphere import InteractionState
+
+            tokens = self._atm_tokens(
+                InteractionState.HOVER if new_id else InteractionState.RESTING
+            )
+            if self._spotlight is not None:
+                self._spotlight.paint(event.x, event.y, tokens)
             if new_id == self._hover_id and new_seg is self._hover_seg:
                 return
             self._hover_id = new_id
@@ -1528,6 +1612,8 @@ else:
                 return
             self._hover_id = None
             self._hover_seg = None
+            if self._spotlight is not None:
+                self._spotlight.clear()
             if self._selected is None:
                 self._paint_interaction()
 
