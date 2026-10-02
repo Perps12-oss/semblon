@@ -194,9 +194,8 @@ from semblon.watchdog import Watchdog
 # Base Home observers (always). Product path may append OCR/CLIP/pose when ready.
 HOME_OBSERVERS = "face,color,object"
 
-# Dashboard route id stays "home". The sidebar label is Photos — Home was
-# the redundant item. The photo grid remains route id "photos".
-# Lens is its own section so LIBRARY / PEOPLE / ACTIVITY ids stay put.
+# Product Library is route id "library". Compatibility aliases: home, photos, videos.
+# Lens and People to name stay as routes without permanent sidebar rows.
 HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = ()
 
 
@@ -899,7 +898,7 @@ class HomeApp:
         self._last_folder: Path | None = None
         self._resume_ready = False
         self._q: queue.Queue = queue.Queue()
-        self._nav = "home"
+        self._nav = "library"
         self._nav_buttons: dict[str, ttk.Button] = {}
         self._prefer_gpu_user: bool | None = None  # Settings toggle; None = product default
         self._completion: dict | None = None  # last done/cancelled summary for §11 card
@@ -910,6 +909,9 @@ class HomeApp:
         self._inspector_collapsed = False
         self._settings_win: tk.Toplevel | None = None
         self._last_progress_event: ProgressEvent | None = None
+        self._library_filter = "all"
+        self._similar_media_ids: list[str] | None = None
+        self._library_return: dict | None = None
         from semblon.scan_present import ScanPace
 
         self._scan_pace = ScanPace()
@@ -948,7 +950,6 @@ class HomeApp:
         self._search_entry = ttk.Entry(search_row, textvariable=self.search_var, width=28)
         self._search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         try:
-            # Cheap a11y: named entry for focus/screen-reader tooling.
             self._search_entry.configure(takefocus=True)
         except tk.TclError:
             pass
@@ -960,14 +961,12 @@ class HomeApp:
             pass
         self._search_entry.bind("<FocusIn>", self._search_focus_in)
         self._search_entry.bind("<FocusOut>", self._search_focus_out)
-        # Kept for the control-state map. Enter submits the field.
         self.btn_search = _button(
             search_row, "Search", self._search_person, kind="tertiary", icon="search"
         )
         self._search_entry.bind("<Return>", lambda _e: self._search_person())
         self.root.bind("<Control-f>", lambda _e: self._search_entry.focus_set())
         self.root.bind("<Control-k>", self._open_command_palette)
-        # Number shortcuts come from registry nav contributions (Photos…Activity).
         for nav in self._registry.nav_contributions():
             if not nav.shortcut:
                 continue
@@ -977,36 +976,37 @@ class HomeApp:
                 lambda _e, n=nav.route_id: self._navigate(n),
             )
 
-        # ── Job controls (demoted on home — UX Rescue §3) ──
+        # Global Add Folder + Settings in the header (not page-local CTAs).
+        self.btn_folder = _button(
+            top, "Add Folder", self._choose_folder, kind="secondary", icon="folder-plus"
+        )
+        self.btn_folder.pack(side=tk.RIGHT, padx=(SP_8, 0))
+        self.btn_settings = _button(
+            top, "Settings", self._show_settings, kind="tertiary", icon="settings"
+        )
+        self.btn_settings.pack(side=tk.RIGHT)
+
+        # ── Job controls (demoted — processing Pause/Cancel) ──
         jobs = ttk.Frame(self._main, padding=(12, 0, 12, 4))
         jobs.pack(fill=tk.X)
         self._jobs_frame = jobs
-        self.btn_folder = _button(
-            jobs, "Choose folder…", self._choose_folder, kind="secondary", icon="folder-plus"
-        )
-        # Pack later via _sync_chrome_for_route (hidden on cold home; CTA is on landing).
         self.btn_review = _button(jobs, "Open Review", self._open_review_ui, kind="secondary")
         self.btn_cancel = _button(jobs, "Cancel", self._request_cancel, kind="tertiary")
         self.btn_cancel.configure(state=tk.DISABLED)
-        # Pause/Resume live next to the progress bar as a single toggle (§3 / §10).
         self.btn_pause = _button(
             jobs, "Pause", self._toggle_pause_resume, kind="tertiary", icon="pause"
         )
         self.btn_pause.configure(state=tk.DISABLED)
         self.btn_resume = self.btn_pause  # alias: one toggle control
         self.btn_live = _button(jobs, "Live…", self._open_live_overlay, kind="tertiary")
-        # Canvas widget kept for secondary navigate; never packed as primary chrome.
         self.btn_canvas = _button(
             jobs, "Canvas", lambda: self._navigate("canvas"), kind="tertiary", icon="images"
         )
-        # Secondary surfaces live under More — fed by registry overflow commands.
-        # review.html is SUPERSEDED as UX — Settings → Advanced export only.
         self._overflow = ttk.Menubutton(jobs, text="More")
         self._overflow.pack(side=tk.RIGHT, padx=(SP_8, 0))
         self._rebuild_overflow_menu()
         self._overflow.configure(menu=self._overflow_menu)
 
-        # Aliases rebound after sidebar build.
         self.btn_people = self.btn_canvas
         self.btn_unknown = self.btn_canvas
         self.btn_activity = self.btn_canvas
@@ -1051,24 +1051,32 @@ class HomeApp:
         # Prefer progress-adjacent Cancel when processing; job-bar Cancel unused on home.
         self.btn_cancel = self.btn_cancel_prog
 
-        # ── Body: Library | Workspace | Inspector ──
+        # ── Body: Library | Workspace | Details ──
         self._library_status = tk.StringVar(value="")
-        self._status_bar = ttk.Label(
-            self._main,
-            textvariable=self._library_status,
-            font=META,
-            foreground=TEXT_SECONDARY,
-            padding=(SP_20, SP_8),
-        )
-        self._status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        self._footer_local = tk.StringVar(value="● Local")
+        self._footer_counts = tk.StringVar(value="")
+        self._footer_ready = tk.StringVar(value="Ready")
+        foot = ttk.Frame(self._main, padding=(SP_20, SP_8))
+        foot.pack(side=tk.BOTTOM, fill=tk.X)
+        self._status_bar = foot
+        ttk.Label(
+            foot, textvariable=self._footer_local, font=META, foreground=TEXT_SECONDARY
+        ).pack(side=tk.LEFT)
+        ttk.Label(
+            foot, textvariable=self._footer_counts, font=META, foreground=TEXT_SECONDARY
+        ).pack(side=tk.LEFT, padx=(SP_12, 0))
+        # Keep _library_status for older refresh paths; mirror into counts when set.
+        ttk.Label(
+            foot, textvariable=self._footer_ready, font=META, foreground=TEXT_SECONDARY
+        ).pack(side=tk.RIGHT)
         body = ttk.Frame(self._main, padding=(8, 0, 8, 8))
         body.pack(fill=tk.BOTH, expand=True)
         self._body = body
         body.columnconfigure(0, weight=5)
-        body.columnconfigure(1, weight=1)
+        body.columnconfigure(1, weight=1, minsize=0)
         body.rowconfigure(0, weight=1)
 
-        # Library sidebar — navigation, not a diagnostic listing.
+        # Sidebar — Library · People · Activity (Settings is a header control).
         side = tk.Frame(
             self._shell,
             bg=BG_SUBTLE,
@@ -1078,7 +1086,7 @@ class HomeApp:
         )
         side.pack(side=tk.LEFT, fill=tk.Y)
         try:
-            side.configure(width=260)
+            side.configure(width=220)
             side.pack_propagate(False)
         except tk.TclError:
             pass
@@ -1100,35 +1108,18 @@ class HomeApp:
             font=CAPTION,
             bg=BG_SUBTLE,
             fg=INK_TERTIARY,
-            wraplength=200,
+            wraplength=180,
             justify=tk.LEFT,
         )
         self._sidebar_footer.pack(side=tk.BOTTOM, anchor=tk.W, padx=SP_16, pady=SP_16)
-        _section_labels = {
-            "ASK": "",
-            "LIBRARY": "Library",
-            "PEOPLE": "People",
-            "ACTIVITY": "Activity",
-        }
         for section, items in self._registry.nav_sections():
-            heading = _section_labels.get(section, section.title())
-            if heading:
-                section_lbl = tk.Label(
-                    side,
-                    text=heading,
-                    font=CAPTION,
-                    bg=BG_SUBTLE,
-                    fg=INK_TERTIARY,
-                )
-                section_lbl.pack(
-                    anchor=tk.W,
-                    pady=(SP_24 if section != "LIBRARY" else SP_8, SP_8),
-                    padx=(SP_16, SP_8),
-                )
-                self._nav_rows.append(("label", section_lbl))
+            # Flat rail — no section headings.
+            del section
             for nav in items:
                 nav_id, label = nav.route_id, nav.label
-                icon_name = "images" if nav_id == "home" else NAV_ICONS.get(nav_id)
+                icon_name = NAV_ICONS.get(nav_id) or (
+                    "images" if nav_id in {"library", "home", "photos"} else None
+                )
                 btn = _button(
                     self._shell,
                     label,
@@ -1140,18 +1131,12 @@ class HomeApp:
                 btn.pack(fill=tk.X, pady=1, padx=SP_4)
                 self._nav_buttons[nav_id] = btn
                 self._nav_rows.append(("nav", nav_id))
-        self.btn_settings = _button(
-            side, "Settings", self._show_settings, kind="nav", icon="settings", plate=BG_SUBTLE
-        )
-        self.btn_settings.pack(fill=tk.X, pady=1, padx=SP_4)
         self._nav_buttons["settings"] = self.btn_settings
-        self._nav_rows.append(("nav", "settings"))
         self.root.bind("<Configure>", self._on_root_configure, add="+")
 
-        # Keep job-control map keys: people/unknown/activity point at sidebar buttons.
-        self.btn_people = self._nav_buttons["people"]
-        self.btn_unknown = self._nav_buttons["unknown"]
-        self.btn_activity = self._nav_buttons["activity"]
+        self.btn_people = self._nav_buttons.get("people") or self.btn_canvas
+        self.btn_unknown = self._nav_buttons.get("unknown") or self.btn_people
+        self.btn_activity = self._nav_buttons.get("activity") or self.btn_canvas
 
         # Workspace (landing / Canvas / welcome). Role: WORKSPACE / INTELLIGENCE CANVAS.
         work = ttk.Frame(body, padding=(SP_16, SP_8))
@@ -1175,12 +1160,14 @@ class HomeApp:
         self._processing = ttk.Frame(work)
         self._result_card = ttk.Frame(work)
         self._library_home = ttk.Frame(work)
+        self._library_chrome = ttk.Frame(work)
         self._lens = ttk.Frame(work)
         self._activity = ttk.Frame(work)
         self._build_home_landing()
         self._build_processing_home()
         self._build_result_card_shell()
         self._build_library_home()
+        self._build_library_chrome()
         self._build_lens_workspace()
         self._build_activity_workspace()
 
@@ -1202,7 +1189,7 @@ class HomeApp:
         insp = ttk.Frame(body, padding=(SP_16, SP_16))
         insp.grid(row=0, column=1, sticky="nsew")
         self._inspector_frame = insp
-        self._inspector_title = tk.StringVar(value="Home")
+        self._inspector_title = tk.StringVar(value="Details")
         ttk.Label(insp, textvariable=self._inspector_title, font=H3).pack(
             anchor=tk.W, pady=(0, SP_16)
         )
@@ -1343,7 +1330,7 @@ class HomeApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._drain_queue)
-        self._navigate("home")
+        self._navigate("library")
 
     def _set_inspector(self, title: str, lines: list[str]) -> None:
         self._inspector_title.set(title)
@@ -1997,15 +1984,15 @@ class HomeApp:
     def _inspector_after_mutation(self) -> None:
         """Refresh Canvas / Unknown after a successful Inspector verb."""
         rid = self._inspector_run_id()
-        if self._nav == "home":
-            self._show_home_landing()
+        if self._nav in {"home", "library"}:
+            self._show_library_or_onboard()
         elif self._nav in {"canvas", "photos", "videos"}:
-            types = None
             if self._nav == "photos":
-                types = ("folder",)
+                self._show_library(filter_key="photos")
             elif self._nav == "videos":
-                types = ("video",)
-            self._show_workspace_canvas(reload=True, source_types=types)
+                self._show_library(filter_key="videos")
+            else:
+                self._show_workspace_canvas(reload=True, source_types=None)
         elif self._nav == "unknown":
             self._show_unknown()
         elif self._nav == "people":
@@ -2218,12 +2205,12 @@ class HomeApp:
             title = "This photo"
             available = []
             preselect = False
-            # Photo open, nothing selected — keep inspector but soft.
             self._set_inspector_collapsed(False)
         else:
-            title = "Photos"
+            title = "Details"
             available = []
             preselect = False
+            self._set_inspector_collapsed(True)
 
         # Soft product lines from Canvas — do not re-wrap with engineering evidence.
         self._set_inspector_selection(
@@ -2520,6 +2507,8 @@ class HomeApp:
         self._result_card.pack_forget()
         if hasattr(self, "_library_home"):
             self._library_home.pack_forget()
+        if hasattr(self, "_library_chrome"):
+            self._library_chrome.pack_forget()
         if hasattr(self, "_lens"):
             self._lens.pack_forget()
         if hasattr(self, "_activity"):
@@ -2532,158 +2521,305 @@ class HomeApp:
         return bool(getattr(engine, "ingest_busy", False))
 
     def _home_state(self) -> str:
-        """FIRST_RUN | PROCESSING | READY | EXPLORE — Home hierarchy gate."""
+        """FIRST_RUN | PROCESSING | READY | EXPLORE — launch gate for Library."""
         busy = self._ingest_running()
         if busy:
             return "PROCESSING"
         if self._completion_kind in {"done", "cancelled"} and self._completion is not None:
             return "READY"
+        summary = self._library_summary()
+        files = 0 if summary is None else int(summary.get("files") or 0)
+        if files > 0:
+            return "EXPLORE"
         if self.store.is_file():
             return "EXPLORE"
         return "FIRST_RUN"
 
-    def _show_home_landing(self) -> None:
-        """Home/Photos: first-run pitch, or photo library + review strip."""
-        self._hide_workspace_panes()
-        state = self._home_state()
-        if state == "PROCESSING":
-            self._refresh_processing_home()
-            self._processing.pack(fill=tk.BOTH, expand=True)
-            self._set_inspector_collapsed(True)
-            self._set_inspector(
-                "Home",
-                [
-                    "Semblon is analysing your photo library.",
-                    "Pause stops between files. Cancel stops this job.",
-                    "Results appear here when the job finishes.",
-                ],
-            )
-            return
-        if state == "READY":
-            self._fill_result_card()
-            self._result_card.pack(fill=tk.BOTH, expand=True)
-            self._set_inspector_collapsed(True)
-            self._set_inspector("Home", list(INSPECTOR_HOME_EMPTY))
-            return
-
+    def _show_library_or_onboard(self) -> None:
+        """Post-onboarding home is Library. Empty library shows onboarding only."""
         summary = self._library_summary()
         files = 0 if summary is None else int(summary.get("files") or 0)
-        if files <= 0:
-            self._refresh_landing_hint()
-            self._refresh_library_shell(summary)
-            self._landing.pack(fill=tk.BOTH, expand=True)
-            self._set_inspector_collapsed(True)
-            self._set_inspector("Home", list(INSPECTOR_HOME_EMPTY))
+        if files <= 0 and not self._ingest_running():
+            self._show_onboarding()
             return
+        self._show_library(filter_key=getattr(self, "_library_filter", "all") or "all")
 
-        # Populated library: local-first shell (stats + capabilities), not brochure + grid.
-        self._refresh_landing_hint()
-        self._refresh_library_shell(summary)
-        self._landing.pack(fill=tk.BOTH, expand=True)
+    def _show_onboarding(self) -> None:
+        """Focused empty-state — no capability tables or face dashboard."""
+        from semblon.fluid_shell import (
+            ONBOARD_CTA,
+            ONBOARD_HEADLINE,
+            ONBOARD_PRIVACY,
+            ONBOARD_SUBCOPY,
+        )
+
+        self._hide_workspace_panes()
         self._set_inspector_collapsed(True)
-        waiting = int(summary.get("unnamed_groups") or 0)
-        from semblon.home_shell import SHELL_HEADLINE
-        from semblon.library_status import people_to_name_text
-
-        lines = [
-            SHELL_HEADLINE,
-            people_to_name_text(waiting) + "." if waiting else "Browse Photos when you want the grid.",
-        ]
-        if waiting:
-            lines.append("Open People to name when Semblon needs a decision.")
-        self._set_inspector("Home", lines)
-
-    def _build_library_home(self) -> None:
-        """Returning-user strip above the photo grid — Review first, faces visible."""
-        bar = self._library_home
-        for child in bar.winfo_children():
+        for child in self._landing.winfo_children():
             child.destroy()
-        shell = tk.Frame(bar, bg=BG_CANVAS)
-        shell.pack(fill=tk.X, padx=SP_8, pady=(SP_8, SP_12))
-        self._lib_home_title = tk.StringVar(value="")
+        root = tk.Frame(self._landing, bg=BG_CANVAS)
+        root.pack(fill=tk.BOTH, expand=True, padx=SP_24, pady=SP_32)
         tk.Label(
-            shell,
-            textvariable=self._lib_home_title,
-            font=H1,
+            root,
+            text=ONBOARD_HEADLINE,
+            font=DISPLAY,
             bg=BG_CANVAS,
             fg=TEXT_PRIMARY,
+            wraplength=640,
+            justify=tk.LEFT,
             anchor="w",
         ).pack(anchor=tk.W)
-        actions = tk.Frame(shell, bg=BG_CANVAS)
-        actions.pack(anchor=tk.W, pady=(SP_12, 0))
-        self.btn_lib_review = _button(
+        tk.Label(
+            root,
+            text=ONBOARD_SUBCOPY,
+            font=BODY,
+            bg=BG_CANVAS,
+            fg=TEXT_SECONDARY,
+            wraplength=640,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+        tk.Label(
+            root,
+            text=ONBOARD_PRIVACY,
+            font=BODY,
+            bg=BG_CANVAS,
+            fg=TEXT_SECONDARY,
+            wraplength=640,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(anchor=tk.W, pady=(SP_16, 0))
+        actions = tk.Frame(root, bg=BG_CANVAS)
+        actions.pack(anchor=tk.W, pady=(SP_24, 0))
+        self.btn_landing_cta = _button(
             actions,
-            "Review people",
-            lambda: self._navigate("unknown"),
-            kind="primary",
-            plate=BG_CANVAS,
-        )
-        self.btn_lib_review.pack(side=tk.LEFT)
-        self.btn_lib_add = _button(
-            actions,
-            "Add a photo folder",
+            ONBOARD_CTA,
             self._choose_folder,
-            kind="secondary",
+            kind="primary",
             icon="folder-plus",
             plate=BG_CANVAS,
         )
-        self.btn_lib_add.pack(side=tk.LEFT, padx=(SP_12, 0))
-        self._lib_home_thumbs = tk.Frame(shell, bg=BG_CANVAS)
-        self._lib_home_thumbs.pack(anchor=tk.W, pady=(SP_16, 0))
+        self.btn_landing_cta.pack(side=tk.LEFT)
+        self._landing.pack(fill=tk.BOTH, expand=True)
+        self._refresh_footer()
+
+    def _build_library_chrome(self) -> None:
+        """Filter chips + optional review banner + Clear Search for Library."""
+        bar = self._library_chrome
+        for child in bar.winfo_children():
+            child.destroy()
+        shell = tk.Frame(bar, bg=BG_CANVAS)
+        shell.pack(fill=tk.X, padx=SP_8, pady=(SP_8, SP_4))
+        self._lib_banner = tk.Frame(shell, bg=BG_CANVAS)
+        self._lib_banner.pack(anchor=tk.W, fill=tk.X)
+        self._lib_banner_text = tk.StringVar(value="")
+        tk.Label(
+            self._lib_banner,
+            textvariable=self._lib_banner_text,
+            font=BODY,
+            bg=BG_CANVAS,
+            fg=TEXT_SECONDARY,
+            anchor="w",
+        ).pack(side=tk.LEFT)
+        self.btn_lib_banner_review = _button(
+            self._lib_banner,
+            "Review People",
+            lambda: self._navigate("unknown"),
+            kind="tertiary",
+            plate=BG_CANVAS,
+        )
+        filters = tk.Frame(shell, bg=BG_CANVAS)
+        filters.pack(anchor=tk.W, pady=(SP_8, 0))
+        self._lib_filter_buttons: dict[str, object] = {}
+        from semblon.fluid_shell import LIBRARY_FILTERS
+
+        for key, label in LIBRARY_FILTERS:
+            btn = _button(
+                filters,
+                label,
+                lambda k=key: self._set_library_filter(k),
+                kind="tertiary",
+                plate=BG_CANVAS,
+            )
+            btn.pack(side=tk.LEFT, padx=(0, SP_8))
+            self._lib_filter_buttons[key] = btn
+        self._similar_bar = tk.Frame(shell, bg=BG_CANVAS)
+        self._similar_title = tk.StringVar(value="")
+        tk.Label(
+            self._similar_bar,
+            textvariable=self._similar_title,
+            font=BODY_STRONG,
+            bg=BG_CANVAS,
+            fg=TEXT_PRIMARY,
+            anchor="w",
+        ).pack(side=tk.LEFT)
+        self.btn_clear_similar = _button(
+            self._similar_bar,
+            "Clear Search",
+            self._clear_similar_search,
+            kind="secondary",
+            plate=BG_CANVAS,
+        )
+        self.btn_clear_similar.pack(side=tk.LEFT, padx=(SP_12, 0))
+
+    def _set_library_filter(self, key: str) -> None:
+        self._library_filter = key or "all"
+        self._similar_media_ids = None
+        self._show_library(filter_key=self._library_filter)
+
+    def _show_library(
+        self,
+        *,
+        filter_key: str = "all",
+        similar_media_ids: list[str] | None = None,
+    ) -> None:
+        """Unified photos/videos Library surface."""
+        from semblon.fluid_shell import library_source_types, people_review_banner
+        from semblon.empty_states import library_has_media_lines, photos_empty
+        from semblon.home_shell import enrich_summary_counts
+
+        self._library_filter = filter_key or "all"
+        if similar_media_ids is not None:
+            self._similar_media_ids = list(similar_media_ids)
+        self._hide_workspace_panes()
+        self._set_inspector_collapsed(True)
+
+        summary = enrich_summary_counts(self.store, self._library_summary())
+        waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
+        banner = people_review_banner(waiting)
+        if hasattr(self, "_lib_banner_text"):
+            self._lib_banner_text.set(banner or "")
+        review_btn = getattr(self, "btn_lib_banner_review", None)
+        if review_btn is not None:
+            try:
+                review_btn.pack_forget()
+            except tk.TclError:
+                pass
+            if banner:
+                review_btn.pack(side=tk.LEFT, padx=(SP_12, 0))
+
+        for key, btn in (getattr(self, "_lib_filter_buttons", {}) or {}).items():
+            if hasattr(btn, "set_kind"):
+                btn.set_kind("secondary" if key == self._library_filter else "tertiary")
+
+        similar = getattr(self, "_similar_bar", None)
+        if similar is not None:
+            try:
+                similar.pack_forget()
+            except tk.TclError:
+                pass
+            if self._similar_media_ids:
+                self._similar_title.set("Similar to selected region")
+                similar.pack(anchor=tk.W, fill=tk.X, pady=(SP_8, 0))
+
+        self._library_chrome.pack(fill=tk.X, anchor=tk.N)
+        self._canvas_ws.pack(fill=tk.BOTH, expand=True)
+        source_types = library_source_types(self._library_filter)
+        try:
+            self._canvas_ws.reload(
+                self.store,
+                self._last_run_id,
+                source_types=source_types,
+                media_ids=self._similar_media_ids,
+                clear_media_ids=not bool(self._similar_media_ids),
+            )
+        except Exception as e:  # noqa: BLE001
+            self._set_inspector("Details", [f"Library unavailable: {e}"])
+            self._set_inspector_collapsed(False)
+            return
+        lib = format_library_lines(
+            self.store,
+            source_type=None
+            if source_types is None
+            else ("folder" if "folder" in source_types else "video"),
+        )
+        if not library_has_media_lines(lib) and not self._similar_media_ids:
+            self._set_inspector("Details", photos_empty().as_lines())
+        self._refresh_footer(summary)
+        self._nav = "library"
+        self._mark_nav_active("library")
+
+    def _apply_find_similar_result(self, summary: dict | None) -> None:
+        """Show ranked Library results from region_search; keep prior filter."""
+        summary = summary or {}
+        items = list(summary.get("items") or [])
+        media_ids = [
+            str(it.get("media_id"))
+            for it in items
+            if it.get("media_id")
+        ]
+        status = str(summary.get("status") or "").upper()
+        lines = []
+        if status in {"UNAVAILABLE", "ERROR"}:
+            lines = [summary.get("reason") or "Find Similar is not available yet."]
+            self._set_inspector("Details", lines)
+            self._set_inspector_collapsed(False)
+            return
+        if not media_ids:
+            self._set_inspector(
+                "Details",
+                [summary.get("reason") or "No similar images found yet."],
+            )
+            self._set_inspector_collapsed(False)
+            return
+        self._library_return = {
+            "filter": getattr(self, "_library_filter", "all"),
+            "media_id": getattr(self, "_insp_media_id", None),
+        }
+        self._show_library(
+            filter_key=getattr(self, "_library_filter", "all") or "all",
+            similar_media_ids=media_ids,
+        )
+        self._set_inspector(
+            "Details",
+            [f"{len(media_ids)} similar result{'s' if len(media_ids) != 1 else ''}."],
+        )
+        self._set_inspector_collapsed(False)
+
+    def _clear_similar_search(self) -> None:
+        prior = getattr(self, "_library_return", None) or {}
+        self._similar_media_ids = None
+        self._library_return = None
+        filt = prior.get("filter") or getattr(self, "_library_filter", "all") or "all"
+        self._show_library(filter_key=filt)
+        self._set_inspector_collapsed(True)
+
+    def _show_home_landing(self) -> None:
+        """Compatibility: cold landing is onboarding or Library."""
+        self._show_library_or_onboard()
+
+    def _refresh_footer(self, summary: dict | None = None) -> None:
+        from semblon.fluid_shell import footer_library_line, footer_status_word
+        from semblon.home_shell import enrich_summary_counts
+
+        if summary is None:
+            summary = enrich_summary_counts(self.store, self._library_summary())
+        if hasattr(self, "_footer_counts"):
+            self._footer_counts.set(footer_library_line(summary))
+        if hasattr(self, "_footer_ready"):
+            self._footer_ready.set(
+                footer_status_word(
+                    busy=bool(self.engine.busy),
+                    paused=bool(self.engine.paused),
+                )
+            )
+        if hasattr(self, "_library_status"):
+            self._library_status.set(footer_library_line(summary))
+
+    def _build_library_home(self) -> None:
+        """Retained frame for compatibility; Library chrome owns the strip now."""
+        bar = self._library_home
+        for child in bar.winfo_children():
+            child.destroy()
+        self.btn_lib_review = None
+        self.btn_lib_add = None
+        self._lib_home_title = tk.StringVar(value="")
+        self._lib_home_thumbs = tk.Frame(bar, bg=BG_CANVAS)
         self._lib_home_thumb_images: list = []
 
     def _show_library_home(self, summary: dict | None = None) -> None:
-        """Photos route content when the library already has files."""
-        if summary is None:
-            summary = self._library_summary()
-        waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
-        from semblon.library_status import people_to_name_text, review_people_cta
-
-        if hasattr(self, "_lib_home_title"):
-            if waiting > 0:
-                self._lib_home_title.set(people_to_name_text(waiting))
-            else:
-                self._lib_home_title.set("Your photos")
-        review = getattr(self, "btn_lib_review", None)
-        add_btn = getattr(self, "btn_lib_add", None)
-        if review is not None:
-            review.configure(text=review_people_cta(waiting))
-            if hasattr(review, "set_kind"):
-                review.set_kind("primary" if waiting > 0 else "secondary")
-            try:
-                review.pack_forget()
-            except tk.TclError:
-                pass
-        if add_btn is not None:
-            add_btn.configure(
-                text="Add a photo folder" if waiting > 0 else "Add another folder"
-            )
-            if hasattr(add_btn, "set_kind"):
-                add_btn.set_kind("secondary" if waiting > 0 else "primary")
-            try:
-                add_btn.pack_forget()
-            except tk.TclError:
-                pass
-        # Primary first.
-        if waiting > 0:
-            if review is not None:
-                review.pack(side=tk.LEFT)
-            if add_btn is not None:
-                add_btn.pack(side=tk.LEFT, padx=(SP_12, 0))
-        else:
-            if add_btn is not None:
-                add_btn.pack(side=tk.LEFT)
-            if review is not None:
-                review.pack_forget()
-        self._refresh_library_home_thumbs(waiting)
-        self._library_home.pack(fill=tk.X, anchor=tk.N)
-        self._canvas_ws.pack(fill=tk.BOTH, expand=True)
-        try:
-            self._canvas_ws.reload(
-                self.store, self._last_run_id, source_types=("folder",)
-            )
-        except Exception:  # noqa: BLE001 — grid is best-effort on open
-            pass
+        """Compatibility shim — route into the unified Library."""
+        self._show_library(filter_key="photos")
 
     def _refresh_library_home_thumbs(self, waiting: int) -> None:
         frame = getattr(self, "_lib_home_thumbs", None)
@@ -2905,18 +3041,17 @@ class HomeApp:
             return None
 
     def _refresh_library_chrome(self) -> None:
-        """Status bar and People to name badge from the library. Hidden badge at 0."""
-        from semblon.library_status import status_bar_text
-
+        """Footer counts + People to name badge. Hidden badge at 0."""
         summary = self._library_summary()
-        if hasattr(self, "_library_status"):
-            self._library_status.set(status_bar_text(summary))
+        self._refresh_footer(summary)
         btn = getattr(self, "_nav_buttons", {}).get("unknown")
         waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
+        people_btn = getattr(self, "_nav_buttons", {}).get("people")
         if hasattr(self, "_to_name"):
             self._to_name.set(f"{waiting} to name" if waiting else "")
-        if btn is not None and hasattr(btn, "set_badge"):
-            btn.set_badge(waiting)
+        for target in (btn, people_btn):
+            if target is not None and hasattr(target, "set_badge"):
+                target.set_badge(waiting)
         self._refresh_search_placeholder(summary)
 
     def _refresh_search_placeholder(self, summary: dict | None = None) -> None:
@@ -3105,7 +3240,7 @@ class HomeApp:
         return {"photos": photos, "faces": faces, "groups": groups}
 
     def _set_inspector_collapsed(self, collapsed: bool) -> None:
-        """Collapse Inspector column on cold home; expand for other routes."""
+        """Hide Details when nothing to inspect; ~320px when open."""
         self._inspector_collapsed = collapsed
         if collapsed:
             self._inspector_frame.grid_remove()
@@ -3113,7 +3248,7 @@ class HomeApp:
             self._body.columnconfigure(0, weight=5)
         else:
             self._inspector_frame.grid()
-            self._body.columnconfigure(1, weight=1)
+            self._body.columnconfigure(1, weight=0, minsize=320)
             self._body.columnconfigure(0, weight=5)
 
     def _on_root_configure(self, event) -> None:
@@ -3173,10 +3308,8 @@ class HomeApp:
                 pass
 
     def _sync_chrome_for_route(self) -> None:
-        """Demote job bar on home; restore contextual controls elsewhere (§3)."""
-        # Clear job frame children packing — never pack review.html / Canvas here.
+        """Header owns Add Folder; job bar only for Review/More when useful."""
         for w in (
-            self.btn_folder,
             self.btn_review,
             self.btn_live,
             self.btn_canvas,
@@ -3185,12 +3318,19 @@ class HomeApp:
                 w.pack_forget()
             except tk.TclError:
                 pass
+        # Folder stays in the header — never pack into the job bar.
+        try:
+            self.btn_folder.pack_forget()
+        except tk.TclError:
+            pass
+        try:
+            self.btn_folder.pack(in_=self._top, side=tk.RIGHT, padx=(SP_8, 0))
+        except tk.TclError:
+            pass
         busy = self._ingest_running()
-        on_home = self._nav == "home"
-        processing_home = on_home and busy
-        if on_home:
-            # Primary CTA lives on the landing. More stays in the top bar.
-            # PROCESSING Home owns Pause/Cancel inside the workspace — hide telemetry strip.
+        on_library = self._nav in {"home", "library", "photos", "videos"}
+        processing_home = on_library and busy
+        if on_library:
             self._jobs_frame.pack_forget()
             if self._completion_kind == "done" and not busy:
                 self._jobs_frame.pack(fill=tk.X, before=self._body)
@@ -3200,12 +3340,8 @@ class HomeApp:
                 self._jobs_frame.pack(fill=tk.X, before=self._body)
             except tk.TclError:
                 self._jobs_frame.pack(fill=tk.X)
-            # Folder only in the job bar. Review / Canvas / Live live under More.
-            self.btn_folder.pack(side=tk.LEFT)
-            if self._nav not in {"photos", "videos", "lens"}:
+            if self._nav not in {"lens", "activity", "settings"}:
                 self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
-        # Pause toggle + Cancel sit next to the progress bar when busy off-Home.
-        # Idle home has no status strip. Processing Home replaces the strip entirely.
         if busy and not processing_home:
             try:
                 self._prog_frame.pack(fill=tk.X, before=self._body)
@@ -3218,7 +3354,7 @@ class HomeApp:
             self.btn_pause_toggle.pack_forget()
             self.btn_cancel_prog.pack_forget()
             self.bar.pack_forget()
-            if on_home or not busy:
+            if on_library or not busy:
                 self._prog_frame.pack_forget()
             else:
                 try:
@@ -3295,14 +3431,20 @@ class HomeApp:
             "search": self.btn_search,
         }
         for key, btn in buttons.items():
-            btn.configure(state=tk.NORMAL if states[key] == "normal" else tk.DISABLED)
-        # Secondary canvas control stays enabled for More → Explore; never packed here.
+            if btn is None:
+                continue
+            try:
+                btn.configure(state=tk.NORMAL if states[key] == "normal" else tk.DISABLED)
+            except tk.TclError:
+                pass
         self.btn_canvas.configure(state=tk.NORMAL)
-        # Landing CTA tracks folder availability; processing Home has no Add-folder CTA.
-        if hasattr(self, "btn_landing_cta"):
-            self.btn_landing_cta.configure(
-                state=tk.NORMAL if states["folder"] == "normal" else tk.DISABLED
-            )
+        if hasattr(self, "btn_landing_cta") and self.btn_landing_cta is not None:
+            try:
+                self.btn_landing_cta.configure(
+                    state=tk.NORMAL if states["folder"] == "normal" else tk.DISABLED
+                )
+            except tk.TclError:
+                pass
         if hasattr(self, "btn_proc_pause"):
             if busy:
                 if self.engine.paused:
@@ -3316,13 +3458,17 @@ class HomeApp:
                 state=tk.NORMAL if busy else tk.DISABLED
             )
         self._sync_chrome_for_route()
-        if self._nav == "home" and busy:
+        self._refresh_footer()
+        if self._nav in {"home", "library", "photos", "videos"} and busy:
+            # Stay on Library; footer shows Scanning — do not force old dashboard.
             try:
-                mapped = bool(self._processing.winfo_ismapped())
+                mapped = bool(self._canvas_ws.winfo_ismapped()) or bool(
+                    self._landing.winfo_ismapped()
+                )
             except tk.TclError:
                 mapped = False
             if not mapped:
-                self._show_home_landing()
+                self._show_library_or_onboard()
 
     def _request_pause(self) -> None:
         if not self.engine.busy or self.engine.paused:
@@ -3366,13 +3512,10 @@ class HomeApp:
         queued = make_event(STAGE_PROCESS, KIND_QUEUED, path=str(path), outcome="resumed" if resume else None)
         self.status.set(product_status_text(queued))
         self._set_busy(True)
-        if self._nav == "home":
-            self._show_home_landing()
-            snap = processing_home_snapshot(queued, paused=False)
-            self._proc_headline.set(snap["headline"])
-            self._proc_activity.set(snap["activity"])
-            self._proc_eta.set(snap["eta"])
-            self._proc_folder_note.set(snap["folder_note"])
+        if self._nav in {"home", "library", "photos", "videos"}:
+            # Stay on Library / onboarding; footer carries Scanning status.
+            self._show_library_or_onboard()
+            self._refresh_footer()
         observers = resolve_home_observers()
         prefer_gpu = self._effective_prefer_gpu()
 
@@ -3519,7 +3662,7 @@ class HomeApp:
                         pace=getattr(self, "_scan_pace", None),
                     )
                     self.clock.set(card["meta"] or counts)
-                    if self._nav == "home":
+                    if self._nav in {"home", "library", "photos", "videos"}:
                         self._refresh_processing_home(payload)
                 elif kind == "done":
                     self._last_run_id = payload.get("run_id")
@@ -3552,7 +3695,7 @@ class HomeApp:
                             files_total=1,
                         )
                     )
-                    if self._nav == "home":
+                    if self._nav in {"home", "library", "photos", "videos"}:
                         self._show_home_landing()
                         self._sync_chrome_for_route()
                     elif self._nav in {"canvas", "photos", "videos"}:
@@ -3577,7 +3720,7 @@ class HomeApp:
                         "Processing stopped. Any partial results have been retained."
                     )
                     self.clock.set("")
-                    if self._nav == "home":
+                    if self._nav in {"home", "library", "photos", "videos"}:
                         self._show_home_landing()
                         self._sync_chrome_for_route()
                     if self._exit_after_cancel and self.root.winfo_exists():
@@ -3603,7 +3746,7 @@ class HomeApp:
         if self.engine.busy:
             if self.engine.paused:
                 self.status.set("Paused")
-                if self._nav == "home":
+                if self._nav in {"home", "library", "photos", "videos"}:
                     self._refresh_processing_home()
             stalled = self._wd.check()
             if stalled is not None and stalled.kind == KIND_STALLED and not self.engine.paused:
@@ -3825,7 +3968,7 @@ class HomeApp:
 
     def _open_canvas(self) -> None:
         """First-class canvas is the Home workspace; keep Toplevel as escape hatch."""
-        self._navigate("home")
+        self._navigate("library")
 
     def _search_person(self) -> None:
         from semblon.search import SearchError, search_people, search_person, search_text

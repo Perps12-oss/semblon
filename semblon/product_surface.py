@@ -27,16 +27,16 @@ DETAILS_HEADING = "About this"
 
 # Settings — product vs Advanced vs Diagnostics (presentation only).
 SETTINGS_TITLE = "Settings"
-SETTINGS_LIBRARY = "Library"
-SETTINGS_LIBRARY_HINT = "Where Semblon keeps your photo library on this computer."
-SETTINGS_PROCESSING = "Processing"
-SETTINGS_PROCESSING_CPU = "Processing on this computer."
+SETTINGS_LIBRARY = "Library & Storage"
+SETTINGS_LIBRARY_HINT = "Folders Semblon watches and where your library lives on this computer."
+SETTINGS_PROCESSING = "Local Capabilities"
+SETTINGS_PROCESSING_CPU = "What Semblon can do on this computer — honestly reported."
 SETTINGS_GPU = "Use GPU when available"
-SETTINGS_APPEARANCE = "Appearance"
+SETTINGS_APPEARANCE = "Appearance & Privacy"
 SETTINGS_ABOUT = "About"
 SETTINGS_ABOUT_BODY = (
-    "Personal photo library on this computer. Semblon finds faces, "
-    "groups similar ones, and lets you name people. Nothing is uploaded."
+    "Your local, private visual memory. Explore what is in your images "
+    "on this PC. Nothing is uploaded."
 )
 SETTINGS_ADVANCED = "Advanced"
 SETTINGS_ADVANCED_HINT = "Keyboard shortcuts and export tools."
@@ -50,11 +50,9 @@ SETTINGS_OPEN_DIAGNOSTICS = "Advanced diagnostics…"
 SETTINGS_SHORTCUTS: tuple[tuple[str, str], ...] = (
     ("Search", "Ctrl+F"),
     ("Go to", "Ctrl+K"),
-    ("Photos", "Ctrl+1"),
-    ("Videos", "Ctrl+2"),
-    ("People", "Ctrl+3"),
-    ("People to name", "Ctrl+4"),
-    ("Recent activity", "Ctrl+5"),
+    ("Library", "Ctrl+1"),
+    ("People", "Ctrl+2"),
+    ("Activity", "Ctrl+3"),
 )
 
 # People / Unknown — short workflow coaching (never lectures; identity-safe).

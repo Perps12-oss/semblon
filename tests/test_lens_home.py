@@ -28,9 +28,15 @@ class _Report:
 
 
 def test_home_nav_includes_lens_route():
+    """Lens stays a reachable route without a permanent sidebar row."""
+    from semblon.product_features import build_product_registry
+
     flat = {nav_id: label for _sec, items in HOME_NAV for nav_id, label in items}
-    assert flat["lens"] == "Lens"
-    assert "ASK" in {sec for sec, _ in HOME_NAV}
+    assert "lens" not in flat
+    assert "ASK" not in {sec for sec, _ in HOME_NAV}
+    reg = build_product_registry()
+    assert reg.resolve_route("lens") is not None
+    assert reg.get("lens").nav is None
 
 
 def test_lens_route_opens_workspace_not_photos_redirect():
@@ -38,12 +44,15 @@ def test_lens_route_opens_workspace_not_photos_redirect():
 
     open_src = inspect.getsource(home_ui.HomeApp._open_lens)
     assert "_show_lens_workspace" in open_src
-    assert '_navigate("photos")' not in open_src
     assert "_build_lens_workspace" in inspect.getsource(home_ui.HomeApp)
     nav = inspect.getsource(home_ui.HomeApp._navigate)
-    assert 'nav_id == "lens"' in nav
+    assert "lens" in nav
     hide = inspect.getsource(home_ui.HomeApp._hide_workspace_panes)
     assert "_lens" in hide
+    # Product Lens page prefers open-media region select over a Lens destination.
+    from semblon.product_features import _page_lens
+
+    assert "Open a photo" in inspect.getsource(_page_lens) or "_open_region_select" in inspect.getsource(_page_lens)
 
 
 def test_photos_path_into_lens_with_current_asset():

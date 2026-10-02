@@ -424,6 +424,7 @@ else:
             self._on_select = on_select
             self._on_image_open = on_image_open
             self._source_types = source_types
+            self._filter_media_ids: set[str] | None = None
             self._advanced = bool(advanced)
             self._job_engine = job_engine
             self._enable_visual = bool(enable_visual)
@@ -617,10 +618,17 @@ else:
             store: Path | None = None,
             run_id: str | None = None,
             *,
-            source_types: tuple[str, ...] | None = None,
+            source_types: tuple[str, ...] | None | object = ...,
+            media_ids: tuple[str, ...] | list[str] | None = None,
+            clear_media_ids: bool = False,
         ) -> None:
-            if source_types is not None:
-                self._source_types = source_types
+            # Ellipsis means leave prior filter; explicit None means all media.
+            if source_types is not ...:
+                self._source_types = source_types  # type: ignore[assignment]
+            if clear_media_ids:
+                self._filter_media_ids = None
+            elif media_ids is not None:
+                self._filter_media_ids = {str(m) for m in media_ids}
             path = Path(store) if store is not None else None
             self._store_path = path if path is not None and path.is_file() else self._store_path
             if run_id is not None:
@@ -631,7 +639,7 @@ else:
                 self._listbox.delete(0, tk.END)
                 self._clear_thumbs()
                 self.preview.delete("all")
-                self.status.set("No photos yet — add a photo folder from Home.")
+                self.status.set("No photos yet — add a photo folder.")
                 self._call_on_select(None, soft_lines_empty=True)
                 return
             board = load_canvas(path, run_id)
@@ -640,6 +648,9 @@ else:
             media = list(board.get("media") or [])
             if self._source_types is not None:
                 media = [m for m in media if (m.get("source_type") or "") in self._source_types]
+            filt = getattr(self, "_filter_media_ids", None)
+            if filt:
+                media = [m for m in media if str(m.get("media_id") or "") in filt]
             self.set_board(board, media)
 
         def _call_on_select(self, media_id, lines=None, selected=None, *, soft_lines_empty: bool = False):

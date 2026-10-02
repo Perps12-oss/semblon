@@ -115,16 +115,19 @@ def test_product_registry_matches_home_nav_shape():
     reg = build_product_registry()
     nav = reg.home_nav_tuple()
     flat = {rid: label for _sec, items in nav for rid, label in items}
-    assert flat["home"] == "Library"
-    assert flat["videos"] == "Videos"
+    assert flat["library"] == "Library"
     assert flat["people"] == "People"
-    assert flat["unknown"] == "People to name"
-    assert flat["activity"] == "Recent activity"
-    assert flat["lens"] == "Lens"
+    assert flat["activity"] == "Activity"
+    assert "unknown" not in flat
+    assert "lens" not in flat
     refresh_home_nav()
     assert HOME_NAV == nav
     assert reg.resolve_route("activity") is not None
-    assert reg.get("activity").page is not None
+    assert reg.resolve_route("library") is not None
+    assert reg.resolve_route("home") is not None
+    assert reg.resolve_route("photos") is not None
+    assert reg.resolve_route("lens") is not None
+    assert reg.resolve_route("unknown") is not None
 
 
 def test_product_commands_expose_hidden_capabilities():

@@ -24,7 +24,7 @@ from semblon.product_surface import (
 
 def test_settings_product_sections_exclude_engineering_vocab():
     titles = settings_product_section_titles()
-    assert titles == ("Library", "Processing", "Appearance", "About")
+    assert titles == ("Library & Storage", "Local Capabilities", "Appearance & Privacy", "About")
     for bad in settings_forbidden_product_vocab():
         assert bad not in " ".join(titles)
 

@@ -13,9 +13,9 @@ from semblon.runtime_contract import default_catalog, status_report
 def test_dashboard_and_command_labels_are_honest():
     reg = build_product_registry()
     nav = {n.route_id: n.label for n in reg.nav_contributions()}
-    assert nav["home"] == "Library"
+    assert nav["library"] == "Library"
     labels = {c.id: c.label for c in reg.commands()}
-    assert labels["lens.find_similar"] == "Find similar-looking regions"
+    assert labels["lens.find_similar"] == "Find Similar"
     assert labels["library.watch_folder"] == "Add or update this folder…"
     assert labels["library.browse_photos"] == "Browse photos"
     assert ("Library", "Ctrl+1") in SETTINGS_SHORTCUTS

@@ -20,9 +20,9 @@ from tests.test_review import _clustered
 
 
 def test_shell_headline_matches_product_home():
-    assert SHELL_HEADLINE == "Your pictures stay here."
-    assert "missing a model" not in SHELL_SUBCOPY.lower()
-    assert "nothing is uploaded" in SHELL_SUBCOPY.lower()
+    assert SHELL_HEADLINE == "Welcome to Semblon"
+    assert "visual memory" in SHELL_SUBCOPY.lower()
+    assert "facial" not in SHELL_SUBCOPY.lower()
 
 
 def test_recent_activity_empty_is_quiet(tmp_path):

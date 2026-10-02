@@ -158,7 +158,8 @@ class FeatureRegistry:
         # Preserve registration order within each section; section order is fixed.
         return rows
 
-    _SECTION_ORDER = ("ASK", "LIBRARY", "PEOPLE", "ACTIVITY")
+    # Flat product rail: Library · People · Activity.
+    _SECTION_ORDER = ("MAIN",)
 
     def nav_sections(
         self, *, host: Any = None
