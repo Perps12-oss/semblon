@@ -47,6 +47,26 @@ PHOTO / MEDIA
   → AMBIENT ATMOSPHERE
 ```
 
+## Governing product structure (LOCKED — Model D)
+
+Bound to `docs/SHELL-IA.md`. Atmosphere is not decoration; it follows shell IA:
+
+```text
+Stage  →  Transition (dissolve)  →  Memory Canvas  →  contextual discovery
+```
+
+| Phase | Atmosphere purpose |
+|---|---|
+| **Stage** | Expressive capability illumination and interaction (empty / first-run / brand return) |
+| **Transition** | Atmosphere dissolves with the Stage into Memory — not a hard page swap |
+| **Memory Canvas** | Media dominates; application chrome becomes submerged |
+| **Hover** | Local illumination (`HOVER`) |
+| **Selection** | Elevation / bloom (`SELECTED`) — never conflated with hover |
+| **Processing** | Ambient system state (`PROCESSING`) while busy only |
+| **Contextual discovery** | Focused visual response on region / action / result |
+
+Stage must not merely navigate to Library. The dissolve is the product moment: Semblon introduces itself; then visual memory *is* the application.
+
 ## Capability levels
 
 | Level | When | Behavior |

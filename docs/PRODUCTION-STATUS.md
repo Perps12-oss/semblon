@@ -20,7 +20,7 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 
 - Identity loop, FACE-002→005 evidence, S1 golden frozen
 - Incremental ingest, inbox (RO), identify vs persons
-- Home + review-ui; empty states; file missing; **Home sidebar shell** (Library | Workspace/Canvas | Inspector per R3 §4 IA); person search field
+- Home + review-ui; empty states; file missing; Home shell (historical R3 sidebar chrome still in code; **product IA LOCKED Model D** — Memory-first Stage dissolve — see `docs/SHELL-IA.md`; no MAIN sidebar scaffold); person search field
 - ARCH-011 / APP-1: `JobEngine` is the ingest door; second submit is `JobBusy`; Home job-control (folder/Pause/Resume/Cancel) does not lock Review / People / Search; Review is a Toplevel on Home’s root; Review reads use `busy_timeout=5000`
 - **APP-1 C.2:** real paused state; `pause`/`unpause`; cancel while paused; unpause continues same job; honest between-files granularity; `Application.pause_job`/`unpause_job`; Home + IPC + native shell controls
 - Cancel (GUI + SIGINT at file boundaries); cancelled ≠ completed; partial then cancelled
