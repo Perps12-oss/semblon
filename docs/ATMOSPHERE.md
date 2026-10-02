@@ -93,9 +93,27 @@ Probe: `semblon.atmosphere_render.detect_capability()`.
 
 **Acceptance:** moving the pointer over chrome/region brightens only the local area; idle has no spotlight.
 
+### Stage capability card
+
+**Contract:** Stage entry (Explore / Discover / People) → InteractionState HOVER paints local Spotlight under the pointer; SELECTED elevates with accent bloom; never conflate hover with selected.
+
+**Owner:** `atmosphere_render.StageCapabilityCard`
+
+**Tk:** Canvas plate + `Spotlight` rings; click commits SELECTED then runs the intention.
+
+**Acceptance:** pointer over a Stage card illuminates only that card; click elevates; Leave returns to RESTING unless selected mid-transition.
+
+### Stage dissolve
+
+**Contract:** Stage → Memory Canvas via short mist transition (~250ms); reduced/static snaps.
+
+**Owner:** `atmosphere_render.dissolve_stage`
+
+**Acceptance:** Explore with a library does not hard-flash to Memory; reduced motion still arrives.
+
 ### Processing pulse / dual-tone
 
-**Contract:** while processing, footer and initiating control show restrained motion; Tokyo alternates accent A/B; stops when idle → Ready.
+**Contract:** while processing, footer and initiating control (Activity) show restrained motion; Tokyo alternates accent A/B; stops when idle → Ready.
 
 **Owner:** `atmosphere_render.ProcessingCue`
 

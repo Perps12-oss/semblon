@@ -39,10 +39,12 @@ def test_stage_dissolve_helpers_exist():
     assert "_show_stage" in src
     assert "_dissolve_to_memory" in src
     assert "_open_home_stage" in src
+    assert "_sync_activity_chrome" in src
     stage = inspect.getsource(HomeApp._show_stage)
+    assert "StageCapabilityCard" in stage
     assert "STAGE_EXPLORE_TITLE" in stage
     assert "STAGE_DISCOVER_TITLE" in stage
     assert "STAGE_PEOPLE_TITLE" in stage
-    assert "Activity" not in stage.split("STAGE_PEOPLE")[0] or "STAGE_CTA" in stage
-    # Activity is not a Stage capability card.
     assert "STAGE_ACTIVITY" not in stage
+    dissolve = inspect.getsource(HomeApp._dissolve_to_memory)
+    assert "dissolve_stage" in dissolve

@@ -135,7 +135,7 @@ def test_home_shell_source_has_model_d_chrome():
     assert "_show_stage" in src
     assert "btn_discover" in src
     assert "_sidebar = None" in src
-    assert "Open Explore" in inspect.getsource(home_ui.HomeApp._show_stage)
+    assert "StageCapabilityCard" in inspect.getsource(home_ui.HomeApp._show_stage)
 
 
 def test_library_lines_filter(tmp_path):

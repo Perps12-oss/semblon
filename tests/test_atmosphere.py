@@ -185,3 +185,67 @@ def test_preview_theatre_uses_resolve():
             root.destroy()
         except tk.TclError:
             pass
+
+
+def test_stage_capability_card_hover_selected_not_conflated():
+    tk = pytest.importorskip("tkinter")
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        pytest.skip(f"tkinter could not start: {exc}")
+    root.withdraw()
+    reset_capability_for_tests()
+    detect_capability(force=Capability.FULL)
+    clicked = []
+    try:
+        from semblon.atmosphere_render import StageCapabilityCard
+        from semblon.atmosphere import InteractionState
+
+        card = StageCapabilityCard(
+            root,
+            title="Explore",
+            body="See your photos.",
+            command=lambda: clicked.append(1),
+            primary=True,
+            atmosphere_id="mica_dark",
+        )
+        assert card._state is InteractionState.RESTING
+        card._on_enter()
+        assert card._state is InteractionState.HOVER
+        card._on_leave()
+        assert card._state is InteractionState.RESTING
+        card._on_click()
+        assert card._state is InteractionState.SELECTED
+        assert clicked == [1]
+        # Leave after select keeps SELECTED until paint RESTING explicitly
+        card._on_leave()
+        assert card._state is InteractionState.SELECTED
+    finally:
+        reset_capability_for_tests()
+        try:
+            root.destroy()
+        except tk.TclError:
+            pass
+
+
+def test_dissolve_stage_snaps_when_reduced():
+    tk = pytest.importorskip("tkinter")
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        pytest.skip(f"tkinter could not start: {exc}")
+    root.withdraw()
+    reset_capability_for_tests()
+    detect_capability(force=Capability.REDUCED)
+    done = []
+    try:
+        from semblon.atmosphere_render import dissolve_stage
+
+        dissolve_stage(root, on_done=lambda: done.append(1), atmosphere_id="mica_dark")
+        assert done == [1]
+    finally:
+        reset_capability_for_tests()
+        try:
+            root.destroy()
+        except tk.TclError:
+            pass

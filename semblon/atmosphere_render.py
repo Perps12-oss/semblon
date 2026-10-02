@@ -563,16 +563,233 @@ def build_atmosphere_previews(
     return tiles
 
 
+# ---------------------------------------------------------------------------
+# StageCapabilityCard — Model D Stage entry points (spotlight + selection)
+# ---------------------------------------------------------------------------
+
+
+class StageCapabilityCard:
+    """Home Stage capability surface.
+
+    HOVER → local spotlight (never conflated with SELECTED).
+    SELECTED → accent elevation / bloom edge.
+    Click → product intention (Explore / Discover / People).
+    """
+
+    def __init__(
+        self,
+        master,
+        *,
+        title: str,
+        body: str,
+        command: Callable[[], None] | None = None,
+        primary: bool = False,
+        width: int | None = None,
+        height: int | None = None,
+        atmosphere_id: str | None = None,
+    ):
+        import tkinter as tk
+        from semblon.ui_tokens import BODY, BODY_STRONG, H1
+
+        self._command = command
+        self._primary = primary
+        self._title = title
+        self._body = body
+        self._cap = detect_capability()
+        self._atmosphere_id = normalize_atmosphere_id(
+            atmosphere_id or active_atmosphere_id()
+        )
+        self._state = InteractionState.RESTING
+        self._w = int(width or (420 if primary else 280))
+        self._h = int(height or (200 if primary else 140))
+        self.canvas = tk.Canvas(
+            master,
+            width=self._w,
+            height=self._h,
+            highlightthickness=0,
+            bd=0,
+            cursor="hand2",
+        )
+        self._spotlight = Spotlight(self.canvas, tag="stage_spot")
+        self.canvas.bind("<Enter>", self._on_enter)
+        self.canvas.bind("<Leave>", self._on_leave)
+        self.canvas.bind("<Motion>", self._on_motion)
+        self.canvas.bind("<Button-1>", self._on_click)
+        self._font_title = H1 if primary else BODY_STRONG
+        self._font_body = BODY
+        self.paint(InteractionState.RESTING)
+
+    def widget(self):
+        return self.canvas
+
+    def set_atmosphere(self, atmosphere_id: str) -> None:
+        self._atmosphere_id = normalize_atmosphere_id(atmosphere_id)
+        self.paint(self._state)
+
+    def paint(self, state: InteractionState) -> None:
+        self._state = state
+        tokens = resolve(self._atmosphere_id, state)
+        c = self.canvas
+        try:
+            c.delete("all")
+        except Exception:  # noqa: BLE001
+            return
+        try:
+            c.configure(bg=tokens.surface_raised, highlightthickness=0)
+        except Exception:  # noqa: BLE001
+            pass
+        # Card plate
+        edge = 3 if state is InteractionState.SELECTED else (
+            2 if state is InteractionState.HOVER else 1
+        )
+        try:
+            c.create_rectangle(
+                edge,
+                edge,
+                self._w - edge,
+                self._h - edge,
+                fill=tokens.surface_raised,
+                outline=tokens.border if state is not InteractionState.RESTING else tokens.surface,
+                width=edge,
+                tags=("plate",),
+            )
+        except Exception:  # noqa: BLE001
+            return
+        # Title + body
+        pad_x = 18
+        try:
+            c.create_text(
+                pad_x,
+                22 if self._primary else 18,
+                text=self._title,
+                anchor="nw",
+                fill=tokens.text_primary,
+                font=self._font_title,
+                tags=("title",),
+            )
+            c.create_text(
+                pad_x,
+                58 if self._primary else 48,
+                text=self._body,
+                anchor="nw",
+                fill=tokens.text_secondary,
+                font=self._font_body,
+                width=self._w - pad_x * 2,
+                tags=("body",),
+            )
+            if self._primary:
+                c.create_text(
+                    pad_x,
+                    self._h - 28,
+                    text="Open Explore →",
+                    anchor="sw",
+                    fill=tokens.accent,
+                    font=self._font_body,
+                    tags=("cta",),
+                )
+        except Exception:  # noqa: BLE001
+            pass
+        # Selected bloom — soft accent aura (not the same as hover spotlight).
+        if state is InteractionState.SELECTED and tokens.glow:
+            try:
+                for i, amount in ((1, 0.12), (2, 0.06)):
+                    inset = 2 + i * 2
+                    color = mix(tokens.accent, tokens.surface_raised, amount)
+                    c.create_rectangle(
+                        inset,
+                        inset,
+                        self._w - inset,
+                        self._h - inset,
+                        outline=color,
+                        width=1,
+                        tags=("bloom",),
+                    )
+                c.tag_lower("bloom")
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            c.tag_lower("plate")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _on_enter(self, _event=None) -> None:
+        if self._state is InteractionState.SELECTED:
+            return
+        self.paint(InteractionState.HOVER)
+
+    def _on_leave(self, _event=None) -> None:
+        self._spotlight.clear()
+        if self._state is InteractionState.SELECTED:
+            self.paint(InteractionState.SELECTED)
+            return
+        self.paint(InteractionState.RESTING)
+
+    def _on_motion(self, event) -> None:
+        if self._state is InteractionState.SELECTED:
+            return
+        if self._state is not InteractionState.HOVER:
+            self.paint(InteractionState.HOVER)
+        tokens = resolve(self._atmosphere_id, InteractionState.HOVER)
+        self._spotlight.paint(event.x, event.y, tokens, capability=self._cap)
+
+    def _on_click(self, _event=None) -> None:
+        self.paint(InteractionState.SELECTED)
+        if self._command is not None:
+            self._command()
+
+
+def dissolve_stage(
+    root,
+    *,
+    on_done: Callable[[], None],
+    atmosphere_id: str | None = None,
+    duration_ms: int = 250,
+) -> None:
+    """Stage → Memory transition. Full: stepped mist tint; reduced/static: snap."""
+    cap = detect_capability()
+    aid = normalize_atmosphere_id(atmosphere_id or active_atmosphere_id())
+    if not allows_continuous_motion(cap) or root is None:
+        on_done()
+        return
+    tokens_rest = resolve(aid, InteractionState.RESTING)
+    spec = get_atmosphere(aid)
+    steps = max(3, duration_ms // 50)
+    frame = max(40, duration_ms // steps)
+    state = {"i": 0}
+
+    def tick() -> None:
+        i = state["i"]
+        if i >= steps:
+            on_done()
+            return
+        t = (i + 1) / steps
+        # Soft mist toward resting surface — chrome recedes as Memory arrives.
+        try:
+            color = mix(spec.mist, tokens_rest.surface, t)
+            root.configure(bg=color)
+        except Exception:  # noqa: BLE001
+            pass
+        state["i"] = i + 1
+        try:
+            root.after(frame, tick)
+        except Exception:  # noqa: BLE001
+            on_done()
+
+    tick()
+
+
 # Re-export for callers
 __all__ = [
     "Capability",
     "ProcessingCue",
     "PreviewTheatre",
     "Spotlight",
+    "StageCapabilityCard",
     "active_atmosphere_id",
     "allows_continuous_motion",
     "build_atmosphere_previews",
     "detect_capability",
+    "dissolve_stage",
     "on_atmosphere_changed",
     "publish_atmosphere",
     "reset_capability_for_tests",

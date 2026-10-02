@@ -2569,14 +2569,32 @@ class HomeApp:
         self._show_stage()
 
     def _dissolve_to_memory(self, *, filter_key: str = "all") -> None:
-        """Stage dissolves into Memory Canvas — not a hard Library page swap."""
+        """Stage dissolves into Memory Canvas — atmosphere transition, not a hard swap."""
         self._stage_forced = False
         self._library_filter = filter_key
         self._mark_nav_active("library")
-        try:
-            self.root.after(120, lambda: self._show_library(filter_key=filter_key))
-        except tk.TclError:
+        self._stage_cards = []
+
+        def _arrive() -> None:
+            try:
+                from semblon.ui_tokens import BG_CANVAS
+
+                self.root.configure(bg=BG_CANVAS)
+            except Exception:  # noqa: BLE001
+                pass
             self._show_library(filter_key=filter_key)
+
+        try:
+            from semblon.atmosphere_render import active_atmosphere_id, dissolve_stage
+
+            dissolve_stage(
+                self.root,
+                on_done=_arrive,
+                atmosphere_id=active_atmosphere_id(),
+                duration_ms=250,
+            )
+        except Exception:  # noqa: BLE001
+            _arrive()
 
     def _stage_explore(self) -> None:
         summary = self._library_summary()
@@ -2608,7 +2626,8 @@ class HomeApp:
         self._navigate("lens")
 
     def _show_stage(self) -> None:
-        """Home Stage — capability introduction (Model D)."""
+        """Home Stage — capability introduction with Atmosphere illumination (Model D)."""
+        from semblon.atmosphere_render import StageCapabilityCard, active_atmosphere_id
         from semblon.fluid_shell import (
             STAGE_CTA,
             STAGE_DISCOVER_BODY,
@@ -2628,6 +2647,7 @@ class HomeApp:
             child.destroy()
         root = tk.Frame(self._landing, bg=BG_CANVAS)
         root.pack(fill=tk.BOTH, expand=True, padx=SP_24, pady=SP_32)
+        aid = active_atmosphere_id()
 
         tk.Label(
             root,
@@ -2652,39 +2672,18 @@ class HomeApp:
 
         grid = tk.Frame(root, bg=BG_CANVAS)
         grid.pack(anchor=tk.W, fill=tk.BOTH, expand=True, pady=(SP_24, 0))
-        explore = tk.Frame(
+        self._stage_cards: list = []
+
+        explore = StageCapabilityCard(
             grid,
-            bg=BG_SUBTLE,
-            highlightthickness=1,
-            highlightbackground=BORDER_SUBTLE,
-            highlightcolor=BORDER_SUBTLE,
+            title=STAGE_EXPLORE_TITLE,
+            body=STAGE_EXPLORE_BODY,
+            command=self._stage_explore,
+            primary=True,
+            atmosphere_id=aid,
         )
-        explore.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, SP_12))
-        tk.Label(
-            explore,
-            text=STAGE_EXPLORE_TITLE,
-            font=H1,
-            bg=BG_SUBTLE,
-            fg=TEXT_PRIMARY,
-            anchor="w",
-        ).pack(anchor=tk.W, padx=SP_16, pady=(SP_16, SP_8))
-        tk.Label(
-            explore,
-            text=STAGE_EXPLORE_BODY,
-            font=BODY,
-            bg=BG_SUBTLE,
-            fg=TEXT_SECONDARY,
-            wraplength=360,
-            justify=tk.LEFT,
-            anchor="w",
-        ).pack(anchor=tk.W, padx=SP_16, pady=(0, SP_16))
-        _button(
-            explore,
-            "Open Explore",
-            self._stage_explore,
-            kind="secondary",
-            plate=BG_SUBTLE,
-        ).pack(anchor=tk.W, padx=SP_16, pady=(0, SP_16))
+        explore.widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, SP_12))
+        self._stage_cards.append(explore)
 
         side_col = tk.Frame(grid, bg=BG_CANVAS)
         side_col.pack(side=tk.LEFT, fill=tk.Y)
@@ -2692,35 +2691,16 @@ class HomeApp:
             (STAGE_DISCOVER_TITLE, STAGE_DISCOVER_BODY, self._stage_discover),
             (STAGE_PEOPLE_TITLE, STAGE_PEOPLE_BODY, lambda: self._navigate("people")),
         ):
-            card = tk.Frame(
+            card = StageCapabilityCard(
                 side_col,
-                bg=BG_SUBTLE,
-                highlightthickness=1,
-                highlightbackground=BORDER_SUBTLE,
-                highlightcolor=BORDER_SUBTLE,
+                title=title,
+                body=body,
+                command=cmd,
+                primary=False,
+                atmosphere_id=aid,
             )
-            card.pack(fill=tk.X, pady=(0, SP_12))
-            tk.Label(
-                card,
-                text=title,
-                font=BODY_STRONG,
-                bg=BG_SUBTLE,
-                fg=TEXT_PRIMARY,
-                anchor="w",
-            ).pack(anchor=tk.W, padx=SP_16, pady=(SP_12, SP_4))
-            tk.Label(
-                card,
-                text=body,
-                font=BODY,
-                bg=BG_SUBTLE,
-                fg=TEXT_SECONDARY,
-                wraplength=280,
-                justify=tk.LEFT,
-                anchor="w",
-            ).pack(anchor=tk.W, padx=SP_16, pady=(0, SP_8))
-            _button(card, title, cmd, kind="tertiary", plate=BG_SUBTLE).pack(
-                anchor=tk.W, padx=SP_16, pady=(0, SP_12)
-            )
+            card.widget().pack(fill=tk.X, pady=(0, SP_12))
+            self._stage_cards.append(card)
 
         actions = tk.Frame(root, bg=BG_CANVAS)
         actions.pack(anchor=tk.W, pady=(SP_16, 0))
@@ -2745,6 +2725,7 @@ class HomeApp:
         ).pack(anchor=tk.W, pady=(SP_16, 0))
         self._landing.pack(fill=tk.BOTH, expand=True)
         self._refresh_footer()
+        self._sync_activity_chrome()
 
     def _show_onboarding(self) -> None:
         """Compatibility alias — Model D Stage."""
@@ -3252,7 +3233,7 @@ class HomeApp:
                 pass
 
     def _on_processing_cue_tick(self, color: str, brightness: float) -> None:
-        """Footer illumination while indexing / jobs run."""
+        """Footer + Activity control illumination while indexing / jobs run."""
         self._footer_pulse_color = color if brightness > 0 else TEXT_SECONDARY
         for lbl in (
             getattr(self, "_footer_ready_lbl", None),
@@ -3264,10 +3245,39 @@ class HomeApp:
                 lbl.configure(fg=self._footer_pulse_color if brightness > 0 else TEXT_SECONDARY)
             except tk.TclError:
                 pass
+        act = getattr(self, "btn_activity", None)
+        if act is not None and hasattr(act, "set_kind"):
+            try:
+                act.set_kind("secondary" if brightness > 0.45 else "tertiary")
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _sync_activity_chrome(self) -> None:
+        """Activity is operational context — emphasize while busy, quiet when idle."""
+        act = getattr(self, "btn_activity", None)
+        if act is None:
+            return
+        busy = bool(getattr(self.engine, "busy", False))
+        try:
+            if hasattr(act, "configure"):
+                act.configure(text="Activity · scanning" if busy else "Activity")
+            if hasattr(act, "set_kind"):
+                act.set_kind("secondary" if busy else "tertiary")
+        except Exception:  # noqa: BLE001
+            pass
+        # Keep reachable; pack into modes row if somehow forgotten.
+        modes = getattr(self, "_modes", None)
+        if modes is not None and busy:
+            try:
+                if not act.winfo_ismapped():
+                    act.pack(in_=modes, side=tk.LEFT)
+            except tk.TclError:
+                pass
 
     def _sync_processing_cue(self) -> None:
         cue = getattr(self, "_processing_cue", None)
         if cue is None:
+            self._sync_activity_chrome()
             return
         busy = bool(getattr(self.engine, "busy", False))
         if busy and not cue.active:
@@ -3276,6 +3286,7 @@ class HomeApp:
             cue.start(active_atmosphere_id())
         elif not busy and cue.active:
             cue.stop()
+        self._sync_activity_chrome()
 
     def _apply_saved_theme(self) -> None:
         """Publish the saved appearance before widgets are built."""
