@@ -195,12 +195,12 @@ from semblon.watchdog import Watchdog
 HOME_OBSERVERS = "face,color,object"
 
 # Product Library is route id "library". Compatibility aliases: home, photos, videos.
-# Lens and People to name stay as routes without permanent sidebar rows.
+# Model D: HOME_NAV lists compact/palette destinations — not a MAIN sidebar.
 HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = ()
 
 
 def _product_home_nav() -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
-    """Sidebar destinations from the feature registry (keeps HOME_NAV in sync)."""
+    """Compact destination list from the feature registry (keeps HOME_NAV in sync)."""
     from semblon.gui_registry import default_registry
 
     return default_registry().home_nav_tuple()
@@ -216,12 +216,12 @@ def refresh_home_nav() -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
 # Seed at import — registry describes today's routes.
 refresh_home_nav()
 
-# Below this window width the rail sits under the top bar, Lens included.
+# Legacy width helper — Model D has no left rail; kept for tests.
 CONDENSED_BELOW = 1100
 
 
 def shell_is_condensed(width: int) -> bool:
-    """Narrow window: one horizontal rail. Lens does not fall off the side."""
+    """Historical condensed-rail probe. Model D uses compact header only."""
     return int(width) < CONDENSED_BELOW
 
 # Job control, not an application lock. These stay usable while ingest runs.
@@ -872,10 +872,10 @@ def _button(master, text, command, kind="secondary", icon=None, plate=None):
 
 
 class HomeApp:
-    """Production Home shell: sidebar Library + Canvas workspace + Inspector.
+    """Production Home shell: Model D Memory-first Stage dissolve.
 
-    Pane roles stay addressable for the shell layout. Visible chrome uses the
-    visual design language (no all-caps LabelFrame titles).
+    Empty → Home Stage (capability introduction). Media → Memory Canvas with
+    compact contextual chrome. No permanent MAIN sidebar. Inspector on demand.
     """
 
     _PANE_WORKSPACE = "WORKSPACE / INTELLIGENCE CANVAS"
@@ -933,16 +933,27 @@ class HomeApp:
         self._workspace_role = self._PANE_WORKSPACE
         self._inspector_role = self._PANE_INSPECTOR
 
-        # Sidebar is full height. Search sits over the content only.
+        # Model D — full-bleed main; compact header chrome (no MAIN sidebar).
         self._shell = tk.Frame(self.root, bg=BG_CANVAS)
         self._shell.pack(fill=tk.BOTH, expand=True)
         self._main = ttk.Frame(self._shell)
-        self._main.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        self._main.pack(fill=tk.BOTH, expand=True)
+        self._sidebar = None  # no permanent MAIN sidebar (docs/SHELL-IA.md)
+        self._rail = None
+        self._nav_rows: list[tuple[str, object]] = []
+        self._condensed: bool | None = None
+        self._stage_forced = False
 
         top = ttk.Frame(self._main, padding=(SP_20, SP_16, SP_20, SP_12))
         top.pack(fill=tk.X)
         self._top = top
         self._to_name = tk.StringVar(value="")
+
+        self.btn_brand = _button(
+            top, "Semblon", self._open_home_stage, kind="tertiary", plate=BG_CANVAS
+        )
+        self.btn_brand.pack(side=tk.LEFT, padx=(0, SP_12))
+
         search_row = ttk.Frame(top)
         search_row.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, SP_12))
         self.search_var = tk.StringVar()
@@ -966,6 +977,8 @@ class HomeApp:
         self._search_entry.bind("<Return>", lambda _e: self._search_person())
         self.root.bind("<Control-f>", lambda _e: self._search_entry.focus_set())
         self.root.bind("<Control-k>", self._open_command_palette)
+        self.root.bind("<Control-Key-0>", lambda _e: self._open_home_stage())
+        self.root.bind("<Control-Key-4>", lambda _e: self._navigate("lens"))
         for nav in self._registry.nav_contributions():
             if not nav.shortcut:
                 continue
@@ -975,7 +988,31 @@ class HomeApp:
                 lambda _e, n=nav.route_id: self._navigate(n),
             )
 
-        # Global Add Folder + Settings in the header (not page-local CTAs).
+        # Compact contextual modes — Discover / People / Activity (not MAIN destinations).
+        modes = ttk.Frame(top)
+        modes.pack(side=tk.RIGHT, padx=(0, SP_8))
+        self._modes = modes
+        self.btn_discover = _button(
+            modes, "Discover", lambda: self._navigate("lens"), kind="tertiary", icon="lens"
+        )
+        self.btn_discover.pack(side=tk.LEFT, padx=(0, SP_4))
+        self.btn_people = _button(
+            modes, "People", lambda: self._navigate("people"), kind="tertiary"
+        )
+        self.btn_people.pack(side=tk.LEFT, padx=(0, SP_4))
+        self.btn_activity = _button(
+            modes, "Activity", lambda: self._navigate("activity"), kind="tertiary"
+        )
+        self.btn_activity.pack(side=tk.LEFT)
+        self.btn_unknown = self.btn_people
+        self._nav_buttons = {
+            "lens": self.btn_discover,
+            "people": self.btn_people,
+            "activity": self.btn_activity,
+            "library": self.btn_brand,
+            "home": self.btn_brand,
+        }
+
         self.btn_folder = _button(
             top, "Add Folder", self._choose_folder, kind="secondary", icon="folder-plus"
         )
@@ -984,6 +1021,7 @@ class HomeApp:
             top, "Settings", lambda: self._navigate("settings"), kind="tertiary", icon="settings"
         )
         self.btn_settings.pack(side=tk.RIGHT)
+        self._nav_buttons["settings"] = self.btn_settings
 
         # ── Job controls (demoted — processing Pause/Cancel) ──
         jobs = ttk.Frame(self._main, padding=(12, 0, 12, 4))
@@ -1005,10 +1043,6 @@ class HomeApp:
         self._overflow.pack(side=tk.RIGHT, padx=(SP_8, 0))
         self._rebuild_overflow_menu()
         self._overflow.configure(menu=self._overflow_menu)
-
-        self.btn_people = self.btn_canvas
-        self.btn_unknown = self.btn_canvas
-        self.btn_activity = self.btn_canvas
 
         prog = ttk.Frame(self._main, padding=(12, 0, 12, 6))
         prog.pack(fill=tk.X)
@@ -1050,7 +1084,7 @@ class HomeApp:
         # Prefer progress-adjacent Cancel when processing; job-bar Cancel unused on home.
         self.btn_cancel = self.btn_cancel_prog
 
-        # ── Body: Library | Workspace | Details ──
+        # ── Body: Memory Canvas | Details ──
         self._library_status = tk.StringVar(value="")
         self._footer_local = tk.StringVar(value="● Local")
         self._footer_counts = tk.StringVar(value="")
@@ -1100,69 +1134,7 @@ class HomeApp:
         body.columnconfigure(1, weight=1, minsize=0)
         body.rowconfigure(0, weight=1)
 
-        # Sidebar — Library · People · Activity (Settings is a header control).
-        side = tk.Frame(
-            self._shell,
-            bg=BG_SUBTLE,
-            highlightthickness=1,
-            highlightbackground=BORDER_SUBTLE,
-            highlightcolor=BORDER_SUBTLE,
-        )
-        side.pack(side=tk.LEFT, fill=tk.Y)
-        try:
-            side.configure(width=220)
-            side.pack_propagate(False)
-        except tk.TclError:
-            pass
-        self._sidebar = side
-        self._rail = ttk.Frame(self._main, padding=(SP_12, 0, SP_12, SP_8))
-        self._nav_rows: list[tuple[str, object]] = []
-        self._condensed: bool | None = None
-        self._sidebar_brand = tk.Label(
-            side,
-            text="Semblon",
-            font=H1,
-            bg=BG_SUBTLE,
-            fg=TEXT_PRIMARY,
-        )
-        self._sidebar_brand.pack(anchor=tk.W, padx=SP_16, pady=(SP_16, SP_8))
-        self._sidebar_footer = tk.Label(
-            side,
-            text="Local only — nothing is uploaded",
-            font=CAPTION,
-            bg=BG_SUBTLE,
-            fg=INK_TERTIARY,
-            wraplength=180,
-            justify=tk.LEFT,
-        )
-        self._sidebar_footer.pack(side=tk.BOTTOM, anchor=tk.W, padx=SP_16, pady=SP_16)
-        for section, items in self._registry.nav_sections():
-            # Flat rail — no section headings.
-            del section
-            for nav in items:
-                nav_id, label = nav.route_id, nav.label
-                icon_name = NAV_ICONS.get(nav_id) or (
-                    "images" if nav_id in {"library", "home", "photos"} else None
-                )
-                btn = _button(
-                    self._shell,
-                    label,
-                    lambda n=nav_id: self._navigate(n),
-                    kind="nav",
-                    icon=icon_name,
-                    plate=BG_SUBTLE,
-                )
-                btn.pack(fill=tk.X, pady=1, padx=SP_4)
-                self._nav_buttons[nav_id] = btn
-                self._nav_rows.append(("nav", nav_id))
-        self._nav_buttons["settings"] = self.btn_settings
-        self.root.bind("<Configure>", self._on_root_configure, add="+")
-
-        self.btn_people = self._nav_buttons.get("people") or self.btn_canvas
-        self.btn_unknown = self._nav_buttons.get("unknown") or self.btn_people
-        self.btn_activity = self._nav_buttons.get("activity") or self.btn_canvas
-
-        # Workspace (landing / Canvas / welcome). Role: WORKSPACE / INTELLIGENCE CANVAS.
+        # Workspace (Stage / Memory Canvas / welcome). Role: WORKSPACE / INTELLIGENCE CANVAS.
         work = ttk.Frame(body, padding=(SP_16, SP_8))
         work.grid(row=0, column=0, sticky="nsew", padx=(SP_8, SP_8))
         self._workspace = work
@@ -1319,7 +1291,7 @@ class HomeApp:
         )
         self.btn_region.pack(fill=tk.X, pady=1)
         self.btn_ask_lens = _button(
-            actions, "Ask with Lens", self._ask_with_lens, kind="secondary", icon="lens"
+            actions, "Ask about this photo", self._ask_with_lens, kind="secondary", icon="lens"
         )
         self.btn_ask_lens.pack(fill=tk.X, pady=1)
         # Registry contextual commands (person.history, identify, …) — same widgets
@@ -1904,6 +1876,8 @@ class HomeApp:
         return "break"
 
     def _navigate(self, nav_id: str) -> None:
+        if nav_id not in {"library", "home"}:
+            self._stage_forced = False
         self._nav = nav_id
         self._mark_nav_active(nav_id)
         self._refresh_library_chrome()
@@ -2576,21 +2550,76 @@ class HomeApp:
         return "FIRST_RUN"
 
     def _show_library_or_onboard(self) -> None:
-        """Post-onboarding home is Library. Empty library shows onboarding only."""
+        """Memory Canvas when media exists; Home Stage when empty (or Stage forced)."""
         summary = self._library_summary()
         files = 0 if summary is None else int(summary.get("files") or 0)
-        if files <= 0 and not self._ingest_running():
-            self._show_onboarding()
+        if getattr(self, "_stage_forced", False) or (
+            files <= 0 and not self._ingest_running()
+        ):
+            self._show_stage()
             return
+        self._stage_forced = False
         self._show_library(filter_key=getattr(self, "_library_filter", "all") or "all")
 
-    def _show_onboarding(self) -> None:
-        """Focused empty-state — no capability tables or face dashboard."""
+    def _open_home_stage(self) -> None:
+        """Brand mark — return to capability Stage (intent map)."""
+        self._stage_forced = True
+        self._nav = "library"
+        self._mark_nav_active("home")
+        self._show_stage()
+
+    def _dissolve_to_memory(self, *, filter_key: str = "all") -> None:
+        """Stage dissolves into Memory Canvas — not a hard Library page swap."""
+        self._stage_forced = False
+        self._library_filter = filter_key
+        self._mark_nav_active("library")
+        try:
+            self.root.after(120, lambda: self._show_library(filter_key=filter_key))
+        except tk.TclError:
+            self._show_library(filter_key=filter_key)
+
+    def _stage_explore(self) -> None:
+        summary = self._library_summary()
+        files = 0 if summary is None else int(summary.get("files") or 0)
+        if files <= 0:
+            self._set_inspector(
+                "Explore",
+                [
+                    "Explore shows your photos and videos here.",
+                    "Add a photo folder to build your local visual memory.",
+                ],
+            )
+            return
+        self._dissolve_to_memory(filter_key="all")
+
+    def _stage_discover(self) -> None:
+        summary = self._library_summary()
+        files = 0 if summary is None else int(summary.get("files") or 0)
+        if files <= 0:
+            self._set_inspector(
+                "Discover",
+                [
+                    "Open a photo, then select a region or find similar content.",
+                    "Add a photo folder first so there is something to discover.",
+                ],
+            )
+            return
+        self._stage_forced = False
+        self._navigate("lens")
+
+    def _show_stage(self) -> None:
+        """Home Stage — capability introduction (Model D)."""
         from semblon.fluid_shell import (
-            ONBOARD_CTA,
-            ONBOARD_HEADLINE,
-            ONBOARD_PRIVACY,
-            ONBOARD_SUBCOPY,
+            STAGE_CTA,
+            STAGE_DISCOVER_BODY,
+            STAGE_DISCOVER_TITLE,
+            STAGE_EXPLORE_BODY,
+            STAGE_EXPLORE_TITLE,
+            STAGE_HEADLINE,
+            STAGE_PEOPLE_BODY,
+            STAGE_PEOPLE_TITLE,
+            STAGE_PRIVACY,
+            STAGE_SUBCOPY,
         )
 
         self._hide_workspace_panes()
@@ -2599,49 +2628,127 @@ class HomeApp:
             child.destroy()
         root = tk.Frame(self._landing, bg=BG_CANVAS)
         root.pack(fill=tk.BOTH, expand=True, padx=SP_24, pady=SP_32)
+
         tk.Label(
             root,
-            text=ONBOARD_HEADLINE,
+            text=STAGE_HEADLINE,
             font=DISPLAY,
             bg=BG_CANVAS,
             fg=TEXT_PRIMARY,
-            wraplength=640,
+            wraplength=720,
             justify=tk.LEFT,
             anchor="w",
         ).pack(anchor=tk.W)
         tk.Label(
             root,
-            text=ONBOARD_SUBCOPY,
+            text=STAGE_SUBCOPY,
             font=BODY,
             bg=BG_CANVAS,
             fg=TEXT_SECONDARY,
-            wraplength=640,
+            wraplength=720,
             justify=tk.LEFT,
             anchor="w",
         ).pack(anchor=tk.W, pady=(SP_8, 0))
+
+        grid = tk.Frame(root, bg=BG_CANVAS)
+        grid.pack(anchor=tk.W, fill=tk.BOTH, expand=True, pady=(SP_24, 0))
+        explore = tk.Frame(
+            grid,
+            bg=BG_SUBTLE,
+            highlightthickness=1,
+            highlightbackground=BORDER_SUBTLE,
+            highlightcolor=BORDER_SUBTLE,
+        )
+        explore.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, SP_12))
         tk.Label(
-            root,
-            text=ONBOARD_PRIVACY,
+            explore,
+            text=STAGE_EXPLORE_TITLE,
+            font=H1,
+            bg=BG_SUBTLE,
+            fg=TEXT_PRIMARY,
+            anchor="w",
+        ).pack(anchor=tk.W, padx=SP_16, pady=(SP_16, SP_8))
+        tk.Label(
+            explore,
+            text=STAGE_EXPLORE_BODY,
             font=BODY,
-            bg=BG_CANVAS,
+            bg=BG_SUBTLE,
             fg=TEXT_SECONDARY,
-            wraplength=640,
+            wraplength=360,
             justify=tk.LEFT,
             anchor="w",
-        ).pack(anchor=tk.W, pady=(SP_16, 0))
+        ).pack(anchor=tk.W, padx=SP_16, pady=(0, SP_16))
+        _button(
+            explore,
+            "Open Explore",
+            self._stage_explore,
+            kind="secondary",
+            plate=BG_SUBTLE,
+        ).pack(anchor=tk.W, padx=SP_16, pady=(0, SP_16))
+
+        side_col = tk.Frame(grid, bg=BG_CANVAS)
+        side_col.pack(side=tk.LEFT, fill=tk.Y)
+        for title, body, cmd in (
+            (STAGE_DISCOVER_TITLE, STAGE_DISCOVER_BODY, self._stage_discover),
+            (STAGE_PEOPLE_TITLE, STAGE_PEOPLE_BODY, lambda: self._navigate("people")),
+        ):
+            card = tk.Frame(
+                side_col,
+                bg=BG_SUBTLE,
+                highlightthickness=1,
+                highlightbackground=BORDER_SUBTLE,
+                highlightcolor=BORDER_SUBTLE,
+            )
+            card.pack(fill=tk.X, pady=(0, SP_12))
+            tk.Label(
+                card,
+                text=title,
+                font=BODY_STRONG,
+                bg=BG_SUBTLE,
+                fg=TEXT_PRIMARY,
+                anchor="w",
+            ).pack(anchor=tk.W, padx=SP_16, pady=(SP_12, SP_4))
+            tk.Label(
+                card,
+                text=body,
+                font=BODY,
+                bg=BG_SUBTLE,
+                fg=TEXT_SECONDARY,
+                wraplength=280,
+                justify=tk.LEFT,
+                anchor="w",
+            ).pack(anchor=tk.W, padx=SP_16, pady=(0, SP_8))
+            _button(card, title, cmd, kind="tertiary", plate=BG_SUBTLE).pack(
+                anchor=tk.W, padx=SP_16, pady=(0, SP_12)
+            )
+
         actions = tk.Frame(root, bg=BG_CANVAS)
-        actions.pack(anchor=tk.W, pady=(SP_24, 0))
+        actions.pack(anchor=tk.W, pady=(SP_16, 0))
         self.btn_landing_cta = _button(
             actions,
-            ONBOARD_CTA,
+            STAGE_CTA,
             self._choose_folder,
             kind="primary",
             icon="folder-plus",
             plate=BG_CANVAS,
         )
         self.btn_landing_cta.pack(side=tk.LEFT)
+        tk.Label(
+            root,
+            text=STAGE_PRIVACY,
+            font=CAPTION,
+            bg=BG_CANVAS,
+            fg=TEXT_SECONDARY,
+            wraplength=640,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(anchor=tk.W, pady=(SP_16, 0))
         self._landing.pack(fill=tk.BOTH, expand=True)
         self._refresh_footer()
+
+    def _show_onboarding(self) -> None:
+        """Compatibility alias — Model D Stage."""
+        self._show_stage()
 
     def _build_library_chrome(self) -> None:
         """Filter chips + optional review banner + Clear Search for Library."""
@@ -2719,6 +2826,7 @@ class HomeApp:
         from semblon.home_shell import enrich_summary_counts
 
         self._library_filter = filter_key or "all"
+        self._stage_forced = False
         if similar_media_ids is not None:
             self._similar_media_ids = list(similar_media_ids)
         self._hide_workspace_panes()
@@ -2829,7 +2937,11 @@ class HomeApp:
         self._show_library_or_onboard()
 
     def _refresh_footer(self, summary: dict | None = None) -> None:
-        from semblon.fluid_shell import footer_library_line, footer_status_word
+        from semblon.fluid_shell import (
+            footer_library_line,
+            footer_status_word,
+            people_chrome_label,
+        )
         from semblon.home_shell import enrich_summary_counts
 
         if summary is None:
@@ -2845,6 +2957,17 @@ class HomeApp:
             )
         if hasattr(self, "_library_status"):
             self._library_status.set(footer_library_line(summary))
+        people_btn = getattr(self, "btn_people", None)
+        if people_btn is not None and hasattr(people_btn, "configure"):
+            waiting = 0
+            try:
+                waiting = int((summary or {}).get("unnamed_groups") or 0)
+            except (TypeError, ValueError):
+                waiting = 0
+            try:
+                people_btn.configure(text=people_chrome_label(waiting))
+            except tk.TclError:
+                pass
 
     def _build_library_home(self) -> None:
         """Retained frame for compatibility; Library chrome owns the strip now."""
@@ -3351,47 +3474,12 @@ class HomeApp:
     def _on_root_configure(self, event) -> None:
         if event.widget is not self.root:
             return
-        self._apply_shell_width(int(event.width))
+        # Model D: no left rail / condensed swap — compact header is always used.
+        self._condensed = shell_is_condensed(int(event.width))
 
     def _apply_shell_width(self, width: int) -> None:
-        """Wide: left rail. Narrow: the same items in a bar under the title, Lens included."""
-        condensed = shell_is_condensed(width)
-        if condensed == self._condensed:
-            return
-        self._condensed = condensed
-        for kind, item in self._nav_rows:
-            widget = item if kind == "label" else self._nav_buttons[str(item)]
-            try:
-                widget.pack_forget()
-            except tk.TclError:
-                pass
-        if condensed:
-            try:
-                self._sidebar.pack_forget()
-            except tk.TclError:
-                pass
-            try:
-                self._rail.pack(fill=tk.X, before=self._top)
-            except tk.TclError:
-                self._rail.pack(fill=tk.X)
-            for kind, item in self._nav_rows:
-                if kind != "nav":
-                    continue
-                self._nav_buttons[str(item)].pack(in_=self._rail, side=tk.LEFT, padx=2, pady=2)
-            return
-        try:
-            self._rail.pack_forget()
-        except tk.TclError:
-            pass
-        try:
-            self._sidebar.pack(side=tk.LEFT, fill=tk.Y, before=self._main)
-        except tk.TclError:
-            self._sidebar.pack(side=tk.LEFT, fill=tk.Y)
-        for kind, item in self._nav_rows:
-            if kind == "label":
-                item.pack(in_=self._sidebar, anchor=tk.W, pady=(SP_16, SP_8), padx=(SP_16, SP_8))
-            else:
-                self._nav_buttons[str(item)].pack(in_=self._sidebar, fill=tk.X, pady=1, padx=SP_4)
+        """Compatibility no-op — Model D dropped the MAIN sidebar rail."""
+        self._condensed = shell_is_condensed(int(width))
 
     def _mark_nav_active(self, nav_id: str) -> None:
         """Best-effort active nav styling in ttk (underline / state)."""

@@ -16,8 +16,8 @@ try:
 except ImportError:  # pragma: no cover — tokens land via parallel UX slice
     _tokens = None
 
-SEARCH_PLACEHOLDER = "Search people and text"
-SEARCH_PLACEHOLDER_PHOTOS = "Search photos…"
+SEARCH_PLACEHOLDER = "Search memory…"
+SEARCH_PLACEHOLDER_PHOTOS = "Search memory…"
 
 
 def search_placeholder(*, has_named_people: bool) -> str:

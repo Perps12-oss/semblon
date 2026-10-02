@@ -47,12 +47,15 @@ SETTINGS_DIAGNOSTICS_HINT = (
 )
 SETTINGS_EXPORT_REVIEW = "Open export review page…"
 SETTINGS_OPEN_DIAGNOSTICS = "Advanced diagnostics…"
+# Compact chrome / palette destinations (Model D — not a MAIN sidebar).
 SETTINGS_SHORTCUTS: tuple[tuple[str, str], ...] = (
     ("Search", "Ctrl+F"),
     ("Go to", "Ctrl+K"),
-    ("Library", "Ctrl+1"),
+    ("Memory / Library", "Ctrl+1"),
     ("People", "Ctrl+2"),
     ("Activity", "Ctrl+3"),
+    ("Discover", "Ctrl+4"),
+    ("Home Stage", "Ctrl+0"),
 )
 
 # People / Unknown — short workflow coaching (never lectures; identity-safe).

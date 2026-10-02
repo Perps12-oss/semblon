@@ -60,7 +60,7 @@ def test_photos_path_into_lens_with_current_asset():
 
     src = inspect.getsource(home_ui.HomeApp)
     assert "_ask_with_lens" in src
-    assert "Ask with Lens" in src
+    assert "Ask about this photo" in src or "Ask with Lens" in src
     ask = inspect.getsource(home_ui.HomeApp._ask_with_lens)
     assert "_open_lens" in ask
     tip = inspect.getsource(__import__("semblon.product_surface", fromlist=["soft_inspector_for_media"]).soft_inspector_for_media)

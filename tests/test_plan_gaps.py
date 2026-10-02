@@ -112,6 +112,7 @@ def test_canvas_workspace_is_embeddable():
 
 
 def test_home_nav_matches_r3_ia():
+    """Compact destinations remain library/people/activity — not a MAIN sidebar."""
     sections = {s: [i for i, _ in items] for s, items in HOME_NAV}
     assert sections["MAIN"] == ["library", "people", "activity"]
     assert "ASK" not in sections
@@ -120,11 +121,10 @@ def test_home_nav_matches_r3_ia():
     assert "ACTIVITY" not in sections
 
 
-def test_home_shell_source_has_sidebar_layout():
+def test_home_shell_source_has_model_d_chrome():
     import semblon.home_ui as home_ui
 
     src = inspect.getsource(home_ui.HomeApp)
-    assert "LIBRARY" in src
     assert "WORKSPACE / INTELLIGENCE CANVAS" in src
     assert "INSPECTOR" in src
     assert "CanvasWorkspace" in src
@@ -132,6 +132,10 @@ def test_home_shell_source_has_sidebar_layout():
     assert "resolve_home_observers" in src
     assert "prefer_gpu" in src
     assert "_set_inspector" in src
+    assert "_show_stage" in src
+    assert "btn_discover" in src
+    assert "_sidebar = None" in src
+    assert "Open Explore" in inspect.getsource(home_ui.HomeApp._show_stage)
 
 
 def test_library_lines_filter(tmp_path):

@@ -8,6 +8,8 @@ Authority companions: `docs/PRODUCT.md`, `docs/ATMOSPHERE.md`, `docs/UI-EXPOSURE
 
 Do **not** reopen sidebar-vs-stage unless implementation evidence shows a concrete technical or usability failure of Model D. Do **not** ship a persistent MAIN sidebar as a temporary scaffold.
 
+**Implementation status (2026-10-02):** Tk Home on `grok/atmosphere` implements Stage + compact header chrome + Memory Canvas dissolve. Internal registry `nav` contributions remain for palette/shortcuts only — they must not be re-mounted as a MAIN sidebar.
+
 ---
 
 ## Product model
