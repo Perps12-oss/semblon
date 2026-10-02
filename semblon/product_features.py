@@ -40,53 +40,75 @@ INSPECTOR_VERB_SPECS: tuple[tuple[str, str, str, str], ...] = (
 
 
 def _page_home(host: Any) -> None:
-    host._show_home_landing()
+    """Compatibility: Home resolves to Library / onboarding."""
+    host._show_library_or_onboard()
+
+
+def _page_library(host: Any) -> None:
+    host._show_library_or_onboard()
 
 
 def _page_photos(host: Any) -> None:
-    from semblon.empty_states import library_has_media_lines, photos_empty
-    from semblon.home_ui import format_library_lines
+    """Compatibility alias → Library photos filter."""
+    host._library_filter = "photos"
+    host._show_library(filter_key="photos")
 
-    host._show_workspace_canvas(reload=True, source_types=("folder",))
-    lib = format_library_lines(host.store, source_type="folder")
-    if not library_has_media_lines(lib):
-        host._set_inspector("Photos", photos_empty().as_lines())
 
 def _page_videos(host: Any) -> None:
-    from semblon.empty_states import library_has_media_lines, videos_empty
-    from semblon.home_ui import format_library_lines
-
-    host._show_workspace_canvas(reload=True, source_types=("video",))
-    lib = format_library_lines(host.store, source_type="video")
-    if not library_has_media_lines(lib):
-        host._set_inspector("Videos", videos_empty().as_lines())
+    """Compatibility alias → Library videos filter."""
+    host._library_filter = "videos"
+    host._show_library(filter_key="videos")
 
 
 def _page_canvas(host: Any) -> None:
     from semblon.home_ui import INSPECTOR_EMPTY
 
     host._show_workspace_canvas(reload=True, source_types=None)
-    host._set_inspector("Canvas", list(INSPECTOR_EMPTY))
+    host._set_inspector("Details", list(INSPECTOR_EMPTY))
+    host._set_inspector_collapsed(True)
 
 
 def _page_lens(host: Any) -> None:
-    host._open_lens()
+    """Lens stays a route for compatibility; open media workspace instead of a product dest."""
+    # Prefer the open-media path: Library with region tools, not a separate Lens app.
+    if getattr(host, "_insp_media_id", None):
+        host._show_workspace_canvas(reload=False, source_types=None)
+        host._set_inspector_collapsed(False)
+        host._open_region_select()
+        return
+    host._library_filter = "all"
+    host._show_library(filter_key="all")
+    host._set_inspector(
+        "Details",
+        [
+            "Open a photo in Library, then select something to look at.",
+        ],
+    )
 
 
 def _page_people(host: Any) -> None:
     host._welcome_title.set("People")
     host._show_workspace_welcome()
     host._show_people()
+    host._set_inspector_collapsed(False)
 
 
 def _page_unknown(host: Any) -> None:
     host._welcome_title.set("People to name")
     host._show_workspace_welcome()
     host._show_unknown()
+    host._set_inspector_collapsed(False)
 
 
 def _page_settings(host: Any) -> None:
     host._show_settings()
+
+
+def _page_activity(host: Any) -> None:
+    from semblon.features.activity_feature import show_activity_page
+
+    show_activity_page(host)
+    host._set_inspector_collapsed(True)
 
 
 # --- commands (Phase 5–7) -------------------------------------------------
@@ -115,7 +137,11 @@ def _face_from_context(context: Any) -> dict | None:
 
 
 def _cmd_browse_photos(host: Any, _ctx: Any = None) -> None:
-    host._navigate("photos")
+    host._navigate("library")
+
+
+def _cmd_review_to_name(host: Any, _ctx: Any = None) -> None:
+    host._navigate("unknown")
 
 
 def _cmd_explore_canvas(host: Any, _ctx: Any = None) -> None:
@@ -372,13 +398,11 @@ def _inspector_verb_commands() -> tuple[GuiCommand, ...]:
 def build_product_registry() -> FeatureRegistry:
     reg = FeatureRegistry()
 
+    # Lens is capability/route only — not a sidebar destination.
     reg.register(
         Feature(
             id="lens",
             label="Lens",
-            nav=NavContribution(
-                section="ASK", route_id="lens", label="Lens", shortcut=None, order=0
-            ),
             route_id="lens",
             page=_page_lens,
             commands=(
@@ -390,7 +414,7 @@ def build_product_registry() -> FeatureRegistry:
                 ),
                 GuiCommand(
                     id="lens.find_similar",
-                    label="Find similar-looking regions",
+                    label="Find Similar",
                     run=_cmd_lens_find_similar,
                     surfaces=frozenset({"inspector", "palette", "context"}),
                 ),
@@ -412,17 +436,17 @@ def build_product_registry() -> FeatureRegistry:
 
     reg.register(
         Feature(
-            id="library_home",
+            id="library",
             label="Library",
             nav=NavContribution(
-                section="LIBRARY",
-                route_id="home",
+                section="MAIN",
+                route_id="library",
                 label="Library",
                 shortcut="1",
                 order=0,
             ),
-            route_id="home",
-            page=_page_home,
+            route_id="library",
+            page=_page_library,
             commands=(
                 GuiCommand(
                     id="library.browse_photos",
@@ -442,33 +466,6 @@ def build_product_registry() -> FeatureRegistry:
                     run=_cmd_watch_folder,
                     surfaces=frozenset({"overflow", "palette"}),
                 ),
-            ),
-        )
-    )
-
-    reg.register(
-        Feature(
-            id="videos",
-            label="Videos",
-            nav=NavContribution(
-                section="LIBRARY",
-                route_id="videos",
-                label="Videos",
-                shortcut="2",
-                order=1,
-            ),
-            route_id="videos",
-            page=_page_videos,
-        )
-    )
-
-    reg.register(
-        Feature(
-            id="photos_grid",
-            label="Browse photos",
-            route_id="photos",
-            page=_page_photos,
-            commands=(
                 GuiCommand(
                     id="library.export_person_folders",
                     label="Export person folders…",
@@ -476,6 +473,34 @@ def build_product_registry() -> FeatureRegistry:
                     surfaces=frozenset({"overflow", "palette"}),
                 ),
             ),
+        )
+    )
+
+    # Compatibility: old home/photos routes resolve to Library.
+    reg.register(
+        Feature(
+            id="library_home",
+            label="Library",
+            route_id="home",
+            page=_page_home,
+        )
+    )
+
+    reg.register(
+        Feature(
+            id="photos_grid",
+            label="Photos",
+            route_id="photos",
+            page=_page_photos,
+        )
+    )
+
+    reg.register(
+        Feature(
+            id="videos",
+            label="Videos",
+            route_id="videos",
+            page=_page_videos,
         )
     )
 
@@ -501,11 +526,11 @@ def build_product_registry() -> FeatureRegistry:
             id="people",
             label="People",
             nav=NavContribution(
-                section="PEOPLE",
+                section="MAIN",
                 route_id="people",
                 label="People",
-                shortcut="3",
-                order=0,
+                shortcut="2",
+                order=1,
             ),
             route_id="people",
             page=_page_people,
@@ -528,21 +553,21 @@ def build_product_registry() -> FeatureRegistry:
                     reason=_identify_reason,
                     requires_context=True,
                 ),
+                GuiCommand(
+                    id="person.review_to_name",
+                    label="Review people to name",
+                    run=_cmd_review_to_name,
+                    surfaces=frozenset({"palette", "overflow"}),
+                ),
             ),
         )
     )
 
+    # People to name stays a route — not a permanent sidebar row.
     reg.register(
         Feature(
             id="unknown",
             label="People to name",
-            nav=NavContribution(
-                section="PEOPLE",
-                route_id="unknown",
-                label="People to name",
-                shortcut="4",
-                order=1,
-            ),
             route_id="unknown",
             page=_page_unknown,
         )
@@ -612,7 +637,7 @@ def register_demo_feature(registry: FeatureRegistry) -> Feature:
         id="registry_demo",
         label="Registry demo",
         nav=NavContribution(
-            section="ACTIVITY",
+            section="MAIN",
             route_id="registry_demo",
             label="Registry demo",
             order=99,

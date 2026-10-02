@@ -121,7 +121,7 @@ def show_activity_page(host: Any) -> None:
     from semblon.process import latest_run_id
 
     host._hide_workspace_panes()
-    host._set_inspector_collapsed(False)
+    host._set_inspector_collapsed(True)
     host._activity.pack(fill="both", expand=True)
 
     title = ACTIVITY_HEADLINE
@@ -172,13 +172,13 @@ def _cmd_review_people(host: Any, _context: Any = None) -> None:
 def activity_feature() -> Feature:
     return Feature(
         id="activity",
-        label="Recent activity",
+        label="Activity",
         nav=NavContribution(
-            section="ACTIVITY",
+            section="MAIN",
             route_id="activity",
-            label="Recent activity",
-            shortcut="5",
-            order=0,
+            label="Activity",
+            shortcut="3",
+            order=2,
         ),
         route_id="activity",
         page=show_activity_page,

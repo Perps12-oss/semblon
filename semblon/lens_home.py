@@ -6,28 +6,34 @@ from pathlib import Path
 
 
 def open_region_select(home) -> None:
-    """Production Lens release path: persist the box and find similar photos."""
+    """Production region select — persist box and Find Similar into Library."""
     from semblon.selection import media_file, mount_region_select, open_region_window
 
     path = media_file(home.store, getattr(home, "_insp_media_id", None))
     if path is None:
         home._set_inspector(
-            "Lens",
+            "Details",
             [
                 "Open a photo first.",
                 "Then select something to look at.",
                 "Nothing was searched.",
             ],
         )
-        if getattr(home, "_nav", None) == "lens":
-            home._refresh_lens_workspace()
+        home._set_inspector_collapsed(False)
         return
 
     def done(lines: list[str]) -> None:
         try:
-            home._set_inspector("Lens", lines or ["Nothing was searched."])
+            home._set_inspector("Details", lines or ["Nothing was searched."])
+            home._set_inspector_collapsed(False)
         except Exception:  # noqa: BLE001
             pass
+        summary = getattr(home, "_last_lens_result", None)
+        if hasattr(home, "_apply_find_similar_result") and summary:
+            try:
+                home._apply_find_similar_result(summary)
+            except Exception:  # noqa: BLE001
+                pass
 
     def on_rect(rect: dict) -> None:
         from semblon.lens_release import remember_selection
@@ -67,23 +73,7 @@ def open_region_select(home) -> None:
 
     schedule = lambda fn: home.root.after(0, fn)  # noqa: E731
 
-    if getattr(home, "_nav", None) == "lens" and hasattr(home, "_lens_stage"):
-        import tkinter as tk
-
-        for child in home._lens_stage.winfo_children():
-            child.destroy()
-        mounted = mount_region_select(
-            home._lens_stage,
-            path,
-            on_lines=done,
-            on_busy=on_busy,
-            schedule=schedule,
-            on_rect=on_rect,
-        )
-        if mounted is not None:
-            mounted.pack(fill=tk.BOTH, expand=True)
-        return
-
+    # Prefer selecting on the open media workspace when canvas is showing a photo.
     open_region_window(
         home.root,
         path,

@@ -26,8 +26,8 @@ _TRACKED_IDS = (
     "screen_capture",
 )
 
-SHELL_HEADLINE = "Your pictures stay here."
-SHELL_SUBCOPY = "On this computer. Nothing is uploaded."
+SHELL_HEADLINE = "Welcome to Semblon"
+SHELL_SUBCOPY = "Your local, private visual memory."
 SHELL_ACTIVITY_TITLE = "Recent activity"
 SHELL_ACTIVITY_EMPTY = "No recent activity."
 SHELL_READY_TITLE = "Available"
@@ -288,10 +288,12 @@ def enrich_summary_counts(store: Path, summary: dict | None) -> dict | None:
         except sqlite3.OperationalError:
             video_frames = videos
         out["photos"] = photos if photos else int(out.get("files") or 0)
+        out["videos"] = videos
         out["video_frames"] = video_frames
         out["observations"] = observations
     except sqlite3.OperationalError:
         out.setdefault("photos", int(out.get("files") or 0))
+        out.setdefault("videos", 0)
         out.setdefault("video_frames", 0)
         out.setdefault("observations", int(out.get("faces") or 0))
     finally:

@@ -89,14 +89,14 @@ def test_home_control_policy_does_not_lock_read_surfaces():
 
 
 def test_home_nav_labels_ux_rescue():
-    """§4 — display labels change; route ids stay unknown / activity."""
+    """Fluid workspace — Library · People · Activity; Lens off the rail."""
     flat = {nav_id: label for _sec, items in HOME_NAV for nav_id, label in items}
-    assert flat["unknown"] == "People to name"
-    assert flat["activity"] == "Recent activity"
-    assert flat["home"] == "Photos"
-    assert "photos" not in flat
+    assert flat["library"] == "Library"
     assert flat["people"] == "People"
-    assert flat["lens"] == "Lens"
+    assert flat["activity"] == "Activity"
+    assert "unknown" not in flat
+    assert "lens" not in flat
+    assert "home" not in flat or flat.get("home") != "Photos"
 
 
 def test_narrow_window_keeps_a_rail():
@@ -141,12 +141,12 @@ def test_home_is_a_job_client():
     assert "inspector_verbs" in src or "Merge observations" in src
     # UX Rescue landing + settings + result card.
     assert "_show_home_landing" in src
-    assert "Add a photo folder" in src
-    assert "SHELL_HEADLINE" in src or "Your pictures stay here." in src
-    assert "_refresh_library_shell" in src
+    assert "Add Folder" in src or "Select Photo Folder" in src
+    assert "SHELL_HEADLINE" in src or "Welcome to Semblon" in src or "_show_onboarding" in src
+    assert "_refresh_library_shell" in src or "_refresh_footer" in src
     assert "open_advanced_diagnostics" in src
     assert "Your photos are ready" in src
-    assert "Review people" in src
+    assert "Review people" in src or "Review People" in src
 
 
 def test_home_landing_has_no_engineering_leak():
@@ -223,7 +223,7 @@ def test_home_done_status_clears_clock_telemetry():
 
 
 def test_home_processing_state_replaces_marketing_landing():
-    """PROCESSING Home is its own workspace — not landing + telemetry header."""
+    """While ingest runs, Library stays the surface; footer carries Scanning."""
     import semblon.home_ui as home_ui
 
     src = inspect.getsource(home_ui.HomeApp)
@@ -231,53 +231,46 @@ def test_home_processing_state_replaces_marketing_landing():
     assert "_home_state" in src
     assert 'return "PROCESSING"' in inspect.getsource(home_ui.HomeApp._home_state)
     show = inspect.getsource(home_ui.HomeApp._show_home_landing)
-    assert 'state == "PROCESSING"' in show
-    assert "_processing.pack" in show
+    assert "_show_library_or_onboard" in show
+    start = inspect.getsource(home_ui.HomeApp._start_process)
+    assert "_show_library_or_onboard" in start
     sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
-    assert "processing_home" in sync
-    # Marketing CTA must not be the processing surface.
+    assert "processing_home" in sync or "on_library" in sync
     build = inspect.getsource(home_ui.HomeApp._build_processing_home)
     assert "Add a photo folder" not in build
     assert "Building your photo library" in build or "processing_home_headline" in build
     assert '"Cancel"' in build
     assert "Already discovered" in build
-    # Substantial bar — not hairline height=4 default.
     assert "height=16" in build or "height=14" in inspect.getsource(home_ui.StillProgressBar.__init__)
 
 
 def test_home_landing_wraplength_avoids_clipping():
     import semblon.home_ui as home_ui
 
-    build = inspect.getsource(home_ui.HomeApp._build_home_landing)
-    assert "wraplength=640" in build
-    assert "justify=tk.CENTER" not in build
-    assert "width=48" not in build
-    assert "Your pictures stay here." in build or "SHELL_HEADLINE" in build
-    assert "_shell_activity" in build
-    assert "_landing_privacy" in build
-    assert "SHELL_READY_TITLE" not in build
-    assert "Observations" not in build
+    onboard = inspect.getsource(home_ui.HomeApp._show_onboarding)
+    assert "wraplength=640" in onboard
+    assert "justify=tk.CENTER" not in onboard
+    assert "ONBOARD_HEADLINE" in onboard
+    assert "ONBOARD_PRIVACY" in onboard
     hint = inspect.getsource(home_ui.HomeApp._refresh_landing_hint)
     assert "previously added" not in hint
     assert "landing_cta_plan" in hint
-    assert "show_privacy" in hint
 
 
 def test_populated_home_skips_first_run_marketing():
-    """Home with a library shows the local-first shell, not the how-it-works brochure."""
-    import inspect
-
+    """Populated launch goes to Library, not a permanent Home dashboard."""
     import semblon.home_ui as home_ui
 
     show = inspect.getsource(home_ui.HomeApp._show_home_landing)
-    assert "_refresh_library_shell" in show
-    assert 'files <= 0' in show or "files <= 0" in show
-    # Populated Home stays on the shell — photo grid is Photos, not Home.
-    assert "_show_library_home(summary)" not in show
-    build = inspect.getsource(home_ui.HomeApp._build_home_landing)
-    assert "SHELL_HEADLINE" in build or "Your pictures stay here." in build
-    assert "Add a photo folder to begin" not in build
-    assert "Find the people in your photos" not in build
+    assert "_show_library_or_onboard" in show
+    onboard = inspect.getsource(home_ui.HomeApp._show_onboarding)
+    assert "ONBOARD_HEADLINE" in onboard
+    assert "Find the people in your photos" not in onboard
+    lib = inspect.getsource(home_ui.HomeApp._show_library)
+    assert "_library_filter" in lib
+    assert "_set_inspector_collapsed(True)" in lib
+    chrome = inspect.getsource(home_ui.HomeApp._build_library_chrome)
+    assert "LIBRARY_FILTERS" in chrome or "_lib_filter_buttons" in chrome
 
 
 def test_landing_cta_plan_first_run_vs_returning():

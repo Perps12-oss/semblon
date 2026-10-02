@@ -97,6 +97,7 @@ ICONS: dict[str, tuple[tuple[Any, ...], ...]] = {
 
 NAV_ICONS = {
     "home": "home",
+    "library": "images",
     "photos": "images",
     "videos": "film",
     "people": "users",
