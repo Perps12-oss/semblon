@@ -389,9 +389,7 @@ else:
 
         _DRAG_THRESHOLD = 6
         # Interaction accents — not CV class colours (no orange=object / green=face).
-        _HOVER_COLOR = "#285ECA"
-        _SELECT_COLOR = "#2E6BE6"
-        _DRAG_COLOR = "#E2EAFC"
+        # Resolved from tokens at paint time (MediaTile / Atmosphere).
         _THUMB_CELL = 156
         _THUMB_PAD = 8
 
@@ -446,6 +444,10 @@ else:
             self._tip_shown = True
             self._thumb_photos: list = []  # keep PhotoImage refs alive
             self._thumb_hitmap: dict[int, int] = {}  # canvas item → media index
+            self._thumb_plates: dict[int, int] = {}  # media index → plate rect id
+            self._thumb_labels: dict[int, int] = {}  # media index → label text id
+            self._thumb_hover_idx: int | None = None
+            self._thumb_selected_idx: int | None = None
             self._thumb_job = 0
             self._open = False
             self._img = None
@@ -484,7 +486,7 @@ else:
             self._browse = ttk.Frame(body)
             self._thumb_canvas = tk.Canvas(
                 self._browse,
-                background=BG_SUBTLE,
+                background=BG_STAGE,
                 highlightthickness=0,
             )
             self._thumb_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -496,6 +498,8 @@ else:
             self._thumb_canvas.bind("<Button-1>", self._on_thumb_click)
             self._thumb_canvas.bind("<Control-Button-1>", self._on_thumb_compare_toggle)
             self._thumb_canvas.bind("<Configure>", self._on_thumb_configure)
+            self._thumb_canvas.bind("<Motion>", self._on_thumb_motion)
+            self._thumb_canvas.bind("<Leave>", self._on_thumb_leave)
             self._thumb_canvas.bind(
                 "<MouseWheel>",
                 lambda e: self._thumb_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"),
@@ -571,6 +575,8 @@ else:
             """Photos fill the stage. The opened picture is not sitting beside a rail."""
             self._open = False
             self._img = None
+            self._thumb_selected_idx = None
+            self._thumb_hover_idx = None
             try:
                 self._preview_wrap.pack_forget()
                 self._tools.pack_forget()
@@ -679,42 +685,116 @@ else:
             self._thumb_canvas.delete("all")
             self._thumb_photos = []
             self._thumb_hitmap = {}
+            self._thumb_plates = {}
+            self._thumb_labels = {}
+            self._thumb_hover_idx = None
+
+        def _thumb_visual_state(self, idx: int):
+            from semblon.ui_primitives import media_tile_state
+
+            return media_tile_state(
+                selected=self._thumb_selected_idx == idx,
+                hover=self._thumb_hover_idx == idx,
+                loading=idx not in getattr(self, "_thumb_filled", set()),
+            )
+
+        def _paint_thumb_plate(self, idx: int) -> None:
+            from semblon.ui_primitives import media_tile_colors
+
+            plate = self._thumb_plates.get(idx)
+            label = self._thumb_labels.get(idx)
+            if plate is None:
+                return
+            colors = media_tile_colors(self._thumb_visual_state(idx))
+            try:
+                self._thumb_canvas.itemconfigure(
+                    plate,
+                    fill=colors.fill,
+                    outline=colors.outline,
+                    width=colors.outline_width,
+                )
+                if label is not None:
+                    self._thumb_canvas.itemconfigure(label, fill=colors.label)
+            except tk.TclError:
+                return
+
+        def _on_thumb_motion(self, event) -> None:
+            x = self._thumb_canvas.canvasx(event.x)
+            y = self._thumb_canvas.canvasy(event.y)
+            items = self._thumb_canvas.find_overlapping(x, y, x, y)
+            hit: int | None = None
+            for iid in items:
+                idx = self._thumb_hitmap.get(iid)
+                if idx is not None:
+                    hit = idx
+                    break
+            if hit == self._thumb_hover_idx:
+                return
+            prev = self._thumb_hover_idx
+            self._thumb_hover_idx = hit
+            if prev is not None:
+                self._paint_thumb_plate(prev)
+            if hit is not None:
+                self._paint_thumb_plate(hit)
+
+        def _on_thumb_leave(self, _event=None) -> None:
+            prev = self._thumb_hover_idx
+            self._thumb_hover_idx = None
+            if prev is not None:
+                self._paint_thumb_plate(prev)
 
         def _rebuild_thumbs(self) -> None:
             """Photo grid across the stage. Tiles fill in; a click opens one."""
             from semblon.product_surface import basename_path
+            from semblon.ui_primitives import (
+                MEDIA_TILE_GEOMETRY,
+                media_tile_colors,
+                truncate_label,
+            )
+            from semblon.ui_tokens import CAPTION
 
             self._clear_thumbs()
+            self._thumb_filled: set[int] = set()
             self._thumb_job += 1
             job = self._thumb_job
             cell = self._THUMB_CELL
             pad = self._THUMB_PAD
+            label_band = MEDIA_TILE_GEOMETRY.label_band
             cols = self._thumb_cols()
             self._laid_cols = cols
             self._thumb_cells: dict[int, tuple[int, int]] = {}
+            resting = media_tile_colors("loading")
             for idx, m in enumerate(self._media):
                 row, col = divmod(idx, cols)
                 x0 = pad + col * (cell + pad)
-                y0 = pad + row * (cell + pad + 18)
+                y0 = pad + row * (cell + pad + label_band)
                 self._thumb_cells[idx] = (x0, y0)
                 iid = self._thumb_canvas.create_rectangle(
-                    x0, y0, x0 + cell, y0 + cell, outline="#2a2d34", fill="#1c1f26"
+                    x0,
+                    y0,
+                    x0 + cell,
+                    y0 + cell,
+                    outline=resting.outline,
+                    fill=resting.fill,
+                    width=resting.outline_width,
+                    tags=("tile_plate", f"tile_{idx}"),
                 )
+                self._thumb_plates[idx] = iid
                 self._thumb_hitmap[iid] = idx
-                label = basename_path(m.get("path"))
-                if len(label) > 18:
-                    label = label[:16] + "…"
+                label = truncate_label(basename_path(m.get("path")))
                 tid = self._thumb_canvas.create_text(
                     x0 + cell // 2,
                     y0 + cell + 2,
                     text=label,
                     anchor=tk.N,
-                    fill="#9b9a94",
-                    font=("Segoe UI", 9),
+                    fill=resting.label,
+                    font=CAPTION,
+                    tags=("tile_label", f"tile_{idx}"),
                 )
+                self._thumb_labels[idx] = tid
                 self._thumb_hitmap[tid] = idx
             rows = (len(self._media) + cols - 1) // cols if self._media else 0
-            height = pad + rows * (cell + pad + 18) + pad
+            height = pad + rows * (cell + pad + label_band) + pad
             width = pad + cols * (cell + pad)
             self._thumb_canvas.configure(scrollregion=(0, 0, width, max(height, 1)))
             pending = list(range(len(self._media)))
@@ -746,13 +826,19 @@ else:
                 return
             img = load_bgr(self._media[idx].get("path"))
             if img is None:
+                self._thumb_filled.add(idx)
+                self._paint_thumb_plate(idx)
                 return
             try:
                 b64, _scale, nw, nh = _png_photo(img, max_side=self._THUMB_CELL - 8)
                 photo = tk.PhotoImage(data=b64)
             except tk.TclError:
+                self._thumb_filled.add(idx)
+                self._paint_thumb_plate(idx)
                 return
             except Exception:  # noqa: BLE001
+                self._thumb_filled.add(idx)
+                self._paint_thumb_plate(idx)
                 return
             self._thumb_photos.append(photo)
             x0, y0 = spot
@@ -761,6 +847,8 @@ else:
             oy = y0 + (cell - nh) // 2
             iid = self._thumb_canvas.create_image(ox, oy, anchor=tk.NW, image=photo)
             self._thumb_hitmap[iid] = idx
+            self._thumb_filled.add(idx)
+            self._paint_thumb_plate(idx)
 
         def _on_thumb_click(self, event) -> None:
             # Control+click is handled by _on_thumb_compare_toggle.
@@ -773,6 +861,11 @@ else:
             for iid in items:
                 idx = self._thumb_hitmap.get(iid)
                 if idx is not None:
+                    prev = self._thumb_selected_idx
+                    self._thumb_selected_idx = idx
+                    if prev is not None and prev != idx:
+                        self._paint_thumb_plate(prev)
+                    self._paint_thumb_plate(idx)
                     self.show_index(idx)
                     return
 
@@ -809,8 +902,9 @@ else:
                 return
             if not self._compare_marks:
                 return
-            from semblon.ui_tokens import ACCENT
+            from semblon.ui_primitives import media_tile_colors
 
+            colors = media_tile_colors("selected")
             cell = self._THUMB_CELL
             for idx, m in enumerate(self._media):
                 if str(m.get("media_id")) not in self._compare_marks:
@@ -824,8 +918,8 @@ else:
                     y0 + 1,
                     x0 + cell - 1,
                     y0 + cell - 1,
-                    outline=ACCENT,
-                    width=3,
+                    outline=colors.compare_outline,
+                    width=colors.compare_width,
                     tags=("compare_mark",),
                 )
 
@@ -916,7 +1010,7 @@ else:
                     24,
                     48,
                     anchor=tk.NW,
-                    fill=getattr(self, "_ink_on_dark", "#B5B1A8"),
+                    fill=self._ink_on_dark,
                     font=self._caption_font,
                     text=f"This photo is not in the folder anymore.\n{basename_path(path)}",
                 )
@@ -1180,7 +1274,7 @@ else:
                     24,
                     48,
                     anchor=tk.NW,
-                    fill=getattr(self, "_ink_on_dark", "#B5B1A8"),
+                    fill=self._ink_on_dark,
                     text=f"Couldn't show this photo\n{basename_path((self._current_media or {}).get('path'))}",
                 )
                 return
@@ -1421,7 +1515,9 @@ else:
             self.preview.create_rectangle(
                 x1, top, x1 + chip_w, top + 16, outline="", fill=color, tags=("overlay",)
             )
-            label_fg = region.label_fg if region is not None else "#F7F4EE"
+            from semblon.ui_tokens import INK_ON_ACCENT
+
+            label_fg = region.label_fg if region is not None else INK_ON_ACCENT
             self.preview.create_text(
                 x1 + 6, top + 8, anchor=tk.W, fill=label_fg, text=label, tags=("overlay",)
             )
@@ -1485,12 +1581,14 @@ else:
                 x1, y1, x2, y2 = hit["rect"]
                 lx = max(self._ox + 4, x1)
                 ly = max(self._oy + 4, y1 - 4)
+                from semblon.ui_tokens import INK_ON_ACCENT
+
                 self.preview.create_text(
                     lx,
                     ly,
                     anchor=tk.SW,
                     text=str(label),
-                    fill="#F4F2EC",
+                    fill=INK_ON_ACCENT,
                     font=self._caption_font,
                     tags=("overlay", "seg_label"),
                 )
