@@ -24,16 +24,9 @@ This file **cannot** override any document above it.
 
 ### Repository reconciliation (2026-10-03)
 
-On `main` at the time this slice branched, `docs/SHELL-IA.md` and `docs/ATMOSPHERE.md` were **not present**. Model D (Memory-first Stage dissolve, no permanent MAIN sidebar) and the PRODUCT Home-shell IA sentence lived on branch `grok/atmosphere` (and matching workspace agent rules), not on `main`.
+This branch is rebased onto `grok/atmosphere`, so `docs/SHELL-IA.md` / `docs/ATMOSPHERE.md` and the PRODUCT Model D Home-shell IA sentence are present. Chrome authority for this companion is Model D; this file does not reopen it.
 
-`docs/UI-EXPOSURE-MAP.md` on `main` still describes a Photos / People / Activity sidebar-shaped target IA.
-
-**How this file behaves until that merges:**
-
-- Intended chrome authority remains Model D / `SHELL-IA.md` when those docs are present.
-- This file does **not** re-lock Model D, does **not** rewrite `UI-EXPOSURE-MAP.md`, and does **not** invent a second shell IA.
-- Frontend synthesis below still forbids treating a permanent MAIN sidebar as the Semblon product shell — that matches the locked Model D intent and does not authorize implementing Stage dissolve in this docs slice.
-- A Related pointer in `SHELL-IA.md` is applied when that file exists on the integration branch; it was not created here.
+Until atmosphere lands on `main`, `main`’s `docs/UI-EXPOSURE-MAP.md` may still describe a sidebar-shaped target IA — that is an integration lag, not permission for REFERENCE-STACK to authorize a permanent MAIN sidebar.
 
 ### It is
 
