@@ -7,7 +7,12 @@ from semblon.product_surface import settings_contributions, settings_product_sec
 
 def test_settings_contributions_are_the_product_sections():
     rows = settings_contributions()
-    assert [s.id for s in rows] == ["library", "processing", "appearance", "about"]
+    assert [s.id for s in rows] == [
+        "library",
+        "processing",
+        "appearance",
+        "about",
+    ]
     assert settings_product_section_titles() == tuple(s.title for s in rows)
     assert "SettingsRegistry" not in Path("semblon/product_surface.py").read_text(encoding="utf-8")
 

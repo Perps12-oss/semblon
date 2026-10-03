@@ -127,39 +127,16 @@ def visible_index_range(
 
 
 def load_grid_density(store: Path | None = None) -> str:
-    from semblon.ui_prefs import appearance_path
+    """Delegate to ui_prefs — single preference surface."""
+    from semblon.ui_prefs import load_grid_density as _load
 
-    path = appearance_path(store)
-    try:
-        import json
-
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError):
-        return DENSITY_COMFORTABLE
-    if not isinstance(raw, dict):
-        return DENSITY_COMFORTABLE
-    dens = str(raw.get("grid_density") or "").strip().lower()
+    dens = _load(store)
     return dens if dens in DENSITIES else DENSITY_COMFORTABLE
 
 
 def save_grid_density(density: str, store: Path | None = None) -> str:
-    from semblon.ui_prefs import appearance_path
+    """Delegate to ui_prefs — merges without wiping other keys."""
+    from semblon.ui_prefs import save_grid_density as _save
 
-    dens = (density or DENSITY_COMFORTABLE).strip().lower()
-    if dens not in DENSITIES:
-        dens = DENSITY_COMFORTABLE
-    path = appearance_path(store)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    import json
-
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            raw = {}
-    except (OSError, UnicodeError, ValueError):
-        raw = {}
-    raw["grid_density"] = dens
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)
-    return dens
+    dens = _save(density, store)
+    return dens if dens in DENSITIES else DENSITY_COMFORTABLE

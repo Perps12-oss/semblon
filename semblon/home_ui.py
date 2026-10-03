@@ -28,7 +28,18 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - host without li
 
 from semblon.ui_copy import friendly_exception
 from semblon.jobs import JobBusy, JobEngine
-from semblon.process import default_store_path
+from semblon.ui_prefs import (
+    load_library_filter,
+    load_prefer_gpu,
+    load_search_mode,
+    load_window_geometry,
+    resolve_home_store,
+    save_last_store,
+    save_library_filter,
+    save_prefer_gpu,
+    save_search_mode,
+    save_window_geometry,
+)
 from semblon.state_triple import (
     format_media_card_label,
     library_include_media,
@@ -884,7 +895,11 @@ class HomeApp:
     def __init__(self, store: Path | None = None):
         if tk is None or ttk is None or filedialog is None or messagebox is None:
             raise RuntimeError("tkinter is required for home-ui")
-        self.store = Path(store) if store is not None else default_store_path()
+        self.store = resolve_home_store(store)
+        try:
+            save_last_store(self.store)
+        except Exception:  # noqa: BLE001 — continuity must not block launch
+            pass
         self.engine = JobEngine(self.store)
         from semblon.gui_registry import default_registry
 
@@ -900,7 +915,10 @@ class HomeApp:
         self._q: queue.Queue = queue.Queue()
         self._nav = "library"
         self._nav_buttons: dict[str, ttk.Button] = {}
-        self._prefer_gpu_user: bool | None = None  # Settings toggle; None = product default
+        try:
+            self._prefer_gpu_user = load_prefer_gpu(self.store)
+        except Exception:  # noqa: BLE001
+            self._prefer_gpu_user = None
         self._completion: dict | None = None  # last done/cancelled summary for §11 card
         self._completion_kind: str | None = None  # "done" | "cancelled" | None
         self._last_progress_files: tuple[int | None, int | None] = (None, None)
@@ -908,12 +926,23 @@ class HomeApp:
         self._proc_thumbs_faces: int | None = None
         self._inspector_collapsed = False
         self._last_progress_event: ProgressEvent | None = None
-        self._library_filter = "all"
+        try:
+            self._library_filter = load_library_filter(self.store)
+        except Exception:  # noqa: BLE001
+            self._library_filter = "all"
         self._browse_facet: str | None = None  # timeline | folders | moments
         self._browse_buckets: list[dict] = []
         self._browse_bucket_index: int = 0
-        self._search_mode: str = "people"  # people | text | whole | region
-        self._grid_density: str = "comfortable"
+        try:
+            self._search_mode = load_search_mode(self.store)
+        except Exception:  # noqa: BLE001
+            self._search_mode = "people"
+        try:
+            from semblon.ui_prefs import load_grid_density as _load_dens
+
+            self._grid_density = _load_dens(self.store)
+        except Exception:  # noqa: BLE001
+            self._grid_density = "comfortable"
         self._similar_media_ids: list[str] | None = None
         self._library_return: dict | None = None
         from semblon.culling_compare import CompareSession
@@ -937,9 +966,20 @@ class HomeApp:
         from semblon.ui_theme import px
 
         self.root.minsize(px(self.root, WINDOW_MIN[0]), px(self.root, WINDOW_MIN[1]))
-        self.root.geometry(
-            f"{px(self.root, WINDOW_DEFAULT[0])}x{px(self.root, WINDOW_DEFAULT[1])}"
-        )
+        saved_geom = None
+        try:
+            saved_geom = load_window_geometry()
+        except Exception:  # noqa: BLE001
+            saved_geom = None
+        if saved_geom:
+            try:
+                self.root.geometry(saved_geom)
+            except tk.TclError:
+                saved_geom = None
+        if not saved_geom:
+            self.root.geometry(
+                f"{px(self.root, WINDOW_DEFAULT[0])}x{px(self.root, WINDOW_DEFAULT[1])}"
+            )
         if apply_theme is not None:
             apply_theme(self.root)
         try:
@@ -983,7 +1023,7 @@ class HomeApp:
                 mode_row,
                 label,
                 lambda k=key: self._set_search_mode(k),
-                kind="secondary" if key == "people" else "tertiary",
+                kind="secondary" if key == self._search_mode else "tertiary",
                 plate=BG_CANVAS,
             )
             btn.pack(side=tk.LEFT, padx=(0, SP_4))
@@ -3433,6 +3473,10 @@ class HomeApp:
 
     def _set_library_filter(self, key: str) -> None:
         self._library_filter = key or "all"
+        try:
+            save_library_filter(self._library_filter, self.store)
+        except Exception:  # noqa: BLE001
+            pass
         self._browse_facet = None
         self._browse_buckets = []
         self._browse_bucket_index = 0
@@ -3458,6 +3502,11 @@ class HomeApp:
         self._grid_density = dens
         try:
             save_grid_density(dens, self.store)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            if getattr(self, "_settings_density_var", None) is not None:
+                self._settings_density_var.set(dens)
         except Exception:  # noqa: BLE001
             pass
         for key, btn in (getattr(self, "_density_buttons", {}) or {}).items():
@@ -5745,6 +5794,15 @@ class HomeApp:
         if key not in valid:
             key = "people"
         self._search_mode = key
+        try:
+            save_search_mode(key, self.store)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            if getattr(self, "_settings_search_var", None) is not None:
+                self._settings_search_var.set(key)
+        except Exception:  # noqa: BLE001
+            pass
         for k, btn in (getattr(self, "_search_mode_buttons", {}) or {}).items():
             if hasattr(btn, "set_kind"):
                 btn.set_kind("secondary" if k == key else "tertiary")
@@ -6056,7 +6114,14 @@ class HomeApp:
             SETTINGS_DIAGNOSTICS_HINT,
             SETTINGS_EXPORT_REVIEW,
             SETTINGS_GPU,
+            SETTINGS_GRID_DENSITY,
             SETTINGS_OPEN_DIAGNOSTICS,
+            SETTINGS_RECOVERY,
+            SETTINGS_RECOVERY_HINT,
+            SETTINGS_RESET_BUTTON,
+            SETTINGS_RESET_SAFE,
+            SETTINGS_RESET_TITLE,
+            SETTINGS_SEARCH_MODE,
             SETTINGS_SHORTCUTS,
             SETTINGS_TITLE,
             settings_contributions,
@@ -6163,6 +6228,10 @@ class HomeApp:
 
             def _on_gpu() -> None:
                 self._prefer_gpu_user = bool(self._gpu_var.get())
+                try:
+                    save_prefer_gpu(self._prefer_gpu_user, self.store)
+                except Exception:  # noqa: BLE001
+                    pass
 
             ttk.Checkbutton(
                 pad,
@@ -6181,8 +6250,46 @@ class HomeApp:
         ttk.Label(pad, text=appearance.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
+        # Everyday defaults — same keys as library/search chrome; no second stack.
+        ttk.Label(pad, text=SETTINGS_GRID_DENSITY, font=BODY).pack(
+            anchor=tk.W, pady=(SP_8, 0)
+        )
+        dens_row = ttk.Frame(pad)
+        dens_row.pack(anchor=tk.W, pady=(SP_4, 0))
+        self._settings_density_var = tk.StringVar(
+            value=getattr(self, "_grid_density", "comfortable") or "comfortable"
+        )
+        for key, label in (("comfortable", "Comfortable"), ("compact", "Compact")):
+            ttk.Radiobutton(
+                dens_row,
+                text=label,
+                value=key,
+                variable=self._settings_density_var,
+                command=lambda k=key: self._set_grid_density(k),
+            ).pack(side=tk.LEFT, padx=(0, SP_12))
+
+        ttk.Label(pad, text=SETTINGS_SEARCH_MODE, font=BODY).pack(
+            anchor=tk.W, pady=(SP_12, 0)
+        )
+        from semblon.ui_primitives import SEARCH_MODES as _SEARCH_MODE_CHOICES
+
+        mode_row = ttk.Frame(pad)
+        mode_row.pack(anchor=tk.W, pady=(SP_4, 0))
+        self._settings_search_var = tk.StringVar(
+            value=getattr(self, "_search_mode", "people") or "people"
+        )
+        for key, label in _SEARCH_MODE_CHOICES:
+            ttk.Radiobutton(
+                mode_row,
+                text=label,
+                value=key,
+                variable=self._settings_search_var,
+                command=lambda k=key: self._set_search_mode(k),
+            ).pack(side=tk.LEFT, padx=(0, SP_8))
+
         from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
 
+        ttk.Label(pad, text="Theme", font=BODY).pack(anchor=tk.W, pady=(SP_12, 0))
         current_mode = load_theme_mode(self.store)
         self._theme_var = tk.StringVar(value=current_mode)
         for mode, label in (
@@ -6274,6 +6381,36 @@ class HomeApp:
             kind="tertiary",
         ).pack(anchor=tk.W, pady=(SP_12, 0))
 
+        # Recovery — on-demand under Advanced (exposure ladder). Not everyday.
+        ttk.Label(pad, text=SETTINGS_RECOVERY, font=BODY_STRONG).pack(
+            anchor=tk.W, pady=(SP_16, SP_8)
+        )
+        ttk.Label(
+            pad,
+            text=SETTINGS_RECOVERY_HINT,
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+            wraplength=640,
+        ).pack(anchor=tk.W)
+        ttk.Label(
+            pad,
+            text=SETTINGS_RESET_TITLE,
+            font=BODY,
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+        ttk.Label(
+            pad,
+            text=SETTINGS_RESET_SAFE,
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+            wraplength=640,
+        ).pack(anchor=tk.W, pady=(SP_4, 0))
+        _button(
+            pad,
+            SETTINGS_RESET_BUTTON,
+            self._reset_app_to_defaults,
+            kind="secondary",
+        ).pack(anchor=tk.W, pady=(SP_8, 0))
+
         ttk.Label(pad, text=SETTINGS_DIAGNOSTICS, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
@@ -6308,6 +6445,75 @@ class HomeApp:
             ],
         )
 
+    def _reset_app_to_defaults(self) -> None:
+        """Confirm, then clear Semblon-owned rebuildable state via app_reset."""
+        from semblon.app_reset import reset_app_to_defaults
+        from semblon.product_surface import SETTINGS_RESET_CONFIRM
+
+        if self.engine.busy:
+            messagebox.showinfo(
+                "Semblon",
+                "Finish or cancel processing before resetting the app.",
+            )
+            return
+        if not messagebox.askyesno(
+            "Reset app",
+            SETTINGS_RESET_CONFIRM,
+            parent=self.root,
+        ):
+            return
+        result = reset_app_to_defaults(self.store)
+        if not result.ok:
+            messagebox.showerror("Semblon", result.message, parent=self.root)
+            self.status.set("Reset failed.")
+            return
+        # In-session chrome back to defaults (prefs file already removed).
+        self._prefer_gpu_user = None
+        self._grid_density = "comfortable"
+        self._search_mode = "people"
+        self._library_filter = "all"
+        self._browse_facet = None
+        try:
+            if hasattr(self, "_compare") and self._compare is not None:
+                self._compare.clear()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            for k, btn in (getattr(self, "_search_mode_buttons", {}) or {}).items():
+                if hasattr(btn, "set_kind"):
+                    btn.set_kind("secondary" if k == "people" else "tertiary")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from semblon.atmosphere_render import transition_to
+            from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
+            from semblon.ui_theme import apply_theme, reset_theme_for_tests
+
+            aid = resolve_atmosphere_id(load_theme_mode(self.store))
+            def _finish() -> None:
+                if apply_theme is not None:
+                    reset_theme_for_tests()
+                    apply_theme(self.root, force=True)
+                self._restyle_chrome()
+            transition_to(self.root, aid, on_done=_finish)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            ws = getattr(self, "_canvas_ws", None)
+            if ws is not None and hasattr(ws, "set_density"):
+                ws.set_density(self._grid_density)
+        except Exception:  # noqa: BLE001
+            pass
+        self._fill_settings_body()
+        self.status.set("Reset to defaults.")
+        messagebox.showinfo("Semblon", result.message, parent=self.root)
+        if result.restart_required:
+            messagebox.showinfo(
+                "Semblon",
+                "Restart Semblon to finish applying the reset.",
+                parent=self.root,
+            )
+
     def _settings_change_library(self) -> None:
         """Pick an existing store.sqlite — presentation path only; no ingest change."""
         if self.engine.busy:
@@ -6321,9 +6527,27 @@ class HomeApp:
         if not path:
             return
         self.store = Path(path)
+        try:
+            save_last_store(self.store)
+        except Exception:  # noqa: BLE001
+            pass
         self.engine = JobEngine(self.store)
+        # Reload library-scoped presentation prefs for the new store.
+        try:
+            self._prefer_gpu_user = load_prefer_gpu(self.store)
+            self._library_filter = load_library_filter(self.store)
+            self._search_mode = load_search_mode(self.store)
+            from semblon.ui_prefs import load_grid_density as _load_dens
+
+            self._grid_density = _load_dens(self.store)
+        except Exception:  # noqa: BLE001
+            pass
         if hasattr(self, "_settings_lib_var"):
             self._settings_lib_var.set(str(self.store))
+        try:
+            self._fill_settings_body()
+        except Exception:  # noqa: BLE001
+            pass
 
     # UX-RESCUE S7 — Settings (§6) wires Advanced diagnostics entry.
     def _open_advanced_diagnostics(self) -> None:
@@ -6401,6 +6625,13 @@ class HomeApp:
         rid = rec.get("run_id") if isinstance(rec, dict) else None
         self.status.set("Live overlay finished.")
 
+    def _persist_window_geometry(self) -> None:
+        try:
+            geom = self.root.winfo_geometry()
+            save_window_geometry(geom)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _on_close(self) -> None:
         if self.engine.busy:
             if messagebox.askyesno(
@@ -6410,6 +6641,11 @@ class HomeApp:
                 self._exit_after_cancel = True
                 self._request_cancel()
             return
+        self._persist_window_geometry()
+        try:
+            save_last_store(self.store)
+        except Exception:  # noqa: BLE001
+            pass
         self.root.destroy()
 
     def run(self) -> None:

@@ -150,11 +150,11 @@ Fields are the same for every entry. “State at `35eeb72`” means what the sou
 - **What it exposes:** Settings → Appearance.
 - **Where the user accesses it:** Settings.
 - **Dependencies:** On “System”, Windows theme registry when readable; otherwise light. Stored `dark` aliases to `mica_dark`.
-- **Persistence:** `appearance.json` beside the library file (`ui_prefs.py`). Not a SQLite column.
-- **Tests:** `tests/test_atmosphere.py`, `tests/test_ui_prefs.py`.
+- **Persistence:** `appearance.json` beside the library file (`ui_prefs.py`). Shared JSON also holds `grid_density`, `search_mode`, `library_filter`, `prefer_gpu`. Machine continuity keys `last_store` / `window_geometry` live in the default Semblon data-dir `appearance.json`. Not a SQLite column.
+- **Tests:** `tests/test_atmosphere.py`, `tests/test_ui_prefs.py`, `tests/test_ui_prefs_continuity.py`.
 - **Platform:** File write is cross-platform. “System” matching Windows theme is Windows-only; elsewhere it resolves to light.
 - **State at `35eeb72`:** Present (extended on atmosphere branch).
-- **Notes:** Opaque Tk — no Windows Mica/Acrylic APIs.
+- **Notes:** Opaque Tk — no Windows Mica/Acrylic APIs. Theme save merges; it must not wipe sibling keys. Reset removes the library `appearance.json` (canonical defaults = absent keys).
 
 #### `settings-library`
 
@@ -165,11 +165,26 @@ Fields are the same for every entry. “State at `35eeb72`” means what the sou
 - **What it exposes:** Settings control.
 - **Where the user accesses it:** Settings.
 - **Dependencies:** An existing SQLite library file.
-- **Persistence:** Session choice of path. The chosen file is the library.
-- **Tests:** Needs verification of the exact test name. Not executed here.
+- **Persistence:** `last_store` in machine `appearance.json` (`ui_prefs.save_last_store` / `resolve_home_store`). Explicit CLI/`store=` still wins.
+- **Tests:** `tests/test_ui_prefs_continuity.py`.
 - **Platform:** Cross-platform file dialog via Tk.
 - **State at `35eeb72`:** Present.
 - **Notes:** Asks for `store.sqlite` (exposure audit). This session did not click the dialog.
+
+#### `settings-reset`
+
+- **Label:** Reset app.
+- **What it is:** Factory-reset-like clear of Semblon-owned rebuildable application state (prefs + sidecars). Does **not** delete original media, library folders, identity decisions, notes, or saved regions.
+- **Where implemented:** `semblon/app_reset.py` (`reset_app_to_defaults`, `RESET_MANIFEST`); Settings UI in `home_ui.py` `_reset_app_to_defaults` / `_fill_settings_body` Reset section; copy in `product_surface.py` (`SETTINGS_RESET_*`).
+- **Owner:** Application operation (Settings invokes it; UI does not delete files itself).
+- **What it exposes:** Settings → Advanced → Recovery → Reset app.
+- **Where the user accesses it:** Settings Advanced (on-demand; confirmation required). Not an everyday top-level section.
+- **Dependencies:** Active library store path for sidecar locations.
+- **Persistence cleared:** library `appearance.json` (theme, grid_density, search_mode, library_filter, prefer_gpu; and machine keys when that file is the default-dir prefs), `visual_cache/`, `*.semblon-index.npz`, `review.html`, `home_completion*` schema_meta keys. Canonical defaults = missing keys (`system` / `comfortable` / `people` / `all` / unset GPU).
+- **Persistence preserved:** `store.sqlite` media index, persons/faces/decisions, user_region items, embeddings in SQLite, model weights, user media paths. Machine `last_store` / `window_geometry` survive Reset of a non-default library.
+- **Tests:** `tests/test_app_reset.py`, `tests/test_settings_contributions.py`, `tests/test_ui_prefs_continuity.py`.
+- **Platform:** Cross-platform path clears; Home confirm dialog is Tk.
+- **Notes:** Idempotent. Stage caches first; restore prefs only if cache clear succeeds. No second settings/cache architecture.
 
 #### `diagnostics`
 
