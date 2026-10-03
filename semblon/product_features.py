@@ -343,6 +343,22 @@ def _cmd_search_text_hint(host: Any, _ctx: Any = None) -> None:
         pass
 
 
+def _cmd_library_duplicates(host: Any, _ctx: Any = None) -> None:
+    """Exact duplicate integrity scan → grouped results on Memory Canvas."""
+    if hasattr(host, "_scan_duplicates"):
+        host._scan_duplicates()
+
+
+def _cmd_duplicates_open_selected(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_open_selected_duplicate_group"):
+        host._open_selected_duplicate_group()
+
+
+def _duplicates_scan_available(host: Any, _ctx: Any = None) -> bool:
+    store = getattr(host, "store", None)
+    return bool(store)
+
+
 def _cmd_backup_library(host: Any, _ctx: Any = None) -> None:
     from tkinter import filedialog, messagebox
 
@@ -556,6 +572,22 @@ def build_product_registry() -> FeatureRegistry:
                     label="Browse photos",
                     run=_cmd_browse_photos,
                     surfaces=frozenset({"overflow", "palette"}),
+                ),
+                GuiCommand(
+                    id="library.duplicates",
+                    label="Find Duplicates",
+                    run=_cmd_library_duplicates,
+                    surfaces=frozenset({"inspector", "palette", "overflow"}),
+                    available=_duplicates_scan_available,
+                    reason=lambda _h, _c=None: (
+                        "" if _duplicates_scan_available(_h) else "Library unavailable"
+                    ),
+                ),
+                GuiCommand(
+                    id="duplicates.open_group",
+                    label="Open Duplicate Group",
+                    run=_cmd_duplicates_open_selected,
+                    surfaces=frozenset({"inspector", "palette"}),
                 ),
                 GuiCommand(
                     id="library.backup",
