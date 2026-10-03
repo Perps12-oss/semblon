@@ -121,13 +121,15 @@ def test_group_lines_empty_and_success():
     ok = group_lines(
         {
             "status": "SUCCESS",
+            "kind": "exact",
             "groups": [{"count": 2, "media_ids": ["a"], "content_hash": "x"}],
             "near_status": NEAR_STATUS,
         }
     )
     assert "exact duplicate" in ok[0].lower()
     assert any("SHA-256" in ln for ln in ok)
-    assert any("Near duplicates" in ln for ln in ok)
+    # Near is a separate integrity path (AVAILABLE) — exact lines state Exact basis.
+    assert any("Exact" in ln or "SHA-256" in ln for ln in ok)
 
 
 def test_scan_dirs_and_candidates(tmp_path):

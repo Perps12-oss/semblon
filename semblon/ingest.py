@@ -67,6 +67,7 @@ PROGRESS_THROTTLE_S = 0.1
 MAX_WORKERS = 32
 # Re-check cancel/pause while a slow hash is in flight (JobEngine._gate).
 _HASH_WAIT_S = 0.05
+VIDEO_COMPLETE_PROVIDER = "semblon.video_sampling_complete"
 
 
 class CancelledError(Exception):
@@ -91,8 +92,6 @@ STILL_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 DET_SCORE_MIN = 0.60
 CLUSTER_MIN_SIDE = 80
 DET_SIZE = (640, 640)
-# Marker on observation_items — video is "seen" only after sampling finishes.
-VIDEO_COMPLETE_PROVIDER = "video-sampling-complete"
 
 
 def load_app(det_size=DET_SIZE, *, prefer_gpu: bool = False):
@@ -144,57 +143,6 @@ def discover_stills(folder: Path) -> list[Path]:
     return discover_media(folder)[0]
 
 
-def video_sampling_complete(conn, media_id: str) -> bool:
-    """True when this video has a sampling-complete marker (not merely some frames)."""
-    row = conn.execute(
-        """SELECT 1
-           FROM observation_items i
-           JOIN observations o ON o.observation_id = i.observation_id
-           WHERE o.media_id=? AND i.provider=?
-           LIMIT 1""",
-        (media_id, VIDEO_COMPLETE_PROVIDER),
-    ).fetchone()
-    return row is not None
-
-
-def _mark_video_sampling_complete(
-    conn,
-    *,
-    media_id: str,
-    run_id: str,
-    frames: int,
-) -> None:
-    """Persist sampling-complete marker for a video media row."""
-    obs = conn.execute(
-        """SELECT observation_id FROM observations
-           WHERE media_id=?
-           ORDER BY frame_id IS NULL, frame_id
-           LIMIT 1""",
-        (media_id,),
-    ).fetchone()
-    if obs is None:
-        return
-    observation_id = obs[0] if not isinstance(obs, sqlite3.Row) else obs["observation_id"]
-    item_id = f"vsc-{media_id}"
-    payload = json.dumps(
-        {"sampling_complete": True, "frames": int(frames)},
-        separators=(",", ":"),
-    )
-    conn.execute(
-        """INSERT OR REPLACE INTO observation_items(
-             item_id, observation_id, run_id, kind, provider, payload_json
-           ) VALUES (?,?,?,?,?,?)""",
-        (
-            item_id,
-            observation_id,
-            run_id,
-            "appearance",
-            VIDEO_COMPLETE_PROVIDER,
-            payload,
-        ),
-    )
-
-
 def media_skip_reason(
     conn,
     digest: str,
@@ -207,9 +155,6 @@ def media_skip_reason(
     None reason → process (new file, or --reprocess of an old hash on this run).
     `seen` → already ingested on an earlier run (FACE-005 incremental).
     `same_run` → already observed on this run.
-    Video frames on this run are never treated as a finished still; other runs
-    still see prior video observations as seen (FACE-005). Sampling-complete
-    markers are for ingest_done honesty, not a second skip key.
     """
     row = conn.execute("SELECT media_id, source_type FROM media WHERE sha256=?", (digest,)).fetchone()
     if row is None:
@@ -228,7 +173,12 @@ def media_skip_reason(
             (media_id, run_id),
         ).fetchone()
         if same_video_run:
-            return None, media_id
+            if not video_sampling_complete(conn, media_id, run_id=run_id):
+                return None, media_id
+            return "same_run", media_id
+        if video_sampling_complete(conn, media_id) and not reprocess:
+            return "seen", media_id
+        return None, media_id
     else:
         same = conn.execute(
             "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NULL",
@@ -246,6 +196,65 @@ def media_skip_reason(
     if not reprocess:
         return "seen", media_id
     return None, media_id
+
+
+def video_sampling_complete(conn, media_id: str, *, run_id: str | None = None) -> bool:
+    run_filter = " AND i.run_id=?" if run_id is not None else ""
+    params = (media_id, VIDEO_COMPLETE_PROVIDER, run_id) if run_id is not None else (
+        media_id,
+        VIDEO_COMPLETE_PROVIDER,
+    )
+    rows = conn.execute(
+        """SELECT i.payload_json
+           FROM observation_items i
+           JOIN observations o ON o.observation_id=i.observation_id
+           WHERE o.media_id=? AND i.provider=?""" + run_filter,
+        params,
+    ).fetchall()
+    for row in rows:
+        try:
+            if json.loads(row[0]).get("sampling_complete") is True:
+                return True
+        except (AttributeError, TypeError, json.JSONDecodeError):
+            continue
+    return False
+
+
+def _mark_video_sampling_complete(
+    conn, *, media_id: str, run_id: str, frames: int
+) -> None:
+    row = conn.execute(
+        """SELECT observation_id FROM observations
+           WHERE media_id=? AND run_id=? ORDER BY frame_id DESC LIMIT 1""",
+        (media_id, run_id),
+    ).fetchone()
+    if row is None:
+        return
+    payload = json.dumps({"sampling_complete": True, "frames": int(frames)})
+    existing = conn.execute(
+        """SELECT i.item_id FROM observation_items i
+           JOIN observations o ON o.observation_id=i.observation_id
+           WHERE o.media_id=? AND i.run_id=? AND i.provider=? LIMIT 1""",
+        (media_id, run_id, VIDEO_COMPLETE_PROVIDER),
+    ).fetchone()
+    if existing is not None:
+        conn.execute(
+            "UPDATE observation_items SET observation_id=?, payload_json=? WHERE item_id=?",
+            (row[0], payload, existing[0]),
+        )
+        return
+    conn.execute(
+        """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider,
+           payload_json) VALUES (?,?,?,?,?,?)""",
+        (
+            uuid.uuid4().hex,
+            row[0],
+            run_id,
+            "object",
+            VIDEO_COMPLETE_PROVIDER,
+            payload,
+        ),
+    )
 
 
 def _hash_path(path: Path, index: int) -> dict:
@@ -773,8 +782,10 @@ def ingest(
 
         width = height = None
         frames_ok = 0
+        frames_sampled = 0
         try:
             for frame_id, t_ms, img in iter_sampled_frames(path, DEFAULT_SAMPLE_HZ):
+                frames_sampled += 1
                 if want_cancel():
                     cancelled = True
                     break
@@ -827,6 +838,12 @@ def ingest(
             tick(path, "failed", force=True)
             continue
 
+        if frames_sampled and not cancelled:
+            _mark_video_sampling_complete(
+                conn, media_id=media_id, run_id=run_id, frames=frames_sampled
+            )
+            dirty += 1
+
         if width is None and media_id is None:
             # No frames decoded — insert media row with null dims so hash skip works later.
             media_id = uuid.uuid4().hex
@@ -846,12 +863,6 @@ def ingest(
             n_fail += 1
             tick(path, "failed", force=True)
         else:
-            if media_id is not None:
-                _mark_video_sampling_complete(
-                    conn, media_id=media_id, run_id=run_id, frames=frames_ok
-                )
-                dirty += 1
-                maybe_commit(force=True)
             tick(path, "processed", force=True)
 
     maybe_commit(force=True)

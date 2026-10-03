@@ -378,7 +378,7 @@ def _cmd_search_text_hint(host: Any, _ctx: Any = None) -> None:
 
 
 def _cmd_library_duplicates(host: Any, _ctx: Any = None) -> None:
-    """Exact duplicate integrity scan → grouped results on Memory Canvas."""
+    """Integrity (A) Exact + Near duplicate scan → Memory Canvas groups."""
     if hasattr(host, "_scan_duplicates"):
         host._scan_duplicates()
 
@@ -391,6 +391,26 @@ def _cmd_duplicates_open_selected(host: Any, _ctx: Any = None) -> None:
 def _duplicates_scan_available(host: Any, _ctx: Any = None) -> bool:
     store = getattr(host, "store", None)
     return bool(store)
+
+
+def _cmd_saved_regions(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_show_saved_regions"):
+        host._show_saved_regions()
+
+
+def _cmd_browse_timeline(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_open_browse_facet"):
+        host._open_browse_facet("timeline")
+
+
+def _cmd_browse_folders(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_open_browse_facet"):
+        host._open_browse_facet("folders")
+
+
+def _cmd_browse_moments(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_open_browse_facet"):
+        host._open_browse_facet("moments")
 
 
 def _cmd_backup_library(host: Any, _ctx: Any = None) -> None:
@@ -627,7 +647,7 @@ def build_product_registry() -> FeatureRegistry:
                     id="library.duplicates",
                     label="Find Duplicates",
                     run=_cmd_library_duplicates,
-                    surfaces=frozenset({"inspector", "palette", "overflow"}),
+                    surfaces=frozenset({"inspector", "palette", "overflow", "context"}),
                     available=_duplicates_scan_available,
                     reason=lambda _h, _c=None: (
                         "" if _duplicates_scan_available(_h) else "Library unavailable"
@@ -638,6 +658,30 @@ def build_product_registry() -> FeatureRegistry:
                     label="Open Duplicate Group",
                     run=_cmd_duplicates_open_selected,
                     surfaces=frozenset({"inspector", "palette"}),
+                ),
+                GuiCommand(
+                    id="library.saved_regions",
+                    label="Saved Regions",
+                    run=_cmd_saved_regions,
+                    surfaces=frozenset({"inspector", "palette", "overflow", "context"}),
+                ),
+                GuiCommand(
+                    id="library.browse_timeline",
+                    label="Timeline",
+                    run=_cmd_browse_timeline,
+                    surfaces=frozenset({"palette", "overflow"}),
+                ),
+                GuiCommand(
+                    id="library.browse_folders",
+                    label="Folders",
+                    run=_cmd_browse_folders,
+                    surfaces=frozenset({"palette", "overflow"}),
+                ),
+                GuiCommand(
+                    id="library.browse_moments",
+                    label="Moments",
+                    run=_cmd_browse_moments,
+                    surfaces=frozenset({"palette", "overflow"}),
                 ),
                 GuiCommand(
                     id="library.backup",

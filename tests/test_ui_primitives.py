@@ -83,14 +83,15 @@ def test_search_presentation_and_media_ids():
 def test_canvas_thumb_paint_uses_media_tile_colors():
     import semblon.canvas as canvas
 
-    src = inspect.getsource(canvas.CanvasWorkspace._rebuild_thumbs)
-    assert "media_tile_colors" in src
-    assert "#2a2d34" not in src
-    assert "#1c1f26" not in src
-    assert "#9b9a94" not in src
-    assert "MediaTile" in inspect.getsource(canvas) or "media_tile" in inspect.getsource(
-        canvas.CanvasWorkspace._rebuild_thumbs
-    )
+    # Paint lives in virtualized _paint_visible_thumbs; rebuild builds ViewModel layout.
+    paint = inspect.getsource(canvas.CanvasWorkspace._paint_visible_thumbs)
+    rebuild = inspect.getsource(canvas.CanvasWorkspace._rebuild_thumbs)
+    assert "media_tile_colors" in paint
+    assert "build_media_grid" in rebuild or "MediaGrid" in rebuild
+    assert "#2a2d34" not in paint
+    assert "#1c1f26" not in paint
+    assert "#9b9a94" not in paint
+    assert "media_tile" in paint
 
 
 def test_home_inspector_uses_inspector_body_not_details_listbox():

@@ -440,6 +440,12 @@ def integrity_report(store: Path) -> dict:
            WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.run_id=f.run_id)"""
     ).fetchone()["n"]
     n_media = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+    media_missing_observations = conn.execute(
+        """SELECT COUNT(*) FROM media m
+           WHERE NOT EXISTS (
+               SELECT 1 FROM observations o WHERE o.media_id=m.media_id
+           )"""
+    ).fetchone()[0]
     n_faces = conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
     n_persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
     pragma_row = conn.execute("PRAGMA integrity_check").fetchone()
@@ -450,14 +456,6 @@ def integrity_report(store: Path) -> dict:
         src = row["path"] if isinstance(row, sqlite3.Row) else row[0]
         if not src or not Path(src).is_file():
             media_missing_path += 1
-    media_missing_observations = int(
-        conn.execute(
-            """SELECT COUNT(*) FROM media m
-               WHERE NOT EXISTS (
-                 SELECT 1 FROM observations o WHERE o.media_id = m.media_id
-               )"""
-        ).fetchone()[0]
-    )
     conn.close()
     ok = (
         orphan_faces == 0
@@ -481,8 +479,7 @@ def integrity_report(store: Path) -> dict:
         "persons": int(n_persons),
         "note": (
             "read-only; unfinished_runs are not completed; "
-            "media_missing_path does not fail ok (originals may move); "
-            "media_missing_observations does not fail ok (measurement only)"
+            "media_missing_path and media_missing_observations do not fail ok"
         ),
     }
 

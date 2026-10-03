@@ -215,9 +215,30 @@ def search_mode_label(kind: str | None) -> str:
         "person": "People",
         "people": "People",
         "text": "Text in photos",
-        "similar": "Similar",
+        "similar": "Whole image",
+        "whole": "Whole image",
+        "region": "Region",
         "face": "Face",
     }.get(k, "Search")
+
+
+SEARCH_MODES: tuple[tuple[str, str], ...] = (
+    ("people", "People"),
+    ("text", "Text in photos"),
+    ("whole", "Whole image"),
+    ("region", "Region"),
+)
+
+
+def similarity_basis_for_mode(mode: str | None) -> str | None:
+    m = (mode or "").strip().lower()
+    return {
+        "whole": "Whole photo (B · search_similar)",
+        "similar": "Whole photo (B · search_similar)",
+        "region": "Selected region (C · Find Similar)",
+        "people": None,
+        "text": None,
+    }.get(m)
 
 
 def media_ids_from_search_rec(rec: dict | None) -> list[str]:
@@ -276,6 +297,17 @@ def search_header_lines(pres: SearchPresentation) -> list[str]:
         f"Query: {q}",
         f"Mode: {pres.mode}",
     ]
+    basis = similarity_basis_for_mode(
+        {
+            "People": "people",
+            "Text in photos": "text",
+            "Whole image": "whole",
+            "Similar": "whole",
+            "Region": "region",
+        }.get(pres.mode, "")
+    )
+    if basis:
+        lines.append(f"Basis: {basis}")
     if pres.count:
         noun = "result" if pres.count == 1 else "results"
         lines.append(f"{pres.count} {noun}")

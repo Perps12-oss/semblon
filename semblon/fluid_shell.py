@@ -23,6 +23,7 @@ __all__ = [
     "STAGE_PEOPLE_TITLE",
     "STAGE_PEOPLE_BODY",
     "LIBRARY_FILTERS",
+    "BROWSE_FACETS",
     "library_source_types",
     "footer_library_line",
     "footer_status_word",
@@ -62,6 +63,16 @@ LIBRARY_FILTERS: tuple[tuple[str, str], ...] = (
     ("photos", "Photos"),
     ("videos", "Videos"),
 )
+
+# Browse facets (Timeline / Folders / Moments) — media_ids filter, not source_types.
+try:
+    from semblon.library_browse import BROWSE_FACETS as BROWSE_FACETS
+except ImportError:  # pragma: no cover — circular/bootstrap
+    BROWSE_FACETS = (
+        ("timeline", "Timeline"),
+        ("folders", "Folders"),
+        ("moments", "Moments"),
+    )
 
 
 def library_source_types(filter_key: str) -> tuple[str, ...] | None:

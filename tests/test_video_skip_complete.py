@@ -27,6 +27,12 @@ def _conn(tmp_path: Path) -> sqlite3.Connection:
         ("r1", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
     )
     conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        ("r0", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute(
         "INSERT INTO media VALUES ('mv','video','/clip.mp4','videodigest',640,480,0,1)"
     )
     return conn
@@ -34,7 +40,7 @@ def _conn(tmp_path: Path) -> sqlite3.Connection:
 
 def test_partial_video_is_not_seen(tmp_path):
     conn = _conn(tmp_path)
-    conn.execute("INSERT INTO observations VALUES ('o1','mv',0,0,'r1')")
+    conn.execute("INSERT INTO observations VALUES ('o1','mv',0,0,'r0')")
     conn.commit()
     reason, media_id = media_skip_reason(conn, "videodigest", "r1", reprocess=False)
     assert media_id == "mv"
@@ -45,13 +51,6 @@ def test_partial_video_is_not_seen(tmp_path):
 
 def test_complete_video_is_seen(tmp_path):
     conn = _conn(tmp_path)
-    # Marker run may differ from the skip probe run; sampling-complete is per media.
-    conn.execute(
-        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
-           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        ("r0", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
-    )
     conn.execute("INSERT INTO observations VALUES ('o1','mv',0,0,'r0')")
     _mark_video_sampling_complete(conn, media_id="mv", run_id="r0", frames=12)
     conn.commit()
@@ -71,12 +70,6 @@ def test_complete_video_is_seen(tmp_path):
 
 def test_reprocess_ignores_complete_marker(tmp_path):
     conn = _conn(tmp_path)
-    conn.execute(
-        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
-           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        ("r0", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
-    )
     conn.execute("INSERT INTO observations VALUES ('o1','mv',0,0,'r0')")
     _mark_video_sampling_complete(conn, media_id="mv", run_id="r0", frames=3)
     conn.commit()

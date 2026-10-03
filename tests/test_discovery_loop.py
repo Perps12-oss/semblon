@@ -50,7 +50,8 @@ def test_result_set_lines_empty_unavailable_success():
             "items": [{"media_id": "a"}, {"media_id": "b"}],
         }
     )
-    assert "2 similar results" in ok[0]
+    assert "2" in ok[0] and "result" in ok[0].lower()
+    assert any("region" in ln.lower() for ln in ok)
     assert any("not a person identity" in ln.lower() for ln in ok)
 
 
