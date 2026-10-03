@@ -67,7 +67,7 @@ def test_footer_and_banner_copy():
     assert people_review_banner(0) is None
     assert people_review_banner(3) is not None
     assert people_chrome_label(0) == "People"
-    assert people_chrome_label(3) == "People · 3"
+    assert people_chrome_label(3) == "To name (3)"
 
 
 def test_onboarding_and_library_methods_exist():
@@ -93,7 +93,7 @@ def test_onboarding_and_library_methods_exist():
     assert STAGE_CTA == ONBOARD_CTA
     assert STAGE_EXPLORE_TITLE == "Explore"
     build = inspect.getsource(home_ui.HomeApp.__init__)
-    assert '_navigate("library")' in build
+    assert "_restore_home_lifecycle" in build or '_navigate("library")' in build
     assert "btn_folder" in build
     assert "btn_settings" in build
     assert "btn_brand" in build

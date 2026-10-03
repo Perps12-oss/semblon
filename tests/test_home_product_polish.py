@@ -161,8 +161,11 @@ def test_people_unknown_coaching_identity_safe_no_person_id_leak():
 
     empty = people_empty()
     assert empty.headline == "No people yet"
-    assert "People to name" in (empty.primary_action or "")
+    assert "Add a photo folder" in (empty.primary_action or "")
+    assert "To name" in (empty.tertiary_action or empty.description or "")
     assert "Error" not in empty.headline
+    assert "Open Review" not in (empty.primary_action or "")
+    assert "Open Review" not in (empty.tertiary_action or "")
 
 
 def test_p2_loading_disabled_states_are_soft():

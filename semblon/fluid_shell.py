@@ -110,17 +110,18 @@ def footer_status_word(*, busy: bool, paused: bool = False) -> str:
 
 
 def people_review_banner(unnamed: int) -> str | None:
+    """Library banner copy for unnamed face groups (not identified people)."""
     n = int(unnamed or 0)
     if n <= 0:
         return None
     if n == 1:
-        return "Some people still need names."
-    return "Some people still need names."
+        return "1 face group is waiting to be named."
+    return f"{n} face groups are waiting to be named."
 
 
 def people_chrome_label(unnamed: int | None = None) -> str:
-    """Compact header label — People, with review count when useful."""
+    """Compact header label — To name (N) when unnamed groups await."""
     n = int(unnamed or 0)
     if n <= 0:
         return "People"
-    return f"People · {n}"
+    return f"To name ({n})"

@@ -784,7 +784,7 @@ def build_product_registry() -> FeatureRegistry:
                 ),
                 GuiCommand(
                     id="person.review_to_name",
-                    label="Review people to name",
+                    label="Start naming",
                     run=_cmd_review_to_name,
                     surfaces=frozenset({"palette", "overflow"}),
                 ),
@@ -817,11 +817,12 @@ def build_product_registry() -> FeatureRegistry:
                     run=_cmd_open_settings,
                     surfaces=frozenset({"palette"}),
                 ),
+                # Review UI remains KEEP via CLI (`semblon review-ui`). Naming door is To name.
                 GuiCommand(
                     id="shell.open_review",
-                    label="Open Review",
+                    label="Review UI",
                     run=_cmd_open_review,
-                    surfaces=frozenset({"overflow", "palette"}),
+                    surfaces=frozenset(),
                 ),
                 GuiCommand(
                     id="shell.live",

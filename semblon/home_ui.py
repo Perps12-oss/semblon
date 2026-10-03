@@ -1039,7 +1039,7 @@ class HomeApp:
         )
         self.btn_discover.pack(side=tk.LEFT, padx=(0, SP_4))
         self.btn_people = _button(
-            modes, "People", lambda: self._navigate("people"), kind="tertiary"
+            modes, "People", self._open_people_mode, kind="tertiary"
         )
         self.btn_people.pack(side=tk.LEFT, padx=(0, SP_4))
         self.btn_activity = _button(
@@ -1069,7 +1069,10 @@ class HomeApp:
         jobs = ttk.Frame(self._main, padding=(12, 0, 12, 4))
         jobs.pack(fill=tk.X)
         self._jobs_frame = jobs
-        self.btn_review = _button(jobs, "Open Review", self._open_review_ui, kind="secondary")
+        # Kept for control-state map; never packed as a competing naming CTA.
+        self.btn_review = _button(
+            jobs, "Start naming", lambda: self._navigate("unknown"), kind="secondary"
+        )
         self.btn_cancel = _button(jobs, "Cancel", self._request_cancel, kind="tertiary")
         self.btn_cancel.configure(state=tk.DISABLED)
         self.btn_pause = _button(
@@ -1450,7 +1453,7 @@ class HomeApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._drain_queue)
-        self._navigate("library")
+        self._restore_home_lifecycle()
 
     def _set_inspector(self, title: str, lines: list[str]) -> None:
         self._inspector_title.set(title)
@@ -2003,12 +2006,28 @@ class HomeApp:
         self._lens.pack(fill=tk.BOTH, expand=True)
         self._refresh_lens_workspace()
 
+    def _library_has_media(self) -> bool:
+        summary = self._library_summary()
+        return bool(summary and int(summary.get("files") or 0) > 0)
+
     def _rebuild_overflow_menu(self) -> None:
         """More menu from registry overflow commands (deduped labels)."""
         self._overflow_menu = tk.Menu(self._overflow, tearoff=0)
         seen: set[str] = set()
+        # P2 — advanced surfaces stay out of the first-success path.
+        advanced_ids = {
+            "shell.live",
+            "library.duplicates",
+            "library.explore",
+            "shell.open_canvas",
+        }
+        has_media = self._library_has_media()
         for cmd in self._registry.commands(surface="overflow"):
             if cmd.label in seen:
+                continue
+            if not has_media and cmd.id in advanced_ids:
+                continue
+            if not has_media and cmd.label in {"Live…", "Find Duplicates", "Explore", "Canvas"}:
                 continue
             seen.add(cmd.label)
             self._overflow_menu.add_command(
@@ -2206,7 +2225,7 @@ class HomeApp:
             n = len(members)
             if n > 1:
                 self.status.set(
-                    f"{n} faces in this group — Open Review to compare all."
+                    f"{n} faces in this group — open To name to compare and name."
                 )
         self._refresh_inspector_verbs()
 
@@ -2328,12 +2347,15 @@ class HomeApp:
                 self._similar_title.set(f"{base} · {n_sel} selected")
             else:
                 self._similar_title.set(base)
+        lib_ready = self._library_has_media()
         for attr in ("btn_duplicates",):
             btn = getattr(self, attr, None)
             if btn is None:
                 continue
             try:
-                btn.configure(state=tk.NORMAL if not comparing else tk.DISABLED)
+                btn.configure(
+                    state=tk.NORMAL if lib_ready and not comparing else tk.DISABLED
+                )
             except tk.TclError:
                 pass
         open_g = getattr(self, "btn_open_dup_group", None)
@@ -2929,18 +2951,33 @@ class HomeApp:
         btns = ttk.Frame(outer, style="Surface.TFrame")
         btns.pack(anchor=tk.W)
         self.btn_result_primary = _button(
-            btns, "Review people", self._open_review_ui, kind="primary", plate=BG_SURFACE
+            btns,
+            "Start naming",
+            self._ack_completion_go_to_name,
+            kind="primary",
+            plate=BG_SURFACE,
         )
         self.btn_result_primary.pack(side=tk.LEFT, padx=(0, SP_8))
         self.btn_result_secondary = _button(
-            btns, "Add another folder", self._choose_folder, kind="secondary", plate=BG_SURFACE
+            btns,
+            "Add another folder",
+            self._ack_completion_go_library_then_folder,
+            kind="secondary",
+            plate=BG_SURFACE,
         )
         self.btn_result_secondary.pack(side=tk.LEFT)
         self.btn_result_continue = _button(
             btns, "Continue", self._resume, kind="primary", plate=BG_SURFACE
         )
         self.btn_result_start_over = _button(
-            btns, "Start over", self._choose_folder, kind="secondary", plate=BG_SURFACE
+            btns, "Select Different Folder", self._choose_folder, kind="secondary", plate=BG_SURFACE
+        )
+        self.btn_result_browse = _button(
+            btns,
+            "Browse library",
+            self._ack_completion_go_library,
+            kind="secondary",
+            plate=BG_SURFACE,
         )
 
     def _hide_workspace_panes(self) -> None:
@@ -2987,16 +3024,130 @@ class HomeApp:
         return "FIRST_RUN"
 
     def _show_library_or_onboard(self) -> None:
-        """Memory Canvas when media exists; Home Stage when empty (or Stage forced)."""
+        """Processing while ingesting; result when unseen; Library or Stage otherwise."""
+        if self._ingest_running():
+            self._show_processing_home()
+            return
+        if self._completion_kind in {
+            "done",
+            "cancelled",
+            "interrupted",
+            "empty",
+            "partial",
+        } and self._completion is not None:
+            self._show_result_card()
+            return
         summary = self._library_summary()
         files = 0 if summary is None else int(summary.get("files") or 0)
-        if getattr(self, "_stage_forced", False) or (
-            files <= 0 and not self._ingest_running()
-        ):
+        if getattr(self, "_stage_forced", False):
+            self._show_stage()
+            return
+        if files <= 0:
+            from semblon.home_completion import latest_unfinished_run_info
+
+            info = latest_unfinished_run_info(self.store)
+            if info is not None:
+                self._apply_interrupted_run(info)
+                self._show_result_card()
+                return
             self._show_stage()
             return
         self._stage_forced = False
         self._show_library(filter_key=getattr(self, "_library_filter", "all") or "all")
+
+    def _restore_home_lifecycle(self) -> None:
+        """Cold launch: unfinished ingest / unseen completion / normal Library|Stage."""
+        from semblon.home_completion import (
+            latest_unfinished_run_info,
+            load_unseen_completion,
+        )
+
+        if self._ingest_running():
+            self._nav = "library"
+            self._mark_nav_active("library")
+            self._show_processing_home()
+            return
+        unfinished = latest_unfinished_run_info(self.store)
+        if unfinished is not None:
+            self._apply_interrupted_run(unfinished)
+            self._nav = "library"
+            self._mark_nav_active("library")
+            self._show_result_card()
+            return
+        unseen = load_unseen_completion(self.store)
+        if unseen is not None:
+            self._completion_kind = str(unseen.get("kind") or "done")
+            self._completion = dict(unseen.get("payload") or {})
+            self._nav = "library"
+            self._mark_nav_active("library")
+            self._show_result_card()
+            return
+        self._navigate("library")
+
+    def _apply_interrupted_run(self, info: dict) -> None:
+        """Partial restart-during-ingest state — not Stage, not a false completion."""
+        self._last_run_id = info.get("run_id")
+        folder = info.get("folder")
+        if folder:
+            self._last_folder = Path(folder)
+            self._resume_ready = True
+        summary = self._library_summary() or {}
+        self._completion_kind = "interrupted"
+        self._completion = {
+            "run_id": info.get("run_id"),
+            "photos": int(summary.get("files") or 0),
+            "faces": int(summary.get("faces") or 0),
+            "groups": int(summary.get("unnamed_groups") or 0),
+        }
+
+    def _show_processing_home(self) -> None:
+        """Pack the existing PROCESSING pane (even when indexed files == 0)."""
+        self._stage_forced = False
+        self._hide_workspace_panes()
+        self._set_inspector_collapsed(True)
+        self._processing.pack(fill=tk.BOTH, expand=True)
+        self._refresh_processing_home(getattr(self, "_last_progress_event", None))
+        self._refresh_footer()
+        self._sync_chrome_for_route()
+        self._sync_processing_cue()
+
+    def _show_result_card(self) -> None:
+        """Pack the existing completion/result card from persisted or live summary."""
+        self._stage_forced = False
+        self._hide_workspace_panes()
+        self._set_inspector_collapsed(True)
+        self._fill_result_card()
+        self._result_card.pack(fill=tk.BOTH, expand=True)
+        self._refresh_footer()
+        self._sync_chrome_for_route()
+
+    def _open_people_mode(self) -> None:
+        """People chrome: To name when unnamed groups wait; else People."""
+        summary = self._library_summary()
+        waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
+        self._navigate("unknown" if waiting > 0 else "people")
+
+    def _ack_completion_go_to_name(self) -> None:
+        self._acknowledge_completion()
+        self._navigate("unknown")
+
+    def _ack_completion_go_library(self) -> None:
+        self._acknowledge_completion()
+        self._show_library(filter_key=getattr(self, "_library_filter", "all") or "all")
+
+    def _ack_completion_go_library_then_folder(self) -> None:
+        self._acknowledge_completion()
+        self._choose_folder()
+
+    def _acknowledge_completion(self) -> None:
+        from semblon.home_completion import acknowledge_completion
+
+        run_id = None
+        if isinstance(self._completion, dict):
+            run_id = self._completion.get("run_id")
+        acknowledge_completion(self.store, run_id)
+        self._completion = None
+        self._completion_kind = None
 
     def _open_home_stage(self) -> None:
         """Brand mark — return to capability Stage (intent map)."""
@@ -3188,7 +3339,7 @@ class HomeApp:
         ).pack(side=tk.LEFT)
         self.btn_lib_banner_review = _button(
             self._lib_banner,
-            "Review People",
+            "Start naming",
             lambda: self._navigate("unknown"),
             kind="tertiary",
             plate=BG_CANVAS,
@@ -3473,7 +3624,12 @@ class HomeApp:
             else ("folder" if "folder" in source_types else "video"),
         )
         if not library_has_media_lines(lib) and not self._similar_media_ids:
-            self._set_inspector("Details", photos_empty().as_lines())
+            empty = photos_empty()
+            self._set_inspector("Details", empty.as_lines())
+            # Actionable control lives in header Add Folder when Library is shown.
+            if not self._library_has_media():
+                # No media at all — Stage owns Add Folder; keep inspector honest.
+                pass
         self._refresh_footer(summary)
         self._nav = "library"
         self._mark_nav_active("library")
@@ -4577,9 +4733,18 @@ class HomeApp:
             self.btn_result_secondary,
             self.btn_result_continue,
             self.btn_result_start_over,
+            getattr(self, "btn_result_browse", None),
         ):
-            b.pack_forget()
-        self._fill_result_stats(data if kind == "done" else None)
+            if b is not None:
+                b.pack_forget()
+        photos = int(data.get("photos") or 0)
+        faces = int(data.get("faces") or 0)
+        groups = int(data.get("groups") or 0)
+        failed = int(data.get("failed") or 0)
+        show_stats = kind in {"done", "partial", "empty"} or (
+            kind == "interrupted" and photos > 0
+        )
+        self._fill_result_stats(data if show_stats else None)
         if kind == "cancelled":
             self._result_headline.set("Processing stopped")
             done = data.get("files_processed")
@@ -4596,10 +4761,50 @@ class HomeApp:
             self.btn_result_continue.pack(side=tk.LEFT, padx=(0, SP_8), ipady=4, ipadx=8)
             self.btn_result_start_over.pack(side=tk.LEFT, ipady=2, ipadx=6)
             return
-        # done
-        photos = int(data.get("photos") or 0)
-        faces = int(data.get("faces") or 0)
-        groups = int(data.get("groups") or 0)
+        if kind == "interrupted":
+            self._result_headline.set("Processing was interrupted")
+            if photos > 0:
+                self._result_body.set(
+                    f"Semblon saved {photos} photo{'s' if photos != 1 else ''} "
+                    "before it stopped. You can continue or choose another folder."
+                )
+            else:
+                self._result_body.set(
+                    "Semblon was still preparing this folder when it stopped. "
+                    "Continue to resume, or choose a different folder."
+                )
+            self.btn_result_continue.pack(side=tk.LEFT, padx=(0, SP_8), ipady=4, ipadx=8)
+            self.btn_result_start_over.pack(side=tk.LEFT, ipady=2, ipadx=6)
+            return
+        if kind == "empty" or (kind == "done" and photos <= 0 and failed <= 0):
+            self._result_headline.set("No supported photos found")
+            self._result_body.set(
+                "That folder did not contain photos or videos Semblon can import. "
+                "Choose a different folder to try again."
+            )
+            self.btn_result_start_over.configure(text="Select Different Folder")
+            self.btn_result_start_over.pack(side=tk.LEFT, ipady=4, ipadx=8)
+            return
+        if kind == "partial" or (kind == "done" and failed > 0 and photos > 0):
+            self._result_headline.set("Import finished with some issues")
+            self._result_body.set(
+                f"Semblon imported {photos} photo{'s' if photos != 1 else ''} "
+                f"({failed} could not be read)."
+                + (
+                    f" Found {faces} faces across {groups} groups."
+                    if faces > 0
+                    else " No faces were found to group."
+                )
+            )
+            if faces > 0:
+                self.btn_result_primary.pack(
+                    side=tk.LEFT, padx=(0, SP_8), ipady=4, ipadx=8
+                )
+            if getattr(self, "btn_result_browse", None) is not None:
+                self.btn_result_browse.pack(side=tk.LEFT, padx=(0, SP_8), ipady=2, ipadx=6)
+            self.btn_result_secondary.pack(side=tk.LEFT, ipady=2, ipadx=6)
+            return
+        # Normal / zero-face success
         self._result_headline.set("Your photos are ready")
         if faces <= 0:
             self._result_body.set(
@@ -4607,7 +4812,9 @@ class HomeApp:
                 if photos
                 else "Semblon finished this folder but didn't find any faces to group."
             )
-            self.btn_result_secondary.pack(side=tk.LEFT, ipady=4, ipadx=8)
+            if getattr(self, "btn_result_browse", None) is not None:
+                self.btn_result_browse.pack(side=tk.LEFT, padx=(0, SP_8), ipady=4, ipadx=8)
+            self.btn_result_secondary.pack(side=tk.LEFT, ipady=2, ipadx=6)
         else:
             self._result_body.set(
                 f"Semblon checked {photos} photos and found {faces} faces "
@@ -4616,6 +4823,8 @@ class HomeApp:
                 else f"Semblon found {faces} faces across {groups} groups."
             )
             self.btn_result_primary.pack(side=tk.LEFT, padx=(0, SP_8), ipady=4, ipadx=8)
+            if getattr(self, "btn_result_browse", None) is not None:
+                self.btn_result_browse.pack(side=tk.LEFT, padx=(0, SP_8), ipady=2, ipadx=6)
             self.btn_result_secondary.pack(side=tk.LEFT, ipady=2, ipadx=6)
 
     def _fill_result_stats(self, data: dict | None) -> None:
@@ -4643,13 +4852,20 @@ class HomeApp:
             ).pack(anchor=tk.W)
 
     @staticmethod
-    def _counts_from_done_payload(payload: dict) -> dict[str, int]:
+    def _counts_from_done_payload(payload: dict) -> dict:
         ing = payload.get("ingest") if isinstance(payload.get("ingest"), dict) else {}
         clu = payload.get("cluster") if isinstance(payload.get("cluster"), dict) else {}
         photos = int(ing.get("files") or ing.get("new_media") or payload.get("files") or 0)
         faces = int(ing.get("faces") or payload.get("faces") or 0)
         groups = int(clu.get("clusters") or payload.get("clusters") or 0)
-        return {"photos": photos, "faces": faces, "groups": groups}
+        failed = int(ing.get("failed") or payload.get("failed") or 0)
+        return {
+            "photos": photos,
+            "faces": faces,
+            "groups": groups,
+            "failed": failed,
+            "run_id": payload.get("run_id"),
+        }
 
     def _set_inspector_collapsed(self, collapsed: bool) -> None:
         """Hide Details when nothing to inspect; ~320px when open."""
@@ -4685,7 +4901,7 @@ class HomeApp:
                 pass
 
     def _sync_chrome_for_route(self) -> None:
-        """Header owns Add Folder; job bar only for Review/More when useful."""
+        """Header owns Add Folder except on Stage (one primary CTA); job bar demoted."""
         for w in (
             self.btn_review,
             self.btn_live,
@@ -4695,30 +4911,43 @@ class HomeApp:
                 w.pack_forget()
             except tk.TclError:
                 pass
+        busy = self._ingest_running()
+        on_stage = False
+        try:
+            on_stage = bool(self._landing.winfo_ismapped()) and not busy
+        except (tk.TclError, AttributeError):
+            on_stage = False
+        on_processing = False
+        try:
+            on_processing = bool(self._processing.winfo_ismapped())
+        except (tk.TclError, AttributeError):
+            on_processing = False
+        on_result = False
+        try:
+            on_result = bool(self._result_card.winfo_ismapped())
+        except (tk.TclError, AttributeError):
+            on_result = False
         # Folder stays in the header — never pack into the job bar.
+        # On Stage, the Stage CTA is the sole Add Folder action.
         try:
             self.btn_folder.pack_forget()
         except tk.TclError:
             pass
-        try:
-            self.btn_folder.pack(in_=self._top, side=tk.RIGHT, padx=(SP_8, 0))
-        except tk.TclError:
-            pass
-        busy = self._ingest_running()
+        if not on_stage and not on_processing and not on_result:
+            try:
+                self.btn_folder.pack(in_=self._top, side=tk.RIGHT, padx=(SP_8, 0))
+            except tk.TclError:
+                pass
         on_library = self._nav in {"home", "library", "photos", "videos"}
-        if on_library:
+        # Naming CTAs live on result card / To name — do not pack Start naming here.
+        if on_library or on_processing or on_result:
             self._jobs_frame.pack_forget()
-            if self._completion_kind == "done" and not busy:
-                self._jobs_frame.pack(fill=tk.X, before=self._body)
-                self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
         else:
             try:
                 self._jobs_frame.pack(fill=tk.X, before=self._body)
             except tk.TclError:
                 self._jobs_frame.pack(fill=tk.X)
-            if self._nav not in {"lens", "activity", "settings"}:
-                self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
-        # Pause / Resume / Cancel must stay visible on Library / Memory Canvas ingest.
+        # Pause / Resume / Cancel must stay visible while ingest runs.
         if busy:
             try:
                 self._prog_frame.pack(fill=tk.X, before=self._body)
@@ -4732,6 +4961,10 @@ class HomeApp:
             self.btn_cancel_prog.pack_forget()
             self.bar.pack_forget()
             self._prog_frame.pack_forget()
+        try:
+            self._rebuild_overflow_menu()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _toggle_pause_resume(self) -> None:
         """Single Pause/Resume control adjacent to the progress bar."""
@@ -4765,6 +4998,72 @@ class HomeApp:
         self._hide_workspace_panes()
         self._set_inspector_collapsed(False)
         self._welcome.pack(fill=tk.BOTH, expand=True, anchor=tk.NW)
+
+    def _dispatch_empty_action(self, action_id: str | None) -> None:
+        from semblon.empty_states import (
+            ACTION_ADD_ANOTHER_FOLDER,
+            ACTION_ADD_FOLDER,
+            ACTION_CLEAR_SEARCH,
+            ACTION_OPEN_REVIEW,
+            ACTION_REVIEW_PEOPLE,
+        )
+
+        if action_id in {ACTION_ADD_FOLDER, ACTION_ADD_ANOTHER_FOLDER}:
+            self._choose_folder()
+        elif action_id in {ACTION_REVIEW_PEOPLE, ACTION_OPEN_REVIEW}:
+            self._navigate("unknown")
+        elif action_id == ACTION_CLEAR_SEARCH:
+            try:
+                self.search_var.set(getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER))
+            except Exception:  # noqa: BLE001
+                pass
+        elif action_id == "browse_photos":
+            self._navigate("photos")
+
+    def _mount_workspace_empty(self, state) -> None:
+        """Real buttons for actionable empties (not plain inspector text)."""
+        from semblon.empty_states import mount_empty_state
+
+        host = getattr(self, "_welcome", None)
+        if host is None:
+            return
+        # Keep the title label; replace coaching body with bound controls.
+        children = list(host.winfo_children())
+        for child in children[1:]:
+            try:
+                child.destroy()
+            except tk.TclError:
+                pass
+        on_primary = None
+        on_tertiary = None
+        if state.primary_action and state.action_id:
+            on_primary = lambda aid=state.action_id: self._dispatch_empty_action(aid)
+        if state.tertiary_action and state.tertiary_action_id:
+            on_tertiary = lambda aid=state.tertiary_action_id: self._dispatch_empty_action(
+                aid
+            )
+        mount_empty_state(
+            host,
+            state,
+            on_primary=on_primary,
+            on_tertiary=on_tertiary,
+            tk_mod=tk,
+            ttk_mod=ttk,
+        ).pack(fill=tk.BOTH, expand=True)
+
+    def _offer_empty_action(self, state) -> None:
+        """Inspector-only empties: pack a real bound CTA (never dead text)."""
+        if state is None or not state.primary_action or not state.action_id:
+            return
+        try:
+            self.btn_review.configure(
+                text=state.primary_action,
+                command=lambda aid=state.action_id: self._dispatch_empty_action(aid),
+            )
+            self._jobs_frame.pack(fill=tk.X, before=self._body)
+            self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
+        except tk.TclError:
+            pass
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -4832,15 +5131,13 @@ class HomeApp:
         self._refresh_footer()
         self._sync_processing_cue()
         if self._nav in {"home", "library", "photos", "videos"} and busy:
-            # Stay on Library; footer shows Scanning — do not force old dashboard.
+            # Cold ingest must leave Stage/marketing for the processing pane.
             try:
-                mapped = bool(self._canvas_ws.winfo_ismapped()) or bool(
-                    self._landing.winfo_ismapped()
-                )
+                on_proc = bool(self._processing.winfo_ismapped())
             except (tk.TclError, AttributeError):
-                mapped = False
-            if not mapped:
-                self._show_library_or_onboard()
+                on_proc = False
+            if not on_proc:
+                self._show_processing_home()
 
     def _request_pause(self) -> None:
         if not self.engine.busy or self.engine.paused:
@@ -4863,12 +5160,16 @@ class HomeApp:
         return resolve_home_prefer_gpu()
 
     def _start_process(self, path: Path, *, resume: bool) -> None:
+        from semblon.home_completion import clear_completion
+        from semblon.product_surface import product_status_text
+
         self._last_folder = path
         self._exit_after_cancel = False
         self._wd = Watchdog(stall_s=120.0)
         self._resume_ready = False
         self._completion = None
         self._completion_kind = None
+        clear_completion(self.store)
         self._last_progress_files = (None, None)
         self._last_faces_found = None
         self._proc_thumbs_faces = None
@@ -4879,23 +5180,24 @@ class HomeApp:
         if hasattr(self, "_proc_bar"):
             self._proc_bar.reset()
         self.clock.set("")
-        from semblon.product_surface import product_status_text, processing_home_snapshot
 
         queued = make_event(STAGE_PROCESS, KIND_QUEUED, path=str(path), outcome="resumed" if resume else None)
         self.status.set(product_status_text(queued))
         self._set_busy(True)
+        # Immediate transition off Stage — files may still be 0.
         if self._nav in {"home", "library", "photos", "videos"}:
-            # Stay on Library / onboarding; footer carries Scanning status.
-            self._show_library_or_onboard()
+            self._show_processing_home()
             self._refresh_footer()
         observers = resolve_home_observers()
         prefer_gpu = self._effective_prefer_gpu()
 
         def on_event(ev: ProgressEvent) -> None:
+            # Worker thread: queue only — never touch Tk here.
             self._wd.note(ev)
             self._q.put(("event", ev))
 
         def on_done(result) -> None:
+            # Worker thread: queue only — UI drain marshals into Tk.
             if result.status == "completed":
                 self._q.put(("done", result.rec or {}))
             elif result.status == "cancelled":
@@ -5037,6 +5339,8 @@ class HomeApp:
                     if self._nav in {"home", "library", "photos", "videos"}:
                         self._refresh_processing_home(payload)
                 elif kind == "done":
+                    from semblon.home_completion import save_unseen_completion
+
                     self._last_run_id = payload.get("run_id")
                     out = payload.get("out")
                     self._last_review_html = Path(out) if out else None
@@ -5045,17 +5349,28 @@ class HomeApp:
                     counts = self._counts_from_done_payload(
                         payload if isinstance(payload, dict) else {}
                     )
+                    photos = int(counts.get("photos") or 0)
+                    failed = int(counts.get("failed") or 0)
+                    if photos <= 0 and failed <= 0:
+                        self._completion_kind = "empty"
+                    elif failed > 0 and photos > 0:
+                        self._completion_kind = "partial"
+                    else:
+                        self._completion_kind = "done"
                     self._completion = counts
-                    self._completion_kind = "done"
+                    save_unseen_completion(
+                        self.store,
+                        kind=self._completion_kind,
+                        payload=counts,
+                    )
                     self._refresh_library_chrome()
                     # §10/§11 — status stays plain; card owns messaging (no run_id / elapsed).
-                    photos = int(counts.get("photos") or 0)
                     if photos > 0:
                         self.status.set(
                             f"Your photos are ready. {photos} photo{'s' if photos != 1 else ''} added."
                         )
                     else:
-                        self.status.set("Your photos are ready.")
+                        self.status.set("Import finished.")
                     self.clock.set("")
                     self.bar.set_from_event(
                         make_event(
@@ -5068,16 +5383,12 @@ class HomeApp:
                         )
                     )
                     if self._nav in {"home", "library", "photos", "videos"}:
-                        self._show_home_landing()
-                        self._sync_chrome_for_route()
-                    elif self._nav in {"canvas", "photos", "videos"}:
-                        types = None
-                        if self._nav == "photos":
-                            types = ("folder",)
-                        elif self._nav == "videos":
-                            types = ("video",)
-                        self._show_workspace_canvas(reload=True, source_types=types)
+                        self._show_result_card()
+                    elif self._nav in {"canvas"}:
+                        self._show_workspace_canvas(reload=True, source_types=None)
                 elif kind == "cancelled":
+                    from semblon.home_completion import save_unseen_completion
+
                     self._resume_ready = self._last_folder is not None
                     self._set_busy(False)
                     done, total = self._last_progress_files
@@ -5087,14 +5398,18 @@ class HomeApp:
                         "run_id": payload or None,
                     }
                     self._completion_kind = "cancelled"
+                    save_unseen_completion(
+                        self.store,
+                        kind="cancelled",
+                        payload=self._completion,
+                    )
                     self._refresh_library_chrome()
                     self.status.set(
                         "Processing stopped. Any partial results have been retained."
                     )
                     self.clock.set("")
                     if self._nav in {"home", "library", "photos", "videos"}:
-                        self._show_home_landing()
-                        self._sync_chrome_for_route()
+                        self._show_result_card()
                     if self._exit_after_cancel and self.root.winfo_exists():
                         self.root.destroy()
                         return
@@ -5193,11 +5508,13 @@ class HomeApp:
         from semblon.search import SearchError, search_people
 
         if not self.store.is_file():
+            empty = people_empty()
+            self._mount_workspace_empty(empty)
             self._set_inspector_selection(
                 run_id=None,
                 media_id=None,
                 available=[],
-                evidence_lines=people_empty().as_lines(),
+                evidence_lines=empty.as_lines(),
                 title="People",
             )
             return
@@ -5205,7 +5522,9 @@ class HomeApp:
             rec = search_people(self.store)
         except SearchError as e:
             if is_expected_condition(e):
-                self._set_inspector("People", people_empty().as_lines())
+                empty = people_empty()
+                self._mount_workspace_empty(empty)
+                self._set_inspector("People", empty.as_lines())
             else:
                 self._show_failure(e)
             return
@@ -5221,11 +5540,13 @@ class HomeApp:
                 }
             )
         if not people_items:
+            empty = people_empty()
+            self._mount_workspace_empty(empty)
             self._set_inspector_selection(
                 run_id=self._last_run_id,
                 media_id=None,
                 available=[],
-                evidence_lines=people_empty().as_lines(),
+                evidence_lines=empty.as_lines(),
                 title="People",
             )
             return
@@ -5270,23 +5591,25 @@ class HomeApp:
         # Display label "People to name"; route id remains ``unknown``.
         title = "People to name"
         if not self.store.is_file():
+            empty = to_review_empty(has_store=False)
+            self._mount_workspace_empty(empty)
             self._set_inspector_selection(
                 run_id=None,
                 media_id=None,
                 available=[],
-                evidence_lines=to_review_empty(has_store=False).as_lines(),
+                evidence_lines=empty.as_lines(),
                 title=title,
             )
             return
         rid = latest_run_id(self.store, with_faces=True)
         if rid is None:
+            empty = to_review_empty(has_store=True, has_faces=False)
+            self._mount_workspace_empty(empty)
             self._set_inspector_selection(
                 run_id=None,
                 media_id=None,
                 available=[],
-                evidence_lines=to_review_empty(
-                    has_store=True, has_faces=False
-                ).as_lines(),
+                evidence_lines=empty.as_lines(),
                 title=title,
             )
             return
@@ -5294,10 +5617,9 @@ class HomeApp:
             rec = inbox(self.store, rid)
         except InboxError as e:
             if is_expected_condition(e):
-                self._set_inspector(
-                    title,
-                    to_review_empty(has_store=True, has_faces=False).as_lines(),
-                )
+                empty = to_review_empty(has_store=True, has_faces=False)
+                self._mount_workspace_empty(empty)
+                self._set_inspector(title, empty.as_lines())
             else:
                 self._show_failure(e)
             return
@@ -5615,23 +5937,29 @@ class HomeApp:
                 return
             # Fall through only when a store already has named people to try.
         if not self.store.is_file():
-            self._set_inspector("Search", search_no_store().as_lines())
+            empty = search_no_store()
+            self._set_inspector("Search", empty.as_lines())
+            self._offer_empty_action(empty)
             return
         try:
             named = search_people(self.store)
         except SearchError as e:
             if is_expected_condition(e):
-                self._set_inspector("Search", search_no_store().as_lines())
+                empty = search_no_store()
+                self._set_inspector("Search", empty.as_lines())
+                self._offer_empty_action(empty)
             else:
                 self._show_failure(e)
             return
         if not (named.get("items") or []):
             # Still try text/OCR over owned memory — people search is not the only door.
             extra: list[str] = []
+            action_state = None
             if self.engine.busy:
                 extra.extend(search_library_analysing().as_lines())
             else:
-                extra.extend(search_no_named_people().as_lines())
+                action_state = search_no_named_people()
+                extra.extend(action_state.as_lines())
             try:
                 text_rec = search_text(self.store, q)
             except SearchError:
@@ -5641,6 +5969,8 @@ class HomeApp:
                 extra_lines=extra,
                 text_rec=text_rec,
             )
+            if action_state is not None:
+                self._offer_empty_action(action_state)
             return
         try:
             rec = search_person(self.store, q)
@@ -5789,27 +6119,29 @@ class HomeApp:
             loc_row, "Change…", self._settings_change_library, kind="secondary"
         ).pack(side=tk.RIGHT)
 
-        ttk.Label(pad, text="Packs", font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
-        )
-        ttk.Label(
-            pad,
-            text="Missing packs stay missing. They are not an empty library.",
-            font=CAPTION,
-            foreground=TEXT_SECONDARY,
-            wraplength=640,
-        ).pack(anchor=tk.W)
-        from semblon.home_shell import capability_sections
-
-        cap_rows = capability_sections(has_library_content=False)
-        for row in list(cap_rows["ready"]) + list(cap_rows["tracked"]):
-            state = row.get("state") or "Available"
+        # Packs / advanced model tooling — after first success only (UI-EXPOSURE-MAP).
+        if self._library_has_media():
+            ttk.Label(pad, text="Packs", font=BODY_STRONG).pack(
+                anchor=tk.W, pady=(SP_24, SP_8)
+            )
             ttk.Label(
                 pad,
-                text=f"{row['label']} — {state}",
-                font=BODY,
+                text="Missing packs stay missing. They are not an empty library.",
+                font=CAPTION,
+                foreground=TEXT_SECONDARY,
                 wraplength=640,
-            ).pack(anchor=tk.W, pady=(SP_4, 0))
+            ).pack(anchor=tk.W)
+            from semblon.home_shell import capability_sections
+
+            cap_rows = capability_sections(has_library_content=True)
+            for row in list(cap_rows["ready"]) + list(cap_rows["tracked"]):
+                state = row.get("state") or "Available"
+                ttk.Label(
+                    pad,
+                    text=f"{row['label']} — {state}",
+                    font=BODY,
+                    wraplength=640,
+                ).pack(anchor=tk.W, pady=(SP_4, 0))
 
         ttk.Label(pad, text=processing.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
@@ -6067,7 +6399,7 @@ class HomeApp:
 
     def _live_done(self, rec: dict) -> None:
         rid = rec.get("run_id") if isinstance(rec, dict) else None
-        self.status.set(f"Live overlay done. run_id={rid or '—'}")
+        self.status.set("Live overlay finished.")
 
     def _on_close(self) -> None:
         if self.engine.busy:

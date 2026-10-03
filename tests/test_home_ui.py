@@ -146,7 +146,7 @@ def test_home_is_a_job_client():
     assert "_refresh_library_shell" in src or "_refresh_footer" in src
     assert "open_advanced_diagnostics" in src
     assert "Your photos are ready" in src
-    assert "Review people" in src or "Review People" in src
+    assert "Start naming" in src or "Review people" in src or "Review People" in src
 
 
 def test_home_landing_has_no_engineering_leak():
@@ -208,9 +208,9 @@ def test_home_photos_chrome_demotes_review_and_canvas():
 
     sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
     assert 'photos", "videos"' in sync or "photos" in sync
-    assert "Explore workspace" in inspect.getsource(home_ui.HomeApp.__init__) or (
-        "Open Review" in inspect.getsource(home_ui.HomeApp.__init__)
-    )
+    init = inspect.getsource(home_ui.HomeApp.__init__)
+    assert "Explore workspace" in init or "Start naming" in init or "btn_review" in init
+    assert "Open Review" not in init
     nav = inspect.getsource(home_ui.HomeApp._navigate)
     # Must not dump faces=/items= library log into Photos inspector.
     assert "photos_videos_nothing_selected" not in nav.split('nav_id == "photos"')[1].split(
@@ -232,7 +232,7 @@ def test_home_done_status_clears_clock_telemetry():
 
 
 def test_home_processing_state_replaces_marketing_landing():
-    """While ingest runs, Library stays the surface; footer carries Scanning."""
+    """While ingest runs, processing pane replaces Stage even when files == 0."""
     import semblon.home_ui as home_ui
 
     src = inspect.getsource(home_ui.HomeApp)
@@ -242,7 +242,9 @@ def test_home_processing_state_replaces_marketing_landing():
     show = inspect.getsource(home_ui.HomeApp._show_home_landing)
     assert "_show_library_or_onboard" in show
     start = inspect.getsource(home_ui.HomeApp._start_process)
-    assert "_show_library_or_onboard" in start
+    assert "_show_processing_home" in start
+    onboard = inspect.getsource(home_ui.HomeApp._show_library_or_onboard)
+    assert "_show_processing_home" in onboard
     sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
     # Busy path must pack Pause/Cancel even on Library / Memory Canvas.
     assert "btn_pause_toggle.pack" in sync
@@ -409,7 +411,10 @@ def test_counts_from_done_payload():
             "cluster": {"clusters": 12},
         }
     )
-    assert counts == {"photos": 340, "faces": 42, "groups": 12}
+    assert counts["photos"] == 340
+    assert counts["faces"] == 42
+    assert counts["groups"] == 12
+    assert counts.get("failed", 0) == 0
 
 
 def test_home_ui_token_names_are_bound():
