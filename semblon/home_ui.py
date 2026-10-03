@@ -954,6 +954,8 @@ class HomeApp:
         self._duplicate_groups: list[dict] = []
         self._duplicate_group_index: int = 0
         self._duplicate_scan: dict | None = None
+        self._dup_thread: threading.Thread | None = None
+        self._dup_cancel = threading.Event()
         self._saved_regions: list[dict] = []
         self._saved_region_index: int = 0
         from semblon.scan_present import ScanPace
@@ -2388,13 +2390,16 @@ class HomeApp:
             else:
                 self._similar_title.set(base)
         lib_ready = self._library_has_media()
+        dup_busy = self._duplicate_scan_busy()
         for attr in ("btn_duplicates",):
             btn = getattr(self, attr, None)
             if btn is None:
                 continue
             try:
                 btn.configure(
-                    state=tk.NORMAL if lib_ready and not comparing else tk.DISABLED
+                    state=tk.NORMAL
+                    if lib_ready and not comparing and not dup_busy
+                    else tk.DISABLED
                 )
             except tk.TclError:
                 pass
@@ -3883,10 +3888,25 @@ class HomeApp:
         self._set_inspector_collapsed(True)
         self._sync_discovery_actions()
 
+    def _duplicate_scan_busy(self) -> bool:
+        t = getattr(self, "_dup_thread", None)
+        return t is not None and t.is_alive()
+
     def _scan_duplicates(self) -> None:
-        """Integrity (A) Exact + Near scan → grouped results on Memory Canvas."""
+        """Integrity (A) Exact + Near scan → grouped results on Memory Canvas.
+
+        Expensive Exact/Near work runs on a worker thread (same pattern as Live).
+        Results are applied on the Tk thread via ``root.after``. JobEngine has no
+        duplicates slot; backend ``want_cancel`` is wired to Home Cancel.
+        """
         from semblon.discovery_loop import DiscoveryFrame
-        from semblon.duplicates import find_integrity_groups
+
+        if self._duplicate_scan_busy():
+            try:
+                self.status.set("Duplicate scan already running…")
+            except Exception:  # noqa: BLE001
+                pass
+            return
 
         filt = getattr(self, "_library_filter", "all") or "all"
         focus = getattr(self, "_insp_media_id", None)
@@ -3921,8 +3941,118 @@ class HomeApp:
                 root.update_idletasks()
             except tk.TclError:
                 pass
-        result = find_integrity_groups(self.store)
-        self._apply_duplicate_result(result)
+        try:
+            self.status.set("Scanning duplicates…")
+        except Exception:  # noqa: BLE001
+            pass
+
+        self._dup_cancel = threading.Event()
+        store = Path(self.store)
+
+        def on_progress(done: int, total: int) -> None:
+            # Real scan counts only — never invent a percentage.
+            if root is None:
+                return
+            msg = f"Scanning duplicates… {int(done):,} of {int(total):,}"
+            try:
+                root.after(0, lambda m=msg: self.status.set(m))
+            except Exception:  # noqa: BLE001
+                pass
+
+        def _run() -> None:
+            try:
+                from semblon.duplicates import find_integrity_groups
+
+                result = find_integrity_groups(
+                    store,
+                    want_cancel=self._dup_cancel.is_set,
+                    on_progress=on_progress,
+                )
+            except Exception as exc:  # noqa: BLE001 — surface on UI thread
+                err = exc
+
+                def _fail() -> None:
+                    self._dup_thread = None
+                    try:
+                        self.status.set(friendly_exception(err))
+                    except Exception:  # noqa: BLE001
+                        pass
+                    self._set_inspector("Duplicates", [friendly_exception(err)])
+                    if hasattr(self, "_refresh_job_controls"):
+                        try:
+                            self._refresh_job_controls()
+                        except Exception:  # noqa: BLE001
+                            pass
+                    if hasattr(self, "_sync_discovery_actions"):
+                        try:
+                            self._sync_discovery_actions()
+                        except Exception:  # noqa: BLE001
+                            pass
+
+                if root is not None:
+                    try:
+                        root.after(0, _fail)
+                        return
+                    except Exception:  # noqa: BLE001
+                        pass
+                _fail()
+                return
+
+            def _done() -> None:
+                self._dup_thread = None
+                if (result or {}).get("status") == "CANCELLED":
+                    try:
+                        self.status.set("Duplicate scan cancelled.")
+                    except Exception:  # noqa: BLE001
+                        pass
+                    self._set_inspector(
+                        "Duplicates",
+                        [
+                            "Duplicate scan cancelled.",
+                            "",
+                            "Exact and Near are integrity similarity (A).",
+                        ],
+                    )
+                    if hasattr(self, "_refresh_job_controls"):
+                        try:
+                            self._refresh_job_controls()
+                        except Exception:  # noqa: BLE001
+                            pass
+                    if hasattr(self, "_sync_discovery_actions"):
+                        try:
+                            self._sync_discovery_actions()
+                        except Exception:  # noqa: BLE001
+                            pass
+                    return
+                self._apply_duplicate_result(result)
+                if hasattr(self, "_refresh_job_controls"):
+                    try:
+                        self._refresh_job_controls()
+                    except Exception:  # noqa: BLE001
+                        pass
+
+            if root is not None:
+                try:
+                    root.after(0, _done)
+                    return
+                except Exception:  # noqa: BLE001
+                    pass
+            _done()
+
+        self._dup_thread = threading.Thread(
+            target=_run, name="semblon-home-duplicates", daemon=True
+        )
+        self._dup_thread.start()
+        if hasattr(self, "_refresh_job_controls"):
+            try:
+                self._refresh_job_controls()
+            except Exception:  # noqa: BLE001 — headless Fake hosts
+                pass
+        if hasattr(self, "_sync_discovery_actions"):
+            try:
+                self._sync_discovery_actions()
+            except Exception:  # noqa: BLE001
+                pass
 
     def _apply_duplicate_result(self, result: dict | None) -> None:
         from semblon.duplicates import group_lines
@@ -5120,6 +5250,7 @@ class HomeApp:
 
     def _refresh_job_controls(self) -> None:
         busy = self.engine.busy
+        dup_busy = self._duplicate_scan_busy()
         self._busy = busy
         states = home_control_states(
             job_running=busy,
@@ -5127,6 +5258,8 @@ class HomeApp:
             resume_ready=self._resume_ready,
         )
         # Pause + Resume share one toggle widget adjacent to the progress bar.
+        # Duplicate scan reuses Cancel (backend want_cancel) but not Pause —
+        # duplicates.py has no pause gates.
         if busy:
             if self.engine.paused:
                 self.btn_pause_toggle.configure(text="Resume", state=tk.NORMAL)
@@ -5138,7 +5271,9 @@ class HomeApp:
                 self.btn_pause_toggle.configure(text="Resume", state=tk.NORMAL)
             else:
                 self.btn_pause_toggle.configure(text="Pause", state=tk.DISABLED)
-            self.btn_cancel.configure(state=tk.DISABLED)
+            self.btn_cancel.configure(
+                state=tk.NORMAL if dup_busy else tk.DISABLED
+            )
         buttons = {
             "folder": self.btn_folder,
             "review": self.btn_review,
@@ -5197,6 +5332,15 @@ class HomeApp:
         self._refresh_processing_home(getattr(self, "_last_progress_event", None))
 
     def _request_cancel(self) -> None:
+        if self._duplicate_scan_busy():
+            self._dup_cancel.set()
+            try:
+                self.status.set("Cancelling duplicate scan…")
+            except Exception:  # noqa: BLE001
+                pass
+            self._refresh_job_controls()
+            if not self.engine.busy:
+                return
         if not self.engine.busy:
             return
         self.engine.cancel()
