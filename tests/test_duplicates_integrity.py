@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import threading
 from pathlib import Path
 
 from semblon.duplicates import (
@@ -16,6 +17,34 @@ from semblon.duplicates import (
 from semblon.engine import _sha256_file
 from semblon.product_features import build_product_registry
 from semblon.store import connect, init_db
+
+
+class _FakeStatus:
+    def __init__(self) -> None:
+        self.value = ""
+
+    def set(self, text: str) -> None:
+        self.value = str(text)
+
+
+class _FakeRoot:
+    """Collects ``after`` callbacks so tests can flush the UI marshal path."""
+
+    def __init__(self) -> None:
+        self.callbacks: list = []
+
+    def after(self, _ms, fn):
+        self.callbacks.append(fn)
+        return None
+
+    def update_idletasks(self) -> None:
+        return None
+
+    def flush(self) -> None:
+        pending = list(self.callbacks)
+        self.callbacks.clear()
+        for fn in pending:
+            fn()
 
 
 def _seed_media(store: Path, items: list[tuple[str, Path]]) -> None:
@@ -179,24 +208,16 @@ def test_duplicates_module_safety():
     assert "DELETE FROM" not in src
 
 
-def test_host_scan_applies_groups(tmp_path, monkeypatch):
+def _make_dup_host(store: Path):
     import semblon.home_ui as home_ui
     from semblon.culling_compare import CompareSession
     from semblon.discovery_loop import DiscoverySession
 
-    store = tmp_path / "s.sqlite"
-    folder = tmp_path / "photos"
-    folder.mkdir()
-    a = folder / "a.jpg"
-    b = folder / "b.jpg"
-    a.write_bytes(b"dup-bytes")
-    b.write_bytes(b"dup-bytes")
-    _seed_media(store, [("m1", a)])
-
     class Fake:
         def __init__(self, store_path: Path):
             self.store = store_path
-            self.root = None
+            self.root = _FakeRoot()
+            self.status = _FakeStatus()
             self._library_filter = "all"
             self._insp_media_id = None
             self._similar_media_ids = None
@@ -207,6 +228,8 @@ def test_host_scan_applies_groups(tmp_path, monkeypatch):
             self._duplicate_groups = []
             self._duplicate_group_index = 0
             self._duplicate_scan = None
+            self._dup_thread = None
+            self._dup_cancel = threading.Event()
             self.shown = None
             self.inspector = None
 
@@ -227,17 +250,98 @@ def test_host_scan_applies_groups(tmp_path, monkeypatch):
         def _enter_compare(self):
             self._compare.enter()
 
+        def _duplicate_scan_busy(self):
+            return home_ui.HomeApp._duplicate_scan_busy(self)
+
     h = Fake(store)
     h._scan_duplicates = home_ui.HomeApp._scan_duplicates.__get__(h, Fake)
     h._apply_duplicate_result = home_ui.HomeApp._apply_duplicate_result.__get__(h, Fake)
     h._open_selected_duplicate_group = home_ui.HomeApp._open_selected_duplicate_group.__get__(
         h, Fake
     )
+    return h
 
+
+def test_host_scan_applies_groups(tmp_path):
+    store = tmp_path / "s.sqlite"
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    a = folder / "a.jpg"
+    b = folder / "b.jpg"
+    a.write_bytes(b"dup-bytes")
+    b.write_bytes(b"dup-bytes")
+    _seed_media(store, [("m1", a)])
+
+    h = _make_dup_host(store)
     h._scan_duplicates()
+    # Worker finishes → schedules apply on root.after; flush UI marshal.
+    assert h._dup_thread is not None
+    h._dup_thread.join(timeout=10)
+    assert not h._dup_thread.is_alive()
+    h.root.flush()
     assert h._result_kind == "duplicates"
     assert h._duplicate_groups
     assert h.inspector and h.inspector[0] == "Duplicates"
 
     h._open_selected_duplicate_group()
     assert h._compare.active or h.shown is not None
+
+
+def test_scan_duplicates_does_not_run_integrity_scan_on_ui_path(tmp_path, monkeypatch):
+    """Find Duplicates must not call find_integrity_groups on the UI thread."""
+    import semblon.duplicates as dup_mod
+    import semblon.home_ui as home_ui
+
+    store = tmp_path / "s.sqlite"
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    (folder / "a.jpg").write_bytes(b"x")
+    _seed_media(store, [("m1", folder / "a.jpg")])
+
+    ui_thread = threading.get_ident()
+    entered = threading.Event()
+    release = threading.Event()
+    call_threads: list[int] = []
+
+    def blocked_find(store_path, **kwargs):
+        call_threads.append(threading.get_ident())
+        entered.set()
+        assert release.wait(timeout=5), "test release not signalled"
+        return {
+            "status": "EMPTY",
+            "kind": "integrity",
+            "groups": [],
+            "exact": {"status": "EMPTY", "groups": []},
+            "near": {"status": "EMPTY", "groups": []},
+            "scanned_files": 0,
+        }
+
+    monkeypatch.setattr(dup_mod, "find_integrity_groups", blocked_find)
+
+    h = _make_dup_host(store)
+    h._scan_duplicates = home_ui.HomeApp._scan_duplicates.__get__(h, type(h))
+    h._apply_duplicate_result = home_ui.HomeApp._apply_duplicate_result.__get__(
+        h, type(h)
+    )
+
+    h._scan_duplicates()
+    # UI path returned while the expensive scan is still blocked in the worker.
+    assert h._result_kind is None
+    assert entered.wait(timeout=5), "worker never entered find_integrity_groups"
+    assert call_threads and call_threads[0] != ui_thread
+    assert "Scanning" in (h.inspector[1][0] if h.inspector else "")
+    assert h._duplicate_scan_busy()
+
+    release.set()
+    h._dup_thread.join(timeout=10)
+    assert not h._dup_thread.is_alive()
+    h.root.flush()
+    assert h._result_kind == "duplicates"
+    assert h._duplicate_groups == []
+
+    src = inspect.getsource(home_ui.HomeApp._scan_duplicates)
+    assert "threading.Thread" in src
+    assert "want_cancel" in src
+    assert "find_integrity_groups(" in src
+    # Must not call the scan before starting the worker (sync path removed).
+    assert "result = find_integrity_groups(self.store)" not in src
