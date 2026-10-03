@@ -15,7 +15,7 @@ from pathlib import Path, PureWindowsPath
 
 from semblon.cluster import DEFAULT_EPS, DEFAULT_MIN_SAMPLES, ClusterError, cluster_run
 from semblon.export import ExportError, export_review
-from semblon.ingest import CancelledError, ingest
+from semblon.ingest import CancelledError, ingest, video_sampling_complete
 from semblon.progress import (
     KIND_CANCELLED,
     KIND_COMPLETED,
@@ -131,6 +131,10 @@ def empty_state_line(store: Path, run_id: str) -> str:
 
 
 _INCOMPLETE_NOTES = frozenset({"cancelled", "interrupted"})
+_RUN_STAGES = frozenset({"ingest", "cluster", "export"})
+_RUN_JOBS = frozenset(
+    {"queued", "running", "paused", "cancelling", "completed", "failed", "cancelled"}
+)
 
 
 def _folder_matches(cfg_folder: str, folder: Path) -> bool:
@@ -144,7 +148,77 @@ def _folder_matches(cfg_folder: str, folder: Path) -> bool:
         )
 
 
-def inspect_run_stages(store: Path, run_id: str, *, out: Path | None = None) -> dict:
+def persist_run_stage(
+    store: Path, run_id: str, *, stage: str | None = None, job: str | None = None
+) -> None:
+    """Persist closed stage/job tokens in timings_json without changing the schema."""
+    if stage not in _RUN_STAGES:
+        stage = None
+    if job not in _RUN_JOBS:
+        job = None
+    if stage is None and job is None:
+        return
+    conn = sqlite3.connect(Path(store))
+    row = conn.execute(
+        "SELECT timings_json FROM runs WHERE run_id=?", (run_id,)
+    ).fetchone()
+    if row is None:
+        conn.close()
+        return
+    try:
+        timings = json.loads(row[0] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        timings = {}
+    if not isinstance(timings, dict):
+        timings = {}
+    if stage is not None:
+        timings["stage"] = stage
+    if job is not None:
+        timings["job"] = job
+    conn.execute(
+        "UPDATE runs SET timings_json=? WHERE run_id=?",
+        (json.dumps(timings), run_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _raise_if_process_cancelled(cancel, *, run_id: str, progress, on_event, started: float) -> None:
+    if cancel is None:
+        return
+    try:
+        requested = bool(cancel())
+    except Exception:
+        requested = False
+    if not requested:
+        return
+    progress("Cancelled.")
+    emit(
+        on_event,
+        make_event(
+            STAGE_PROCESS,
+            KIND_CANCELLED,
+            run_id=run_id,
+            message="cancelled",
+            outcome="cancelled",
+            elapsed_s=round(time.perf_counter() - started, 3),
+        ),
+    )
+    raise ProcessCancelled("process cancelled", run_id=run_id)
+
+
+def _path_is_within(path: str, folder: Path) -> bool:
+    try:
+        candidate = Path(path).resolve()
+        root = Path(folder).resolve()
+        return candidate == root or root in candidate.parents
+    except OSError:
+        return False
+
+
+def inspect_run_stages(
+    store: Path, run_id: str, *, out: Path | None = None, folder: Path | None = None
+) -> dict:
     """Which process stages already landed. No new columns."""
     p = Path(store)
     empty = {
@@ -153,6 +227,8 @@ def inspect_run_stages(store: Path, run_id: str, *, out: Path | None = None) -> 
         "cluster_done": False,
         "export_done": False,
         "notes": None,
+        "stage": None,
+        "job": None,
         "faces": 0,
         "ok": 0,
         "clusters": 0,
@@ -163,7 +239,7 @@ def inspect_run_stages(store: Path, run_id: str, *, out: Path | None = None) -> 
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     row = conn.execute(
-        "SELECT notes, finished_at FROM runs WHERE run_id=?", (run_id,)
+        "SELECT notes, finished_at, timings_json FROM runs WHERE run_id=?", (run_id,)
     ).fetchone()
     if row is None:
         conn.close()
@@ -180,8 +256,45 @@ def inspect_run_stages(store: Path, run_id: str, *, out: Path | None = None) -> 
     n_clusters = int(
         conn.execute("SELECT COUNT(*) FROM clusters WHERE run_id=?", (run_id,)).fetchone()[0]
     )
+    media_complete = True
+    if folder is not None:
+        media_rows = conn.execute(
+            "SELECT media_id, source_type, path FROM media"
+        ).fetchall()
+        for media in media_rows:
+            if not _path_is_within(str(media["path"]), folder):
+                continue
+            if media["source_type"] == "video":
+                observed_in_run = conn.execute(
+                    "SELECT 1 FROM observations WHERE media_id=? AND run_id=? LIMIT 1",
+                    (media["media_id"], run_id),
+                ).fetchone()
+                complete = video_sampling_complete(
+                    conn,
+                    str(media["media_id"]),
+                    run_id=run_id if observed_in_run is not None else None,
+                )
+            else:
+                complete = conn.execute(
+                    "SELECT 1 FROM observations WHERE media_id=? LIMIT 1",
+                    (media["media_id"],),
+                ).fetchone() is not None
+            if not complete:
+                media_complete = False
+                break
     conn.close()
-    ingest_done = row["finished_at"] is not None and notes not in _INCOMPLETE_NOTES
+    ingest_done = (
+        row["finished_at"] is not None
+        and notes not in _INCOMPLETE_NOTES
+        and media_complete
+    )
+    timings = {}
+    try:
+        timings = json.loads(row["timings_json"] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        pass
+    if not isinstance(timings, dict):
+        timings = {}
     cluster_done = ingest_done and (n_ok == 0 or n_clusters > 0)
     export_done = bool(out) and Path(out).is_file()
     return {
@@ -190,6 +303,8 @@ def inspect_run_stages(store: Path, run_id: str, *, out: Path | None = None) -> 
         "cluster_done": cluster_done,
         "export_done": export_done,
         "notes": notes,
+        "stage": timings.get("stage"),
+        "job": timings.get("job"),
         "faces": n_faces,
         "ok": n_ok,
         "clusters": n_clusters,
@@ -217,7 +332,7 @@ def find_resumable_run(store: Path, folder: Path) -> str | None:
             cfg = {}
         if not _folder_matches(str(cfg.get("folder") or ""), folder):
             continue
-        stages = inspect_run_stages(p, str(row["run_id"]), out=out)
+        stages = inspect_run_stages(p, str(row["run_id"]), out=out, folder=folder)
         if not stages["ingest_done"] or not stages["cluster_done"] or not stages["export_done"]:
             return str(row["run_id"])
     return None
@@ -315,7 +430,9 @@ def process_folder(
 
     resume_run = find_resumable_run(store_path, folder) if resume else None
     stages = (
-        inspect_run_stages(store_path, resume_run, out=out_path) if resume_run else None
+        inspect_run_stages(store_path, resume_run, out=out_path, folder=folder)
+        if resume_run
+        else None
     )
     start_msg = f"Ingesting media from: {folder.resolve()}"
     if resume_run and stages:
@@ -401,6 +518,9 @@ def process_folder(
             f"  new_media={ing.get('new_media')} faces={ing.get('faces')} "
             f"ok={ing.get('ok')} skipped_seen={ing.get('skipped_seen', 0)}"
         )
+        _raise_if_process_cancelled(
+            cancel, run_id=run_id, progress=progress, on_event=on_event, started=t0
+        )
 
         # FACE-005 skip-all creates a new empty run. Review that and the HTML
         # would be blank even though prior faces still exist on the store.
@@ -481,6 +601,10 @@ def process_folder(
                 f"Cluster done. clusters={clu.get('clusters')} "
                 f"clustered={clu.get('clustered')} unassigned={clu.get('unassigned')}"
             )
+
+        _raise_if_process_cancelled(
+            cancel, run_id=run_id, progress=progress, on_event=on_event, started=t0
+        )
 
         if resume_run and stages and stages["export_done"] and out_path.is_file():
             exp = {"run_id": run_id, "out": str(out_path.resolve()), "resumed": True}

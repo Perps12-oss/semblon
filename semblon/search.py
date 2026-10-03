@@ -186,6 +186,103 @@ def _failed_item(conn, item_id: str) -> dict | None:
     }
 
 
+def non_face_item_for_media(store: Path, media_id: str) -> str | None:
+    """First non-face embedding item on a media row — seed for whole-image (B) search."""
+    mid = (media_id or "").strip()
+    if not mid:
+        return None
+    conn = _open_ro(store)
+    try:
+        row = conn.execute(
+            """SELECT e.item_id
+               FROM embeddings e
+               JOIN observation_items i ON i.item_id = e.item_id
+               JOIN observations o ON o.observation_id = i.observation_id
+               WHERE o.media_id=? AND e.modality != 'face'
+               ORDER BY e.item_id
+               LIMIT 1""",
+            (mid,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    return str(row["item_id"] if hasattr(row, "keys") else row[0])
+
+
+def media_ids_for_items(store: Path, item_ids: list[str]) -> dict[str, str]:
+    ids = [str(i) for i in item_ids if i]
+    if not ids:
+        return {}
+    conn = _open_ro(store)
+    try:
+        qmarks = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"""SELECT i.item_id, o.media_id
+                FROM observation_items i
+                JOIN observations o ON o.observation_id = i.observation_id
+                WHERE i.item_id IN ({qmarks})""",
+            ids,
+        ).fetchall()
+    finally:
+        conn.close()
+    out: dict[str, str] = {}
+    for r in rows:
+        iid = str(r["item_id"] if hasattr(r, "keys") else r[0])
+        mid = str(r["media_id"] if hasattr(r, "keys") else r[1] or "")
+        if iid and mid:
+            out[iid] = mid
+    return out
+
+
+def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict:
+    """Whole-image (B) discovery from a library photo. Honest UNAVAILABLE without embeddings."""
+    mid = (media_id or "").strip()
+    if not mid:
+        return {
+            "kind": "similar",
+            "query": media_id,
+            "count": 0,
+            "items": [],
+            "status": "UNAVAILABLE",
+            "model_state": "MISSING",
+            "provider_state": "FAILED",
+            "reason": "Open a photo, then search Whole image — or type a media id.",
+            "error_id": "similar.NO_MEDIA",
+            "note": "Whole-image similarity is not identity.",
+            "similarity_basis": "Whole photo (B)",
+        }
+    item = non_face_item_for_media(store, mid)
+    if item is None:
+        return {
+            "kind": "similar",
+            "query": mid,
+            "count": 0,
+            "items": [],
+            "status": "UNAVAILABLE",
+            "model_state": "MISSING",
+            "provider_state": "FAILED",
+            "reason": (
+                "Whole-image search needs non-identity embeddings for this photo. "
+                "Nothing was searched."
+            ),
+            "error_id": "similar.NO_EMBEDDING",
+            "note": "Whole-image similarity is not identity.",
+            "similarity_basis": "Whole photo (B)",
+            "media_ids": [],
+        }
+    rec = search_similar(store, item, limit=limit)
+    rec["similarity_basis"] = "Whole photo (B · search_similar)"
+    rec["seed_media_id"] = mid
+    item_ids = [str(it.get("item_id")) for it in (rec.get("items") or []) if it.get("item_id")]
+    mid_map = media_ids_for_items(store, item_ids)
+    for it in rec.get("items") or []:
+        if isinstance(it, dict) and it.get("item_id") in mid_map:
+            it["media_id"] = mid_map[it["item_id"]]
+    rec["media_ids"] = [mid_map[i] for i in item_ids if i in mid_map]
+    return rec
+
+
 def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index: bool = False) -> dict:
     """Modality-scoped nearest items. Face identity is forbidden here.
 

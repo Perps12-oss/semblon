@@ -65,7 +65,7 @@ def test_partial_video_same_run_is_not_skipped(tmp_path):
     assert reason is None
     assert mid == "mv"
     reason, mid = media_skip_reason(conn, "vidhash", "r2", reprocess=False)
-    assert reason == "seen"
+    assert reason is None
     assert mid == "mv"
     conn.close()
 

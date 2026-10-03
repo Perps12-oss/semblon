@@ -229,10 +229,30 @@ def cluster_run(
     faces = [f for f in faces if f["face_id"] not in locked_faces]
     n_ok_active = len(faces)
     if n_ok_active > MAX_DBSCAN_FACES:
-        conn.close()
-        raise ClusterError(
-            f"too many active still faces for in-memory DBSCAN ({n_ok_active} > {MAX_DBSCAN_FACES})"
+        error = (
+            "too many active still faces for in-memory DBSCAN "
+            f"({n_ok_active} > {MAX_DBSCAN_FACES})"
         )
+        try:
+            timings = json.loads(run["timings_json"] or "{}")
+        except (json.JSONDecodeError, TypeError):
+            timings = {}
+        if not isinstance(timings, dict):
+            timings = {}
+        timings.update(
+            {
+                "ok_faces_active": n_ok_active,
+                "max_dbscan_faces": MAX_DBSCAN_FACES,
+                "cluster_error": error,
+            }
+        )
+        conn.execute(
+            "UPDATE runs SET timings_json=? WHERE run_id=?",
+            (json.dumps(timings), run_id),
+        )
+        conn.commit()
+        conn.close()
+        raise ClusterError(error)
 
     t0 = time.perf_counter()
     _clear_unprotected_clusters(conn, run_id, locked_faces, locked_clusters)

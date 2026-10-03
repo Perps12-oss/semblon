@@ -70,10 +70,10 @@ def test_empty_state_anatomy_has_no_forbidden_vocab():
 
 
 def test_search_placeholder_copy():
-    assert SEARCH_PLACEHOLDER == "Search people and text"
-    assert SEARCH_PLACEHOLDER_PHOTOS == "Search photos…"
-    assert search_placeholder(has_named_people=False) == "Search photos…"
-    assert search_placeholder(has_named_people=True) == "Search people and text"
+    assert SEARCH_PLACEHOLDER == "Search memory…"
+    assert SEARCH_PLACEHOLDER_PHOTOS == "Search memory…"
+    assert search_placeholder(has_named_people=False) == "Search memory…"
+    assert search_placeholder(has_named_people=True) == "Search memory…"
 
 
 def test_groups_waiting_line():

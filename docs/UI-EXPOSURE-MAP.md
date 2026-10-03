@@ -217,16 +217,58 @@ When adding UI, update this file’s class for the surface in the same PR.
 
 ---
 
-## I. Closure-pass deferred surfaces (2026-10-03)
+## I. Five-repo product synthesis (2026-10-03)
 
-Recorded so no audit finding stays ambiguous. Not KEEP work for the next slice unless chosen.
+**Final state claim:** Product synthesis complete; some capabilities deliberately deferred.
 
-| Finding | Status | Prerequisite |
+**CLOSED AS DEFERRED criterion:** A product gap is not unresolved merely because backend capability is absent. If missing capability is explicitly identified, documented, and intentionally outside this pass, it is **CLOSED AS DEFERRED**.
+
+Status vocabulary: **LANDED** (end-to-end) · **WIRED** (existing capability correctly exposed) · **PARTIAL** (useful + bounded limitation) · **DEFERRED** (deliberately not implemented; dependency/contract absent).
+
+Locked similarity taxonomy (do not collapse):
+
+| Class | Meaning | Product surface |
 |---|---|---|
-| Context menu (`surfaces=context`) | **DEFERRED** | Small Model D Button-3 consumer over existing GuiCommand registry — no second catalogue; skip until shell owns a native context host |
-| Continuous folder watch | **DEFERRED** | Explicit SECONDARY continuous UI calling `watch.watch_folder`; must not silently change Add Folder |
-| Near-duplicates | **DEFERRED** | New perceptual signature path; never reuse Find Similar or exact SHA |
-| Durable Keep/Reject | **DEFERRED** | Designed persistence/domain contract; Compare session-only remains valid |
-| Related (library graph) | **DEFERRED** | Dedicated Related backend; do not promote spatial `related_labels` or ANN lab |
-| Timeline / Folders browser | **DEFERRED** | Model D Explore surface over memory events/folders — full browser, not Activity soft lines |
-| Semantic identity hypotheses | **DEFERRED** | Explicit SEM-ARCH authorization; identity firewall unchanged |
+| **A** | Integrity similarity — Exact (SHA-256) + Near (aHash/dHash) | Find Duplicates |
+| **B** | Whole-image similarity — `search.search_similar` | Search mode Whole image |
+| **C** | Region similarity — Find Similar / `region_search` | Discover Find Similar · Search mode Region |
+
+Find Similar must **not** call `search_similar`.
+
+### Landed / wired in this pass
+
+| Item | Status | Evidence | Remaining dependency |
+|---|---|---|---|
+| Timeline browse | **LANDED** | `library_browse.timeline_buckets` → Canvas `media_ids` | — |
+| Folders browse | **LANDED** | `library_browse.folder_buckets` | — |
+| Moments (named-person events) | **LANDED** | `memory.events` publishes `media_ids`; Moments facet | — |
+| A exact duplicates | **LANDED** (kept) | `find_exact_duplicate_groups` | — |
+| A near duplicates | **LANDED** | `find_near_duplicate_groups` OpenCV aHash/dHash + Hamming; Home Exact/Near | — |
+| B whole-image search | **WIRED** / **PARTIAL** | Search mode Whole image → `search_similar_media` | Non-face embeddings for seed media |
+| C region Find Similar | **LANDED** + relabel | Region basis in chrome; firewall vs `search_similar` | — |
+| Unified Search modes | **LANDED** | People \| Text in photos \| Whole image \| Region | — |
+| Saved Regions | **WIRED** | `list_user_regions` Home surface | — |
+| Inspector depth (wireable) | **LANDED** | `inspector_present` File / When·where / Observations | — |
+| Grid ViewModel + density + virtualization | **LANDED** | `media_grid` + Canvas viewport overscan | — |
+| Context menu Button-3 | **WIRED** | `context_menu` over `surfaces=context` | — |
+
+### CLOSED AS DEFERRED (exact dependency)
+
+| Finding | Status | Prerequisite / dependency |
+|---|---|---|
+| User Collections / Albums | **DEFERRED** | Persistent album/collection schema + product contract; Moments is not albums. Honest empty copy only. |
+| Durable Keep/Reject | **DEFERRED** | Designed persistence/domain contract (no cull `decisions` kind); Compare session-only remains valid. Identity `reject` is the wrong table. |
+| Continuous folder watch | **DEFERRED** | Explicit SECONDARY continuous UI calling `watch.watch_folder`; must **not** silently change Add Folder. |
+| Related (library graph) UI | **DEFERRED** | Dedicated Related backend; do not promote spatial `related_labels` or ANN lab as Related. |
+| Maps | **DEFERRED** | Map presentation surface; GPS may already appear in Inspector when present. |
+| Tags / ratings | **DEFERRED** | No schema columns; omit from Inspector (no fake rows). |
+| Semantic identity hypotheses | **DEFERRED** | Explicit SEM-ARCH authorization; identity firewall unchanged. |
+
+### Audit anchors (this pass)
+
+- Browse facets: `semblon/library_browse.py`, Home `_open_browse_facet`
+- Near-dup: `semblon/duplicates.py` (`find_near_duplicate_groups`)
+- Search modes: Home `_run_unified_search` / `SEARCH_MODES`
+- Inspector: `semblon/inspector_present.py`
+- Grid: `semblon/media_grid.py` consumed by `CanvasWorkspace`
+- Context: `semblon/context_menu.py` Button-3 on grid/preview
