@@ -183,6 +183,58 @@ def _cmd_lens_find_similar(host: Any, _ctx: Any = None) -> None:
     open_region_select(host)
 
 
+def _compare_session(host: Any):
+    return getattr(host, "_compare", None)
+
+
+def _cmd_compare_enter(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_enter_compare"):
+        host._enter_compare()
+
+
+def _cmd_compare_exit(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_exit_compare"):
+        host._exit_compare()
+
+
+def _cmd_media_keep(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_compare_decide"):
+        host._compare_decide("keep")
+
+
+def _cmd_media_reject(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_compare_decide"):
+        host._compare_decide("reject")
+
+
+def _compare_enter_available(host: Any, _ctx: Any = None) -> bool:
+    sess = _compare_session(host)
+    if sess is None or sess.active:
+        return False
+    ok, _reason = sess.can_enter()
+    return ok
+
+
+def _compare_enter_reason(host: Any, _ctx: Any = None) -> str:
+    sess = _compare_session(host)
+    if sess is None:
+        return "Compare unavailable"
+    if sess.active:
+        return "Already comparing"
+    _ok, reason = sess.can_enter()
+    return reason
+
+
+def _compare_active_available(host: Any, _ctx: Any = None) -> bool:
+    sess = _compare_session(host)
+    return bool(sess and sess.active)
+
+
+def _compare_decide_available(host: Any, _ctx: Any = None) -> bool:
+    sess = _compare_session(host)
+    return bool(sess and sess.active and sess.focused_id())
+
+
 def _person_history_available(host: Any, context: Any = None) -> bool:
     return _person_from_context(context) is not None
 
@@ -434,6 +486,52 @@ def build_product_registry() -> FeatureRegistry:
                     label="Search text in photos",
                     run=_cmd_search_text_hint,
                     surfaces=frozenset({"palette", "overflow"}),
+                ),
+            ),
+        )
+    )
+
+    # Discovery → Compare → Decide (contextual; not a MAIN destination).
+    reg.register(
+        Feature(
+            id="discovery_compare",
+            label="Compare",
+            commands=(
+                GuiCommand(
+                    id="compare.enter",
+                    label="Compare",
+                    run=_cmd_compare_enter,
+                    surfaces=frozenset({"inspector", "palette", "context"}),
+                    available=_compare_enter_available,
+                    reason=_compare_enter_reason,
+                ),
+                GuiCommand(
+                    id="compare.exit",
+                    label="Leave Compare",
+                    run=_cmd_compare_exit,
+                    surfaces=frozenset({"inspector", "palette"}),
+                    available=_compare_active_available,
+                    reason=lambda _h, _c=None: "" if _compare_active_available(_h) else "Not comparing",
+                ),
+                GuiCommand(
+                    id="media.keep",
+                    label="Keep",
+                    run=_cmd_media_keep,
+                    surfaces=frozenset({"inspector", "palette", "context"}),
+                    available=_compare_decide_available,
+                    reason=lambda _h, _c=None: (
+                        "" if _compare_decide_available(_h) else "Open Compare first"
+                    ),
+                ),
+                GuiCommand(
+                    id="media.reject",
+                    label="Reject",
+                    run=_cmd_media_reject,
+                    surfaces=frozenset({"inspector", "palette", "context"}),
+                    available=_compare_decide_available,
+                    reason=lambda _h, _c=None: (
+                        "" if _compare_decide_available(_h) else "Open Compare first"
+                    ),
                 ),
             ),
         )

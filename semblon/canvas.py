@@ -491,7 +491,10 @@ else:
             thumb_sb = ttk.Scrollbar(self._browse, orient=tk.VERTICAL, command=self._thumb_canvas.yview)
             thumb_sb.pack(side=tk.LEFT, fill=tk.Y)
             self._thumb_canvas.configure(yscrollcommand=thumb_sb.set)
+            self._compare_marks: set[str] = set()
+            self._on_compare_toggle = None
             self._thumb_canvas.bind("<Button-1>", self._on_thumb_click)
+            self._thumb_canvas.bind("<Control-Button-1>", self._on_thumb_compare_toggle)
             self._thumb_canvas.bind("<Configure>", self._on_thumb_configure)
             self._thumb_canvas.bind(
                 "<MouseWheel>",
@@ -733,6 +736,7 @@ else:
                     self.frame.after(1, pump)
                 except tk.TclError:
                     pass
+            self._paint_compare_marks()
 
         def _fill_thumb(self, idx: int) -> None:
             if idx >= len(self._media):
@@ -759,6 +763,10 @@ else:
             self._thumb_hitmap[iid] = idx
 
         def _on_thumb_click(self, event) -> None:
+            # Control+click is handled by _on_thumb_compare_toggle.
+            if int(getattr(event, "state", 0) or 0) & 0x4:
+                self._on_thumb_compare_toggle(event)
+                return
             x = self._thumb_canvas.canvasx(event.x)
             y = self._thumb_canvas.canvasy(event.y)
             items = self._thumb_canvas.find_overlapping(x, y, x, y)
@@ -767,6 +775,59 @@ else:
                 if idx is not None:
                     self.show_index(idx)
                     return
+
+        def _on_thumb_compare_toggle(self, event) -> None:
+            """Ctrl+click toggles a Similar candidate for Compare (not open)."""
+            if self._on_compare_toggle is None:
+                return
+            x = self._thumb_canvas.canvasx(event.x)
+            y = self._thumb_canvas.canvasy(event.y)
+            items = self._thumb_canvas.find_overlapping(x, y, x, y)
+            for iid in items:
+                idx = self._thumb_hitmap.get(iid)
+                if idx is None or idx >= len(self._media):
+                    continue
+                mid = self._media[idx].get("media_id")
+                if mid:
+                    try:
+                        self._on_compare_toggle(str(mid))
+                    except Exception:  # noqa: BLE001
+                        return
+                return
+
+        def set_compare_marks(self, media_ids: list[str] | set[str] | None) -> None:
+            self._compare_marks = {str(m) for m in (media_ids or []) if m}
+            self._paint_compare_marks()
+
+        def _paint_compare_marks(self) -> None:
+            c = getattr(self, "_thumb_canvas", None)
+            if c is None:
+                return
+            try:
+                c.delete("compare_mark")
+            except tk.TclError:
+                return
+            if not self._compare_marks:
+                return
+            from semblon.ui_tokens import ACCENT
+
+            cell = self._THUMB_CELL
+            for idx, m in enumerate(self._media):
+                if str(m.get("media_id")) not in self._compare_marks:
+                    continue
+                spot = self._thumb_cells.get(idx)
+                if spot is None:
+                    continue
+                x0, y0 = spot
+                c.create_rectangle(
+                    x0 + 1,
+                    y0 + 1,
+                    x0 + cell - 1,
+                    y0 + cell - 1,
+                    outline=ACCENT,
+                    width=3,
+                    tags=("compare_mark",),
+                )
 
         def set_board(self, board: dict, media_rows: list[dict] | None = None) -> None:
             from semblon.product_surface import soft_canvas_status, soft_media_list_label

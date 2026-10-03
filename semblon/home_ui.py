@@ -911,9 +911,11 @@ class HomeApp:
         self._library_filter = "all"
         self._similar_media_ids: list[str] | None = None
         self._library_return: dict | None = None
+        from semblon.culling_compare import CompareSession
         from semblon.discovery_loop import DiscoverySession
 
         self._discovery = DiscoverySession()
+        self._compare = CompareSession()
         from semblon.scan_present import ScanPace
 
         self._scan_pace = ScanPace()
@@ -982,6 +984,13 @@ class HomeApp:
         self.root.bind("<Control-k>", self._open_command_palette)
         self.root.bind("<Control-Key-0>", lambda _e: self._open_home_stage())
         self.root.bind("<Control-Key-4>", lambda _e: self._navigate("lens"))
+        self.root.bind("<Escape>", self._on_discovery_escape)
+        self.root.bind("<Left>", lambda e: self._on_compare_arrow(-1, e))
+        self.root.bind("<Right>", lambda e: self._on_compare_arrow(1, e))
+        self.root.bind("<Key-k>", lambda e: self._on_compare_hotkey("keep", e))
+        self.root.bind("<Key-K>", lambda e: self._on_compare_hotkey("keep", e))
+        self.root.bind("<Key-x>", lambda e: self._on_compare_hotkey("reject", e))
+        self.root.bind("<Key-X>", lambda e: self._on_compare_hotkey("reject", e))
         for nav in self._registry.nav_contributions():
             if not nav.shortcut:
                 continue
@@ -1186,6 +1195,11 @@ class HomeApp:
             on_image_open=self._on_image_open,
             job_engine=self.engine,
         )
+        self._canvas_ws._on_compare_toggle = self._toggle_compare_candidate
+        self._compare_pane = tk.Frame(work, bg=BG_CANVAS)
+        self._compare_tiles = tk.Frame(self._compare_pane, bg=BG_CANVAS)
+        self._compare_tiles.pack(fill=tk.BOTH, expand=True, padx=SP_8, pady=SP_8)
+        self._compare_photos: list = []
 
         # Inspector — contextual result for the current interaction.
         insp = ttk.Frame(body, padding=(SP_16, SP_16))
@@ -1297,6 +1311,16 @@ class HomeApp:
             actions, "Find Similar", self._find_similar_in_workspace, kind="secondary"
         )
         self.btn_find_similar.pack(fill=tk.X, pady=1)
+        self.btn_compare = _button(
+            actions, "Compare", self._enter_compare, kind="secondary"
+        )
+        self.btn_compare.pack(fill=tk.X, pady=1)
+        self.btn_keep = _button(actions, "Keep", lambda: self._compare_decide("keep"), kind="secondary")
+        self.btn_keep.pack(fill=tk.X, pady=1)
+        self.btn_reject = _button(
+            actions, "Reject", lambda: self._compare_decide("reject"), kind="secondary"
+        )
+        self.btn_reject.pack(fill=tk.X, pady=1)
         self.btn_ask_lens = _button(
             actions, "Ask about this photo", self._ask_with_lens, kind="secondary", icon="lens"
         )
@@ -1310,8 +1334,12 @@ class HomeApp:
                 "lens.select_region",
                 "lens.ask",
                 "lens.find_similar",
+                "compare.enter",
+                "compare.exit",
+                "media.keep",
+                "media.reject",
             }:
-                # Verbs packed from INSPECTOR_VERB_SPECS. Region / Find Similar / Ask above.
+                # Verbs packed from INSPECTOR_VERB_SPECS. Region / Similar / Compare above.
                 continue
             btn = _button(
                 actions,
@@ -1989,25 +2017,60 @@ class HomeApp:
         self._sync_registry_inspector_commands()
 
     def _sync_discovery_actions(self) -> None:
-        """Enable Select a region / Find Similar when a photo is open in Memory Canvas."""
+        """Enable Select a region / Find Similar / Compare when appropriate."""
         from semblon.selection import media_file
 
         has_media = media_file(self.store, getattr(self, "_insp_media_id", None)) is not None
+        cmp = getattr(self, "_compare", None)
+        comparing = bool(cmp and cmp.active)
         for attr in ("btn_region", "btn_find_similar"):
             btn = getattr(self, attr, None)
             if btn is None:
                 continue
             try:
-                btn.configure(state=tk.NORMAL if has_media else tk.DISABLED)
+                btn.configure(state=tk.NORMAL if has_media and not comparing else tk.DISABLED)
+            except tk.TclError:
+                pass
+        can_compare = bool(cmp and cmp.can_enter()[0])
+        for attr in ("btn_compare", "btn_bar_compare"):
+            btn = getattr(self, attr, None)
+            if btn is None:
+                continue
+            try:
+                btn.configure(state=tk.NORMAL if can_compare else tk.DISABLED)
+            except tk.TclError:
+                pass
+        for attr in ("btn_keep", "btn_reject"):
+            btn = getattr(self, attr, None)
+            if btn is None:
+                continue
+            try:
+                btn.configure(
+                    state=tk.NORMAL if comparing and cmp.focused_id() else tk.DISABLED
+                )
             except tk.TclError:
                 pass
         back = getattr(self, "btn_discovery_back", None)
         if back is not None:
-            hist = bool(getattr(self, "_discovery", None) and self._discovery.has_history())
+            hist = bool(
+                comparing
+                or (getattr(self, "_discovery", None) and self._discovery.has_history())
+            )
             try:
                 back.configure(state=tk.NORMAL if hist else tk.DISABLED)
             except tk.TclError:
                 pass
+        n_sel = len(cmp.selected_ids) if cmp else 0
+        if getattr(self, "_similar_title", None) is not None and getattr(
+            self, "_similar_media_ids", None
+        ):
+            base = "Similar to selected region"
+            if comparing:
+                self._similar_title.set("Comparing candidates")
+            elif n_sel:
+                self._similar_title.set(f"{base} · {n_sel} selected")
+            else:
+                self._similar_title.set(base)
 
     def _sync_name_save_button(self) -> None:
         """Name this person is enabled when a nameable selection has typed text."""
@@ -2565,6 +2628,11 @@ class HomeApp:
             self._library_home.pack_forget()
         if hasattr(self, "_library_chrome"):
             self._library_chrome.pack_forget()
+        if hasattr(self, "_compare_pane"):
+            try:
+                self._compare_pane.pack_forget()
+            except tk.TclError:
+                pass
         if hasattr(self, "_lens"):
             self._lens.pack_forget()
         if hasattr(self, "_activity"):
@@ -2833,6 +2901,14 @@ class HomeApp:
             plate=BG_CANVAS,
         )
         self.btn_discovery_back.pack(side=tk.LEFT, padx=(SP_12, 0))
+        self.btn_bar_compare = _button(
+            self._similar_bar,
+            "Compare",
+            self._enter_compare,
+            kind="secondary",
+            plate=BG_CANVAS,
+        )
+        self.btn_bar_compare.pack(side=tk.LEFT, padx=(SP_12, 0))
         self.btn_clear_similar = _button(
             self._similar_bar,
             "Clear Search",
@@ -2847,7 +2923,10 @@ class HomeApp:
         self._similar_media_ids = None
         if hasattr(self, "_discovery"):
             self._discovery.clear()
+        if hasattr(self, "_compare"):
+            self._compare.clear()
         self._library_return = None
+        self._exit_compare(silent=True)
         self._show_library(filter_key=self._library_filter)
 
     def _show_library(
@@ -2865,6 +2944,8 @@ class HomeApp:
         self._stage_forced = False
         if similar_media_ids is not None:
             self._similar_media_ids = list(similar_media_ids)
+            if hasattr(self, "_compare"):
+                self._compare.set_result_ids(self._similar_media_ids)
         self._hide_workspace_panes()
         self._set_inspector_collapsed(True)
 
@@ -2893,20 +2974,43 @@ class HomeApp:
             except tk.TclError:
                 pass
             if self._similar_media_ids:
-                self._similar_title.set("Similar to selected region")
                 similar.pack(anchor=tk.W, fill=tk.X, pady=(SP_8, 0))
 
         self._library_chrome.pack(fill=tk.X, anchor=tk.N)
-        self._canvas_ws.pack(fill=tk.BOTH, expand=True)
+        comparing = bool(getattr(self, "_compare", None) and self._compare.active)
+        if comparing:
+            self._render_compare_pane()
+            try:
+                self._compare_pane.pack(fill=tk.BOTH, expand=True)
+            except tk.TclError:
+                pass
+        else:
+            try:
+                self._compare_pane.pack_forget()
+            except (tk.TclError, AttributeError):
+                pass
+            self._canvas_ws.pack(fill=tk.BOTH, expand=True)
         source_types = library_source_types(self._library_filter)
-        try:
-            self._canvas_ws.reload(
-                self.store,
-                self._last_run_id,
-                source_types=source_types,
-                media_ids=self._similar_media_ids,
-                clear_media_ids=not bool(self._similar_media_ids),
+        show_ids = None
+        if self._similar_media_ids:
+            show_ids = (
+                self._compare.visible_result_ids()
+                if hasattr(self, "_compare")
+                else list(self._similar_media_ids)
             )
+        try:
+            if not comparing:
+                self._canvas_ws.reload(
+                    self.store,
+                    self._last_run_id,
+                    source_types=source_types,
+                    media_ids=show_ids,
+                    clear_media_ids=not bool(show_ids),
+                )
+                if hasattr(self._canvas_ws, "set_compare_marks") and hasattr(
+                    self, "_compare"
+                ):
+                    self._canvas_ws.set_compare_marks(self._compare.selected_ids)
         except Exception as e:  # noqa: BLE001
             self._set_inspector("Details", [f"Library unavailable: {e}"])
             self._set_inspector_collapsed(False)
@@ -2922,6 +3026,7 @@ class HomeApp:
         self._refresh_footer(summary)
         self._nav = "library"
         self._mark_nav_active("library")
+        self._sync_discovery_actions()
 
     def _apply_find_similar_result(self, summary: dict | None) -> None:
         """Show Similar results on Memory Canvas; push discovery stack for Back."""
@@ -2963,6 +3068,14 @@ class HomeApp:
                     focus_media_id=focus,
                 )
             )
+        if hasattr(self, "_compare"):
+            self._compare.clear()
+            self._compare.set_result_ids(media_ids)
+        lines = list(lines) + [
+            "",
+            "Ctrl+click candidates (2–4), then Compare.",
+            "Keep / Reject are session decisions — not identity, not delete.",
+        ]
         self._show_library(filter_key=filt, similar_media_ids=media_ids)
         self._set_inspector("Details", lines)
         self._set_inspector_collapsed(False)
@@ -2983,7 +3096,11 @@ class HomeApp:
                 return
 
     def _discovery_back(self) -> None:
-        """Pop one discovery step; stay in Memory Canvas."""
+        """Pop one discovery/compare step; stay in Memory Canvas."""
+        cmp = getattr(self, "_compare", None)
+        if cmp is not None and cmp.active:
+            self._exit_compare()
+            return
         session = getattr(self, "_discovery", None)
         frame = session.pop() if session is not None else None
         if frame is None:
@@ -2996,6 +3113,8 @@ class HomeApp:
             )
         else:
             self._similar_media_ids = None
+            if cmp is not None:
+                cmp.clear()
             self._show_library(filter_key=filt)
         self._focus_library_media(frame.focus_media_id)
         self._set_inspector_collapsed(False)
@@ -3086,11 +3205,262 @@ class HomeApp:
         self._library_return = None
         if hasattr(self, "_discovery"):
             self._discovery.clear()
+        if hasattr(self, "_compare"):
+            self._compare.clear()
+        self._exit_compare(silent=True)
         filt = prior.get("filter") or getattr(self, "_library_filter", "all") or "all"
         self._show_library(filter_key=filt)
         self._focus_library_media(prior.get("media_id"))
         self._set_inspector_collapsed(True)
         self._sync_discovery_actions()
+
+    def _toggle_compare_candidate(self, media_id: str) -> None:
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not self._similar_media_ids:
+            return
+        if cmp.active:
+            return
+        cmp.set_result_ids(list(self._similar_media_ids))
+        selected = cmp.toggle_selected(media_id)
+        if hasattr(self._canvas_ws, "set_compare_marks"):
+            self._canvas_ws.set_compare_marks(selected)
+        from semblon.culling_compare import compare_unavailable_lines
+
+        ok, _reason = cmp.can_enter()
+        if ok:
+            lines = [
+                f"{len(selected)} candidates selected.",
+                "",
+                "Compare to inspect side by side.",
+                "Keep / Reject are session decisions — not identity, not delete.",
+            ]
+        else:
+            lines = compare_unavailable_lines(
+                selected_count=len(selected),
+                result_count=len(cmp.visible_result_ids()),
+            )
+        self._set_inspector("Details", lines)
+        self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _enter_compare(self) -> None:
+        from semblon.culling_compare import compare_unavailable_lines
+
+        cmp = getattr(self, "_compare", None)
+        if cmp is None:
+            return
+        if self._similar_media_ids:
+            cmp.set_result_ids(list(self._similar_media_ids))
+        ok, reason = cmp.enter()
+        if not ok:
+            self._set_inspector(
+                "Details",
+                compare_unavailable_lines(
+                    selected_count=len(cmp.selected_ids),
+                    result_count=len(cmp.visible_result_ids()),
+                ),
+            )
+            self._set_inspector_collapsed(False)
+            self._sync_discovery_actions()
+            return
+        self._show_library(
+            filter_key=getattr(self, "_library_filter", "all") or "all",
+            similar_media_ids=list(self._similar_media_ids or cmp.result_ids),
+        )
+        self._set_inspector(
+            "Details",
+            [
+                f"Comparing {len(cmp.compare_ids)} candidates.",
+                "",
+                "← / → move · K Keep · X Reject · Esc leave Compare",
+                "Decisions are for this discovery session only.",
+                "This is not a person identity decision.",
+            ],
+        )
+        self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _exit_compare(self, *, silent: bool = False) -> None:
+        cmp = getattr(self, "_compare", None)
+        if cmp is not None:
+            cmp.exit()
+        if silent:
+            try:
+                self._compare_pane.pack_forget()
+            except (tk.TclError, AttributeError):
+                pass
+            return
+        ids = list(self._similar_media_ids or (cmp.visible_result_ids() if cmp else []))
+        self._show_library(
+            filter_key=getattr(self, "_library_filter", "all") or "all",
+            similar_media_ids=ids if ids else None,
+        )
+        if ids:
+            self._set_inspector(
+                "Details",
+                [
+                    f"{len(cmp.visible_result_ids()) if cmp else len(ids)} similar results.",
+                    "",
+                    "Ctrl+click to select candidates, or open a photo to continue discovering.",
+                ],
+            )
+            self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _compare_decide(self, decision: str) -> None:
+        from semblon.culling_compare import decision_lines
+
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not cmp.active:
+            return
+        mid = cmp.focused_id()
+        if not mid:
+            return
+        rec = cmp.decide(mid, decision)
+        if not rec.get("ok"):
+            self._set_inspector("Details", [rec.get("reason") or "Decision failed."])
+            self._set_inspector_collapsed(False)
+            return
+        visible = list(rec.get("visible_ids") or [])
+        self._similar_media_ids = list(cmp.result_ids)
+        lines = decision_lines(decision, remaining=len(visible))
+        if cmp.active:
+            self._render_compare_pane()
+            self._set_inspector("Details", lines)
+            self._set_inspector_collapsed(False)
+        else:
+            self._show_library(
+                filter_key=getattr(self, "_library_filter", "all") or "all",
+                similar_media_ids=list(cmp.result_ids),
+            )
+            self._set_inspector("Details", lines)
+            self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _render_compare_pane(self) -> None:
+        from semblon.canvas import load_bgr, _png_photo
+        from semblon.product_surface import basename_path
+        from semblon.store import connect
+
+        cmp = getattr(self, "_compare", None)
+        tiles = getattr(self, "_compare_tiles", None)
+        if cmp is None or tiles is None:
+            return
+        for child in tiles.winfo_children():
+            child.destroy()
+        self._compare_photos = []
+        paths: dict[str, str] = {}
+        try:
+            con = connect(self.store)
+            try:
+                for mid in cmp.compare_ids:
+                    row = con.execute(
+                        "SELECT path FROM media WHERE media_id=?", (mid,)
+                    ).fetchone()
+                    if row:
+                        paths[mid] = row["path"] if hasattr(row, "keys") else row[0]
+            finally:
+                con.close()
+        except Exception:  # noqa: BLE001
+            paths = {}
+        focus = cmp.focused_id()
+        for mid in cmp.compare_ids:
+            col = tk.Frame(tiles, bg=BG_CANVAS, highlightthickness=2)
+            col.configure(
+                highlightbackground=ACCENT if mid == focus else BG_SUBTLE,
+                highlightcolor=ACCENT if mid == focus else BG_SUBTLE,
+            )
+            col.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=SP_4)
+            path = paths.get(mid)
+            img = load_bgr(path) if path else None
+            if img is not None:
+                try:
+                    b64, _s, nw, nh = _png_photo(img, max_side=280)
+                    photo = tk.PhotoImage(data=b64)
+                    self._compare_photos.append(photo)
+                    tk.Label(col, image=photo, bg=BG_CANVAS).pack(pady=(SP_8, SP_4))
+                except Exception:  # noqa: BLE001
+                    tk.Label(col, text="(preview unavailable)", bg=BG_CANVAS, fg=TEXT_SECONDARY).pack()
+            else:
+                tk.Label(col, text="(unreadable)", bg=BG_CANVAS, fg=TEXT_SECONDARY).pack()
+            tk.Label(
+                col,
+                text=basename_path(path) if path else mid,
+                bg=BG_CANVAS,
+                fg=TEXT_PRIMARY,
+                font=CAPTION,
+                wraplength=200,
+            ).pack()
+            btns = tk.Frame(col, bg=BG_CANVAS)
+            btns.pack(pady=SP_8)
+            _button(
+                btns,
+                "Keep",
+                lambda m=mid: self._compare_decide_media(m, "keep"),
+                kind="secondary",
+                plate=BG_CANVAS,
+            ).pack(side=tk.LEFT, padx=2)
+            _button(
+                btns,
+                "Reject",
+                lambda m=mid: self._compare_decide_media(m, "reject"),
+                kind="secondary",
+                plate=BG_CANVAS,
+            ).pack(side=tk.LEFT, padx=2)
+            col.bind("<Button-1>", lambda _e, m=mid: self._compare_focus(m))
+
+    def _compare_focus(self, media_id: str) -> None:
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not cmp.active or media_id not in cmp.compare_ids:
+            return
+        cmp.focus_index = cmp.compare_ids.index(media_id)
+        self._render_compare_pane()
+        self._sync_discovery_actions()
+
+    def _compare_decide_media(self, media_id: str, decision: str) -> None:
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not cmp.active:
+            return
+        if media_id in cmp.compare_ids:
+            cmp.focus_index = cmp.compare_ids.index(media_id)
+        self._compare_decide(decision)
+
+    def _on_discovery_escape(self, _event=None):
+        if getattr(self, "_compare", None) and self._compare.active:
+            self._exit_compare()
+            return "break"
+        return None
+
+    def _on_compare_arrow(self, delta: int, event=None):
+        if self._hotkey_blocked(event):
+            return None
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not cmp.active:
+            return None
+        mid = cmp.move_focus(delta)
+        if mid:
+            self._render_compare_pane()
+            self._sync_discovery_actions()
+        return "break"
+
+    def _on_compare_hotkey(self, decision: str, event=None):
+        if self._hotkey_blocked(event):
+            return None
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not cmp.active:
+            return None
+        self._compare_decide(decision)
+        return "break"
+
+    def _hotkey_blocked(self, event=None) -> bool:
+        w = getattr(event, "widget", None) if event is not None else None
+        if w is None:
+            try:
+                w = self.root.focus_get()
+            except tk.TclError:
+                w = None
+        cls = w.winfo_class() if w is not None else ""
+        return cls in {"Entry", "TEntry", "Text", "TCombobox"}
 
     def _show_home_landing(self) -> None:
         """Compatibility: cold landing is onboarding or Library."""
