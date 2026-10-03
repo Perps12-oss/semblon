@@ -47,7 +47,7 @@ def build_activity_workspace(host: Any) -> None:
     actions.pack(anchor=tk.W, pady=(0, SP_12))
     host.btn_activity_review = Button(
         actions,
-        text="Review people",
+        text="Start naming",
         command=lambda: host._navigate("unknown"),
         kind="secondary",
     )
@@ -189,9 +189,9 @@ def activity_feature() -> Feature:
                 run=_cmd_open_people,
                 surfaces=frozenset({"palette", "overflow"}),
             ),
-            GuiCommand(
+                GuiCommand(
                 id="activity.review_people",
-                label="Review people",
+                label="Start naming",
                 run=_cmd_review_people,
                 surfaces=frozenset({"palette", "overflow"}),
             ),

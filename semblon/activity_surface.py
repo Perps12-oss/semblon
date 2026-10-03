@@ -393,7 +393,7 @@ def format_activity_memory_lines(view: dict[str, Any]) -> list[str]:
         # Honest partial — already covered by section empties; keep one coach line.
         if view.get("has_unnamed"):
             lines.append("")
-            lines.append("Review people to grow this history.")
+            lines.append("Start naming to grow this history.")
 
     return lines
 

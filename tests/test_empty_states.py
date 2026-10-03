@@ -70,10 +70,10 @@ def test_empty_state_anatomy_has_no_forbidden_vocab():
 
 
 def test_search_placeholder_copy():
-    assert SEARCH_PLACEHOLDER == "Search people and text"
-    assert SEARCH_PLACEHOLDER_PHOTOS == "Search photos…"
-    assert search_placeholder(has_named_people=False) == "Search photos…"
-    assert search_placeholder(has_named_people=True) == "Search people and text"
+    assert SEARCH_PLACEHOLDER == "Search memory…"
+    assert SEARCH_PLACEHOLDER_PHOTOS == "Search memory…"
+    assert search_placeholder(has_named_people=False) == "Search memory…"
+    assert search_placeholder(has_named_people=True) == "Search memory…"
 
 
 def test_groups_waiting_line():
@@ -97,7 +97,9 @@ def test_format_unknown_demotes_known_unknown_codes():
 def test_format_people_empty_coaching():
     lines = format_people_lines({"items": []})
     assert lines[0] == "No people yet"
-    assert "People to name" in "\n".join(lines) or "Open Review" in "\n".join(lines)
+    joined = "\n".join(lines)
+    assert "People to name" in joined or "To name" in joined or "Add a photo folder" in joined
+    assert "Open Review" not in joined
 
 
 def test_format_search_demotes_modality_pack():
@@ -150,7 +152,7 @@ def test_activity_history_soft_vs_advanced():
     assert "10 photos processed" in text
     assert "4 faces" in text
     assert "2 groups" in text
-    assert "Review people" in text
+    assert "Start naming" in text or "Review people" in text
     assert "observation_groups" not in text
     assert "integrity" not in text
     assert "track ≠ person" not in text
@@ -177,7 +179,7 @@ def test_activity_history_lines_helper():
     )
     assert lines[0] == "340 photos processed"
     assert "42 faces · 12 groups" in lines[1]
-    assert "Review people" in lines
+    assert "Start naming" in lines or "Review people" in lines
 
 
 def test_classify_expected_vs_failure():

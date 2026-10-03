@@ -101,13 +101,13 @@ def people_empty() -> EmptyState:
     return EmptyState(
         headline="No people yet",
         description=(
-            "Open People to name, pick a group you recognise, "
-            "and give them a name."
+            "Add a photo folder first. Semblon will find face groups "
+            "you can name under People → To name."
         ),
-        primary_action="People to name",
-        action_id=ACTION_REVIEW_PEOPLE,
-        tertiary_action="Open Review",
-        tertiary_action_id=ACTION_OPEN_REVIEW,
+        primary_action="Add a photo folder",
+        action_id=ACTION_ADD_FOLDER,
+        tertiary_action="Go to To name",
+        tertiary_action_id=ACTION_REVIEW_PEOPLE,
     )
 
 
@@ -162,9 +162,9 @@ def search_no_store() -> EmptyState:
 def search_no_named_people() -> EmptyState:
     return EmptyState(
         headline="No named people yet",
-        description="After you review and name people, you can find them here.",
-        primary_action="Open Review",
-        action_id=ACTION_OPEN_REVIEW,
+        description="After you name people under To name, you can find them here.",
+        primary_action="Start naming",
+        action_id=ACTION_REVIEW_PEOPLE,
     )
 
 
@@ -187,10 +187,8 @@ def search_library_analysing() -> EmptyState:
         description=(
             "Semblon is still finding faces and building your photo library. "
             "Search will work better when this finishes — or try a name you "
-            "have already reviewed."
+            "have already given."
         ),
-        primary_action="Open Review",
-        action_id=ACTION_OPEN_REVIEW,
     )
 
 
@@ -295,7 +293,7 @@ def activity_history_lines(
     if stamped:
         lines.append(stamped)
     if has_unnamed:
-        lines.append("Review people")
+        lines.append("Start naming")
     return lines
 
 
