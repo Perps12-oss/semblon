@@ -916,6 +916,10 @@ class HomeApp:
 
         self._discovery = DiscoverySession()
         self._compare = CompareSession()
+        self._result_kind: str | None = None  # "similar" | "duplicates" | None
+        self._duplicate_groups: list[dict] = []
+        self._duplicate_group_index: int = 0
+        self._duplicate_scan: dict | None = None
         from semblon.scan_present import ScanPace
 
         self._scan_pace = ScanPace()
@@ -987,6 +991,7 @@ class HomeApp:
         self.root.bind("<Escape>", self._on_discovery_escape)
         self.root.bind("<Left>", lambda e: self._on_compare_arrow(-1, e))
         self.root.bind("<Right>", lambda e: self._on_compare_arrow(1, e))
+        self.root.bind("<Return>", self._on_discovery_return)
         self.root.bind("<Key-k>", lambda e: self._on_compare_hotkey("keep", e))
         self.root.bind("<Key-K>", lambda e: self._on_compare_hotkey("keep", e))
         self.root.bind("<Key-x>", lambda e: self._on_compare_hotkey("reject", e))
@@ -1321,6 +1326,14 @@ class HomeApp:
             actions, "Reject", lambda: self._compare_decide("reject"), kind="secondary"
         )
         self.btn_reject.pack(fill=tk.X, pady=1)
+        self.btn_duplicates = _button(
+            actions, "Find Duplicates", self._scan_duplicates, kind="secondary"
+        )
+        self.btn_duplicates.pack(fill=tk.X, pady=1)
+        self.btn_open_dup_group = _button(
+            actions, "Open Duplicate Group", self._open_selected_duplicate_group, kind="secondary"
+        )
+        self.btn_open_dup_group.pack(fill=tk.X, pady=1)
         self.btn_ask_lens = _button(
             actions, "Ask about this photo", self._ask_with_lens, kind="secondary", icon="lens"
         )
@@ -1338,8 +1351,10 @@ class HomeApp:
                 "compare.exit",
                 "media.keep",
                 "media.reject",
+                "library.duplicates",
+                "duplicates.open_group",
             }:
-                # Verbs packed from INSPECTOR_VERB_SPECS. Region / Similar / Compare above.
+                # Verbs packed from INSPECTOR_VERB_SPECS / discovery / duplicates above.
                 continue
             btn = _button(
                 actions,
@@ -2061,16 +2076,40 @@ class HomeApp:
             except tk.TclError:
                 pass
         n_sel = len(cmp.selected_ids) if cmp else 0
-        if getattr(self, "_similar_title", None) is not None and getattr(
-            self, "_similar_media_ids", None
+        kind = getattr(self, "_result_kind", None)
+        if getattr(self, "_similar_title", None) is not None and (
+            getattr(self, "_similar_media_ids", None) or kind == "duplicates"
         ):
-            base = "Similar to selected region"
+            if kind == "duplicates":
+                n_groups = len(getattr(self, "_duplicate_groups", None) or [])
+                base = f"Exact duplicates · {n_groups} group{'s' if n_groups != 1 else ''}"
+            else:
+                base = "Similar to selected region"
             if comparing:
                 self._similar_title.set("Comparing candidates")
             elif n_sel:
                 self._similar_title.set(f"{base} · {n_sel} selected")
             else:
                 self._similar_title.set(base)
+        for attr in ("btn_duplicates",):
+            btn = getattr(self, attr, None)
+            if btn is None:
+                continue
+            try:
+                btn.configure(state=tk.NORMAL if not comparing else tk.DISABLED)
+            except tk.TclError:
+                pass
+        open_g = getattr(self, "btn_open_dup_group", None)
+        if open_g is not None:
+            can_open = bool(
+                kind == "duplicates"
+                and (getattr(self, "_duplicate_groups", None) or [])
+                and not comparing
+            )
+            try:
+                open_g.configure(state=tk.NORMAL if can_open else tk.DISABLED)
+            except tk.TclError:
+                pass
 
     def _sync_name_save_button(self) -> None:
         """Name this person is enabled when a nameable selection has typed text."""
@@ -2925,6 +2964,10 @@ class HomeApp:
             self._discovery.clear()
         if hasattr(self, "_compare"):
             self._compare.clear()
+        self._result_kind = None
+        self._duplicate_groups = []
+        self._duplicate_group_index = 0
+        self._duplicate_scan = None
         self._library_return = None
         self._exit_compare(silent=True)
         self._show_library(filter_key=self._library_filter)
@@ -2973,7 +3016,7 @@ class HomeApp:
                 similar.pack_forget()
             except tk.TclError:
                 pass
-            if self._similar_media_ids:
+            if self._similar_media_ids or getattr(self, "_result_kind", None) == "duplicates":
                 similar.pack(anchor=tk.W, fill=tk.X, pady=(SP_8, 0))
 
         self._library_chrome.pack(fill=tk.X, anchor=tk.N)
@@ -3071,6 +3114,9 @@ class HomeApp:
         if hasattr(self, "_compare"):
             self._compare.clear()
             self._compare.set_result_ids(media_ids)
+        self._result_kind = "similar"
+        self._duplicate_groups = []
+        self._duplicate_group_index = 0
         lines = list(lines) + [
             "",
             "Ctrl+click candidates (2–4), then Compare.",
@@ -3207,11 +3253,165 @@ class HomeApp:
             self._discovery.clear()
         if hasattr(self, "_compare"):
             self._compare.clear()
+        self._result_kind = None
+        self._duplicate_groups = []
+        self._duplicate_group_index = 0
+        self._duplicate_scan = None
         self._exit_compare(silent=True)
         filt = prior.get("filter") or getattr(self, "_library_filter", "all") or "all"
         self._show_library(filter_key=filt)
         self._focus_library_media(prior.get("media_id"))
         self._set_inspector_collapsed(True)
+        self._sync_discovery_actions()
+
+    def _scan_duplicates(self) -> None:
+        """Exact SHA-256 duplicate scan → grouped results (Memory Canvas context)."""
+        from semblon.discovery_loop import DiscoveryFrame
+        from semblon.duplicates import find_exact_duplicate_groups, group_lines
+
+        filt = getattr(self, "_library_filter", "all") or "all"
+        focus = getattr(self, "_insp_media_id", None)
+        if getattr(self, "_library_return", None) is None:
+            self._library_return = {"filter": filt, "media_id": focus}
+        if hasattr(self, "_discovery"):
+            self._discovery.push(
+                DiscoveryFrame(
+                    filter_key=filt,
+                    similar_media_ids=(
+                        list(self._similar_media_ids)
+                        if self._similar_media_ids
+                        else None
+                    ),
+                    query_media_id=focus,
+                    focus_media_id=focus,
+                )
+            )
+        self._set_inspector(
+            "Duplicates",
+            [
+                "Scanning for exact duplicates (SHA-256)…",
+                "",
+                "Near duplicates are unavailable in this build.",
+            ],
+        )
+        self._set_inspector_collapsed(False)
+        root = getattr(self, "root", None)
+        if root is not None:
+            try:
+                root.update_idletasks()
+            except tk.TclError:
+                pass
+        result = find_exact_duplicate_groups(self.store)
+        self._apply_duplicate_result(result)
+
+    def _apply_duplicate_result(self, result: dict | None) -> None:
+        from semblon.duplicates import group_lines
+
+        result = result or {}
+        self._duplicate_scan = result
+        self._result_kind = "duplicates"
+        self._duplicate_groups = list(result.get("groups") or [])
+        self._duplicate_group_index = 0
+        if hasattr(self, "_compare"):
+            self._compare.clear()
+        media_ids: list[str] = []
+        seen: set[str] = set()
+        for g in self._duplicate_groups:
+            for mid in g.get("media_ids") or []:
+                if mid and mid not in seen:
+                    seen.add(str(mid))
+                    media_ids.append(str(mid))
+        filt = getattr(self, "_library_filter", "all") or "all"
+        if media_ids:
+            self._show_library(filter_key=filt, similar_media_ids=media_ids)
+        else:
+            self._similar_media_ids = None
+            self._show_library(filter_key=filt)
+        lines = group_lines(result)
+        if self._duplicate_groups:
+            lines = lines + [
+                "",
+                "← / → choose group · Enter or Open Duplicate Group · then Compare.",
+            ]
+        self._set_inspector("Duplicates", lines)
+        self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _open_selected_duplicate_group(self) -> None:
+        from semblon.discovery_loop import DiscoveryFrame
+        from semblon.duplicates import open_group_lines
+
+        groups = list(getattr(self, "_duplicate_groups", None) or [])
+        if not groups:
+            self._set_inspector(
+                "Duplicates",
+                ["No duplicate groups to open.", "", "Run Find Duplicates first."],
+            )
+            self._set_inspector_collapsed(False)
+            return
+        idx = max(0, min(int(self._duplicate_group_index), len(groups) - 1))
+        group = groups[idx]
+        media_ids = [str(m) for m in (group.get("media_ids") or []) if m]
+        filt = getattr(self, "_library_filter", "all") or "all"
+        if hasattr(self, "_discovery"):
+            self._discovery.push(
+                DiscoveryFrame(
+                    filter_key=filt,
+                    similar_media_ids=(
+                        list(self._similar_media_ids)
+                        if self._similar_media_ids
+                        else None
+                    ),
+                    query_media_id=getattr(self, "_insp_media_id", None),
+                    focus_media_id=getattr(self, "_insp_media_id", None),
+                )
+            )
+        self._result_kind = "duplicates"
+        lines = open_group_lines(group, index=idx + 1)
+        if not media_ids:
+            self._set_inspector(
+                "Duplicates",
+                lines
+                + [
+                    "",
+                    "None of these paths are in the library index yet.",
+                    "They are exact byte duplicates on disk — not deleted.",
+                ],
+            )
+            self._set_inspector_collapsed(False)
+            self._sync_discovery_actions()
+            return
+        if hasattr(self, "_compare"):
+            self._compare.clear()
+            self._compare.set_result_ids(media_ids)
+            for mid in media_ids[:4]:
+                self._compare.toggle_selected(mid)
+        self._show_library(filter_key=filt, similar_media_ids=media_ids)
+        self._set_inspector("Duplicates", lines)
+        self._set_inspector_collapsed(False)
+        if len(media_ids) >= 2:
+            self._enter_compare()
+        else:
+            self._sync_discovery_actions()
+
+    def _move_duplicate_group(self, delta: int) -> None:
+        groups = list(getattr(self, "_duplicate_groups", None) or [])
+        if not groups or getattr(self, "_result_kind", None) != "duplicates":
+            return
+        if getattr(self, "_compare", None) and self._compare.active:
+            return
+        self._duplicate_group_index = max(
+            0, min(self._duplicate_group_index + int(delta), len(groups) - 1)
+        )
+        from semblon.duplicates import open_group_lines
+
+        g = groups[self._duplicate_group_index]
+        self._set_inspector(
+            "Duplicates",
+            open_group_lines(g, index=self._duplicate_group_index + 1)
+            + ["", "Enter opens this group for Compare."],
+        )
+        self._set_inspector_collapsed(False)
         self._sync_discovery_actions()
 
     def _toggle_compare_candidate(self, media_id: str) -> None:
@@ -3426,8 +3626,22 @@ class HomeApp:
         self._compare_decide(decision)
 
     def _on_discovery_escape(self, _event=None):
+        if self._hotkey_blocked(_event):
+            return None
         if getattr(self, "_compare", None) and self._compare.active:
             self._exit_compare()
+            return "break"
+        return None
+
+    def _on_discovery_return(self, event=None):
+        if self._hotkey_blocked(event):
+            return None
+        if getattr(self, "_compare", None) and self._compare.active:
+            return None
+        if getattr(self, "_result_kind", None) == "duplicates" and (
+            getattr(self, "_duplicate_groups", None) or []
+        ):
+            self._open_selected_duplicate_group()
             return "break"
         return None
 
@@ -3435,13 +3649,16 @@ class HomeApp:
         if self._hotkey_blocked(event):
             return None
         cmp = getattr(self, "_compare", None)
-        if cmp is None or not cmp.active:
-            return None
-        mid = cmp.move_focus(delta)
-        if mid:
-            self._render_compare_pane()
-            self._sync_discovery_actions()
-        return "break"
+        if cmp is not None and cmp.active:
+            mid = cmp.move_focus(delta)
+            if mid:
+                self._render_compare_pane()
+                self._sync_discovery_actions()
+            return "break"
+        if getattr(self, "_result_kind", None) == "duplicates":
+            self._move_duplicate_group(delta)
+            return "break"
+        return None
 
     def _on_compare_hotkey(self, decision: str, event=None):
         if self._hotkey_blocked(event):
