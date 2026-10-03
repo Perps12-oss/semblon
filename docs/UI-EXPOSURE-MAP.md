@@ -103,7 +103,7 @@ Nav/registry source: `product_features.py` / `gui_registry` (internal route ids)
 | Review UI | More → Open Review / `semblon review-ui` | `review_ui.py`; optional `review_chrome/` | **SECONDARY** · **KEEP** evidence vertical (Toplevel on Home) |
 | Canvas (standalone / Explore) | More → Explore / `semblon canvas` | `canvas.py` | **SECONDARY** (also embedded under Photos) |
 | Live overlay | More → Live… | `live_overlay.py` | **SECONDARY** · experimental continuous surface |
-| Folder watch | *not in Home nav* | `semblon watch` | **CLI** today → product candidate as **SECONDARY** later |
+| Folder watch (continuous) | CLI only — Home More “Add or update…” is **one-shot ingest**, not `watch.watch_folder` | `semblon watch` | **CLI** · deferred product SECONDARY (requires explicit continuous UI, not silent Add Folder) |
 | `review.html` | Settings → Advanced → Open export review page | `export.py` / `_open_html` | **SUPERSEDED as UX** · export artifact only |
 
 ### Audit anchors (secondary)
@@ -214,3 +214,19 @@ Remaining honesty: optional model install / Windows verification of every Lens b
 - Not Windows verification of Lens backends (see COMPLETION-MATRIX schema list = PARTIAL)
 
 When adding UI, update this file’s class for the surface in the same PR.
+
+---
+
+## I. Closure-pass deferred surfaces (2026-10-03)
+
+Recorded so no audit finding stays ambiguous. Not KEEP work for the next slice unless chosen.
+
+| Finding | Status | Prerequisite |
+|---|---|---|
+| Context menu (`surfaces=context`) | **DEFERRED** | Small Model D Button-3 consumer over existing GuiCommand registry — no second catalogue; skip until shell owns a native context host |
+| Continuous folder watch | **DEFERRED** | Explicit SECONDARY continuous UI calling `watch.watch_folder`; must not silently change Add Folder |
+| Near-duplicates | **DEFERRED** | New perceptual signature path; never reuse Find Similar or exact SHA |
+| Durable Keep/Reject | **DEFERRED** | Designed persistence/domain contract; Compare session-only remains valid |
+| Related (library graph) | **DEFERRED** | Dedicated Related backend; do not promote spatial `related_labels` or ANN lab |
+| Timeline / Folders browser | **DEFERRED** | Model D Explore surface over memory events/folders — full browser, not Activity soft lines |
+| Semantic identity hypotheses | **DEFERRED** | Explicit SEM-ARCH authorization; identity firewall unchanged |

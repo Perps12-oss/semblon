@@ -59,7 +59,14 @@ def open_region_select(home) -> None:
             "h": int(rect["h"]),
             "kept": True,
         }
+        if hasattr(home, "_remember_user_region_id"):
+            home._remember_user_region_id(rec)
         done(rec.get("lines") or ["No similar images found yet."])
+        if hasattr(home, "_sync_discovery_actions"):
+            try:
+                home._sync_discovery_actions()
+            except Exception:  # noqa: BLE001
+                pass
 
     def on_busy(flag: bool) -> None:
         home._lens_busy = bool(flag)

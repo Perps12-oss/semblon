@@ -10,6 +10,7 @@ from semblon.product_surface import (
     VERB_LABEL_IGNORE,
     VERB_LABEL_MERGE,
     VERB_LABEL_NAME,
+    VERB_LABEL_NOTE,
     VERB_LABEL_RULE_OUT,
     VERB_LABEL_SPLIT,
 )
@@ -25,6 +26,7 @@ def test_inspector_verbs_registered_on_inspector_only():
         "inspector.verb.split": VERB_LABEL_SPLIT,
         "inspector.verb.rule_out": VERB_LABEL_RULE_OUT,
         "inspector.verb.ignore": VERB_LABEL_IGNORE,
+        "inspector.verb.note": VERB_LABEL_NOTE,
     }
     assert [spec[1] for spec in INSPECTOR_VERB_SPECS] == list(expected)
     for cmd_id, label in expected.items():

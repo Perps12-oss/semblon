@@ -115,10 +115,17 @@ GUI_PATHS: tuple[tuple[str, ExposureClass, str, str, str], ...] = (
         "DEMOTE",
     ),
     (
-        "Live / Watch",
+        "Live overlay",
         "SECONDARY",
-        "More → Live… / semblon live|watch",
-        "live_overlay / watch",
+        "More → Live… / semblon live",
+        "live_overlay",
+        "KEEP",
+    ),
+    (
+        "Continuous folder watch",
+        "CLI",
+        "semblon watch only — Home “Add or update this folder…” is one-shot ingest",
+        "watch.watch_folder",
         "KEEP",
     ),
     (

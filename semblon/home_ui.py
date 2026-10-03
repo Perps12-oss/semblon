@@ -916,6 +916,10 @@ class HomeApp:
 
         self._discovery = DiscoverySession()
         self._compare = CompareSession()
+        self._result_kind: str | None = None  # "similar" | "duplicates" | None
+        self._duplicate_groups: list[dict] = []
+        self._duplicate_group_index: int = 0
+        self._duplicate_scan: dict | None = None
         from semblon.scan_present import ScanPace
 
         self._scan_pace = ScanPace()
@@ -987,6 +991,7 @@ class HomeApp:
         self.root.bind("<Escape>", self._on_discovery_escape)
         self.root.bind("<Left>", lambda e: self._on_compare_arrow(-1, e))
         self.root.bind("<Right>", lambda e: self._on_compare_arrow(1, e))
+        self.root.bind("<Return>", self._on_discovery_return)
         self.root.bind("<Key-k>", lambda e: self._on_compare_hotkey("keep", e))
         self.root.bind("<Key-K>", lambda e: self._on_compare_hotkey("keep", e))
         self.root.bind("<Key-x>", lambda e: self._on_compare_hotkey("reject", e))
@@ -1311,6 +1316,14 @@ class HomeApp:
             actions, "Find Similar", self._find_similar_in_workspace, kind="secondary"
         )
         self.btn_find_similar.pack(fill=tk.X, pady=1)
+        self.btn_ask_selection = _button(
+            actions, "Ask about this selection", self._ask_about_selection, kind="secondary"
+        )
+        self.btn_ask_selection.pack(fill=tk.X, pady=1)
+        self.btn_name_region = _button(
+            actions, "Name this region", self._name_saved_region, kind="secondary"
+        )
+        self.btn_name_region.pack(fill=tk.X, pady=1)
         self.btn_compare = _button(
             actions, "Compare", self._enter_compare, kind="secondary"
         )
@@ -1321,25 +1334,36 @@ class HomeApp:
             actions, "Reject", lambda: self._compare_decide("reject"), kind="secondary"
         )
         self.btn_reject.pack(fill=tk.X, pady=1)
+        self.btn_duplicates = _button(
+            actions, "Find Duplicates", self._scan_duplicates, kind="secondary"
+        )
+        self.btn_duplicates.pack(fill=tk.X, pady=1)
+        self.btn_open_dup_group = _button(
+            actions, "Open Duplicate Group", self._open_selected_duplicate_group, kind="secondary"
+        )
+        self.btn_open_dup_group.pack(fill=tk.X, pady=1)
         self.btn_ask_lens = _button(
             actions, "Ask about this photo", self._ask_with_lens, kind="secondary", icon="lens"
         )
         self.btn_ask_lens.pack(fill=tk.X, pady=1)
-        # Registry contextual commands (person.history, identify, …) — same widgets
-        # pattern; labels/enablement come from GuiCommand metadata.
+        # Registry contextual commands (person.history, identify, Leave Compare, …).
+        # compare.exit is packed here so Leave Compare is an Inspector control.
         self._registry_cmd_buttons: dict[str, object] = {}
         _verb_ids = {spec[1] for spec in INSPECTOR_VERB_SPECS}
         for cmd in self._registry.commands(surface="inspector"):
             if cmd.id in _verb_ids or cmd.id in {
                 "lens.select_region",
                 "lens.ask",
+                "lens.ask_selection",
+                "lens.name_region",
                 "lens.find_similar",
                 "compare.enter",
-                "compare.exit",
                 "media.keep",
                 "media.reject",
+                "library.duplicates",
+                "duplicates.open_group",
             }:
-                # Verbs packed from INSPECTOR_VERB_SPECS. Region / Similar / Compare above.
+                # Verbs packed from INSPECTOR_VERB_SPECS / discovery / duplicates above.
                 continue
             btn = _button(
                 actions,
@@ -1360,6 +1384,7 @@ class HomeApp:
         self._insp_selected: list[dict] = []
         self._insp_target_person_id: str | None = None
         self._insp_target_person_name: str | None = None
+        self._last_user_region_id: str | None = None
         self._verb_states: dict = {}
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -1545,6 +1570,146 @@ class HomeApp:
             )
             return
         self._open_lens()
+
+    def _selection_query_rect(self) -> dict | None:
+        """Current Discover/Canvas/last-remembered rectangle, if any."""
+        from semblon.discovery_loop import image_rect_from_selection
+        from semblon.selection import media_file
+
+        media_id = getattr(self, "_insp_media_id", None)
+        if media_file(self.store, media_id) is None:
+            return None
+        session = getattr(self, "_discovery", None)
+        if session is not None and session.query_rect and (
+            not session.query_media_id or str(session.query_media_id) == str(media_id)
+        ):
+            return dict(session.query_rect)
+        ws = getattr(self, "_canvas_ws", None)
+        sel = getattr(ws, "_selected", None) if ws is not None else None
+        rect = image_rect_from_selection(sel)
+        if rect:
+            return rect
+        last = getattr(self, "_last_lens_rect", None)
+        if isinstance(last, dict) and last.get("kept"):
+            return {
+                "x": int(last["x"]),
+                "y": int(last["y"]),
+                "w": int(last["w"]),
+                "h": int(last["h"]),
+            }
+        return None
+
+    def _ask_about_selection(self) -> None:
+        """Capability query on the selected region — distinct from Find Similar."""
+        from semblon.selection import (
+            LENS_BUSY,
+            lens_result_summary,
+            media_file,
+            run_lens_query,
+        )
+
+        media_id = getattr(self, "_insp_media_id", None)
+        path = media_file(self.store, media_id)
+        rect = self._selection_query_rect()
+        if path is None or rect is None:
+            self._set_inspector(
+                "Ask",
+                [
+                    "Select a region on a photo first.",
+                    "Ask understands that selection. Find Similar searches for matches.",
+                    "Nothing was searched.",
+                ],
+            )
+            self._set_inspector_collapsed(False)
+            return
+
+        def done(lines: list[str]) -> None:
+            try:
+                self._set_inspector("Ask", lines or ["Nothing was searched."])
+                self._set_inspector_collapsed(False)
+            except Exception:  # noqa: BLE001
+                pass
+
+        def on_report(report) -> None:
+            self._last_lens_result = lens_result_summary(report)
+
+        def on_busy(flag: bool) -> None:
+            self._lens_busy = bool(flag)
+            try:
+                if hasattr(self, "_lens_status"):
+                    self._lens_status.set(LENS_BUSY if flag else "")
+            except Exception:  # noqa: BLE001
+                pass
+
+        def on_error(exc: BaseException) -> None:
+            self._set_inspector(
+                "Ask",
+                ["Semblon could not finish looking.", "Nothing was searched.", str(exc)],
+            )
+            self._set_inspector_collapsed(False)
+
+        run_lens_query(
+            path,
+            x=int(rect["x"]),
+            y=int(rect["y"]),
+            w=int(rect["w"]),
+            h=int(rect["h"]),
+            schedule=lambda fn: self.root.after(0, fn),
+            on_lines=done,
+            on_report=on_report,
+            on_busy=on_busy,
+            on_error=on_error,
+        )
+
+    def _name_saved_region(self) -> None:
+        """Human label on a persisted user region — not a person."""
+        from tkinter import simpledialog
+
+        from semblon.application import Application
+        from semblon.user_region import RegionError
+
+        item_id = getattr(self, "_last_user_region_id", None)
+        if not item_id:
+            messagebox.showinfo(
+                "Semblon",
+                "Select a region and run Find Similar (or remember it) first.",
+            )
+            return
+        label = simpledialog.askstring(
+            "Name this region",
+            "Label for this selection (not a person name):",
+            parent=self.root,
+        )
+        if not label or not str(label).strip():
+            return
+        try:
+            app = Application(self.store)
+            rec = app.name_region(str(item_id), str(label).strip())
+        except RegionError as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        except Exception as e:  # noqa: BLE001
+            messagebox.showerror("Semblon", f"Could not name region: {e}")
+            return
+        named = rec.get("named") or label
+        self._set_inspector(
+            "Region",
+            [
+                f"Named this region: {named}",
+                "This is a label on a saved selection — not a person.",
+            ],
+        )
+        self._set_inspector_collapsed(False)
+        self.status.set(f"Region labeled {named!r}.")
+        self._sync_discovery_actions()
+
+    def _remember_user_region_id(self, rec: dict | None) -> None:
+        region = (rec or {}).get("region") if isinstance(rec, dict) else None
+        if isinstance(region, dict) and region.get("item_id"):
+            try:
+                self._last_user_region_id = str(region["item_id"])
+            except Exception:  # noqa: BLE001 — stubs / FakeHome
+                pass
 
     def _open_lens(self) -> None:
         """Lens route: coherent Inspect workspace inside Home (not a second app)."""
@@ -1810,6 +1975,7 @@ class HomeApp:
             "split": self._inspector_split,
             "rule_out": self._inspector_rule_out,
             "ignore": self._inspector_ignore,
+            "note": self._inspector_note,
         }.get(key)
         if fallback is not None:
             fallback()
@@ -1996,7 +2162,9 @@ class HomeApp:
                 "split": self.btn_split,
                 "rule_out": self.btn_rule_out,
                 "ignore": self.btn_ignore,
+                "note": getattr(self, "btn_note", None),
             }
+            buttons = {k: v for k, v in buttons.items() if v is not None}
         reasons: list[str] = []
         for key, btn in buttons.items():
             st = self._verb_states.get(key) or {}
@@ -2031,6 +2199,25 @@ class HomeApp:
                 btn.configure(state=tk.NORMAL if has_media and not comparing else tk.DISABLED)
             except tk.TclError:
                 pass
+        has_rect = self._selection_query_rect() is not None
+        ask_sel = getattr(self, "btn_ask_selection", None)
+        if ask_sel is not None:
+            try:
+                ask_sel.configure(
+                    state=tk.NORMAL if has_rect and not comparing else tk.DISABLED
+                )
+            except tk.TclError:
+                pass
+        name_reg = getattr(self, "btn_name_region", None)
+        if name_reg is not None:
+            try:
+                name_reg.configure(
+                    state=tk.NORMAL
+                    if getattr(self, "_last_user_region_id", None) and not comparing
+                    else tk.DISABLED
+                )
+            except tk.TclError:
+                pass
         can_compare = bool(cmp and cmp.can_enter()[0])
         for attr in ("btn_compare", "btn_bar_compare"):
             btn = getattr(self, attr, None)
@@ -2061,16 +2248,42 @@ class HomeApp:
             except tk.TclError:
                 pass
         n_sel = len(cmp.selected_ids) if cmp else 0
-        if getattr(self, "_similar_title", None) is not None and getattr(
-            self, "_similar_media_ids", None
+        kind = getattr(self, "_result_kind", None)
+        if getattr(self, "_similar_title", None) is not None and (
+            getattr(self, "_similar_media_ids", None) or kind == "duplicates"
         ):
-            base = "Similar to selected region"
+            if kind == "duplicates":
+                n_groups = len(getattr(self, "_duplicate_groups", None) or [])
+                base = f"Exact duplicates · {n_groups} group{'s' if n_groups != 1 else ''}"
+            else:
+                base = "Similar to selected region"
             if comparing:
                 self._similar_title.set("Comparing candidates")
             elif n_sel:
                 self._similar_title.set(f"{base} · {n_sel} selected")
             else:
                 self._similar_title.set(base)
+        for attr in ("btn_duplicates",):
+            btn = getattr(self, attr, None)
+            if btn is None:
+                continue
+            try:
+                btn.configure(state=tk.NORMAL if not comparing else tk.DISABLED)
+            except tk.TclError:
+                pass
+        open_g = getattr(self, "btn_open_dup_group", None)
+        if open_g is not None:
+            can_open = bool(
+                kind == "duplicates"
+                and (getattr(self, "_duplicate_groups", None) or [])
+                and not comparing
+            )
+            try:
+                open_g.configure(state=tk.NORMAL if can_open else tk.DISABLED)
+            except tk.TclError:
+                pass
+        # Leave Compare (compare.exit) and other registry inspector cmds.
+        self._sync_registry_inspector_commands()
 
     def _sync_name_save_button(self) -> None:
         """Name this person is enabled when a nameable selection has typed text."""
@@ -2211,6 +2424,40 @@ class HomeApp:
         self._name_var.set("")
         self._name_entry.selection_clear()
         self.root.focus_set()
+
+    def _inspector_note(self) -> None:
+        """Home Inspector note — same persistence as Review (decisions.kind=note)."""
+        from tkinter import simpledialog
+
+        from semblon.review import ReviewError
+        from semblon.review_ui import ReviewUiError, apply_note
+
+        rid = self._inspector_run_id()
+        items = list(getattr(self, "_insp_selected", None) or [])
+        item = None
+        for it in items:
+            kind = it.get("kind")
+            if kind == "cluster" and it.get("cluster_id"):
+                item = {"kind": "cluster", "cluster_id": it["cluster_id"]}
+                break
+            if kind in {"face", "unassigned"} and it.get("face_id"):
+                item = {"kind": "face", "face_id": it["face_id"]}
+                break
+        if not rid or item is None:
+            messagebox.showinfo(
+                "Semblon", "Select a face or group to add a note."
+            )
+            return
+        text = simpledialog.askstring("Note", "Review note:", parent=self.root)
+        if not text:
+            return
+        try:
+            apply_note(self.store, rid, item, text)
+        except (ReviewError, ReviewUiError) as e:
+            messagebox.showerror("Semblon", str(e))
+            return
+        self.status.set("Note saved.")
+        self._inspector_after_mutation()
 
     def _inspector_ignore(self) -> None:
         from semblon.inspector_verbs import apply_inspector_ignore
@@ -2925,6 +3172,10 @@ class HomeApp:
             self._discovery.clear()
         if hasattr(self, "_compare"):
             self._compare.clear()
+        self._result_kind = None
+        self._duplicate_groups = []
+        self._duplicate_group_index = 0
+        self._duplicate_scan = None
         self._library_return = None
         self._exit_compare(silent=True)
         self._show_library(filter_key=self._library_filter)
@@ -2973,7 +3224,7 @@ class HomeApp:
                 similar.pack_forget()
             except tk.TclError:
                 pass
-            if self._similar_media_ids:
+            if self._similar_media_ids or getattr(self, "_result_kind", None) == "duplicates":
                 similar.pack(anchor=tk.W, fill=tk.X, pady=(SP_8, 0))
 
         self._library_chrome.pack(fill=tk.X, anchor=tk.N)
@@ -3071,6 +3322,9 @@ class HomeApp:
         if hasattr(self, "_compare"):
             self._compare.clear()
             self._compare.set_result_ids(media_ids)
+        self._result_kind = "similar"
+        self._duplicate_groups = []
+        self._duplicate_group_index = 0
         lines = list(lines) + [
             "",
             "Ctrl+click candidates (2–4), then Compare.",
@@ -3190,6 +3444,9 @@ class HomeApp:
             "h": int(rect["h"]),
             "kept": True,
         }
+        remember = getattr(self, "_remember_user_region_id", None)
+        if callable(remember):
+            remember(rec)
         summary = rec.get("summary") or {}
         # Prefer product lines from lens_release; fall back to result_set_lines via apply.
         try:
@@ -3198,6 +3455,9 @@ class HomeApp:
         except Exception:  # noqa: BLE001
             pass
         self._apply_find_similar_result(summary)
+        sync = getattr(self, "_sync_discovery_actions", None)
+        if callable(sync):
+            sync()
 
     def _clear_similar_search(self) -> None:
         prior = getattr(self, "_library_return", None) or {}
@@ -3207,11 +3467,165 @@ class HomeApp:
             self._discovery.clear()
         if hasattr(self, "_compare"):
             self._compare.clear()
+        self._result_kind = None
+        self._duplicate_groups = []
+        self._duplicate_group_index = 0
+        self._duplicate_scan = None
         self._exit_compare(silent=True)
         filt = prior.get("filter") or getattr(self, "_library_filter", "all") or "all"
         self._show_library(filter_key=filt)
         self._focus_library_media(prior.get("media_id"))
         self._set_inspector_collapsed(True)
+        self._sync_discovery_actions()
+
+    def _scan_duplicates(self) -> None:
+        """Exact SHA-256 duplicate scan → grouped results (Memory Canvas context)."""
+        from semblon.discovery_loop import DiscoveryFrame
+        from semblon.duplicates import find_exact_duplicate_groups, group_lines
+
+        filt = getattr(self, "_library_filter", "all") or "all"
+        focus = getattr(self, "_insp_media_id", None)
+        if getattr(self, "_library_return", None) is None:
+            self._library_return = {"filter": filt, "media_id": focus}
+        if hasattr(self, "_discovery"):
+            self._discovery.push(
+                DiscoveryFrame(
+                    filter_key=filt,
+                    similar_media_ids=(
+                        list(self._similar_media_ids)
+                        if self._similar_media_ids
+                        else None
+                    ),
+                    query_media_id=focus,
+                    focus_media_id=focus,
+                )
+            )
+        self._set_inspector(
+            "Duplicates",
+            [
+                "Scanning for exact duplicates (SHA-256)…",
+                "",
+                "Near duplicates are unavailable in this build.",
+            ],
+        )
+        self._set_inspector_collapsed(False)
+        root = getattr(self, "root", None)
+        if root is not None:
+            try:
+                root.update_idletasks()
+            except tk.TclError:
+                pass
+        result = find_exact_duplicate_groups(self.store)
+        self._apply_duplicate_result(result)
+
+    def _apply_duplicate_result(self, result: dict | None) -> None:
+        from semblon.duplicates import group_lines
+
+        result = result or {}
+        self._duplicate_scan = result
+        self._result_kind = "duplicates"
+        self._duplicate_groups = list(result.get("groups") or [])
+        self._duplicate_group_index = 0
+        if hasattr(self, "_compare"):
+            self._compare.clear()
+        media_ids: list[str] = []
+        seen: set[str] = set()
+        for g in self._duplicate_groups:
+            for mid in g.get("media_ids") or []:
+                if mid and mid not in seen:
+                    seen.add(str(mid))
+                    media_ids.append(str(mid))
+        filt = getattr(self, "_library_filter", "all") or "all"
+        if media_ids:
+            self._show_library(filter_key=filt, similar_media_ids=media_ids)
+        else:
+            self._similar_media_ids = None
+            self._show_library(filter_key=filt)
+        lines = group_lines(result)
+        if self._duplicate_groups:
+            lines = lines + [
+                "",
+                "← / → choose group · Enter or Open Duplicate Group · then Compare.",
+            ]
+        self._set_inspector("Duplicates", lines)
+        self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _open_selected_duplicate_group(self) -> None:
+        from semblon.discovery_loop import DiscoveryFrame
+        from semblon.duplicates import open_group_lines
+
+        groups = list(getattr(self, "_duplicate_groups", None) or [])
+        if not groups:
+            self._set_inspector(
+                "Duplicates",
+                ["No duplicate groups to open.", "", "Run Find Duplicates first."],
+            )
+            self._set_inspector_collapsed(False)
+            return
+        idx = max(0, min(int(self._duplicate_group_index), len(groups) - 1))
+        group = groups[idx]
+        media_ids = [str(m) for m in (group.get("media_ids") or []) if m]
+        filt = getattr(self, "_library_filter", "all") or "all"
+        if hasattr(self, "_discovery"):
+            self._discovery.push(
+                DiscoveryFrame(
+                    filter_key=filt,
+                    similar_media_ids=(
+                        list(self._similar_media_ids)
+                        if self._similar_media_ids
+                        else None
+                    ),
+                    query_media_id=getattr(self, "_insp_media_id", None),
+                    focus_media_id=getattr(self, "_insp_media_id", None),
+                )
+            )
+        self._result_kind = "duplicates"
+        lines = open_group_lines(group, index=idx + 1)
+        if not media_ids:
+            self._set_inspector(
+                "Duplicates",
+                lines
+                + [
+                    "",
+                    "None of these paths are in the library index yet.",
+                    "They are exact byte duplicates on disk — not deleted.",
+                ],
+            )
+            self._set_inspector_collapsed(False)
+            self._sync_discovery_actions()
+            return
+        if hasattr(self, "_compare"):
+            self._compare.clear()
+            self._compare.set_result_ids(media_ids)
+            for mid in media_ids[:4]:
+                self._compare.toggle_selected(mid)
+        self._show_library(filter_key=filt, similar_media_ids=media_ids)
+        self._set_inspector("Duplicates", lines)
+        self._set_inspector_collapsed(False)
+        if len(media_ids) >= 2:
+            self._enter_compare()
+        else:
+            self._sync_discovery_actions()
+
+    def _move_duplicate_group(self, delta: int) -> None:
+        groups = list(getattr(self, "_duplicate_groups", None) or [])
+        if not groups or getattr(self, "_result_kind", None) != "duplicates":
+            return
+        if getattr(self, "_compare", None) and self._compare.active:
+            return
+        self._duplicate_group_index = max(
+            0, min(self._duplicate_group_index + int(delta), len(groups) - 1)
+        )
+        from semblon.duplicates import open_group_lines
+
+        g = groups[self._duplicate_group_index]
+        self._set_inspector(
+            "Duplicates",
+            open_group_lines(g, index=self._duplicate_group_index + 1)
+            + ["", "Enter opens this group for Compare."],
+        )
+        self._set_inspector_collapsed(False)
         self._sync_discovery_actions()
 
     def _toggle_compare_candidate(self, media_id: str) -> None:
@@ -3426,8 +3840,22 @@ class HomeApp:
         self._compare_decide(decision)
 
     def _on_discovery_escape(self, _event=None):
+        if self._hotkey_blocked(_event):
+            return None
         if getattr(self, "_compare", None) and self._compare.active:
             self._exit_compare()
+            return "break"
+        return None
+
+    def _on_discovery_return(self, event=None):
+        if self._hotkey_blocked(event):
+            return None
+        if getattr(self, "_compare", None) and self._compare.active:
+            return None
+        if getattr(self, "_result_kind", None) == "duplicates" and (
+            getattr(self, "_duplicate_groups", None) or []
+        ):
+            self._open_selected_duplicate_group()
             return "break"
         return None
 
@@ -3435,13 +3863,16 @@ class HomeApp:
         if self._hotkey_blocked(event):
             return None
         cmp = getattr(self, "_compare", None)
-        if cmp is None or not cmp.active:
-            return None
-        mid = cmp.move_focus(delta)
-        if mid:
-            self._render_compare_pane()
-            self._sync_discovery_actions()
-        return "break"
+        if cmp is not None and cmp.active:
+            mid = cmp.move_focus(delta)
+            if mid:
+                self._render_compare_pane()
+                self._sync_discovery_actions()
+            return "break"
+        if getattr(self, "_result_kind", None) == "duplicates":
+            self._move_duplicate_group(delta)
+            return "break"
+        return None
 
     def _on_compare_hotkey(self, decision: str, event=None):
         if self._hotkey_blocked(event):
@@ -4074,7 +4505,6 @@ class HomeApp:
             pass
         busy = self._ingest_running()
         on_library = self._nav in {"home", "library", "photos", "videos"}
-        processing_home = on_library and busy
         if on_library:
             self._jobs_frame.pack_forget()
             if self._completion_kind == "done" and not busy:
@@ -4087,7 +4517,8 @@ class HomeApp:
                 self._jobs_frame.pack(fill=tk.X)
             if self._nav not in {"lens", "activity", "settings"}:
                 self.btn_review.pack(side=tk.LEFT, padx=(SP_8, 0))
-        if busy and not processing_home:
+        # Pause / Resume / Cancel must stay visible on Library / Memory Canvas ingest.
+        if busy:
             try:
                 self._prog_frame.pack(fill=tk.X, before=self._body)
             except tk.TclError:
@@ -4099,13 +4530,7 @@ class HomeApp:
             self.btn_pause_toggle.pack_forget()
             self.btn_cancel_prog.pack_forget()
             self.bar.pack_forget()
-            if on_library or not busy:
-                self._prog_frame.pack_forget()
-            else:
-                try:
-                    self._prog_frame.pack(fill=tk.X, before=self._body)
-                except tk.TclError:
-                    self._prog_frame.pack(fill=tk.X)
+            self._prog_frame.pack_forget()
 
     def _toggle_pause_resume(self) -> None:
         """Single Pause/Resume control adjacent to the progress bar."""

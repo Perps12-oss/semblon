@@ -40,6 +40,10 @@ def test_verb_states_empty_selection():
     assert st["ignore"]["enabled"] is True  # never disabled
     assert st["assign"]["enabled"] is False
     assert st["assign"]["reason"] == REASON_ASSIGN
+    assert st["note"]["enabled"] is False
+    assert "note" in (st["note"]["reason"] or "").lower() or "Select" in (
+        st["note"]["reason"] or ""
+    )
 
 
 def test_merge_requires_two_clusters_not_assign():

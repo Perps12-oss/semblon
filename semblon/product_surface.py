@@ -19,6 +19,7 @@ VERB_LABEL_SPLIT = "Split faces"
 VERB_LABEL_NAME = "Name this person"
 VERB_LABEL_RULE_OUT = "Not this person"
 VERB_LABEL_IGNORE = "Ignore"
+VERB_LABEL_NOTE = "Note…"
 
 INSPECTOR_HELP = "Select a face in the photo to see what Semblon found."
 INSPECTOR_CAPTION = "What you can do"
