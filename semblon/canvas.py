@@ -1683,7 +1683,18 @@ else:
                     if reg["id"] in id_set:
                         self._draw_outline(reg, color=self._SELECT_COLOR, width=2)
                 if self._on_select is not None:
-                    self._call_on_select(mid, lines, {"kind": "region", "hits": hits_raw})
+                    from semblon.discovery_loop import image_rect_from_corners
+
+                    query_rect = image_rect_from_corners(ix1, iy1, ix2, iy2)
+                    self._call_on_select(
+                        mid,
+                        lines,
+                        {
+                            "kind": "region",
+                            "hits": hits_raw,
+                            "rect": query_rect,
+                        },
+                    )
                 return
 
             # Click (not drag).

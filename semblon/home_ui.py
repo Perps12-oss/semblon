@@ -911,6 +911,9 @@ class HomeApp:
         self._library_filter = "all"
         self._similar_media_ids: list[str] | None = None
         self._library_return: dict | None = None
+        from semblon.discovery_loop import DiscoverySession
+
+        self._discovery = DiscoverySession()
         from semblon.scan_present import ScanPace
 
         self._scan_pace = ScanPace()
@@ -1290,6 +1293,10 @@ class HomeApp:
             actions, "Select a region", self._open_region_select, kind="secondary"
         )
         self.btn_region.pack(fill=tk.X, pady=1)
+        self.btn_find_similar = _button(
+            actions, "Find Similar", self._find_similar_in_workspace, kind="secondary"
+        )
+        self.btn_find_similar.pack(fill=tk.X, pady=1)
         self.btn_ask_lens = _button(
             actions, "Ask about this photo", self._ask_with_lens, kind="secondary", icon="lens"
         )
@@ -1304,7 +1311,7 @@ class HomeApp:
                 "lens.ask",
                 "lens.find_similar",
             }:
-                # Verbs packed from INSPECTOR_VERB_SPECS. Region / Ask packed above.
+                # Verbs packed from INSPECTOR_VERB_SPECS. Region / Find Similar / Ask above.
                 continue
             btn = _button(
                 actions,
@@ -1978,7 +1985,29 @@ class HomeApp:
                 reasons.append(f"Name: {name_st['reason']}")
         self._sync_name_save_button()
         self._verb_reason.set(" · ".join(reasons[:3]) if reasons else "")
+        self._sync_discovery_actions()
         self._sync_registry_inspector_commands()
+
+    def _sync_discovery_actions(self) -> None:
+        """Enable Select a region / Find Similar when a photo is open in Memory Canvas."""
+        from semblon.selection import media_file
+
+        has_media = media_file(self.store, getattr(self, "_insp_media_id", None)) is not None
+        for attr in ("btn_region", "btn_find_similar"):
+            btn = getattr(self, attr, None)
+            if btn is None:
+                continue
+            try:
+                btn.configure(state=tk.NORMAL if has_media else tk.DISABLED)
+            except tk.TclError:
+                pass
+        back = getattr(self, "btn_discovery_back", None)
+        if back is not None:
+            hist = bool(getattr(self, "_discovery", None) and self._discovery.has_history())
+            try:
+                back.configure(state=tk.NORMAL if hist else tk.DISABLED)
+            except tk.TclError:
+                pass
 
     def _sync_name_save_button(self) -> None:
         """Name this person is enabled when a nameable selection has typed text."""
@@ -2182,11 +2211,21 @@ class HomeApp:
         # before Inspector widgets and _canvas_ws assignment are ready.
         if not hasattr(self, "_sel_list") or not hasattr(self, "_inspector"):
             return
+        from semblon.discovery_loop import image_rect_from_selection, with_discovery_prompt
+
         ws = getattr(self, "_canvas_ws", None)
         board = (getattr(ws, "board", None) or {}) if ws is not None else {}
         run_id = board.get("run_id") or self._last_run_id
         if selected_hit is None and ws is not None:
             selected_hit = getattr(ws, "_selected", None)
+
+        query_rect = image_rect_from_selection(selected_hit)
+        if hasattr(self, "_discovery"):
+            if query_rect and media_id:
+                self._discovery.set_query(media_id, query_rect)
+            elif selected_hit is None:
+                # Media-only selection clears a prior region query for this step.
+                self._discovery.clear_query()
 
         # Soft title from interaction, not "Selection" ontology.
         if selected_hit and selected_hit.get("kind") == "face":
@@ -2224,15 +2263,20 @@ class HomeApp:
             preselect = False
             self._set_inspector_collapsed(True)
 
+        evidence = list(lines)
+        if media_id and title != "Details":
+            evidence = with_discovery_prompt(evidence, has_query_rect=bool(query_rect))
+
         # Soft product lines from Canvas — do not re-wrap with engineering evidence.
         self._set_inspector_selection(
             run_id=run_id,
             media_id=media_id,
             available=available,
-            evidence_lines=list(lines),
+            evidence_lines=evidence,
             title=title,
             preselect_all=preselect,
         )
+        self._sync_discovery_actions()
 
     def _build_home_landing(self) -> None:
         """Library home: one next step, then recent activity. Packs stay in Settings."""
@@ -2781,6 +2825,14 @@ class HomeApp:
             fg=TEXT_PRIMARY,
             anchor="w",
         ).pack(side=tk.LEFT)
+        self.btn_discovery_back = _button(
+            self._similar_bar,
+            "Back",
+            self._discovery_back,
+            kind="secondary",
+            plate=BG_CANVAS,
+        )
+        self.btn_discovery_back.pack(side=tk.LEFT, padx=(SP_12, 0))
         self.btn_clear_similar = _button(
             self._similar_bar,
             "Clear Search",
@@ -2793,6 +2845,9 @@ class HomeApp:
     def _set_library_filter(self, key: str) -> None:
         self._library_filter = key or "all"
         self._similar_media_ids = None
+        if hasattr(self, "_discovery"):
+            self._discovery.clear()
+        self._library_return = None
         self._show_library(filter_key=self._library_filter)
 
     def _show_library(
@@ -2869,7 +2924,9 @@ class HomeApp:
         self._mark_nav_active("library")
 
     def _apply_find_similar_result(self, summary: dict | None) -> None:
-        """Show ranked Library results from region_search; keep prior filter."""
+        """Show Similar results on Memory Canvas; push discovery stack for Back."""
+        from semblon.discovery_loop import DiscoveryFrame, result_set_lines
+
         summary = summary or {}
         items = list(summary.get("items") or [])
         media_ids = [
@@ -2878,40 +2935,162 @@ class HomeApp:
             if it.get("media_id")
         ]
         status = str(summary.get("status") or "").upper()
-        lines = []
+        lines = result_set_lines(summary)
         if status in {"UNAVAILABLE", "ERROR"}:
-            lines = [summary.get("reason") or "Find Similar is not available yet."]
             self._set_inspector("Details", lines)
             self._set_inspector_collapsed(False)
+            self._sync_discovery_actions()
             return
         if not media_ids:
+            self._set_inspector("Details", lines)
+            self._set_inspector_collapsed(False)
+            self._sync_discovery_actions()
+            return
+        filt = getattr(self, "_library_filter", "all") or "all"
+        focus = getattr(self, "_insp_media_id", None)
+        if getattr(self, "_library_return", None) is None:
+            self._library_return = {"filter": filt, "media_id": focus}
+        if hasattr(self, "_discovery"):
+            self._discovery.push(
+                DiscoveryFrame(
+                    filter_key=filt,
+                    similar_media_ids=(
+                        list(self._similar_media_ids)
+                        if self._similar_media_ids
+                        else None
+                    ),
+                    query_media_id=focus,
+                    focus_media_id=focus,
+                )
+            )
+        self._show_library(filter_key=filt, similar_media_ids=media_ids)
+        self._set_inspector("Details", lines)
+        self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _focus_library_media(self, media_id: str | None) -> None:
+        if not media_id:
+            return
+        ws = getattr(self, "_canvas_ws", None)
+        if ws is None:
+            return
+        for row in getattr(ws, "_media", None) or []:
+            if str(row.get("media_id")) == str(media_id):
+                try:
+                    ws.show_media(row)
+                except Exception:  # noqa: BLE001
+                    return
+                return
+
+    def _discovery_back(self) -> None:
+        """Pop one discovery step; stay in Memory Canvas."""
+        session = getattr(self, "_discovery", None)
+        frame = session.pop() if session is not None else None
+        if frame is None:
+            self._clear_similar_search()
+            return
+        filt = frame.filter_key or getattr(self, "_library_filter", "all") or "all"
+        if frame.similar_media_ids:
+            self._show_library(
+                filter_key=filt, similar_media_ids=list(frame.similar_media_ids)
+            )
+        else:
+            self._similar_media_ids = None
+            self._show_library(filter_key=filt)
+        self._focus_library_media(frame.focus_media_id)
+        self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _find_similar_in_workspace(self) -> None:
+        """Discovery loop: use Canvas selection when present; else region window."""
+        from semblon.discovery_loop import image_rect_from_selection
+        from semblon.lens_release import remember_selection
+        from semblon.selection import media_file
+
+        media_id = getattr(self, "_insp_media_id", None)
+        path = media_file(self.store, media_id)
+        if path is None:
             self._set_inspector(
                 "Details",
-                [summary.get("reason") or "No similar images found yet."],
+                [
+                    "Open a photo first.",
+                    "Then select something to look at.",
+                    "Nothing was searched.",
+                ],
             )
             self._set_inspector_collapsed(False)
             return
-        self._library_return = {
-            "filter": getattr(self, "_library_filter", "all"),
-            "media_id": getattr(self, "_insp_media_id", None),
+
+        rect = None
+        session = getattr(self, "_discovery", None)
+        if session is not None and session.query_rect and (
+            not session.query_media_id or str(session.query_media_id) == str(media_id)
+        ):
+            rect = dict(session.query_rect)
+        if rect is None:
+            ws = getattr(self, "_canvas_ws", None)
+            sel = getattr(ws, "_selected", None) if ws is not None else None
+            rect = image_rect_from_selection(sel)
+            if rect and session is not None:
+                session.set_query(media_id, rect)
+
+        if rect is None:
+            # Honest fallback: draw a region (still lands results on Memory Canvas).
+            from semblon.lens_home import open_region_select
+
+            open_region_select(self)
+            return
+
+        try:
+            rec = remember_selection(
+                self.store,
+                media_id=str(media_id),
+                image_path=path,
+                x=int(rect["x"]),
+                y=int(rect["y"]),
+                w=int(rect["w"]),
+                h=int(rect["h"]),
+            )
+        except Exception as e:  # noqa: BLE001
+            self._set_inspector(
+                "Details",
+                [
+                    "Find Similar could not run.",
+                    str(e),
+                    "Your library stays open.",
+                ],
+            )
+            self._set_inspector_collapsed(False)
+            return
+
+        self._last_lens_result = rec.get("summary") or {}
+        self._last_lens_rect = {
+            "x": int(rect["x"]),
+            "y": int(rect["y"]),
+            "w": int(rect["w"]),
+            "h": int(rect["h"]),
+            "kept": True,
         }
-        self._show_library(
-            filter_key=getattr(self, "_library_filter", "all") or "all",
-            similar_media_ids=media_ids,
-        )
-        self._set_inspector(
-            "Details",
-            [f"{len(media_ids)} similar result{'s' if len(media_ids) != 1 else ''}."],
-        )
-        self._set_inspector_collapsed(False)
+        summary = rec.get("summary") or {}
+        # Prefer product lines from lens_release; fall back to result_set_lines via apply.
+        try:
+            self._set_inspector("Details", rec.get("lines") or ["Nothing was searched."])
+            self._set_inspector_collapsed(False)
+        except Exception:  # noqa: BLE001
+            pass
+        self._apply_find_similar_result(summary)
 
     def _clear_similar_search(self) -> None:
         prior = getattr(self, "_library_return", None) or {}
         self._similar_media_ids = None
         self._library_return = None
+        if hasattr(self, "_discovery"):
+            self._discovery.clear()
         filt = prior.get("filter") or getattr(self, "_library_filter", "all") or "all"
         self._show_library(filter_key=filt)
+        self._focus_library_media(prior.get("media_id"))
         self._set_inspector_collapsed(True)
+        self._sync_discovery_actions()
 
     def _show_home_landing(self) -> None:
         """Compatibility: cold landing is onboarding or Library."""

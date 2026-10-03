@@ -170,10 +170,14 @@ def _cmd_ask_lens(host: Any, _ctx: Any = None) -> None:
 
 
 def _cmd_lens_find_similar(host: Any, _ctx: Any = None) -> None:
-    """Histogram region search via lens_home → region_search.remember_and_find.
+    """Histogram region search via region_search.remember_and_find.
 
+    Prefers an in-canvas selection (discovery loop). Falls back to region window.
     This is not search.search_similar (embedding stack). Do not merge stacks.
     """
+    if hasattr(host, "_find_similar_in_workspace"):
+        host._find_similar_in_workspace()
+        return
     from semblon.lens_home import open_region_select
 
     open_region_select(host)

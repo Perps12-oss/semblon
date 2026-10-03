@@ -565,6 +565,7 @@ def soft_inspector_for_region(
         for h in objects[:5]:
             lines.append(f"  · {h.get('label') or 'Something in the photo'}")
     lines.append("")
+    lines.append("Find Similar looks for visually similar photos (not identity).")
     lines.append("Click a face to select it, or Esc to clear.")
     return lines
 
