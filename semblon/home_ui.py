@@ -29,11 +29,13 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - host without li
 from semblon.ui_copy import friendly_exception
 from semblon.jobs import JobBusy, JobEngine
 from semblon.ui_prefs import (
+    load_last_folder,
     load_library_filter,
     load_prefer_gpu,
     load_search_mode,
     load_window_geometry,
     resolve_home_store,
+    save_last_folder,
     save_last_store,
     save_library_filter,
     save_prefer_gpu,
@@ -910,7 +912,10 @@ class HomeApp:
         self._wd = Watchdog(stall_s=120.0)
         self._last_run_id: str | None = None
         self._last_review_html: Path | None = None
-        self._last_folder: Path | None = None
+        try:
+            self._last_folder = load_last_folder(self.store)
+        except Exception:  # noqa: BLE001
+            self._last_folder = None
         self._resume_ready = False
         self._q: queue.Queue = queue.Queue()
         self._nav = "library"
@@ -1036,7 +1041,9 @@ class HomeApp:
             self._search_entry.configure(takefocus=True)
         except tk.TclError:
             pass
-        self._search_placeholder = SEARCH_PLACEHOLDER_PHOTOS
+        self._search_placeholder = search_placeholder(
+            has_named_people=False, mode=self._search_mode
+        )
         self._search_entry.insert(0, self._search_placeholder)
         try:
             self._search_entry.configure(foreground=INK_TERTIARY)
@@ -3131,6 +3138,10 @@ class HomeApp:
         if folder:
             self._last_folder = Path(folder)
             self._resume_ready = True
+            try:
+                save_last_folder(self._last_folder, self.store)
+            except Exception:  # noqa: BLE001
+                pass
         summary = self._library_summary() or {}
         self._completion_kind = "interrupted"
         self._completion = {
@@ -4349,7 +4360,9 @@ class HomeApp:
 
     def _show_library_home(self, summary: dict | None = None) -> None:
         """Compatibility shim — route into the unified Library."""
-        self._show_library(filter_key="photos")
+        del summary  # callers may pass a summary; filter comes from saved preference
+        filt = getattr(self, "_library_filter", None) or load_library_filter(self.store)
+        self._show_library(filter_key=filt)
 
     def _refresh_library_home_thumbs(self, waiting: int) -> None:
         frame = getattr(self, "_lib_home_thumbs", None)
@@ -4585,20 +4598,55 @@ class HomeApp:
         self._refresh_search_placeholder(summary)
 
     def _refresh_search_placeholder(self, summary: dict | None = None) -> None:
-        """Placeholder reflects whether any people have been named yet."""
+        """Placeholder matches search mode; people mode also reflects named state."""
+        from semblon.empty_states import (
+            SEARCH_PLACEHOLDER_REGION,
+            SEARCH_PLACEHOLDER_TEXT,
+            SEARCH_PLACEHOLDER_WHOLE,
+        )
+
         if summary is None:
             summary = self._library_summary()
         named = 0 if summary is None else int(summary.get("named_people") or 0)
-        new_ph = search_placeholder(has_named_people=named > 0)
+        mode = getattr(self, "_search_mode", "people") or "people"
+        new_ph = search_placeholder(has_named_people=named > 0, mode=mode)
         old_ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
         current = (self.search_var.get() or "").strip()
         self._search_placeholder = new_ph
-        if current in {"", old_ph, SEARCH_PLACEHOLDER, new_ph}:
+        known = {
+            "",
+            old_ph,
+            SEARCH_PLACEHOLDER,
+            SEARCH_PLACEHOLDER_PHOTOS,
+            SEARCH_PLACEHOLDER_TEXT,
+            SEARCH_PLACEHOLDER_WHOLE,
+            SEARCH_PLACEHOLDER_REGION,
+            new_ph,
+        }
+        if current in known:
             self.search_var.set(new_ph)
             try:
                 self._search_entry.configure(foreground=INK_TERTIARY)
             except tk.TclError:
                 pass
+
+    def _is_search_placeholder(self, text: str | None) -> bool:
+        from semblon.empty_states import (
+            SEARCH_PLACEHOLDER_REGION,
+            SEARCH_PLACEHOLDER_TEXT,
+            SEARCH_PLACEHOLDER_WHOLE,
+        )
+
+        ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+        return (text or "").strip() in {
+            "",
+            ph,
+            SEARCH_PLACEHOLDER,
+            SEARCH_PLACEHOLDER_PHOTOS,
+            SEARCH_PLACEHOLDER_TEXT,
+            SEARCH_PLACEHOLDER_WHOLE,
+            SEARCH_PLACEHOLDER_REGION,
+        }
 
     def _search_focus_in(self, _event=None) -> None:
         ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
@@ -5213,6 +5261,10 @@ class HomeApp:
         from semblon.product_surface import product_status_text
 
         self._last_folder = path
+        try:
+            save_last_folder(path, self.store)
+        except Exception:  # noqa: BLE001
+            pass
         self._exit_after_cancel = False
         self._wd = Watchdog(stall_s=120.0)
         self._resume_ready = False
@@ -5328,7 +5380,16 @@ class HomeApp:
     def _choose_folder(self) -> None:
         if self.engine.busy:
             return
-        folder = filedialog.askdirectory(title="Choose a folder of photos for Semblon")
+        initial = ""
+        try:
+            if self._last_folder is not None and Path(self._last_folder).is_dir():
+                initial = str(self._last_folder)
+        except OSError:
+            initial = ""
+        folder = filedialog.askdirectory(
+            title="Choose a folder of photos for Semblon",
+            initialdir=initial or None,
+        )
         if not folder:
             return
         self._start_process(Path(folder), resume=False)
@@ -5806,6 +5867,10 @@ class HomeApp:
         for k, btn in (getattr(self, "_search_mode_buttons", {}) or {}).items():
             if hasattr(btn, "set_kind"):
                 btn.set_kind("secondary" if k == key else "tertiary")
+        try:
+            self._refresh_search_placeholder()
+        except Exception:  # noqa: BLE001
+            pass
         if key == "region":
             self._set_inspector(
                 "Search",
@@ -5851,8 +5916,7 @@ class HomeApp:
         from semblon.search import SearchError, search_text
 
         q = (self.search_var.get() or "").strip()
-        ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
-        if q in {ph, SEARCH_PLACEHOLDER, SEARCH_PLACEHOLDER_PHOTOS}:
+        if self._is_search_placeholder(q):
             q = ""
         if not q:
             messagebox.showinfo("Semblon", "Type text that appears in a photo.")
@@ -5880,8 +5944,7 @@ class HomeApp:
             self._set_inspector("Search", search_no_store().as_lines())
             return
         q = (self.search_var.get() or "").strip()
-        ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
-        if q in {ph, SEARCH_PLACEHOLDER, SEARCH_PLACEHOLDER_PHOTOS}:
+        if self._is_search_placeholder(q):
             q = ""
         mid = q or getattr(self, "_insp_media_id", None)
         if not mid:
@@ -5982,8 +6045,7 @@ class HomeApp:
         from semblon.search import SearchError, search_people, search_person, search_text
 
         q = (self.search_var.get() or "").strip()
-        ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
-        if q in {ph, SEARCH_PLACEHOLDER, SEARCH_PLACEHOLDER_PHOTOS}:
+        if self._is_search_placeholder(q):
             q = ""
         if not q:
             messagebox.showinfo("Semblon", "Type a person name or text from a photo.")
@@ -6472,6 +6534,7 @@ class HomeApp:
         self._grid_density = "comfortable"
         self._search_mode = "people"
         self._library_filter = "all"
+        self._last_folder = None
         self._browse_facet = None
         try:
             if hasattr(self, "_compare") and self._compare is not None:

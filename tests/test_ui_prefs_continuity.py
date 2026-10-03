@@ -12,6 +12,7 @@ from semblon.app_reset import reset_app_to_defaults
 from semblon.ui_prefs import (
     appearance_path,
     load_grid_density,
+    load_last_folder,
     load_last_store,
     load_library_filter,
     load_prefer_gpu,
@@ -20,6 +21,7 @@ from semblon.ui_prefs import (
     load_window_geometry,
     resolve_home_store,
     save_grid_density,
+    save_last_folder,
     save_last_store,
     save_library_filter,
     save_prefer_gpu,
@@ -156,6 +158,28 @@ def test_last_store_and_window_geometry_machine_scoped(
     assert resolve_home_store(None) == default
 
 
+def test_last_folder_roundtrip_and_missing(tmp_path: Path) -> None:
+    store = tmp_path / "store.sqlite"
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    assert load_last_folder(store) is None
+    assert save_last_folder(folder, store) == folder
+    assert load_last_folder(store) == folder.resolve()
+    folder.rename(tmp_path / "moved")
+    assert load_last_folder(store) is None
+
+
+def test_reset_clears_last_folder(tmp_path: Path) -> None:
+    store = tmp_path / "lib" / "store.sqlite"
+    store.parent.mkdir()
+    store.write_bytes(b"")
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    save_last_folder(folder, store)
+    assert reset_app_to_defaults(store).ok
+    assert load_last_folder(store) is None
+
+
 def test_home_wires_pref_persistence() -> None:
     import inspect
 
@@ -166,11 +190,21 @@ def test_home_wires_pref_persistence() -> None:
     assert "load_search_mode" in init
     assert "load_library_filter" in init
     assert "load_prefer_gpu" in init
+    assert "load_last_folder" in init
     assert "load_window_geometry" in init
     assert "save_search_mode" in inspect.getsource(home_ui.HomeApp._set_search_mode)
     assert "save_library_filter" in inspect.getsource(home_ui.HomeApp._set_library_filter)
     assert "save_prefer_gpu" in inspect.getsource(home_ui.HomeApp._fill_settings_body)
     assert "save_window_geometry" in inspect.getsource(home_ui.HomeApp._persist_window_geometry)
+    assert "initialdir" in inspect.getsource(home_ui.HomeApp._choose_folder)
+    assert "save_last_folder" in inspect.getsource(home_ui.HomeApp._start_process)
+    home = inspect.getsource(home_ui.HomeApp._show_library_home)
+    assert 'filter_key="photos"' not in home
+    assert "_library_filter" in home
     reset = inspect.getsource(home_ui.HomeApp._reset_app_to_defaults)
     assert 'self._search_mode = "people"' in reset
     assert 'self._library_filter = "all"' in reset
+    assert "self._last_folder = None" in reset
+    assert "_refresh_search_placeholder" in inspect.getsource(
+        home_ui.HomeApp._set_search_mode
+    )

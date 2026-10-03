@@ -219,6 +219,7 @@ def test_reset_manifest_covers_media_boundary() -> None:
     assert rows["appearance.json search_mode"][0] == "YES"
     assert rows["appearance.json library_filter"][0] == "YES"
     assert rows["appearance.json prefer_gpu"][0] == "YES"
+    assert rows["appearance.json last_folder"][0] == "YES"
     assert rows["visual_cache/ sidecars"][0] == "YES"
 
 

@@ -30,6 +30,7 @@ RESET_MANIFEST: tuple[tuple[str, str, str], ...] = (
     ("appearance.json search_mode", "YES", "Canonical default = people"),
     ("appearance.json library_filter", "YES", "Canonical default = all"),
     ("appearance.json prefer_gpu", "YES", "Canonical default = unset → product_prefer_gpu()"),
+    ("appearance.json last_folder", "YES", "Canonical default = unset; Add Folder dialog starts fresh"),
     ("appearance.json (library file removed)", "YES", "All library-scoped presentation prefs"),
     ("Machine window_geometry (default Semblon dir)", "YES*", "Cleared when Reset removes that appearance.json"),
     ("Machine last_store (default Semblon dir)", "YES*", "Cleared only when Reset hits the default-dir prefs file"),

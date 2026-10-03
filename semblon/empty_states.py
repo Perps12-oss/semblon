@@ -18,10 +18,24 @@ except ImportError:  # pragma: no cover — tokens land via parallel UX slice
 
 SEARCH_PLACEHOLDER = "Search memory…"
 SEARCH_PLACEHOLDER_PHOTOS = "Search memory…"
+SEARCH_PLACEHOLDER_TEXT = "Search text in photos…"
+SEARCH_PLACEHOLDER_WHOLE = "Find a similar photo…"
+SEARCH_PLACEHOLDER_REGION = "Select a region on a photo…"
 
 
-def search_placeholder(*, has_named_people: bool) -> str:
-    """Placeholder when named people exist vs first-run / unnamed-only library."""
+def search_placeholder(*, has_named_people: bool, mode: str | None = None) -> str:
+    """Placeholder for the unified search field.
+
+    Non-people modes match the selected chip. People mode keeps the existing
+    memory copy (named vs unnamed currently share the same string).
+    """
+    m = (mode or "people").strip().lower()
+    if m == "text":
+        return SEARCH_PLACEHOLDER_TEXT
+    if m in {"whole", "similar"}:
+        return SEARCH_PLACEHOLDER_WHOLE
+    if m == "region":
+        return SEARCH_PLACEHOLDER_REGION
     if has_named_people:
         return SEARCH_PLACEHOLDER
     return SEARCH_PLACEHOLDER_PHOTOS

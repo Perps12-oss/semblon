@@ -70,10 +70,20 @@ def test_empty_state_anatomy_has_no_forbidden_vocab():
 
 
 def test_search_placeholder_copy():
+    from semblon.empty_states import (
+        SEARCH_PLACEHOLDER_REGION,
+        SEARCH_PLACEHOLDER_TEXT,
+        SEARCH_PLACEHOLDER_WHOLE,
+    )
+
     assert SEARCH_PLACEHOLDER == "Search memory…"
     assert SEARCH_PLACEHOLDER_PHOTOS == "Search memory…"
     assert search_placeholder(has_named_people=False) == "Search memory…"
     assert search_placeholder(has_named_people=True) == "Search memory…"
+    assert search_placeholder(has_named_people=True, mode="text") == SEARCH_PLACEHOLDER_TEXT
+    assert search_placeholder(has_named_people=False, mode="whole") == SEARCH_PLACEHOLDER_WHOLE
+    assert search_placeholder(has_named_people=True, mode="region") == SEARCH_PLACEHOLDER_REGION
+    assert search_placeholder(has_named_people=True, mode="people") == SEARCH_PLACEHOLDER
 
 
 def test_groups_waiting_line():

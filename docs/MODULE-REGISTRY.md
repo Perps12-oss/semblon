@@ -150,7 +150,7 @@ Fields are the same for every entry. “State at `35eeb72`” means what the sou
 - **What it exposes:** Settings → Appearance.
 - **Where the user accesses it:** Settings.
 - **Dependencies:** On “System”, Windows theme registry when readable; otherwise light. Stored `dark` aliases to `mica_dark`.
-- **Persistence:** `appearance.json` beside the library file (`ui_prefs.py`). Shared JSON also holds `grid_density`, `search_mode`, `library_filter`, `prefer_gpu`. Machine continuity keys `last_store` / `window_geometry` live in the default Semblon data-dir `appearance.json`. Not a SQLite column.
+- **Persistence:** `appearance.json` beside the library file (`ui_prefs.py`). Shared JSON also holds `grid_density`, `search_mode`, `library_filter`, `prefer_gpu`, `last_folder` (Add Folder dialog continuity). Machine continuity keys `last_store` / `window_geometry` live in the default Semblon data-dir `appearance.json`. Not a SQLite column.
 - **Tests:** `tests/test_atmosphere.py`, `tests/test_ui_prefs.py`, `tests/test_ui_prefs_continuity.py`.
 - **Platform:** File write is cross-platform. “System” matching Windows theme is Windows-only; elsewhere it resolves to light.
 - **State at `35eeb72`:** Present (extended on atmosphere branch).

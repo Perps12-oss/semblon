@@ -42,6 +42,7 @@ KEY_GRID_DENSITY = "grid_density"
 KEY_SEARCH_MODE = "search_mode"
 KEY_LIBRARY_FILTER = "library_filter"
 KEY_PREFER_GPU = "prefer_gpu"
+KEY_LAST_FOLDER = "last_folder"
 
 # Machine-scoped keys (default Semblon data dir). Cleared when that file is
 # removed — including Reset of the default library.
@@ -64,6 +65,7 @@ __all__ = [
     "KEY_SEARCH_MODE",
     "KEY_LIBRARY_FILTER",
     "KEY_PREFER_GPU",
+    "KEY_LAST_FOLDER",
     "KEY_WINDOW_GEOMETRY",
     "KEY_LAST_STORE",
     "appearance_path",
@@ -80,6 +82,8 @@ __all__ = [
     "save_library_filter",
     "load_prefer_gpu",
     "save_prefer_gpu",
+    "load_last_folder",
+    "save_last_folder",
     "load_window_geometry",
     "save_window_geometry",
     "load_last_store",
@@ -226,6 +230,33 @@ def save_prefer_gpu(value: bool | None, store: Path | None = None) -> bool | Non
     kept = bool(value)
     update_prefs(store, **{KEY_PREFER_GPU: kept})
     return kept
+
+
+def load_last_folder(store: Path | None = None) -> Path | None:
+    """Last Add Folder path when the directory still exists."""
+    raw = str(load_prefs(store).get(KEY_LAST_FOLDER) or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    try:
+        if path.is_dir():
+            return path.resolve()
+    except OSError:
+        return None
+    return None
+
+
+def save_last_folder(folder: Path | None, store: Path | None = None) -> Path | None:
+    if folder is None:
+        update_prefs(store, **{KEY_LAST_FOLDER: None})
+        return None
+    path = Path(folder)
+    try:
+        text = str(path.resolve())
+    except OSError:
+        text = str(path)
+    update_prefs(store, **{KEY_LAST_FOLDER: text})
+    return path
 
 
 def _parse_geometry(raw: object) -> str | None:
