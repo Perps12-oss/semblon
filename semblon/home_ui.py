@@ -195,12 +195,12 @@ from semblon.watchdog import Watchdog
 HOME_OBSERVERS = "face,color,object"
 
 # Product Library is route id "library". Compatibility aliases: home, photos, videos.
-# Lens and People to name stay as routes without permanent sidebar rows.
+# Model D: HOME_NAV lists compact/palette destinations — not a MAIN sidebar.
 HOME_NAV: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = ()
 
 
 def _product_home_nav() -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
-    """Sidebar destinations from the feature registry (keeps HOME_NAV in sync)."""
+    """Compact destination list from the feature registry (keeps HOME_NAV in sync)."""
     from semblon.gui_registry import default_registry
 
     return default_registry().home_nav_tuple()
@@ -216,12 +216,12 @@ def refresh_home_nav() -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
 # Seed at import — registry describes today's routes.
 refresh_home_nav()
 
-# Below this window width the rail sits under the top bar, Lens included.
+# Legacy width helper — Model D has no left rail; kept for tests.
 CONDENSED_BELOW = 1100
 
 
 def shell_is_condensed(width: int) -> bool:
-    """Narrow window: one horizontal rail. Lens does not fall off the side."""
+    """Historical condensed-rail probe. Model D uses compact header only."""
     return int(width) < CONDENSED_BELOW
 
 # Job control, not an application lock. These stay usable while ingest runs.
@@ -872,10 +872,10 @@ def _button(master, text, command, kind="secondary", icon=None, plate=None):
 
 
 class HomeApp:
-    """Production Home shell: sidebar Library + Canvas workspace + Inspector.
+    """Production Home shell: Model D Memory-first Stage dissolve.
 
-    Pane roles stay addressable for the shell layout. Visible chrome uses the
-    visual design language (no all-caps LabelFrame titles).
+    Empty → Home Stage (capability introduction). Media → Memory Canvas with
+    compact contextual chrome. No permanent MAIN sidebar. Inspector on demand.
     """
 
     _PANE_WORKSPACE = "WORKSPACE / INTELLIGENCE CANVAS"
@@ -907,11 +907,15 @@ class HomeApp:
         self._last_faces_found: int | None = None
         self._proc_thumbs_faces: int | None = None
         self._inspector_collapsed = False
-        self._settings_win: tk.Toplevel | None = None
         self._last_progress_event: ProgressEvent | None = None
         self._library_filter = "all"
         self._similar_media_ids: list[str] | None = None
         self._library_return: dict | None = None
+        from semblon.culling_compare import CompareSession
+        from semblon.discovery_loop import DiscoverySession
+
+        self._discovery = DiscoverySession()
+        self._compare = CompareSession()
         from semblon.scan_present import ScanPace
 
         self._scan_pace = ScanPace()
@@ -934,16 +938,27 @@ class HomeApp:
         self._workspace_role = self._PANE_WORKSPACE
         self._inspector_role = self._PANE_INSPECTOR
 
-        # Sidebar is full height. Search sits over the content only.
+        # Model D — full-bleed main; compact header chrome (no MAIN sidebar).
         self._shell = tk.Frame(self.root, bg=BG_CANVAS)
         self._shell.pack(fill=tk.BOTH, expand=True)
         self._main = ttk.Frame(self._shell)
-        self._main.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        self._main.pack(fill=tk.BOTH, expand=True)
+        self._sidebar = None  # no permanent MAIN sidebar (docs/SHELL-IA.md)
+        self._rail = None
+        self._nav_rows: list[tuple[str, object]] = []
+        self._condensed: bool | None = None
+        self._stage_forced = False
 
         top = ttk.Frame(self._main, padding=(SP_20, SP_16, SP_20, SP_12))
         top.pack(fill=tk.X)
         self._top = top
         self._to_name = tk.StringVar(value="")
+
+        self.btn_brand = _button(
+            top, "Semblon", self._open_home_stage, kind="tertiary", plate=BG_CANVAS
+        )
+        self.btn_brand.pack(side=tk.LEFT, padx=(0, SP_12))
+
         search_row = ttk.Frame(top)
         search_row.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, SP_12))
         self.search_var = tk.StringVar()
@@ -967,6 +982,15 @@ class HomeApp:
         self._search_entry.bind("<Return>", lambda _e: self._search_person())
         self.root.bind("<Control-f>", lambda _e: self._search_entry.focus_set())
         self.root.bind("<Control-k>", self._open_command_palette)
+        self.root.bind("<Control-Key-0>", lambda _e: self._open_home_stage())
+        self.root.bind("<Control-Key-4>", lambda _e: self._navigate("lens"))
+        self.root.bind("<Escape>", self._on_discovery_escape)
+        self.root.bind("<Left>", lambda e: self._on_compare_arrow(-1, e))
+        self.root.bind("<Right>", lambda e: self._on_compare_arrow(1, e))
+        self.root.bind("<Key-k>", lambda e: self._on_compare_hotkey("keep", e))
+        self.root.bind("<Key-K>", lambda e: self._on_compare_hotkey("keep", e))
+        self.root.bind("<Key-x>", lambda e: self._on_compare_hotkey("reject", e))
+        self.root.bind("<Key-X>", lambda e: self._on_compare_hotkey("reject", e))
         for nav in self._registry.nav_contributions():
             if not nav.shortcut:
                 continue
@@ -976,15 +1000,40 @@ class HomeApp:
                 lambda _e, n=nav.route_id: self._navigate(n),
             )
 
-        # Global Add Folder + Settings in the header (not page-local CTAs).
+        # Compact contextual modes — Discover / People / Activity (not MAIN destinations).
+        modes = ttk.Frame(top)
+        modes.pack(side=tk.RIGHT, padx=(0, SP_8))
+        self._modes = modes
+        self.btn_discover = _button(
+            modes, "Discover", lambda: self._navigate("lens"), kind="tertiary", icon="lens"
+        )
+        self.btn_discover.pack(side=tk.LEFT, padx=(0, SP_4))
+        self.btn_people = _button(
+            modes, "People", lambda: self._navigate("people"), kind="tertiary"
+        )
+        self.btn_people.pack(side=tk.LEFT, padx=(0, SP_4))
+        self.btn_activity = _button(
+            modes, "Activity", lambda: self._navigate("activity"), kind="tertiary"
+        )
+        self.btn_activity.pack(side=tk.LEFT)
+        self.btn_unknown = self.btn_people
+        self._nav_buttons = {
+            "lens": self.btn_discover,
+            "people": self.btn_people,
+            "activity": self.btn_activity,
+            "library": self.btn_brand,
+            "home": self.btn_brand,
+        }
+
         self.btn_folder = _button(
             top, "Add Folder", self._choose_folder, kind="secondary", icon="folder-plus"
         )
         self.btn_folder.pack(side=tk.RIGHT, padx=(SP_8, 0))
         self.btn_settings = _button(
-            top, "Settings", self._show_settings, kind="tertiary", icon="settings"
+            top, "Settings", lambda: self._navigate("settings"), kind="tertiary", icon="settings"
         )
         self.btn_settings.pack(side=tk.RIGHT)
+        self._nav_buttons["settings"] = self.btn_settings
 
         # ── Job controls (demoted — processing Pause/Cancel) ──
         jobs = ttk.Frame(self._main, padding=(12, 0, 12, 4))
@@ -1006,10 +1055,6 @@ class HomeApp:
         self._overflow.pack(side=tk.RIGHT, padx=(SP_8, 0))
         self._rebuild_overflow_menu()
         self._overflow.configure(menu=self._overflow_menu)
-
-        self.btn_people = self.btn_canvas
-        self.btn_unknown = self.btn_canvas
-        self.btn_activity = self.btn_canvas
 
         prog = ttk.Frame(self._main, padding=(12, 0, 12, 6))
         prog.pack(fill=tk.X)
@@ -1051,7 +1096,7 @@ class HomeApp:
         # Prefer progress-adjacent Cancel when processing; job-bar Cancel unused on home.
         self.btn_cancel = self.btn_cancel_prog
 
-        # ── Body: Library | Workspace | Details ──
+        # ── Body: Memory Canvas | Details ──
         self._library_status = tk.StringVar(value="")
         self._footer_local = tk.StringVar(value="● Local")
         self._footer_counts = tk.StringVar(value="")
@@ -1059,16 +1104,41 @@ class HomeApp:
         foot = ttk.Frame(self._main, padding=(SP_20, SP_8))
         foot.pack(side=tk.BOTTOM, fill=tk.X)
         self._status_bar = foot
-        ttk.Label(
-            foot, textvariable=self._footer_local, font=META, foreground=TEXT_SECONDARY
-        ).pack(side=tk.LEFT)
-        ttk.Label(
-            foot, textvariable=self._footer_counts, font=META, foreground=TEXT_SECONDARY
-        ).pack(side=tk.LEFT, padx=(SP_12, 0))
+        self._footer_local_lbl = tk.Label(
+            foot,
+            textvariable=self._footer_local,
+            font=META,
+            fg=TEXT_SECONDARY,
+            bg=BG_CANVAS,
+        )
+        self._footer_local_lbl.pack(side=tk.LEFT)
+        self._footer_counts_lbl = tk.Label(
+            foot,
+            textvariable=self._footer_counts,
+            font=META,
+            fg=TEXT_SECONDARY,
+            bg=BG_CANVAS,
+        )
+        self._footer_counts_lbl.pack(side=tk.LEFT, padx=(SP_12, 0))
         # Keep _library_status for older refresh paths; mirror into counts when set.
-        ttk.Label(
-            foot, textvariable=self._footer_ready, font=META, foreground=TEXT_SECONDARY
-        ).pack(side=tk.RIGHT)
+        self._footer_ready_lbl = tk.Label(
+            foot,
+            textvariable=self._footer_ready,
+            font=META,
+            fg=TEXT_SECONDARY,
+            bg=BG_CANVAS,
+        )
+        self._footer_ready_lbl.pack(side=tk.RIGHT)
+        self._footer_pulse_color = TEXT_SECONDARY
+        self._processing_cue = None
+        try:
+            from semblon.atmosphere_render import ProcessingCue
+
+            self._processing_cue = ProcessingCue(
+                self.root, on_tick=self._on_processing_cue_tick
+            )
+        except Exception:  # noqa: BLE001
+            self._processing_cue = None
         body = ttk.Frame(self._main, padding=(8, 0, 8, 8))
         body.pack(fill=tk.BOTH, expand=True)
         self._body = body
@@ -1076,69 +1146,7 @@ class HomeApp:
         body.columnconfigure(1, weight=1, minsize=0)
         body.rowconfigure(0, weight=1)
 
-        # Sidebar — Library · People · Activity (Settings is a header control).
-        side = tk.Frame(
-            self._shell,
-            bg=BG_SUBTLE,
-            highlightthickness=1,
-            highlightbackground=BORDER_SUBTLE,
-            highlightcolor=BORDER_SUBTLE,
-        )
-        side.pack(side=tk.LEFT, fill=tk.Y)
-        try:
-            side.configure(width=220)
-            side.pack_propagate(False)
-        except tk.TclError:
-            pass
-        self._sidebar = side
-        self._rail = ttk.Frame(self._main, padding=(SP_12, 0, SP_12, SP_8))
-        self._nav_rows: list[tuple[str, object]] = []
-        self._condensed: bool | None = None
-        self._sidebar_brand = tk.Label(
-            side,
-            text="Semblon",
-            font=H1,
-            bg=BG_SUBTLE,
-            fg=TEXT_PRIMARY,
-        )
-        self._sidebar_brand.pack(anchor=tk.W, padx=SP_16, pady=(SP_16, SP_8))
-        self._sidebar_footer = tk.Label(
-            side,
-            text="Local only — nothing is uploaded",
-            font=CAPTION,
-            bg=BG_SUBTLE,
-            fg=INK_TERTIARY,
-            wraplength=180,
-            justify=tk.LEFT,
-        )
-        self._sidebar_footer.pack(side=tk.BOTTOM, anchor=tk.W, padx=SP_16, pady=SP_16)
-        for section, items in self._registry.nav_sections():
-            # Flat rail — no section headings.
-            del section
-            for nav in items:
-                nav_id, label = nav.route_id, nav.label
-                icon_name = NAV_ICONS.get(nav_id) or (
-                    "images" if nav_id in {"library", "home", "photos"} else None
-                )
-                btn = _button(
-                    self._shell,
-                    label,
-                    lambda n=nav_id: self._navigate(n),
-                    kind="nav",
-                    icon=icon_name,
-                    plate=BG_SUBTLE,
-                )
-                btn.pack(fill=tk.X, pady=1, padx=SP_4)
-                self._nav_buttons[nav_id] = btn
-                self._nav_rows.append(("nav", nav_id))
-        self._nav_buttons["settings"] = self.btn_settings
-        self.root.bind("<Configure>", self._on_root_configure, add="+")
-
-        self.btn_people = self._nav_buttons.get("people") or self.btn_canvas
-        self.btn_unknown = self._nav_buttons.get("unknown") or self.btn_people
-        self.btn_activity = self._nav_buttons.get("activity") or self.btn_canvas
-
-        # Workspace (landing / Canvas / welcome). Role: WORKSPACE / INTELLIGENCE CANVAS.
+        # Workspace (Stage / Memory Canvas / welcome). Role: WORKSPACE / INTELLIGENCE CANVAS.
         work = ttk.Frame(body, padding=(SP_16, SP_8))
         work.grid(row=0, column=0, sticky="nsew", padx=(SP_8, SP_8))
         self._workspace = work
@@ -1163,6 +1171,8 @@ class HomeApp:
         self._library_chrome = ttk.Frame(work)
         self._lens = ttk.Frame(work)
         self._activity = ttk.Frame(work)
+        self._settings = ttk.Frame(work)
+        self._atmosphere_tiles: list = []
         self._build_home_landing()
         self._build_processing_home()
         self._build_result_card_shell()
@@ -1170,6 +1180,7 @@ class HomeApp:
         self._build_library_chrome()
         self._build_lens_workspace()
         self._build_activity_workspace()
+        self._build_settings_workspace()
 
         from semblon.canvas import CanvasWorkspace
 
@@ -1184,6 +1195,11 @@ class HomeApp:
             on_image_open=self._on_image_open,
             job_engine=self.engine,
         )
+        self._canvas_ws._on_compare_toggle = self._toggle_compare_candidate
+        self._compare_pane = tk.Frame(work, bg=BG_CANVAS)
+        self._compare_tiles = tk.Frame(self._compare_pane, bg=BG_CANVAS)
+        self._compare_tiles.pack(fill=tk.BOTH, expand=True, padx=SP_8, pady=SP_8)
+        self._compare_photos: list = []
 
         # Inspector — contextual result for the current interaction.
         insp = ttk.Frame(body, padding=(SP_16, SP_16))
@@ -1291,8 +1307,22 @@ class HomeApp:
             actions, "Select a region", self._open_region_select, kind="secondary"
         )
         self.btn_region.pack(fill=tk.X, pady=1)
+        self.btn_find_similar = _button(
+            actions, "Find Similar", self._find_similar_in_workspace, kind="secondary"
+        )
+        self.btn_find_similar.pack(fill=tk.X, pady=1)
+        self.btn_compare = _button(
+            actions, "Compare", self._enter_compare, kind="secondary"
+        )
+        self.btn_compare.pack(fill=tk.X, pady=1)
+        self.btn_keep = _button(actions, "Keep", lambda: self._compare_decide("keep"), kind="secondary")
+        self.btn_keep.pack(fill=tk.X, pady=1)
+        self.btn_reject = _button(
+            actions, "Reject", lambda: self._compare_decide("reject"), kind="secondary"
+        )
+        self.btn_reject.pack(fill=tk.X, pady=1)
         self.btn_ask_lens = _button(
-            actions, "Ask with Lens", self._ask_with_lens, kind="secondary", icon="lens"
+            actions, "Ask about this photo", self._ask_with_lens, kind="secondary", icon="lens"
         )
         self.btn_ask_lens.pack(fill=tk.X, pady=1)
         # Registry contextual commands (person.history, identify, …) — same widgets
@@ -1304,8 +1334,12 @@ class HomeApp:
                 "lens.select_region",
                 "lens.ask",
                 "lens.find_similar",
+                "compare.enter",
+                "compare.exit",
+                "media.keep",
+                "media.reject",
             }:
-                # Verbs packed from INSPECTOR_VERB_SPECS. Region / Ask packed above.
+                # Verbs packed from INSPECTOR_VERB_SPECS. Region / Similar / Compare above.
                 continue
             btn = _button(
                 actions,
@@ -1455,6 +1489,7 @@ class HomeApp:
                     self._lens_status.set(LENS_BUSY if flag else "")
                 except Exception:  # noqa: BLE001
                     pass
+            self._set_lens_processing(flag)
 
         schedule = lambda fn: self.root.after(0, fn)  # noqa: E731
 
@@ -1484,6 +1519,18 @@ class HomeApp:
             on_busy=on_busy,
             schedule=schedule,
         )
+
+    def _set_lens_processing(self, busy: bool) -> None:
+        """Drive Find Similar / Lens controls into PROCESSING visual state."""
+        for name in ("btn_lens_region", "btn_lens_whole", "btn_lens_browse"):
+            btn = getattr(self, name, None)
+            if btn is None:
+                continue
+            if hasattr(btn, "set_processing"):
+                try:
+                    btn.set_processing(busy)
+                except Exception:  # noqa: BLE001
+                    pass
 
     def _ask_with_lens(self) -> None:
         """Photos/Videos → Lens with the current asset (clear product path)."""
@@ -1620,6 +1667,7 @@ class HomeApp:
                 self.btn_lens_whole.configure(state=state)
             except Exception:  # noqa: BLE001
                 pass
+            self._set_lens_processing(flag)
 
         def on_error(exc: BaseException) -> None:
             try:
@@ -1848,10 +1896,7 @@ class HomeApp:
             kind, payload = box._palette_rows[sel[0]]  # type: ignore[attr-defined]
             win.destroy()
             if kind == "nav":
-                if payload == "settings":
-                    self._show_settings()
-                else:
-                    self._navigate(str(payload))
+                self._navigate(str(payload))
             else:
                 self._run_registry_command(payload)
 
@@ -1866,6 +1911,8 @@ class HomeApp:
         return "break"
 
     def _navigate(self, nav_id: str) -> None:
+        if nav_id not in {"library", "home"}:
+            self._stage_forced = False
         self._nav = nav_id
         self._mark_nav_active(nav_id)
         self._refresh_library_chrome()
@@ -1966,7 +2013,64 @@ class HomeApp:
                 reasons.append(f"Name: {name_st['reason']}")
         self._sync_name_save_button()
         self._verb_reason.set(" · ".join(reasons[:3]) if reasons else "")
+        self._sync_discovery_actions()
         self._sync_registry_inspector_commands()
+
+    def _sync_discovery_actions(self) -> None:
+        """Enable Select a region / Find Similar / Compare when appropriate."""
+        from semblon.selection import media_file
+
+        has_media = media_file(self.store, getattr(self, "_insp_media_id", None)) is not None
+        cmp = getattr(self, "_compare", None)
+        comparing = bool(cmp and cmp.active)
+        for attr in ("btn_region", "btn_find_similar"):
+            btn = getattr(self, attr, None)
+            if btn is None:
+                continue
+            try:
+                btn.configure(state=tk.NORMAL if has_media and not comparing else tk.DISABLED)
+            except tk.TclError:
+                pass
+        can_compare = bool(cmp and cmp.can_enter()[0])
+        for attr in ("btn_compare", "btn_bar_compare"):
+            btn = getattr(self, attr, None)
+            if btn is None:
+                continue
+            try:
+                btn.configure(state=tk.NORMAL if can_compare else tk.DISABLED)
+            except tk.TclError:
+                pass
+        for attr in ("btn_keep", "btn_reject"):
+            btn = getattr(self, attr, None)
+            if btn is None:
+                continue
+            try:
+                btn.configure(
+                    state=tk.NORMAL if comparing and cmp.focused_id() else tk.DISABLED
+                )
+            except tk.TclError:
+                pass
+        back = getattr(self, "btn_discovery_back", None)
+        if back is not None:
+            hist = bool(
+                comparing
+                or (getattr(self, "_discovery", None) and self._discovery.has_history())
+            )
+            try:
+                back.configure(state=tk.NORMAL if hist else tk.DISABLED)
+            except tk.TclError:
+                pass
+        n_sel = len(cmp.selected_ids) if cmp else 0
+        if getattr(self, "_similar_title", None) is not None and getattr(
+            self, "_similar_media_ids", None
+        ):
+            base = "Similar to selected region"
+            if comparing:
+                self._similar_title.set("Comparing candidates")
+            elif n_sel:
+                self._similar_title.set(f"{base} · {n_sel} selected")
+            else:
+                self._similar_title.set(base)
 
     def _sync_name_save_button(self) -> None:
         """Name this person is enabled when a nameable selection has typed text."""
@@ -2170,11 +2274,21 @@ class HomeApp:
         # before Inspector widgets and _canvas_ws assignment are ready.
         if not hasattr(self, "_sel_list") or not hasattr(self, "_inspector"):
             return
+        from semblon.discovery_loop import image_rect_from_selection, with_discovery_prompt
+
         ws = getattr(self, "_canvas_ws", None)
         board = (getattr(ws, "board", None) or {}) if ws is not None else {}
         run_id = board.get("run_id") or self._last_run_id
         if selected_hit is None and ws is not None:
             selected_hit = getattr(ws, "_selected", None)
+
+        query_rect = image_rect_from_selection(selected_hit)
+        if hasattr(self, "_discovery"):
+            if query_rect and media_id:
+                self._discovery.set_query(media_id, query_rect)
+            elif selected_hit is None:
+                # Media-only selection clears a prior region query for this step.
+                self._discovery.clear_query()
 
         # Soft title from interaction, not "Selection" ontology.
         if selected_hit and selected_hit.get("kind") == "face":
@@ -2212,15 +2326,20 @@ class HomeApp:
             preselect = False
             self._set_inspector_collapsed(True)
 
+        evidence = list(lines)
+        if media_id and title != "Details":
+            evidence = with_discovery_prompt(evidence, has_query_rect=bool(query_rect))
+
         # Soft product lines from Canvas — do not re-wrap with engineering evidence.
         self._set_inspector_selection(
             run_id=run_id,
             media_id=media_id,
             available=available,
-            evidence_lines=list(lines),
+            evidence_lines=evidence,
             title=title,
             preselect_all=preselect,
         )
+        self._sync_discovery_actions()
 
     def _build_home_landing(self) -> None:
         """Library home: one next step, then recent activity. Packs stay in Settings."""
@@ -2509,10 +2628,17 @@ class HomeApp:
             self._library_home.pack_forget()
         if hasattr(self, "_library_chrome"):
             self._library_chrome.pack_forget()
+        if hasattr(self, "_compare_pane"):
+            try:
+                self._compare_pane.pack_forget()
+            except tk.TclError:
+                pass
         if hasattr(self, "_lens"):
             self._lens.pack_forget()
         if hasattr(self, "_activity"):
             self._activity.pack_forget()
+        if hasattr(self, "_settings"):
+            self._settings.pack_forget()
 
     def _ingest_running(self) -> bool:
         engine = getattr(self, "engine", None)
@@ -2536,21 +2662,95 @@ class HomeApp:
         return "FIRST_RUN"
 
     def _show_library_or_onboard(self) -> None:
-        """Post-onboarding home is Library. Empty library shows onboarding only."""
+        """Memory Canvas when media exists; Home Stage when empty (or Stage forced)."""
         summary = self._library_summary()
         files = 0 if summary is None else int(summary.get("files") or 0)
-        if files <= 0 and not self._ingest_running():
-            self._show_onboarding()
+        if getattr(self, "_stage_forced", False) or (
+            files <= 0 and not self._ingest_running()
+        ):
+            self._show_stage()
             return
+        self._stage_forced = False
         self._show_library(filter_key=getattr(self, "_library_filter", "all") or "all")
 
-    def _show_onboarding(self) -> None:
-        """Focused empty-state — no capability tables or face dashboard."""
+    def _open_home_stage(self) -> None:
+        """Brand mark — return to capability Stage (intent map)."""
+        self._stage_forced = True
+        self._nav = "library"
+        self._mark_nav_active("home")
+        self._show_stage()
+
+    def _dissolve_to_memory(self, *, filter_key: str = "all") -> None:
+        """Stage dissolves into Memory Canvas — atmosphere transition, not a hard swap."""
+        self._stage_forced = False
+        self._library_filter = filter_key
+        self._mark_nav_active("library")
+        self._stage_cards = []
+
+        def _arrive() -> None:
+            try:
+                from semblon.ui_tokens import BG_CANVAS
+
+                self.root.configure(bg=BG_CANVAS)
+            except Exception:  # noqa: BLE001
+                pass
+            self._show_library(filter_key=filter_key)
+
+        try:
+            from semblon.atmosphere_render import active_atmosphere_id, dissolve_stage
+
+            dissolve_stage(
+                self.root,
+                on_done=_arrive,
+                atmosphere_id=active_atmosphere_id(),
+                duration_ms=250,
+            )
+        except Exception:  # noqa: BLE001
+            _arrive()
+
+    def _stage_explore(self) -> None:
+        summary = self._library_summary()
+        files = 0 if summary is None else int(summary.get("files") or 0)
+        if files <= 0:
+            self._set_inspector(
+                "Explore",
+                [
+                    "Explore shows your photos and videos here.",
+                    "Add a photo folder to build your local visual memory.",
+                ],
+            )
+            return
+        self._dissolve_to_memory(filter_key="all")
+
+    def _stage_discover(self) -> None:
+        summary = self._library_summary()
+        files = 0 if summary is None else int(summary.get("files") or 0)
+        if files <= 0:
+            self._set_inspector(
+                "Discover",
+                [
+                    "Open a photo, then select a region or find similar content.",
+                    "Add a photo folder first so there is something to discover.",
+                ],
+            )
+            return
+        self._stage_forced = False
+        self._navigate("lens")
+
+    def _show_stage(self) -> None:
+        """Home Stage — capability introduction with Atmosphere illumination (Model D)."""
+        from semblon.atmosphere_render import StageCapabilityCard, active_atmosphere_id
         from semblon.fluid_shell import (
-            ONBOARD_CTA,
-            ONBOARD_HEADLINE,
-            ONBOARD_PRIVACY,
-            ONBOARD_SUBCOPY,
+            STAGE_CTA,
+            STAGE_DISCOVER_BODY,
+            STAGE_DISCOVER_TITLE,
+            STAGE_EXPLORE_BODY,
+            STAGE_EXPLORE_TITLE,
+            STAGE_HEADLINE,
+            STAGE_PEOPLE_BODY,
+            STAGE_PEOPLE_TITLE,
+            STAGE_PRIVACY,
+            STAGE_SUBCOPY,
         )
 
         self._hide_workspace_panes()
@@ -2559,49 +2759,89 @@ class HomeApp:
             child.destroy()
         root = tk.Frame(self._landing, bg=BG_CANVAS)
         root.pack(fill=tk.BOTH, expand=True, padx=SP_24, pady=SP_32)
+        aid = active_atmosphere_id()
+
         tk.Label(
             root,
-            text=ONBOARD_HEADLINE,
+            text=STAGE_HEADLINE,
             font=DISPLAY,
             bg=BG_CANVAS,
             fg=TEXT_PRIMARY,
-            wraplength=640,
+            wraplength=720,
             justify=tk.LEFT,
             anchor="w",
         ).pack(anchor=tk.W)
         tk.Label(
             root,
-            text=ONBOARD_SUBCOPY,
+            text=STAGE_SUBCOPY,
             font=BODY,
             bg=BG_CANVAS,
             fg=TEXT_SECONDARY,
-            wraplength=640,
+            wraplength=720,
             justify=tk.LEFT,
             anchor="w",
         ).pack(anchor=tk.W, pady=(SP_8, 0))
-        tk.Label(
-            root,
-            text=ONBOARD_PRIVACY,
-            font=BODY,
-            bg=BG_CANVAS,
-            fg=TEXT_SECONDARY,
-            wraplength=640,
-            justify=tk.LEFT,
-            anchor="w",
-        ).pack(anchor=tk.W, pady=(SP_16, 0))
+
+        grid = tk.Frame(root, bg=BG_CANVAS)
+        grid.pack(anchor=tk.W, fill=tk.BOTH, expand=True, pady=(SP_24, 0))
+        self._stage_cards: list = []
+
+        explore = StageCapabilityCard(
+            grid,
+            title=STAGE_EXPLORE_TITLE,
+            body=STAGE_EXPLORE_BODY,
+            command=self._stage_explore,
+            primary=True,
+            atmosphere_id=aid,
+        )
+        explore.widget().pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, SP_12))
+        self._stage_cards.append(explore)
+
+        side_col = tk.Frame(grid, bg=BG_CANVAS)
+        side_col.pack(side=tk.LEFT, fill=tk.Y)
+        for title, body, cmd in (
+            (STAGE_DISCOVER_TITLE, STAGE_DISCOVER_BODY, self._stage_discover),
+            (STAGE_PEOPLE_TITLE, STAGE_PEOPLE_BODY, lambda: self._navigate("people")),
+        ):
+            card = StageCapabilityCard(
+                side_col,
+                title=title,
+                body=body,
+                command=cmd,
+                primary=False,
+                atmosphere_id=aid,
+            )
+            card.widget().pack(fill=tk.X, pady=(0, SP_12))
+            self._stage_cards.append(card)
+
         actions = tk.Frame(root, bg=BG_CANVAS)
-        actions.pack(anchor=tk.W, pady=(SP_24, 0))
+        actions.pack(anchor=tk.W, pady=(SP_16, 0))
         self.btn_landing_cta = _button(
             actions,
-            ONBOARD_CTA,
+            STAGE_CTA,
             self._choose_folder,
             kind="primary",
             icon="folder-plus",
             plate=BG_CANVAS,
         )
         self.btn_landing_cta.pack(side=tk.LEFT)
+        tk.Label(
+            root,
+            text=STAGE_PRIVACY,
+            font=CAPTION,
+            bg=BG_CANVAS,
+            fg=TEXT_SECONDARY,
+            wraplength=640,
+            justify=tk.LEFT,
+            anchor="w",
+        ).pack(anchor=tk.W, pady=(SP_16, 0))
         self._landing.pack(fill=tk.BOTH, expand=True)
         self._refresh_footer()
+        self._sync_activity_chrome()
+
+    def _show_onboarding(self) -> None:
+        """Compatibility alias — Model D Stage."""
+        self._show_stage()
 
     def _build_library_chrome(self) -> None:
         """Filter chips + optional review banner + Clear Search for Library."""
@@ -2653,6 +2893,22 @@ class HomeApp:
             fg=TEXT_PRIMARY,
             anchor="w",
         ).pack(side=tk.LEFT)
+        self.btn_discovery_back = _button(
+            self._similar_bar,
+            "Back",
+            self._discovery_back,
+            kind="secondary",
+            plate=BG_CANVAS,
+        )
+        self.btn_discovery_back.pack(side=tk.LEFT, padx=(SP_12, 0))
+        self.btn_bar_compare = _button(
+            self._similar_bar,
+            "Compare",
+            self._enter_compare,
+            kind="secondary",
+            plate=BG_CANVAS,
+        )
+        self.btn_bar_compare.pack(side=tk.LEFT, padx=(SP_12, 0))
         self.btn_clear_similar = _button(
             self._similar_bar,
             "Clear Search",
@@ -2665,6 +2921,12 @@ class HomeApp:
     def _set_library_filter(self, key: str) -> None:
         self._library_filter = key or "all"
         self._similar_media_ids = None
+        if hasattr(self, "_discovery"):
+            self._discovery.clear()
+        if hasattr(self, "_compare"):
+            self._compare.clear()
+        self._library_return = None
+        self._exit_compare(silent=True)
         self._show_library(filter_key=self._library_filter)
 
     def _show_library(
@@ -2679,8 +2941,11 @@ class HomeApp:
         from semblon.home_shell import enrich_summary_counts
 
         self._library_filter = filter_key or "all"
+        self._stage_forced = False
         if similar_media_ids is not None:
             self._similar_media_ids = list(similar_media_ids)
+            if hasattr(self, "_compare"):
+                self._compare.set_result_ids(self._similar_media_ids)
         self._hide_workspace_panes()
         self._set_inspector_collapsed(True)
 
@@ -2709,20 +2974,43 @@ class HomeApp:
             except tk.TclError:
                 pass
             if self._similar_media_ids:
-                self._similar_title.set("Similar to selected region")
                 similar.pack(anchor=tk.W, fill=tk.X, pady=(SP_8, 0))
 
         self._library_chrome.pack(fill=tk.X, anchor=tk.N)
-        self._canvas_ws.pack(fill=tk.BOTH, expand=True)
+        comparing = bool(getattr(self, "_compare", None) and self._compare.active)
+        if comparing:
+            self._render_compare_pane()
+            try:
+                self._compare_pane.pack(fill=tk.BOTH, expand=True)
+            except tk.TclError:
+                pass
+        else:
+            try:
+                self._compare_pane.pack_forget()
+            except (tk.TclError, AttributeError):
+                pass
+            self._canvas_ws.pack(fill=tk.BOTH, expand=True)
         source_types = library_source_types(self._library_filter)
-        try:
-            self._canvas_ws.reload(
-                self.store,
-                self._last_run_id,
-                source_types=source_types,
-                media_ids=self._similar_media_ids,
-                clear_media_ids=not bool(self._similar_media_ids),
+        show_ids = None
+        if self._similar_media_ids:
+            show_ids = (
+                self._compare.visible_result_ids()
+                if hasattr(self, "_compare")
+                else list(self._similar_media_ids)
             )
+        try:
+            if not comparing:
+                self._canvas_ws.reload(
+                    self.store,
+                    self._last_run_id,
+                    source_types=source_types,
+                    media_ids=show_ids,
+                    clear_media_ids=not bool(show_ids),
+                )
+                if hasattr(self._canvas_ws, "set_compare_marks") and hasattr(
+                    self, "_compare"
+                ):
+                    self._canvas_ws.set_compare_marks(self._compare.selected_ids)
         except Exception as e:  # noqa: BLE001
             self._set_inspector("Details", [f"Library unavailable: {e}"])
             self._set_inspector_collapsed(False)
@@ -2738,9 +3026,12 @@ class HomeApp:
         self._refresh_footer(summary)
         self._nav = "library"
         self._mark_nav_active("library")
+        self._sync_discovery_actions()
 
     def _apply_find_similar_result(self, summary: dict | None) -> None:
-        """Show ranked Library results from region_search; keep prior filter."""
+        """Show Similar results on Memory Canvas; push discovery stack for Back."""
+        from semblon.discovery_loop import DiscoveryFrame, result_set_lines
+
         summary = summary or {}
         items = list(summary.get("items") or [])
         media_ids = [
@@ -2749,47 +3040,438 @@ class HomeApp:
             if it.get("media_id")
         ]
         status = str(summary.get("status") or "").upper()
-        lines = []
+        lines = result_set_lines(summary)
         if status in {"UNAVAILABLE", "ERROR"}:
-            lines = [summary.get("reason") or "Find Similar is not available yet."]
             self._set_inspector("Details", lines)
             self._set_inspector_collapsed(False)
+            self._sync_discovery_actions()
             return
         if not media_ids:
+            self._set_inspector("Details", lines)
+            self._set_inspector_collapsed(False)
+            self._sync_discovery_actions()
+            return
+        filt = getattr(self, "_library_filter", "all") or "all"
+        focus = getattr(self, "_insp_media_id", None)
+        if getattr(self, "_library_return", None) is None:
+            self._library_return = {"filter": filt, "media_id": focus}
+        if hasattr(self, "_discovery"):
+            self._discovery.push(
+                DiscoveryFrame(
+                    filter_key=filt,
+                    similar_media_ids=(
+                        list(self._similar_media_ids)
+                        if self._similar_media_ids
+                        else None
+                    ),
+                    query_media_id=focus,
+                    focus_media_id=focus,
+                )
+            )
+        if hasattr(self, "_compare"):
+            self._compare.clear()
+            self._compare.set_result_ids(media_ids)
+        lines = list(lines) + [
+            "",
+            "Ctrl+click candidates (2–4), then Compare.",
+            "Keep / Reject are session decisions — not identity, not delete.",
+        ]
+        self._show_library(filter_key=filt, similar_media_ids=media_ids)
+        self._set_inspector("Details", lines)
+        self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _focus_library_media(self, media_id: str | None) -> None:
+        if not media_id:
+            return
+        ws = getattr(self, "_canvas_ws", None)
+        if ws is None:
+            return
+        for row in getattr(ws, "_media", None) or []:
+            if str(row.get("media_id")) == str(media_id):
+                try:
+                    ws.show_media(row)
+                except Exception:  # noqa: BLE001
+                    return
+                return
+
+    def _discovery_back(self) -> None:
+        """Pop one discovery/compare step; stay in Memory Canvas."""
+        cmp = getattr(self, "_compare", None)
+        if cmp is not None and cmp.active:
+            self._exit_compare()
+            return
+        session = getattr(self, "_discovery", None)
+        frame = session.pop() if session is not None else None
+        if frame is None:
+            self._clear_similar_search()
+            return
+        filt = frame.filter_key or getattr(self, "_library_filter", "all") or "all"
+        if frame.similar_media_ids:
+            self._show_library(
+                filter_key=filt, similar_media_ids=list(frame.similar_media_ids)
+            )
+        else:
+            self._similar_media_ids = None
+            if cmp is not None:
+                cmp.clear()
+            self._show_library(filter_key=filt)
+        self._focus_library_media(frame.focus_media_id)
+        self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _find_similar_in_workspace(self) -> None:
+        """Discovery loop: use Canvas selection when present; else region window."""
+        from semblon.discovery_loop import image_rect_from_selection
+        from semblon.lens_release import remember_selection
+        from semblon.selection import media_file
+
+        media_id = getattr(self, "_insp_media_id", None)
+        path = media_file(self.store, media_id)
+        if path is None:
             self._set_inspector(
                 "Details",
-                [summary.get("reason") or "No similar images found yet."],
+                [
+                    "Open a photo first.",
+                    "Then select something to look at.",
+                    "Nothing was searched.",
+                ],
             )
             self._set_inspector_collapsed(False)
             return
-        self._library_return = {
-            "filter": getattr(self, "_library_filter", "all"),
-            "media_id": getattr(self, "_insp_media_id", None),
+
+        rect = None
+        session = getattr(self, "_discovery", None)
+        if session is not None and session.query_rect and (
+            not session.query_media_id or str(session.query_media_id) == str(media_id)
+        ):
+            rect = dict(session.query_rect)
+        if rect is None:
+            ws = getattr(self, "_canvas_ws", None)
+            sel = getattr(ws, "_selected", None) if ws is not None else None
+            rect = image_rect_from_selection(sel)
+            if rect and session is not None:
+                session.set_query(media_id, rect)
+
+        if rect is None:
+            # Honest fallback: draw a region (still lands results on Memory Canvas).
+            from semblon.lens_home import open_region_select
+
+            open_region_select(self)
+            return
+
+        try:
+            rec = remember_selection(
+                self.store,
+                media_id=str(media_id),
+                image_path=path,
+                x=int(rect["x"]),
+                y=int(rect["y"]),
+                w=int(rect["w"]),
+                h=int(rect["h"]),
+            )
+        except Exception as e:  # noqa: BLE001
+            self._set_inspector(
+                "Details",
+                [
+                    "Find Similar could not run.",
+                    str(e),
+                    "Your library stays open.",
+                ],
+            )
+            self._set_inspector_collapsed(False)
+            return
+
+        self._last_lens_result = rec.get("summary") or {}
+        self._last_lens_rect = {
+            "x": int(rect["x"]),
+            "y": int(rect["y"]),
+            "w": int(rect["w"]),
+            "h": int(rect["h"]),
+            "kept": True,
         }
-        self._show_library(
-            filter_key=getattr(self, "_library_filter", "all") or "all",
-            similar_media_ids=media_ids,
-        )
-        self._set_inspector(
-            "Details",
-            [f"{len(media_ids)} similar result{'s' if len(media_ids) != 1 else ''}."],
-        )
-        self._set_inspector_collapsed(False)
+        summary = rec.get("summary") or {}
+        # Prefer product lines from lens_release; fall back to result_set_lines via apply.
+        try:
+            self._set_inspector("Details", rec.get("lines") or ["Nothing was searched."])
+            self._set_inspector_collapsed(False)
+        except Exception:  # noqa: BLE001
+            pass
+        self._apply_find_similar_result(summary)
 
     def _clear_similar_search(self) -> None:
         prior = getattr(self, "_library_return", None) or {}
         self._similar_media_ids = None
         self._library_return = None
+        if hasattr(self, "_discovery"):
+            self._discovery.clear()
+        if hasattr(self, "_compare"):
+            self._compare.clear()
+        self._exit_compare(silent=True)
         filt = prior.get("filter") or getattr(self, "_library_filter", "all") or "all"
         self._show_library(filter_key=filt)
+        self._focus_library_media(prior.get("media_id"))
         self._set_inspector_collapsed(True)
+        self._sync_discovery_actions()
+
+    def _toggle_compare_candidate(self, media_id: str) -> None:
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not self._similar_media_ids:
+            return
+        if cmp.active:
+            return
+        cmp.set_result_ids(list(self._similar_media_ids))
+        selected = cmp.toggle_selected(media_id)
+        if hasattr(self._canvas_ws, "set_compare_marks"):
+            self._canvas_ws.set_compare_marks(selected)
+        from semblon.culling_compare import compare_unavailable_lines
+
+        ok, _reason = cmp.can_enter()
+        if ok:
+            lines = [
+                f"{len(selected)} candidates selected.",
+                "",
+                "Compare to inspect side by side.",
+                "Keep / Reject are session decisions — not identity, not delete.",
+            ]
+        else:
+            lines = compare_unavailable_lines(
+                selected_count=len(selected),
+                result_count=len(cmp.visible_result_ids()),
+            )
+        self._set_inspector("Details", lines)
+        self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _enter_compare(self) -> None:
+        from semblon.culling_compare import compare_unavailable_lines
+
+        cmp = getattr(self, "_compare", None)
+        if cmp is None:
+            return
+        if self._similar_media_ids:
+            cmp.set_result_ids(list(self._similar_media_ids))
+        ok, reason = cmp.enter()
+        if not ok:
+            self._set_inspector(
+                "Details",
+                compare_unavailable_lines(
+                    selected_count=len(cmp.selected_ids),
+                    result_count=len(cmp.visible_result_ids()),
+                ),
+            )
+            self._set_inspector_collapsed(False)
+            self._sync_discovery_actions()
+            return
+        self._show_library(
+            filter_key=getattr(self, "_library_filter", "all") or "all",
+            similar_media_ids=list(self._similar_media_ids or cmp.result_ids),
+        )
+        self._set_inspector(
+            "Details",
+            [
+                f"Comparing {len(cmp.compare_ids)} candidates.",
+                "",
+                "← / → move · K Keep · X Reject · Esc leave Compare",
+                "Decisions are for this discovery session only.",
+                "This is not a person identity decision.",
+            ],
+        )
+        self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _exit_compare(self, *, silent: bool = False) -> None:
+        cmp = getattr(self, "_compare", None)
+        if cmp is not None:
+            cmp.exit()
+        if silent:
+            try:
+                self._compare_pane.pack_forget()
+            except (tk.TclError, AttributeError):
+                pass
+            return
+        ids = list(self._similar_media_ids or (cmp.visible_result_ids() if cmp else []))
+        self._show_library(
+            filter_key=getattr(self, "_library_filter", "all") or "all",
+            similar_media_ids=ids if ids else None,
+        )
+        if ids:
+            self._set_inspector(
+                "Details",
+                [
+                    f"{len(cmp.visible_result_ids()) if cmp else len(ids)} similar results.",
+                    "",
+                    "Ctrl+click to select candidates, or open a photo to continue discovering.",
+                ],
+            )
+            self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _compare_decide(self, decision: str) -> None:
+        from semblon.culling_compare import decision_lines
+
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not cmp.active:
+            return
+        mid = cmp.focused_id()
+        if not mid:
+            return
+        rec = cmp.decide(mid, decision)
+        if not rec.get("ok"):
+            self._set_inspector("Details", [rec.get("reason") or "Decision failed."])
+            self._set_inspector_collapsed(False)
+            return
+        visible = list(rec.get("visible_ids") or [])
+        self._similar_media_ids = list(cmp.result_ids)
+        lines = decision_lines(decision, remaining=len(visible))
+        if cmp.active:
+            self._render_compare_pane()
+            self._set_inspector("Details", lines)
+            self._set_inspector_collapsed(False)
+        else:
+            self._show_library(
+                filter_key=getattr(self, "_library_filter", "all") or "all",
+                similar_media_ids=list(cmp.result_ids),
+            )
+            self._set_inspector("Details", lines)
+            self._set_inspector_collapsed(False)
+        self._sync_discovery_actions()
+
+    def _render_compare_pane(self) -> None:
+        from semblon.canvas import load_bgr, _png_photo
+        from semblon.product_surface import basename_path
+        from semblon.store import connect
+
+        cmp = getattr(self, "_compare", None)
+        tiles = getattr(self, "_compare_tiles", None)
+        if cmp is None or tiles is None:
+            return
+        for child in tiles.winfo_children():
+            child.destroy()
+        self._compare_photos = []
+        paths: dict[str, str] = {}
+        try:
+            con = connect(self.store)
+            try:
+                for mid in cmp.compare_ids:
+                    row = con.execute(
+                        "SELECT path FROM media WHERE media_id=?", (mid,)
+                    ).fetchone()
+                    if row:
+                        paths[mid] = row["path"] if hasattr(row, "keys") else row[0]
+            finally:
+                con.close()
+        except Exception:  # noqa: BLE001
+            paths = {}
+        focus = cmp.focused_id()
+        for mid in cmp.compare_ids:
+            col = tk.Frame(tiles, bg=BG_CANVAS, highlightthickness=2)
+            col.configure(
+                highlightbackground=ACCENT if mid == focus else BG_SUBTLE,
+                highlightcolor=ACCENT if mid == focus else BG_SUBTLE,
+            )
+            col.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=SP_4)
+            path = paths.get(mid)
+            img = load_bgr(path) if path else None
+            if img is not None:
+                try:
+                    b64, _s, nw, nh = _png_photo(img, max_side=280)
+                    photo = tk.PhotoImage(data=b64)
+                    self._compare_photos.append(photo)
+                    tk.Label(col, image=photo, bg=BG_CANVAS).pack(pady=(SP_8, SP_4))
+                except Exception:  # noqa: BLE001
+                    tk.Label(col, text="(preview unavailable)", bg=BG_CANVAS, fg=TEXT_SECONDARY).pack()
+            else:
+                tk.Label(col, text="(unreadable)", bg=BG_CANVAS, fg=TEXT_SECONDARY).pack()
+            tk.Label(
+                col,
+                text=basename_path(path) if path else mid,
+                bg=BG_CANVAS,
+                fg=TEXT_PRIMARY,
+                font=CAPTION,
+                wraplength=200,
+            ).pack()
+            btns = tk.Frame(col, bg=BG_CANVAS)
+            btns.pack(pady=SP_8)
+            _button(
+                btns,
+                "Keep",
+                lambda m=mid: self._compare_decide_media(m, "keep"),
+                kind="secondary",
+                plate=BG_CANVAS,
+            ).pack(side=tk.LEFT, padx=2)
+            _button(
+                btns,
+                "Reject",
+                lambda m=mid: self._compare_decide_media(m, "reject"),
+                kind="secondary",
+                plate=BG_CANVAS,
+            ).pack(side=tk.LEFT, padx=2)
+            col.bind("<Button-1>", lambda _e, m=mid: self._compare_focus(m))
+
+    def _compare_focus(self, media_id: str) -> None:
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not cmp.active or media_id not in cmp.compare_ids:
+            return
+        cmp.focus_index = cmp.compare_ids.index(media_id)
+        self._render_compare_pane()
+        self._sync_discovery_actions()
+
+    def _compare_decide_media(self, media_id: str, decision: str) -> None:
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not cmp.active:
+            return
+        if media_id in cmp.compare_ids:
+            cmp.focus_index = cmp.compare_ids.index(media_id)
+        self._compare_decide(decision)
+
+    def _on_discovery_escape(self, _event=None):
+        if getattr(self, "_compare", None) and self._compare.active:
+            self._exit_compare()
+            return "break"
+        return None
+
+    def _on_compare_arrow(self, delta: int, event=None):
+        if self._hotkey_blocked(event):
+            return None
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not cmp.active:
+            return None
+        mid = cmp.move_focus(delta)
+        if mid:
+            self._render_compare_pane()
+            self._sync_discovery_actions()
+        return "break"
+
+    def _on_compare_hotkey(self, decision: str, event=None):
+        if self._hotkey_blocked(event):
+            return None
+        cmp = getattr(self, "_compare", None)
+        if cmp is None or not cmp.active:
+            return None
+        self._compare_decide(decision)
+        return "break"
+
+    def _hotkey_blocked(self, event=None) -> bool:
+        w = getattr(event, "widget", None) if event is not None else None
+        if w is None:
+            try:
+                w = self.root.focus_get()
+            except tk.TclError:
+                w = None
+        cls = w.winfo_class() if w is not None else ""
+        return cls in {"Entry", "TEntry", "Text", "TCombobox"}
 
     def _show_home_landing(self) -> None:
         """Compatibility: cold landing is onboarding or Library."""
         self._show_library_or_onboard()
 
     def _refresh_footer(self, summary: dict | None = None) -> None:
-        from semblon.fluid_shell import footer_library_line, footer_status_word
+        from semblon.fluid_shell import (
+            footer_library_line,
+            footer_status_word,
+            people_chrome_label,
+        )
         from semblon.home_shell import enrich_summary_counts
 
         if summary is None:
@@ -2805,6 +3487,17 @@ class HomeApp:
             )
         if hasattr(self, "_library_status"):
             self._library_status.set(footer_library_line(summary))
+        people_btn = getattr(self, "btn_people", None)
+        if people_btn is not None and hasattr(people_btn, "configure"):
+            waiting = 0
+            try:
+                waiting = int((summary or {}).get("unnamed_groups") or 0)
+            except (TypeError, ValueError):
+                waiting = 0
+            try:
+                people_btn.configure(text=people_chrome_label(waiting))
+            except tk.TclError:
+                pass
 
     def _build_library_home(self) -> None:
         """Retained frame for compatibility; Library chrome owns the strip now."""
@@ -3088,30 +3781,98 @@ class HomeApp:
             except tk.TclError:
                 pass
 
+    def _on_processing_cue_tick(self, color: str, brightness: float) -> None:
+        """Footer + Activity control illumination while indexing / jobs run."""
+        self._footer_pulse_color = color if brightness > 0 else TEXT_SECONDARY
+        for lbl in (
+            getattr(self, "_footer_ready_lbl", None),
+            getattr(self, "_footer_local_lbl", None),
+        ):
+            if lbl is None:
+                continue
+            try:
+                lbl.configure(fg=self._footer_pulse_color if brightness > 0 else TEXT_SECONDARY)
+            except tk.TclError:
+                pass
+        act = getattr(self, "btn_activity", None)
+        if act is not None and hasattr(act, "set_kind"):
+            try:
+                act.set_kind("secondary" if brightness > 0.45 else "tertiary")
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _sync_activity_chrome(self) -> None:
+        """Activity is operational context — emphasize while busy, quiet when idle."""
+        act = getattr(self, "btn_activity", None)
+        if act is None:
+            return
+        busy = bool(getattr(self.engine, "busy", False))
+        try:
+            if hasattr(act, "configure"):
+                act.configure(text="Activity · scanning" if busy else "Activity")
+            if hasattr(act, "set_kind"):
+                act.set_kind("secondary" if busy else "tertiary")
+        except Exception:  # noqa: BLE001
+            pass
+        # Keep reachable; pack into modes row if somehow forgotten.
+        modes = getattr(self, "_modes", None)
+        if modes is not None and busy:
+            try:
+                if not act.winfo_ismapped():
+                    act.pack(in_=modes, side=tk.LEFT)
+            except tk.TclError:
+                pass
+
+    def _sync_processing_cue(self) -> None:
+        cue = getattr(self, "_processing_cue", None)
+        if cue is None:
+            self._sync_activity_chrome()
+            return
+        busy = bool(getattr(self.engine, "busy", False))
+        if busy and not cue.active:
+            from semblon.atmosphere_render import active_atmosphere_id
+
+            cue.start(active_atmosphere_id())
+        elif not busy and cue.active:
+            cue.stop()
+        self._sync_activity_chrome()
+
     def _apply_saved_theme(self) -> None:
         """Publish the saved appearance before widgets are built."""
-        from semblon.ui_prefs import load_theme_mode, resolve_palette
-        from semblon.ui_tokens import publish
+        from semblon.atmosphere_render import publish_atmosphere
+        from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
 
-        publish(resolve_palette(load_theme_mode(self.store)))
+        aid = resolve_atmosphere_id(load_theme_mode(self.store))
+        publish_atmosphere(aid)
 
     def _set_theme_mode(self, mode: str) -> None:
-        from semblon.ui_prefs import resolve_palette, save_theme_mode
+        from semblon.atmosphere_render import transition_to
+        from semblon.ui_prefs import resolve_atmosphere_id, save_theme_mode
         from semblon.ui_theme import apply_theme, reset_theme_for_tests
-        from semblon.ui_tokens import publish
 
         kept = save_theme_mode(mode, self.store)
-        publish(resolve_palette(kept))
-        if apply_theme is not None:
-            reset_theme_for_tests()
-            apply_theme(self.root, force=True)
-            if self._settings_win is not None:
-                try:
-                    if self._settings_win.winfo_exists():
-                        apply_theme(self._settings_win, force=True)
-                except tk.TclError:
-                    pass
-        self._restyle_chrome()
+        aid = resolve_atmosphere_id(kept)
+
+        def _finish() -> None:
+            if apply_theme is not None:
+                reset_theme_for_tests()
+                apply_theme(self.root, force=True)
+            self._restyle_chrome()
+            if self._nav != "settings":
+                self._refresh_atmosphere_previews()
+
+        transition_to(self.root, aid, on_done=_finish)
+
+    def _refresh_atmosphere_previews(self) -> None:
+        tiles = getattr(self, "_atmosphere_tiles", None) or []
+        from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
+
+        cur = resolve_atmosphere_id(load_theme_mode(self.store))
+        for tile in tiles:
+            try:
+                tile.set_selected(tile.atmosphere_id == cur)
+            except Exception:  # noqa: BLE001
+                pass
 
     def _restyle_chrome(self) -> None:
         """Repaint surfaces that captured colors when they were created."""
@@ -3119,6 +3880,24 @@ class HomeApp:
             self.root.configure(bg=BG_CANVAS)
         except tk.TclError:
             pass
+        for lbl in (
+            getattr(self, "_footer_local_lbl", None),
+            getattr(self, "_footer_counts_lbl", None),
+            getattr(self, "_footer_ready_lbl", None),
+        ):
+            if lbl is None:
+                continue
+            try:
+                lbl.configure(bg=BG_CANVAS, fg=TEXT_SECONDARY)
+            except tk.TclError:
+                pass
+        # Inspector / contextual drawer — raised surface with accent edge when selected.
+        insp = getattr(self, "_inspector", None)
+        if insp is not None:
+            try:
+                insp.configure(style="Surface.TFrame")
+            except tk.TclError:
+                pass
         side = getattr(self, "_sidebar", None)
         if side is not None:
             try:
@@ -3155,6 +3934,7 @@ class HomeApp:
         self._build_result_card_shell()
         self._navigate(self._nav)
         self._refresh_job_controls()
+        self._sync_processing_cue()
 
     def _fill_result_card(self) -> None:
         kind = self._completion_kind
@@ -3254,47 +4034,12 @@ class HomeApp:
     def _on_root_configure(self, event) -> None:
         if event.widget is not self.root:
             return
-        self._apply_shell_width(int(event.width))
+        # Model D: no left rail / condensed swap — compact header is always used.
+        self._condensed = shell_is_condensed(int(event.width))
 
     def _apply_shell_width(self, width: int) -> None:
-        """Wide: left rail. Narrow: the same items in a bar under the title, Lens included."""
-        condensed = shell_is_condensed(width)
-        if condensed == self._condensed:
-            return
-        self._condensed = condensed
-        for kind, item in self._nav_rows:
-            widget = item if kind == "label" else self._nav_buttons[str(item)]
-            try:
-                widget.pack_forget()
-            except tk.TclError:
-                pass
-        if condensed:
-            try:
-                self._sidebar.pack_forget()
-            except tk.TclError:
-                pass
-            try:
-                self._rail.pack(fill=tk.X, before=self._top)
-            except tk.TclError:
-                self._rail.pack(fill=tk.X)
-            for kind, item in self._nav_rows:
-                if kind != "nav":
-                    continue
-                self._nav_buttons[str(item)].pack(in_=self._rail, side=tk.LEFT, padx=2, pady=2)
-            return
-        try:
-            self._rail.pack_forget()
-        except tk.TclError:
-            pass
-        try:
-            self._sidebar.pack(side=tk.LEFT, fill=tk.Y, before=self._main)
-        except tk.TclError:
-            self._sidebar.pack(side=tk.LEFT, fill=tk.Y)
-        for kind, item in self._nav_rows:
-            if kind == "label":
-                item.pack(in_=self._sidebar, anchor=tk.W, pady=(SP_16, SP_8), padx=(SP_16, SP_8))
-            else:
-                self._nav_buttons[str(item)].pack(in_=self._sidebar, fill=tk.X, pady=1, padx=SP_4)
+        """Compatibility no-op — Model D dropped the MAIN sidebar rail."""
+        self._condensed = shell_is_condensed(int(width))
 
     def _mark_nav_active(self, nav_id: str) -> None:
         """Best-effort active nav styling in ttk (underline / state)."""
@@ -3459,13 +4204,14 @@ class HomeApp:
             )
         self._sync_chrome_for_route()
         self._refresh_footer()
+        self._sync_processing_cue()
         if self._nav in {"home", "library", "photos", "videos"} and busy:
             # Stay on Library; footer shows Scanning — do not force old dashboard.
             try:
                 mapped = bool(self._canvas_ws.winfo_ismapped()) or bool(
                     self._landing.winfo_ismapped()
                 )
-            except tk.TclError:
+            except (tk.TclError, AttributeError):
                 mapped = False
             if not mapped:
                 self._show_library_or_onboard()
@@ -4049,8 +4795,45 @@ class HomeApp:
                 lines.extend(format_search_lines(text_rec))
         self._set_inspector("Search", lines)
 
-    def _show_settings(self) -> None:
-        """Product Settings. Runtime/provider/model/schema/job live in Diagnostics."""
+    def _build_settings_workspace(self) -> None:
+        """Settings is a first-class workspace route — not a Toplevel popup."""
+        for child in self._settings.winfo_children():
+            child.destroy()
+        outer = ttk.Frame(self._settings)
+        outer.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(outer, highlightthickness=0, bg=BG_CANVAS)
+        scroll = ttk.Scrollbar(outer, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        pad = ttk.Frame(canvas, padding=(SP_32, SP_24))
+        pad_id = canvas.create_window((0, 0), window=pad, anchor=tk.NW)
+        self._settings_canvas = canvas
+        self._settings_pad = pad
+        self._settings_pad_id = pad_id
+
+        def _sync_scroll(_event=None) -> None:
+            try:
+                canvas.configure(scrollregion=canvas.bbox("all"))
+                canvas.itemconfigure(pad_id, width=canvas.winfo_width())
+            except tk.TclError:
+                pass
+
+        pad.bind("<Configure>", _sync_scroll)
+        canvas.bind("<Configure>", _sync_scroll)
+
+        def _on_mousewheel(event) -> None:
+            try:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            except tk.TclError:
+                pass
+
+        canvas.bind("<Enter>", lambda _e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        canvas.bind("<Leave>", lambda _e: canvas.unbind_all("<MouseWheel>"))
+        self._fill_settings_body()
+
+    def _fill_settings_body(self) -> None:
+        """Rebuild Settings sections inside the workspace scroll body."""
         from semblon.product_surface import (
             SETTINGS_ADVANCED,
             SETTINGS_ADVANCED_HINT,
@@ -4064,56 +4847,30 @@ class HomeApp:
             settings_contributions,
         )
 
-        if self._settings_win is not None:
+        pad = getattr(self, "_settings_pad", None)
+        canvas = getattr(self, "_settings_canvas", None)
+        if pad is None:
+            return
+        for child in pad.winfo_children():
+            child.destroy()
+        # Tear down prior preview theatres so demo after() jobs stop.
+        for tile in getattr(self, "_atmosphere_tiles", None) or []:
             try:
-                if self._settings_win.winfo_exists():
-                    self._settings_win.lift()
-                    self._settings_win.focus_force()
-                    return
-            except tk.TclError:
-                self._settings_win = None
+                tile.destroy()
+            except Exception:  # noqa: BLE001
+                pass
+        self._atmosphere_tiles = []
 
-        win = tk.Toplevel(self.root)
-        self._settings_win = win
-        win.title(SETTINGS_TITLE)
-        win.geometry("640x620")
-        win.minsize(480, 420)
-        if apply_theme is not None:
-            apply_theme(win)
-        try:
-            win.transient(self.root)
-            win.configure(bg=BG_CANVAS)
-        except tk.TclError:
-            pass
-
-        # Scrollable body — large Settings content stays usable.
-        outer = ttk.Frame(win)
-        outer.pack(fill=tk.BOTH, expand=True)
-        canvas = tk.Canvas(outer, highlightthickness=0, bg=BG_CANVAS)
-        scroll = ttk.Scrollbar(outer, orient=tk.VERTICAL, command=canvas.yview)
-        canvas.configure(yscrollcommand=scroll.set)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        pad = ttk.Frame(canvas, padding=(SP_32, SP_24))
-        pad_id = canvas.create_window((0, 0), window=pad, anchor=tk.NW)
-
-        def _sync_scroll(_event=None) -> None:
-            canvas.configure(scrollregion=canvas.bbox("all"))
+        if canvas is not None:
             try:
-                canvas.itemconfigure(pad_id, width=canvas.winfo_width())
+                canvas.configure(bg=BG_CANVAS)
             except tk.TclError:
                 pass
-
-        pad.bind("<Configure>", _sync_scroll)
-        canvas.bind("<Configure>", _sync_scroll)
 
         head = ttk.Frame(pad)
         head.pack(fill=tk.X)
         ttk.Label(head, text=SETTINGS_TITLE, font=H2).pack(side=tk.LEFT)
-        close_btn = _button(head, "Close", win.destroy, kind="tertiary", icon="x")
-        close_btn.pack(side=tk.RIGHT)
 
-        # Product sections come from settings_contributions(). Home still draws them.
         sections = {s.id: s for s in settings_contributions()}
         library = sections["library"]
         processing = sections["processing"]
@@ -4128,7 +4885,7 @@ class HomeApp:
             text=library.hint,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
+            wraplength=640,
         ).pack(anchor=tk.W)
         ttk.Label(pad, text="Library location", font=BODY).pack(
             anchor=tk.W, pady=(SP_8, 0)
@@ -4141,19 +4898,21 @@ class HomeApp:
             textvariable=self._settings_lib_var,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=240,
+            wraplength=420,
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
         _button(
             loc_row, "Change…", self._settings_change_library, kind="secondary"
         ).pack(side=tk.RIGHT)
 
-        ttk.Label(pad, text="Packs", font=BODY_STRONG).pack(anchor=tk.W, pady=(SP_24, SP_8))
+        ttk.Label(pad, text="Packs", font=BODY_STRONG).pack(
+            anchor=tk.W, pady=(SP_24, SP_8)
+        )
         ttk.Label(
             pad,
             text="Missing packs stay missing. They are not an empty library.",
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
+            wraplength=640,
         ).pack(anchor=tk.W)
         from semblon.home_shell import capability_sections
 
@@ -4164,7 +4923,7 @@ class HomeApp:
                 pad,
                 text=f"{row['label']} — {state}",
                 font=BODY,
-                wraplength=480,
+                wraplength=640,
             ).pack(anchor=tk.W, pady=(SP_4, 0))
 
         ttk.Label(pad, text=processing.title, font=BODY_STRONG).pack(
@@ -4205,13 +4964,13 @@ class HomeApp:
         ttk.Label(pad, text=appearance.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
-        from semblon.ui_prefs import load_theme_mode
+        from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
 
-        self._theme_var = tk.StringVar(value=load_theme_mode(self.store))
+        current_mode = load_theme_mode(self.store)
+        self._theme_var = tk.StringVar(value=current_mode)
         for mode, label in (
             ("system", "System"),
             ("light", "Light"),
-            ("dark", "Dark"),
         ):
             ttk.Radiobutton(
                 pad,
@@ -4220,6 +4979,41 @@ class HomeApp:
                 variable=self._theme_var,
                 command=lambda m=mode: self._set_theme_mode(m),
             ).pack(anchor=tk.W)
+
+        ttk.Label(
+            pad,
+            text="Atmospheres — hover a tile to preview states; click to apply",
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+        ).pack(anchor=tk.W, pady=(SP_12, SP_8))
+        preview_row = ttk.Frame(pad)
+        preview_row.pack(anchor=tk.W, fill=tk.X)
+        try:
+            from semblon.atmosphere_render import build_atmosphere_previews
+
+            def _pick(aid: str) -> None:
+                self._theme_var.set(aid)
+                self._set_theme_mode(aid)
+
+            tiles = build_atmosphere_previews(
+                preview_row,
+                current=resolve_atmosphere_id(current_mode),
+                on_select=_pick,
+            )
+            self._atmosphere_tiles = tiles
+            for i, tile in enumerate(tiles):
+                tile.widget().grid(row=0, column=i, padx=(0, SP_8), pady=2)
+        except Exception:  # noqa: BLE001 — radios still work without previews
+            from semblon.atmosphere import ATMOSPHERE_LABELS, DARK_ATMOSPHERE_IDS
+
+            for aid in DARK_ATMOSPHERE_IDS:
+                ttk.Radiobutton(
+                    pad,
+                    text=ATMOSPHERE_LABELS.get(aid, aid),
+                    value=aid,
+                    variable=self._theme_var,
+                    command=lambda m=aid: self._set_theme_mode(m),
+                ).pack(anchor=tk.W)
 
         ttk.Label(pad, text=about.title, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
@@ -4236,10 +5030,9 @@ class HomeApp:
             pad,
             text=about.hint,
             font=BODY,
-            wraplength=480,
+            wraplength=640,
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
-        # ── Advanced (shortcuts / export) — not everyday product chrome ──
         ttk.Label(pad, text=SETTINGS_ADVANCED, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
@@ -4248,7 +5041,7 @@ class HomeApp:
             text=SETTINGS_ADVANCED_HINT,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
+            wraplength=640,
         ).pack(anchor=tk.W)
         for shortcut, keys in SETTINGS_SHORTCUTS:
             row = ttk.Frame(pad)
@@ -4264,7 +5057,6 @@ class HomeApp:
             kind="tertiary",
         ).pack(anchor=tk.W, pady=(SP_12, 0))
 
-        # ── Diagnostics — runtime / provider / model / schema / jobs ──
         ttk.Label(pad, text=SETTINGS_DIAGNOSTICS, font=BODY_STRONG).pack(
             anchor=tk.W, pady=(SP_24, SP_8)
         )
@@ -4273,7 +5065,7 @@ class HomeApp:
             text=SETTINGS_DIAGNOSTICS_HINT,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-            wraplength=480,
+            wraplength=640,
         ).pack(anchor=tk.W)
         _button(
             pad,
@@ -4282,15 +5074,22 @@ class HomeApp:
             kind="tertiary",
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
-        def _on_close() -> None:
-            self._settings_win = None
-            win.destroy()
-
-        win.protocol("WM_DELETE_WINDOW", _on_close)
-        try:
-            close_btn.focus_set()
-        except tk.TclError:
-            pass
+    def _show_settings(self) -> None:
+        """Product Settings workspace. Runtime/provider/model/schema/job live in Diagnostics."""
+        self._hide_workspace_panes()
+        self._set_inspector_collapsed(True)
+        if not getattr(self, "_settings_pad", None):
+            self._build_settings_workspace()
+        else:
+            self._fill_settings_body()
+        self._settings.pack(fill=tk.BOTH, expand=True)
+        self._set_inspector(
+            "Settings",
+            [
+                "Appearance, library, and processing live here.",
+                "Diagnostics stay under Settings when you need them.",
+            ],
+        )
 
     def _settings_change_library(self) -> None:
         """Pick an existing store.sqlite — presentation path only; no ingest change."""

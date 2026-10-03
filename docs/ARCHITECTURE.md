@@ -14,5 +14,6 @@ This file is a pointer only. Do not keep a second architecture or roadmap here.
 | `docs/PRODUCTION-STATUS.md` | Production capability classification |
 | `docs/FACE-GATES.md` | Closed FACE validation index |
 | `docs/R3-BRIEF.md` | Visual/interaction contract (R3) |
+| `docs/REFERENCE-STACK.md` | Feature/UX reference stack and external precedent map (does not override PRODUCT / SHELL-IA / SEM-ARCH) |
 
 Human ship gates are **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5). Production GUI = **tk Home** (**COMPLETE**). Optional Qt `semblon shell` is KEEP, not a second product Home.

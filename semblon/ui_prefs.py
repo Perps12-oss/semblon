@@ -1,6 +1,9 @@
 """Appearance preference. A JSON file beside the library, not a schema column.
 
-Modes: system, light, dark. System follows the Windows app theme when the
+Single preference surface for Atmosphere & Motion (docs/ATMOSPHERE.md).
+
+Modes: system, light, dark (alias → mica_dark), mica_dark, cyber_obsidian,
+neon_ember, tokyo_synth. System follows the Windows app theme when the
 registry value is readable. Otherwise system resolves to light — this
 process does not guess a dark theme it cannot see.
 """
@@ -11,11 +14,28 @@ import json
 import sys
 from pathlib import Path
 
+from semblon.atmosphere import (
+    ATMOSPHERES,
+    DEFAULT_DARK_ATMOSPHERE,
+    THEME_MODES,
+    normalize_atmosphere_id,
+    palette_for,
+)
 from semblon.process import default_store_path
-from semblon.ui_tokens import DARK, LIGHT, Palette
+from semblon.ui_tokens import Palette
 
-THEME_MODES = ("system", "light", "dark")
 _FILE_NAME = "appearance.json"
+
+# Re-export for callers / tests.
+__all__ = [
+    "THEME_MODES",
+    "appearance_path",
+    "load_theme_mode",
+    "resolve_atmosphere_id",
+    "resolve_palette",
+    "save_theme_mode",
+    "system_is_dark",
+]
 
 
 def appearance_path(store: Path | None = None) -> Path:
@@ -25,7 +45,7 @@ def appearance_path(store: Path | None = None) -> Path:
 
 
 def load_theme_mode(store: Path | None = None) -> str:
-    """Return system, light, or dark. Missing or damaged files are system."""
+    """Return a stored theme mode. Missing or damaged files are system."""
     path = appearance_path(store)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -75,14 +95,22 @@ def system_is_dark() -> bool | None:
         return None
 
 
-def resolve_palette(mode: str, *, system_dark: bool | None = None) -> Palette:
-    """Map a stored mode to a palette. Unknown system theme stays light."""
+def resolve_atmosphere_id(mode: str, *, system_dark: bool | None = None) -> str:
+    """Map a stored mode to an atmosphere id."""
     picked = mode.strip().lower() if isinstance(mode, str) else "system"
     if picked == "dark":
-        return DARK
+        return DEFAULT_DARK_ATMOSPHERE
+    if picked in ATMOSPHERES:
+        return picked
     if picked == "light":
-        return LIGHT
+        return "light"
+    # system
     dark = system_is_dark() if system_dark is None else system_dark
     if dark is True:
-        return DARK
-    return LIGHT
+        return DEFAULT_DARK_ATMOSPHERE
+    return "light"
+
+
+def resolve_palette(mode: str, *, system_dark: bool | None = None) -> Palette:
+    """Map a stored mode to a resting palette."""
+    return palette_for(resolve_atmosphere_id(mode, system_dark=system_dark))

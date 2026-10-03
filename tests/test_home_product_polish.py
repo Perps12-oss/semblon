@@ -38,7 +38,7 @@ def test_home_settings_separates_advanced_and_diagnostics():
         SETTINGS_OPEN_DIAGNOSTICS,
     )
 
-    src = inspect.getsource(home_ui.HomeApp._show_settings)
+    src = inspect.getsource(home_ui.HomeApp._fill_settings_body)
     assert "SETTINGS_DIAGNOSTICS" in src
     assert "SETTINGS_ADVANCED" in src
     assert "SETTINGS_OPEN_DIAGNOSTICS" in src
@@ -54,9 +54,16 @@ def test_home_settings_separates_advanced_and_diagnostics():
         "schema_version",
         "modality_product_settings_lines",
         "JobEngine",
+        "Toplevel",
+        "_settings_win",
     ):
         assert bad not in src
+    show = inspect.getsource(home_ui.HomeApp._show_settings)
+    assert "Toplevel" not in show
+    assert "_settings_win" not in show
+    import semblon.product_features as pf
 
+    assert "_navigate(\"settings\")" in inspect.getsource(pf._cmd_open_settings)
 
 def test_search_hierarchy_empty_unavailable_error_result():
     empty = search_no_matches("Ada")

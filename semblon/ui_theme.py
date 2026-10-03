@@ -130,6 +130,16 @@ def apply_theme(root, *, force: bool = False) -> None:
     )
     style.configure("Surface.TFrame", background=BG_SURFACE)
     style.configure(
+        "Raised.TFrame",
+        background=BG_SURFACE,
+        borderwidth=1,
+        relief="solid",
+    )
+    style.configure(
+        "Stage.TFrame",
+        background=BG_CANVAS,
+    )
+    style.configure(
         "Surface.TLabel", background=BG_SURFACE, foreground=INK_PRIMARY, font=body
     )
     style.configure(

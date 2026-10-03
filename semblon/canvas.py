@@ -413,12 +413,13 @@ else:
                 ACCENT,
                 ACCENT_HOVER,
                 ACCENT_SUBTLE,
-                BG_DARK,
+                BG_STAGE,
                 BG_SUBTLE,
                 CAPTION,
                 INK_ON_DARK,
                 INK_SECONDARY,
             )
+            from semblon.atmosphere_render import Spotlight
 
             self.frame = ttk.Frame(master)
             self._on_select = on_select
@@ -464,6 +465,7 @@ else:
             self._visual_gen = 0
             self._overlay_photo = None
             self.status = tk.StringVar(value="Photos")
+            self._spotlight = None
 
             if show_chrome:
                 ttk.Label(self.frame, textvariable=self.status, wraplength=720).pack(
@@ -489,7 +491,10 @@ else:
             thumb_sb = ttk.Scrollbar(self._browse, orient=tk.VERTICAL, command=self._thumb_canvas.yview)
             thumb_sb.pack(side=tk.LEFT, fill=tk.Y)
             self._thumb_canvas.configure(yscrollcommand=thumb_sb.set)
+            self._compare_marks: set[str] = set()
+            self._on_compare_toggle = None
             self._thumb_canvas.bind("<Button-1>", self._on_thumb_click)
+            self._thumb_canvas.bind("<Control-Button-1>", self._on_thumb_compare_toggle)
             self._thumb_canvas.bind("<Configure>", self._on_thumb_configure)
             self._thumb_canvas.bind(
                 "<MouseWheel>",
@@ -512,8 +517,9 @@ else:
             )
             self._tip.pack(anchor=tk.W, pady=(0, 4))
 
-            self.preview = tk.Canvas(self._preview_wrap, background=BG_DARK, highlightthickness=0)
+            self.preview = tk.Canvas(self._preview_wrap, background=BG_STAGE, highlightthickness=0)
             self.preview.pack(fill=tk.BOTH, expand=True)
+            self._spotlight = Spotlight(self.preview)
             self._ink_on_dark = INK_ON_DARK
             self._caption_font = CAPTION
             self._accent = ACCENT
@@ -557,6 +563,9 @@ else:
 
         def grid(self, **kwargs):
             return self.frame.grid(**kwargs)
+
+        def winfo_ismapped(self):
+            return self.frame.winfo_ismapped()
 
         def _enter_grid(self) -> None:
             """Photos fill the stage. The opened picture is not sitting beside a rail."""
@@ -727,6 +736,7 @@ else:
                     self.frame.after(1, pump)
                 except tk.TclError:
                     pass
+            self._paint_compare_marks()
 
         def _fill_thumb(self, idx: int) -> None:
             if idx >= len(self._media):
@@ -753,6 +763,10 @@ else:
             self._thumb_hitmap[iid] = idx
 
         def _on_thumb_click(self, event) -> None:
+            # Control+click is handled by _on_thumb_compare_toggle.
+            if int(getattr(event, "state", 0) or 0) & 0x4:
+                self._on_thumb_compare_toggle(event)
+                return
             x = self._thumb_canvas.canvasx(event.x)
             y = self._thumb_canvas.canvasy(event.y)
             items = self._thumb_canvas.find_overlapping(x, y, x, y)
@@ -761,6 +775,59 @@ else:
                 if idx is not None:
                     self.show_index(idx)
                     return
+
+        def _on_thumb_compare_toggle(self, event) -> None:
+            """Ctrl+click toggles a Similar candidate for Compare (not open)."""
+            if self._on_compare_toggle is None:
+                return
+            x = self._thumb_canvas.canvasx(event.x)
+            y = self._thumb_canvas.canvasy(event.y)
+            items = self._thumb_canvas.find_overlapping(x, y, x, y)
+            for iid in items:
+                idx = self._thumb_hitmap.get(iid)
+                if idx is None or idx >= len(self._media):
+                    continue
+                mid = self._media[idx].get("media_id")
+                if mid:
+                    try:
+                        self._on_compare_toggle(str(mid))
+                    except Exception:  # noqa: BLE001
+                        return
+                return
+
+        def set_compare_marks(self, media_ids: list[str] | set[str] | None) -> None:
+            self._compare_marks = {str(m) for m in (media_ids or []) if m}
+            self._paint_compare_marks()
+
+        def _paint_compare_marks(self) -> None:
+            c = getattr(self, "_thumb_canvas", None)
+            if c is None:
+                return
+            try:
+                c.delete("compare_mark")
+            except tk.TclError:
+                return
+            if not self._compare_marks:
+                return
+            from semblon.ui_tokens import ACCENT
+
+            cell = self._THUMB_CELL
+            for idx, m in enumerate(self._media):
+                if str(m.get("media_id")) not in self._compare_marks:
+                    continue
+                spot = self._thumb_cells.get(idx)
+                if spot is None:
+                    continue
+                x0, y0 = spot
+                c.create_rectangle(
+                    x0 + 1,
+                    y0 + 1,
+                    x0 + cell - 1,
+                    y0 + cell - 1,
+                    outline=ACCENT,
+                    width=3,
+                    tags=("compare_mark",),
+                )
 
         def set_board(self, board: dict, media_rows: list[dict] | None = None) -> None:
             from semblon.product_surface import soft_canvas_status, soft_media_list_label
@@ -1317,7 +1384,7 @@ else:
                 x1, y1, x2, y2, outline=color, width=width, tags=("overlay",)
             )
 
-        def _draw_highlight(self, hit: dict, *, color: str, width: int = 2) -> None:
+        def _draw_highlight(self, hit: dict, *, color: str, width: int = 2, region=None) -> None:
             rows = hit.get("rows")
             drawn = False
             if rows and self._img is not None:
@@ -1335,10 +1402,18 @@ else:
                             rx1, ry1, rx2, ry2, outline="", fill=color, stipple="gray25", tags=("overlay",)
                         )
                     drawn = True
+            if region is not None and region.aura:
+                x1, y1, x2, y2 = hit["rect"]
+                self.preview.create_rectangle(
+                    x1 - 3, y1 - 3, x2 + 3, y2 + 3, outline=region.aura, width=2, tags=("overlay",)
+                )
             if not drawn:
                 self._draw_outline(hit, color=color, width=width)
             label = (hit.get("label") or "").strip()
-            if not label or hit.get("kind") == "face":
+            show_label = bool(label) and hit.get("kind") != "face"
+            if region is not None:
+                show_label = show_label and region.label_visible
+            if not show_label:
                 return
             x1, y1, _x2, _y2 = hit["rect"]
             chip_w = max(36, 7 * len(label) + 12)
@@ -1346,8 +1421,9 @@ else:
             self.preview.create_rectangle(
                 x1, top, x1 + chip_w, top + 16, outline="", fill=color, tags=("overlay",)
             )
+            label_fg = region.label_fg if region is not None else "#F7F4EE"
             self.preview.create_text(
-                x1 + 6, top + 8, anchor=tk.W, fill="#F7F4EE", text=label, tags=("overlay",)
+                x1 + 6, top + 8, anchor=tk.W, fill=label_fg, text=label, tags=("overlay",)
             )
 
         def _region_overlay_photo(self, hit: dict):
@@ -1419,21 +1495,75 @@ else:
                     tags=("overlay", "seg_label"),
                 )
 
-        def _paint_hit(self, hit: dict, *, color: str, selected: bool = False) -> None:
+        def _atm_tokens(self, state):
+            from semblon.atmosphere import InteractionState, resolve
+            from semblon.atmosphere_render import active_atmosphere_id
+
+            if isinstance(state, str):
+                state = InteractionState(state)
+            return resolve(active_atmosphere_id(), state)
+
+        def _paint_hit(self, hit: dict, *, color: str, selected: bool = False, region=None) -> None:
+            if region is not None:
+                color = region.outline
             if hit.get("kind") == "visual_segment":
                 self._draw_segment_highlight(hit, color=color, selected=selected)
                 return
             item = hit.get("item") or {}
+            width = region.outline_width if region is not None else (3 if selected else 2)
             if hit.get("rows") or item.get("provider") == "visual.region":
-                self._draw_highlight(hit, color=color, width=3 if selected else 2)
+                self._draw_highlight(hit, color=color, width=width, region=region)
                 return
-            self._draw_outline(hit, color=color, width=3 if selected else 2)
+            if region is not None and region.aura:
+                x1, y1, x2, y2 = hit["rect"]
+                self.preview.create_rectangle(
+                    x1 - 3,
+                    y1 - 3,
+                    x2 + 3,
+                    y2 + 3,
+                    outline=region.aura,
+                    width=2,
+                    tags=("overlay",),
+                )
+            if region is not None and region.fill:
+                x1, y1, x2, y2 = hit["rect"]
+                self.preview.create_rectangle(
+                    x1, y1, x2, y2, outline="", fill=region.fill, stipple="gray25", tags=("overlay",)
+                )
+            self._draw_outline(hit, color=color, width=width)
+            if region is not None and region.label_visible:
+                label = (hit.get("label") or "").strip()
+                if label and hit.get("kind") != "face":
+                    x1, y1, _x2, _y2 = hit["rect"]
+                    chip_w = max(36, 7 * len(label) + 12)
+                    top = max(2, y1 - 18)
+                    self.preview.create_rectangle(
+                        x1, top, x1 + chip_w, top + 16, outline="", fill=color, tags=("overlay",)
+                    )
+                    self.preview.create_text(
+                        x1 + 6,
+                        top + 8,
+                        anchor=tk.W,
+                        fill=region.label_fg,
+                        text=label,
+                        tags=("overlay",),
+                    )
 
         def _paint_interaction(self) -> None:
+            from semblon.atmosphere import InteractionState
+
             self._clear_overlay_tags()
             if self._selected is not None:
-                self._paint_hit(self._selected, color=self._SELECT_COLOR, selected=True)
+                tokens = self._atm_tokens(InteractionState.SELECTED)
+                self._paint_hit(
+                    self._selected,
+                    color=tokens.region.outline,
+                    selected=True,
+                    region=tokens.region,
+                )
+                self._SELECT_COLOR = tokens.accent
             elif self._hover_id is not None:
+                tokens = self._atm_tokens(InteractionState.HOVER)
                 hit = None
                 if self._hover_seg is not None:
                     hit = {
@@ -1454,7 +1584,15 @@ else:
                         None,
                     )
                 if hit is not None:
-                    self._paint_hit(hit, color=self._HOVER_COLOR)
+                    self._paint_hit(
+                        hit,
+                        color=tokens.region.outline,
+                        region=tokens.region,
+                    )
+                self._HOVER_COLOR = tokens.accent
+            else:
+                # Resting: no permanent boxes on the photograph.
+                pass
 
         def _dismiss_tip(self) -> None:
             if self._tip_shown:
@@ -1517,6 +1655,13 @@ else:
             hit = self._hit_at(event.x, event.y)
             new_id = hit["id"] if hit else None
             new_seg = hit.get("segment") if hit and hit.get("kind") == "visual_segment" else None
+            from semblon.atmosphere import InteractionState
+
+            tokens = self._atm_tokens(
+                InteractionState.HOVER if new_id else InteractionState.RESTING
+            )
+            if self._spotlight is not None:
+                self._spotlight.paint(event.x, event.y, tokens)
             if new_id == self._hover_id and new_seg is self._hover_seg:
                 return
             self._hover_id = new_id
@@ -1528,6 +1673,8 @@ else:
                 return
             self._hover_id = None
             self._hover_seg = None
+            if self._spotlight is not None:
+                self._spotlight.clear()
             if self._selected is None:
                 self._paint_interaction()
 
@@ -1597,7 +1744,18 @@ else:
                     if reg["id"] in id_set:
                         self._draw_outline(reg, color=self._SELECT_COLOR, width=2)
                 if self._on_select is not None:
-                    self._call_on_select(mid, lines, {"kind": "region", "hits": hits_raw})
+                    from semblon.discovery_loop import image_rect_from_corners
+
+                    query_rect = image_rect_from_corners(ix1, iy1, ix2, iy2)
+                    self._call_on_select(
+                        mid,
+                        lines,
+                        {
+                            "kind": "region",
+                            "hits": hits_raw,
+                            "rect": query_rect,
+                        },
+                    )
                 return
 
             # Click (not drag).

@@ -47,12 +47,15 @@ SETTINGS_DIAGNOSTICS_HINT = (
 )
 SETTINGS_EXPORT_REVIEW = "Open export review page…"
 SETTINGS_OPEN_DIAGNOSTICS = "Advanced diagnostics…"
+# Compact chrome / palette destinations (Model D — not a MAIN sidebar).
 SETTINGS_SHORTCUTS: tuple[tuple[str, str], ...] = (
     ("Search", "Ctrl+F"),
     ("Go to", "Ctrl+K"),
-    ("Library", "Ctrl+1"),
+    ("Memory / Library", "Ctrl+1"),
     ("People", "Ctrl+2"),
     ("Activity", "Ctrl+3"),
+    ("Discover", "Ctrl+4"),
+    ("Home Stage", "Ctrl+0"),
 )
 
 # People / Unknown — short workflow coaching (never lectures; identity-safe).
@@ -562,6 +565,7 @@ def soft_inspector_for_region(
         for h in objects[:5]:
             lines.append(f"  · {h.get('label') or 'Something in the photo'}")
     lines.append("")
+    lines.append("Find Similar looks for visually similar photos (not identity).")
     lines.append("Click a face to select it, or Esc to clear.")
     return lines
 

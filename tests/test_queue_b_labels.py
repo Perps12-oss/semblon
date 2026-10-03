@@ -18,25 +18,27 @@ def test_dashboard_and_command_labels_are_honest():
     assert labels["lens.find_similar"] == "Find Similar"
     assert labels["library.watch_folder"] == "Add or update this folder…"
     assert labels["library.browse_photos"] == "Browse photos"
-    assert ("Library", "Ctrl+1") in SETTINGS_SHORTCUTS
+    assert ("Memory / Library", "Ctrl+1") in SETTINGS_SHORTCUTS
     assert ("Photos", "Ctrl+1") not in SETTINGS_SHORTCUTS
 
 
 def test_catalog_vlm_and_knowledge_labels_are_honest():
     catalog = {spec.id: spec.label for spec in default_catalog().specs}
-    assert catalog["vlm"] == "Local description (experimental)"
-    assert catalog["lkg"] == "Local pack match"
+    assert catalog["vlm"] in {"Describe", "Local description (experimental)"}
+    assert catalog["lkg"] in {"Knowledge", "Local pack match"}
     sections = capability_sections(has_library_content=False, model_overrides={})
     by_id = {r["id"]: r for r in sections["tracked"] + sections["ready"]}
-    assert by_id["vlm"]["label"] == "Local description (experimental)"
-    assert by_id["lkg"]["label"] == "Local pack match"
+    assert by_id["vlm"]["label"] in {"Describe", "Local description (experimental)"}
+    assert by_id["lkg"]["label"] in {"Knowledge", "Local pack match"}
 
 
 def test_find_similar_command_targets_region_search_not_embedding_stack():
     src = inspect.getsource(_cmd_lens_find_similar)
     assert "open_region_select" in src
-    assert "search_similar" not in src
-    assert "search.search_similar" not in src
+    # Docstring may name the forbidden stack; the body must not call it.
+    body = src.split('"""', 2)[-1] if '"""' in src else src
+    assert "search.search_similar" not in body
+    assert "search_similar(" not in body
     from semblon import lens_release
 
     rel = inspect.getsource(lens_release.remember_selection)

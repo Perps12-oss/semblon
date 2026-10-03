@@ -12,13 +12,13 @@ Advanced; Diagnostics holds runtime/provider/model/schema/job chrome;
 Lens soft-copies capability labels; Search tries text when people
 miss; capability strip uses Available / Optional · component required.
 
-Authority companions: `docs/COMPLETION-MATRIX.md`, `docs/APPLICATION_API.md`, `docs/PRODUCT.md`, `docs/SEM-ARCH-V1.4.md`.
+Authority companions: `docs/COMPLETION-MATRIX.md`, `docs/APPLICATION_API.md`, `docs/PRODUCT.md`, `docs/SEM-ARCH-V1.4.md`, **`docs/SHELL-IA.md` (LOCKED Model D)**.
 
 ## Vocabulary
 
 | Class | Meaning |
 |---|---|
-| **CANONICAL** | Primary product route inside Home. Users should find it without knowing CLI. |
+| **CANONICAL** | Primary product surface inside Home. Users should find it without knowing CLI. |
 | **SECONDARY** | Same app, demoted entry (More / Toplevel / overflow). Real workflow, not Home chrome. |
 | **CLI** | Automation, power users, scripting. Not required in Home nav. |
 | **LAB** | Engineering only (`semblon lab …`). Must not leak into product nav. |
@@ -28,48 +28,62 @@ Authority companions: `docs/COMPLETION-MATRIX.md`, `docs/APPLICATION_API.md`, `d
 
 ---
 
-## Target product IA (intent)
+## Target product IA (intent) — LOCKED Model D
+
+**Authority:** `docs/SHELL-IA.md` (2026-10-02). Persistent MAIN sidebar is **not** the product model.
 
 ```text
 HOME  (one tk process — semblon home)
- ├── Photos
- ├── Videos
- ├── People
- ├── Unknown            (nav label today: People to name; route id: unknown)
- ├── Search             (top bar today; still CANONICAL intent)
- ├── Activity
- ├── Lens / Inspect     ← unify visual ask (not one button per model)
- └── Settings
+
+  EMPTY / FIRST-RUN
+    └── Home Stage     ← capability introduction (Explore · Discover · People)
+                         Add folder = enabling CTA (not product definition)
+                         Activity = operational pulse when relevant, not Stage peer
+
+  MEDIA EXISTS
+    └── Memory Canvas  ← Stage dissolves; media full-bleed
+         ├── Explore filters in-canvas (All / Photos / Videos)
+         ├── Discover   ← compact + contextual (media → region → action → result)
+         ├── People     ← secondary mode + review badge (not face-app identity)
+         ├── Activity   ← operational sheet / pulse
+         └── Search     ← top compact field (memory search; not a Search app)
+
+  UTILITY
+    └── Settings       ← header utility; first-class when opened; not capability hierarchy
 
 SECONDARY (same app routes / Toplevels — not separate GUI technologies)
  ├── Review             (evidence / name / merge / split)
- ├── Canvas             (observation workspace; also embeds Photos grid)
+ ├── Canvas             (observation workspace; also embeds media grid)
  └── Live / Watch      (optional continuous ingest surfaces)
 
 CLI     → automation / power / diagnostics doors
 LAB     → engineering only
 ```
 
-**Backend ≠ nav:** FaceKit, SigLIP, OCR, VLM, packs, ANN, `lab query` / `lab index` are capabilities. They do not each get a Home sidebar item.
+**Backend ≠ nav:** FaceKit, SigLIP, OCR, VLM, packs, ANN, `lab query` / `lab index`, and the engineering name **Lens** are capabilities. They do not each get a permanent Home destination. Discover is the product word; Lens is not a MAIN chrome label.
+
+**Chrome rule:** No permanent left-hand MAIN list (Library / People / Activity as peer destinations). Internal route ids may remain; product chrome follows SHELL-IA.
 
 ---
 
 ## A. Canonical production UI (inside `semblon home`)
 
-Nav source of truth: `HOME_NAV` in `semblon/home_ui.py` (ASK / LIBRARY / PEOPLE / ACTIVITY). CLI door: `semblon home` (`cli.py`).
+**IA (LOCKED):** `docs/SHELL-IA.md` — Stage / Memory Canvas / contextual modes.  
+**Code today:** still carries historical MAIN sidebar chrome in `home_ui` / registry nav contributions. That chrome is **not** the locked product model; do not extend it. Next shell slice must dissolve Stage → Memory and replace MAIN destination list with compact contextual chrome.
+
+Nav/registry source: `product_features.py` / `gui_registry` (internal route ids). CLI door: `semblon home` (`cli.py`).
 
 | Route / control | Route id / entry | Implementation | Class / notes |
 |---|---|---|---|
-| Library Home shell | `home` (sidebar label **Photos**) | `home_ui`, `home_shell` | **CANONICAL** — stats + Ready / Not installed honesty |
-| Photos browse | `photos` / canvas stills | `CanvasWorkspace` embed | **CANONICAL** |
-| Videos | `videos` | Canvas `source_types=video` | **CANONICAL** |
-| People | `people` | Home welcome + `search_people` | **CANONICAL** — named people |
-| People to name | `unknown` | Inbox / board flatten | **CANONICAL** — human decisions; Unknown is valid |
-| Search | top bar | `_search_person` / analysing gate | **CANONICAL** — people-first today; Lens absorbs broader visual ask |
-| Activity | `activity` | `application.activity_memory` via Home Activity workspace | **CANONICAL** — soft history / Memory (people together, moments, recent processing) |
-| Lens / Inspect | `lens` + brand **Lens** | `_open_lens`, Lens workspace, `_open_region_select` | **CANONICAL** — Home route/workspace; open photo → select → soft results; backends decide availability |
-| Settings | Settings button | `_show_settings` | **CANONICAL** — Library / Appearance / Processing / About; Advanced = shortcuts + export; Diagnostics = runtime/provider/model/schema/jobs |
-| Inspector verbs | right pane | merge / assign / split / name / rule-out / ignore | **CANONICAL** — soft labels via `product_surface` |
+| Home Stage | empty / brand return | TBD shell slice; onboarding lives in `home_ui` / `fluid_shell` today | **CANONICAL** — capability introduction |
+| Memory Canvas / Library | `library` / `photos` / `videos` / `canvas` | `home_ui`, `CanvasWorkspace` | **CANONICAL** — default after media exists |
+| People | `people` | Home people surface | **CANONICAL** — secondary weight; not face-app identity |
+| People to name | `unknown` | Inbox / board flatten | **CANONICAL** — review queue; badge entry preferred over MAIN row |
+| Search | top compact field | `_search_person` / text fallthrough | **CANONICAL** — search memory |
+| Activity | `activity` | `application.activity_memory` | **CANONICAL** — operational pulse/sheet, not MAIN peer |
+| Discover (was Lens) | verbs + optional `lens` route id | region select / find similar / ask | **CANONICAL** — capability; **not** MAIN “Lens” destination |
+| Settings | Settings button | `_show_settings` | **CANONICAL** — header utility |
+| Inspector verbs | right pane | merge / assign / split / name / rule-out / ignore | **CANONICAL** — soft labels via `product_surface`; on demand |
 | Ingest / Pause / Cancel | Home job client | `JobEngine` via Application façade | **CANONICAL** — job controls, not nav |
 
 **Canonical stack:** tk only. No Electron / Tauri / CustomTkinter / FastAPI product shell.

@@ -1,7 +1,8 @@
 """Internal GUI feature registry — not a plugin host.
 
 Features register navigation, routes, and commands. The Tk Home shell
-loops the registry for sidebar / palette / overflow / inspector surfaces.
+uses compact header chrome (Model D); nav contributions feed palette Go-to
+and keyboard shortcuts — not a permanent MAIN sidebar.
 CapabilitySpec (runtime_contract) and GUI_PATHS (product_exposure) stay
 separate: models catalog and exposure classification, not page lists.
 
@@ -158,7 +159,7 @@ class FeatureRegistry:
         # Preserve registration order within each section; section order is fixed.
         return rows
 
-    # Flat product rail: Library · People · Activity.
+    # Flat product destinations for palette / shortcuts (Model D — not MAIN sidebar).
     _SECTION_ORDER = ("MAIN",)
 
     def nav_sections(

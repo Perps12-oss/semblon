@@ -89,7 +89,7 @@ def test_home_control_policy_does_not_lock_read_surfaces():
 
 
 def test_home_nav_labels_ux_rescue():
-    """Fluid workspace — Library · People · Activity; Lens off the rail."""
+    """Model D — compact destinations Library · People · Activity; Lens off MAIN."""
     flat = {nav_id: label for _sec, items in HOME_NAV for nav_id, label in items}
     assert flat["library"] == "Library"
     assert flat["people"] == "People"
@@ -165,18 +165,27 @@ def test_home_landing_has_no_engineering_leak():
 
 
 def test_home_settings_is_user_panel_not_dump():
-    """§6 — Settings opens a user panel; diagnostics go to Diagnostics."""
+    """§6 — Settings is an in-shell workspace route; diagnostics go to Diagnostics."""
     import semblon.home_ui as home_ui
 
     src = inspect.getsource(home_ui.HomeApp._show_settings)
-    assert "Advanced diagnostics" in src or "SETTINGS_OPEN_DIAGNOSTICS" in src
-    assert "Library location" in src or "SETTINGS_LIBRARY" in src
-    assert "Use GPU when available" in src or "SETTINGS_GPU" in src or "Processing on this computer" in src or "SETTINGS_PROCESSING_CPU" in src
-    assert "SETTINGS_DIAGNOSTICS" in src or "Diagnostics" in src
-    assert "format_execution_status_lines" not in src
-    assert "weights_status" not in src
-    assert "buffalo_l" not in src
-
+    fill = inspect.getsource(home_ui.HomeApp._fill_settings_body)
+    build = inspect.getsource(home_ui.HomeApp._build_settings_workspace)
+    assert "Advanced diagnostics" in fill or "SETTINGS_OPEN_DIAGNOSTICS" in fill
+    assert "Library location" in fill or "SETTINGS_LIBRARY" in fill
+    assert "Use GPU when available" in fill or "SETTINGS_GPU" in fill or "Processing on this computer" in fill or "SETTINGS_PROCESSING_CPU" in fill
+    assert "SETTINGS_DIAGNOSTICS" in fill or "Diagnostics" in fill
+    assert "format_execution_status_lines" not in fill
+    assert "weights_status" not in fill
+    assert "buffalo_l" not in fill
+    # Workspace route — not a popup.
+    assert "Toplevel" not in src
+    assert "_settings_win" not in src
+    assert "_settings.pack" in src or "self._settings.pack" in src
+    assert "_navigate(\"settings\")" in inspect.getsource(home_ui.HomeApp.__init__)
+    assert "build_atmosphere_previews" in fill
+    assert "Canvas" in build
+    assert "_hide_workspace_panes" in src
 
 def test_home_defers_canvas_load_until_inspector_ready():
     """Regression: Canvas on_select during __init__ must not touch missing _canvas_ws."""
@@ -247,25 +256,25 @@ def test_home_processing_state_replaces_marketing_landing():
 def test_home_landing_wraplength_avoids_clipping():
     import semblon.home_ui as home_ui
 
-    onboard = inspect.getsource(home_ui.HomeApp._show_onboarding)
-    assert "wraplength=640" in onboard
-    assert "justify=tk.CENTER" not in onboard
-    assert "ONBOARD_HEADLINE" in onboard
-    assert "ONBOARD_PRIVACY" in onboard
+    stage = inspect.getsource(home_ui.HomeApp._show_stage)
+    assert "wraplength=720" in stage or "wraplength=640" in stage
+    assert "justify=tk.CENTER" not in stage
+    assert "STAGE_HEADLINE" in stage
+    assert "STAGE_PRIVACY" in stage
     hint = inspect.getsource(home_ui.HomeApp._refresh_landing_hint)
     assert "previously added" not in hint
     assert "landing_cta_plan" in hint
 
 
 def test_populated_home_skips_first_run_marketing():
-    """Populated launch goes to Library, not a permanent Home dashboard."""
+    """Populated launch goes to Memory Canvas, not a permanent capability dashboard."""
     import semblon.home_ui as home_ui
 
     show = inspect.getsource(home_ui.HomeApp._show_home_landing)
     assert "_show_library_or_onboard" in show
-    onboard = inspect.getsource(home_ui.HomeApp._show_onboarding)
-    assert "ONBOARD_HEADLINE" in onboard
-    assert "Find the people in your photos" not in onboard
+    stage = inspect.getsource(home_ui.HomeApp._show_stage)
+    assert "STAGE_HEADLINE" in stage
+    assert "Find the people in your photos" not in stage
     lib = inspect.getsource(home_ui.HomeApp._show_library)
     assert "_library_filter" in lib
     assert "_set_inspector_collapsed(True)" in lib
@@ -346,7 +355,7 @@ def test_home_inspector_uses_soft_verbs():
     assert "Name this person" in init or "VERB_LABEL_NAME" in init
     assert "Nothing selected" in init or "SEL_HEADING_IDLE" in init
     # Save identity is a primary button — not Enter-only on a grey Add to person.
-    assert "btn_name" in init
+    assert 'f"btn_{key}"' in init or "btn_name" in init
     assert "self._inspector_name_commit" in init
     refresh = inspect.getsource(home_ui.HomeApp._refresh_inspector_verbs)
     assert "_sync_name_save_button" in refresh

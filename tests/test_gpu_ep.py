@@ -117,7 +117,7 @@ def test_home_settings_uses_execution_status_lines():
 
     import semblon.home_ui as home_ui
 
-    settings = inspect.getsource(home_ui.HomeApp._show_settings)
+    settings = inspect.getsource(home_ui.HomeApp._fill_settings_body)
     assert "format_execution_status_lines" not in settings
     assert (
         "Advanced diagnostics" in settings
@@ -130,7 +130,9 @@ def test_home_settings_uses_execution_status_lines():
         or "Use GPU when available" in settings
         or "SETTINGS_GPU" in settings
     )
-
+    show = inspect.getsource(home_ui.HomeApp._show_settings)
+    assert "Toplevel" not in show
+    assert "_settings_win" not in show
 
 def test_home_ingest_passes_product_prefer_gpu():
     import inspect
