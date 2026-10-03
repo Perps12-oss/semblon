@@ -27,6 +27,12 @@ def _conn(tmp_path: Path) -> sqlite3.Connection:
         ("r1", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
     )
     conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        ("r0", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute(
         "INSERT INTO media VALUES ('mv','video','/clip.mp4','videodigest',640,480,0,1)"
     )
     return conn
