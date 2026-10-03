@@ -440,6 +440,12 @@ def integrity_report(store: Path) -> dict:
            WHERE NOT EXISTS (SELECT 1 FROM runs r WHERE r.run_id=f.run_id)"""
     ).fetchone()["n"]
     n_media = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+    media_missing_observations = conn.execute(
+        """SELECT COUNT(*) FROM media m
+           WHERE NOT EXISTS (
+               SELECT 1 FROM observations o WHERE o.media_id=m.media_id
+           )"""
+    ).fetchone()[0]
     n_faces = conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
     n_persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
     pragma_row = conn.execute("PRAGMA integrity_check").fetchone()
@@ -467,12 +473,13 @@ def integrity_report(store: Path) -> dict:
         "faces_missing_run": int(faces_missing_run),
         "pragma_integrity": pragma_integrity,
         "media_missing_path": int(media_missing_path),
+        "media_missing_observations": int(media_missing_observations),
         "media": int(n_media),
         "faces": int(n_faces),
         "persons": int(n_persons),
         "note": (
             "read-only; unfinished_runs are not completed; "
-            "media_missing_path does not fail ok (originals may move)"
+            "media_missing_path and media_missing_observations do not fail ok"
         ),
     }
 

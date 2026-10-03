@@ -7,7 +7,7 @@ ViewModel; hover must never start SAM2 / embed / OCR.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Sequence
 
 __all__ = [
@@ -63,7 +63,7 @@ def density_geometry(density: str) -> dict[str, int]:
 def _basename(path: str | None) -> str:
     if not path:
         return "Photo"
-    return Path(str(path)).name or "Photo"
+    return PureWindowsPath(str(path)).name or "Photo"
 
 
 def build_media_grid(
