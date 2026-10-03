@@ -170,3 +170,9 @@ Reopen only with written evidence of one of:
 2. Concrete technical blocker in Tk that makes Stage dissolve / compact chrome unworkable without a second GUI.
 
 Preference or implementation convenience is not reopen criteria.
+
+---
+
+## Related companion
+
+`docs/REFERENCE-STACK.md` records external feature and interaction references for excavation. It does **not** reopen or override Model D shell decisions.
