@@ -66,7 +66,7 @@ PEOPLE_LIST_HINT = (
 )
 UNKNOWN_COACH = (
     "Browse the groups. Name someone when you recognise them — "
-    "or leave them unknown."
+    "or leave a group unknown."
 )
 UNKNOWN_SAFETY = "Unknown is fine. A group is not a person until you name them."
 
@@ -701,12 +701,12 @@ def soft_people_header_lines() -> list[str]:
 
 
 def soft_unknown_coach_lines(*, waiting: int) -> list[str]:
-    """People to name coaching. Unknown valid; cluster ≠ person; no auto-assign."""
+    """Groups to name coaching. Unknown valid; cluster ≠ person; no auto-assign."""
     from semblon.library_status import people_to_name_text
 
     n = int(waiting or 0)
     if n <= 0:
-        head = "No people to name."
+        head = "No groups to name."
     else:
         head = people_to_name_text(n) + "."
     return [head, UNKNOWN_COACH, UNKNOWN_SAFETY]

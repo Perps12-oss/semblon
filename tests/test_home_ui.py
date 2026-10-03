@@ -319,7 +319,7 @@ def test_landing_cta_plan_first_run_vs_returning():
     assert returning["show_review"] is True
     assert returning["show_browse"] is True
     assert returning["show_privacy"] is False
-    assert returning["review_label"] == "Review 7 people to name"
+    assert returning["review_label"] == "Review 7 groups to name"
     assert returning["add_label"] == "Add a photo folder"
 
     caught_up = landing_cta_plan(files=12, unnamed=0)

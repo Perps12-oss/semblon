@@ -263,10 +263,7 @@ def groups_waiting_line(n: int) -> str:
     """Populated review-queue counts — same noun as the status bar."""
     from semblon.library_status import people_to_name_text
 
-    n = int(n)
-    if n <= 0:
-        return "No people to name."
-    return people_to_name_text(n) + "."
+    return people_to_name_text(int(n)) + "."
 
 
 def activity_history_lines(

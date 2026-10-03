@@ -792,11 +792,11 @@ def build_product_registry() -> FeatureRegistry:
         )
     )
 
-    # People to name stays a route — not a permanent sidebar row.
+    # Groups to name stays a route — not a permanent sidebar row.
     reg.register(
         Feature(
             id="unknown",
-            label="People to name",
+            label="Groups to name",
             route_id="unknown",
             page=_page_unknown,
         )

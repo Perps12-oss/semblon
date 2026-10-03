@@ -77,14 +77,14 @@ def test_search_placeholder_copy():
 
 
 def test_groups_waiting_line():
-    assert groups_waiting_line(0) == "No people to name."
-    assert groups_waiting_line(1) == "1 person to name."
-    assert groups_waiting_line(12) == "12 people to name."
+    assert groups_waiting_line(0) == "No groups to name."
+    assert groups_waiting_line(1) == "1 group to name."
+    assert groups_waiting_line(12) == "12 groups to name."
 
 
 def test_format_unknown_demotes_known_unknown_codes():
     soft = format_unknown_lines({"counts": {"KNOWN": 1, "UNKNOWN": 4}}, "r1")
-    assert soft[0] == "4 people to name."
+    assert soft[0] == "4 groups to name."
     assert "Unknown is fine" in "\n".join(soft)
     assert "KNOWN=" not in "\n".join(soft)
     adv = format_unknown_lines(

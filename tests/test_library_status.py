@@ -22,12 +22,12 @@ def test_missing_store_is_empty_not_zero():
 
 
 def test_people_to_name_phrase_is_one_noun():
-    assert people_to_name_text(0) == "No people to name"
-    assert people_to_name_text(1) == "1 person to name"
-    assert people_to_name_text(133) == "133 people to name"
-    assert review_people_cta(133) == "Review 133 people to name"
+    assert people_to_name_text(0) == "No groups to name"
+    assert people_to_name_text(1) == "1 group to name"
+    assert people_to_name_text(133) == "133 groups to name"
+    assert review_people_cta(133) == "Review 133 groups to name"
     assert "suggestion" not in review_people_cta(133).lower()
-    assert "unnamed" not in people_to_name_text(133).lower()
+    assert "people to name" not in people_to_name_text(133).lower()
 
 
 def test_summary_counts_unconfirmed_groups(tmp_path):
@@ -63,4 +63,4 @@ def test_relative_time_phrases():
         {"files": 3, "faces": 1, "unnamed_groups": 0, "last_scan": "2026-09-24T11:59:40+00:00"},
         now=now,
     )
-    assert stamped == "3 files · 1 faces · No people to name · Last scan just now"
+    assert stamped == "3 files · 1 faces · No groups to name · Last scan just now"

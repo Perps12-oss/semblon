@@ -473,14 +473,24 @@ def format_people_lines(rec: dict) -> list[str]:
 
 
 def format_unknown_lines(
-    rec: dict, run_id: str, *, advanced: bool = False
+    rec: dict,
+    run_id: str,
+    *,
+    advanced: bool = False,
+    waiting: int | None = None,
 ) -> list[str]:
-    """People to name — soft coaching by default; KNOWN=/UNKNOWN= only when advanced."""
+    """Groups to name — soft coaching by default; KNOWN=/UNKNOWN= only when advanced.
+
+    ``waiting`` is the canonical unnamed-group count. When omitted, inbox-shaped
+    ``counts`` are accepted only for advanced/CLI-style callers — not as the
+    product To name badge source.
+    """
     from semblon.product_surface import soft_unknown_coach_lines
 
     c = rec.get("counts") or {}
-    waiting = int(c.get("UNKNOWN", 0) or 0) + int(c.get("REVIEW_REQUIRED", 0) or 0)
-    lines = soft_unknown_coach_lines(waiting=waiting)
+    if waiting is None:
+        waiting = int(c.get("UNKNOWN", 0) or 0) + int(c.get("REVIEW_REQUIRED", 0) or 0)
+    lines = soft_unknown_coach_lines(waiting=int(waiting or 0))
     if advanced:
         lines.extend(
             [
@@ -1468,6 +1478,7 @@ class HomeApp:
             "Search",
             "To review",
             "People to name",
+            "Groups to name",
             "People",
             "Lens",
         }:
@@ -1483,6 +1494,8 @@ class HomeApp:
                 body.insert(tk.END, line)
         # Non-selection views keep verb disable reasons honest.
         # Lens keeps the current media_id — clearing it would break the workspace.
+        # To name keeps its populated selection queue (same as People) —
+        # wiping here was the empty destination bug.
         if title in {
             "Home",
             "Canvas",
@@ -1493,7 +1506,6 @@ class HomeApp:
             "Settings",
             "Search",
             "To review",
-            "People to name",
             "Lens",
         }:
             self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
@@ -2197,7 +2209,7 @@ class HomeApp:
             self._show_workspace_welcome()
             self._show_people()
         elif nav_id == "unknown":
-            self._welcome_title.set("People to name")
+            self._welcome_title.set("Groups to name")
             self._show_workspace_welcome()
             self._show_unknown()
         elif nav_id == "activity":
@@ -5476,11 +5488,11 @@ class HomeApp:
             if is_expected_condition(e, has_store=self.store.is_file()):
                 if not self.store.is_file():
                     self._set_inspector(
-                        "People to name", to_review_empty(has_store=False).as_lines()
+                        "Groups to name", to_review_empty(has_store=False).as_lines()
                     )
                 else:
                     self._set_inspector(
-                        "People to name",
+                        "Groups to name",
                         to_review_empty(has_store=True, has_faces=False).as_lines(),
                     )
                 return
@@ -5583,13 +5595,12 @@ class HomeApp:
         self._refresh_inspector_verbs()
 
     def _show_unknown(self) -> None:
-        from semblon.inbox import InboxError, inbox
-        from semblon.inspector_verbs import evidence_lines_for_selection
+        from semblon.library_status import library_summary, unnamed_group_items
         from semblon.process import latest_run_id
         from semblon.review_ui import load_board
 
-        # Display label "People to name"; route id remains ``unknown``.
-        title = "People to name"
+        # Display label "Groups to name"; route id remains ``unknown``.
+        title = "Groups to name"
         if not self.store.is_file():
             empty = to_review_empty(has_store=False)
             self._mount_workspace_empty(empty)
@@ -5601,8 +5612,11 @@ class HomeApp:
                 title=title,
             )
             return
+
+        summary = library_summary(self.store)
+        waiting = 0 if summary is None else int(summary.get("unnamed_groups") or 0)
         rid = latest_run_id(self.store, with_faces=True)
-        if rid is None:
+        if rid is None and waiting <= 0:
             empty = to_review_empty(has_store=True, has_faces=False)
             self._mount_workspace_empty(empty)
             self._set_inspector_selection(
@@ -5613,46 +5627,103 @@ class HomeApp:
                 title=title,
             )
             return
-        try:
-            rec = inbox(self.store, rid)
-        except InboxError as e:
-            if is_expected_condition(e):
-                empty = to_review_empty(has_store=True, has_faces=False)
-                self._mount_workspace_empty(empty)
-                self._set_inspector(title, empty.as_lines())
-            else:
-                self._show_failure(e)
-            return
+
         # Restore selection binding (People overrides it).
         self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
         available: list[dict] = []
-        try:
-            from semblon.inspector_verbs import flatten_board_items_for_inspector
+        if rid is not None:
+            try:
+                board = load_board(self.store, rid)
+                available = [
+                    it
+                    for it in (board.get("items") or [])
+                    if it.get("kind") == "cluster" and not it.get("named")
+                ]
+            except Exception:  # noqa: BLE001 — fall back to store-wide unnamed list
+                available = []
+        if not available and waiting > 0:
+            available = unnamed_group_items(self.store)
+            if available and rid is None:
+                rid = available[0].get("run_id")
 
-            board = load_board(self.store, rid)
-            raw = []
-            for it in board.get("items") or []:
-                if it.get("kind") == "cluster" and not it.get("named"):
-                    raw.append(it)
-                elif it.get("kind") == "face":
-                    raw.append(it)
-            available = flatten_board_items_for_inspector(raw)
-        except Exception:  # noqa: BLE001 — Unknown still shows inbox counts
-            available = []
-        evid = evidence_lines_for_selection(
-            run_id=rid,
-            selected=available,
-            board_lines=format_unknown_lines(rec, rid),
-            candidate_person=self._insp_target_person_name,
-        )
+        coach = format_unknown_lines({}, rid or "—", waiting=waiting)
+        self._mount_to_name_workspace(waiting=waiting, coach=coach)
         self._set_inspector_selection(
             run_id=rid,
             media_id=None,
             available=available,
-            evidence_lines=evid,
+            evidence_lines=coach,
             title=title,
             preselect_all=False,
         )
+        if available:
+            try:
+                self._sel_list.selection_set(0)
+                self._on_inspector_sel_change()
+            except tk.TclError:
+                pass
+
+    def _mount_to_name_workspace(
+        self, *, waiting: int, coach: list[str] | None = None
+    ) -> None:
+        """Primary To name surface: group coach + face-group thumbs (not evidence dump)."""
+        from semblon.product_surface import soft_unknown_coach_lines
+
+        self._show_workspace_welcome()
+        host = getattr(self, "_welcome", None)
+        if host is None:
+            return
+        children = list(host.winfo_children())
+        for child in children[1:]:
+            try:
+                child.destroy()
+            except tk.TclError:
+                pass
+        lines = list(coach or soft_unknown_coach_lines(waiting=waiting))
+        for line in lines:
+            ttk.Label(
+                host,
+                text=line,
+                wraplength=480,
+                font=BODY,
+                foreground=TEXT_SECONDARY,
+            ).pack(anchor=tk.W, pady=(0, SP_4))
+        if waiting <= 0 or not self.store.is_file():
+            return
+        try:
+            rows = _unnamed_cluster_face_paths(Path(self.store), limit=24)
+        except Exception:  # noqa: BLE001
+            rows = []
+        if not rows:
+            return
+        try:
+            from semblon.review_ui import crop_png_b64
+        except Exception:  # noqa: BLE001
+            return
+        thumbs = tk.Frame(host, bg=BG_CANVAS)
+        thumbs.pack(fill=tk.BOTH, expand=True, pady=(SP_8, 0))
+        self._to_name_thumb_images = []
+        for media_path, bbox in rows:
+            try:
+                b64 = crop_png_b64(
+                    media_path,
+                    bbox,
+                    max_side=72,
+                    frame_id=None,
+                )
+            except Exception:  # noqa: BLE001
+                continue
+            if not b64:
+                continue
+            try:
+                img = tk.PhotoImage(data=b64)
+            except Exception:  # noqa: BLE001
+                continue
+            self._to_name_thumb_images.append(img)
+            lbl = tk.Label(thumbs, image=img, bg=BG_CANVAS)
+            lbl.pack(side=tk.LEFT, padx=(0, SP_8), pady=(0, SP_8))
+            if len(self._to_name_thumb_images) >= 24:
+                break
 
     def _activity_soft_stats(self, run_id: str) -> dict:
         """Plain-language counts for Recent activity rows (no integrity jargon)."""

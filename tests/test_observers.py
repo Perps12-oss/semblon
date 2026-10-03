@@ -346,7 +346,7 @@ def test_home_list_formatters():
     empty = format_people_lines({"items": []})
     assert "No people yet" in empty[0]
     unk = format_unknown_lines({"counts": {"KNOWN": 1, "UNKNOWN": 4}}, "r1")
-    assert "4 people to name" in unk[0]
+    assert "4 groups to name" in unk[0]
     assert "UNKNOWN=" not in "\n".join(unk)
     sim = format_search_lines(
         {

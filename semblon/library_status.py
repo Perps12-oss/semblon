@@ -1,8 +1,8 @@
 """Read-only library counts for the Home status bar and the review badge.
 
-People to name are unconfirmed groups: clusters whose faces have not been
-given a person. That is the same queue as the sidebar badge. This module
-does not write the store.
+Groups to name are unconfirmed clusters whose faces have not been given a
+person. That is the same queue as the To name badge. This module does not
+write the store.
 """
 
 from __future__ import annotations
@@ -11,25 +11,44 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Same predicate for badge count, coach copy, and the To name group list.
+_UNNAMED_GROUPS_SQL = """
+SELECT c.cluster_id, c.run_id, COUNT(f.face_id) AS face_count
+FROM clusters c
+JOIN faces f ON f.cluster_id = c.cluster_id
+WHERE (c.status IS NULL OR c.status != 'ignored')
+  AND NOT EXISTS (
+    SELECT 1 FROM faces fx
+    WHERE fx.cluster_id = c.cluster_id
+      AND fx.person_id IS NOT NULL
+  )
+GROUP BY c.cluster_id
+ORDER BY face_count DESC, c.cluster_id
+"""
+
 
 def people_to_name_text(n: int) -> str:
-    """One phrase for the review queue — sidebar, button, and status agree."""
+    """One phrase for the review queue — badge, coach, and status agree.
+
+    Product language is groups (hypotheses), not people — a cluster is not a
+    person until named.
+    """
     n = int(n or 0)
     if n <= 0:
-        return "No people to name"
+        return "No groups to name"
     if n == 1:
-        return "1 person to name"
-    return f"{n} people to name"
+        return "1 group to name"
+    return f"{n} groups to name"
 
 
 def review_people_cta(n: int) -> str:
     """Primary Review button label. Same noun as ``people_to_name_text``."""
     n = int(n or 0)
     if n <= 0:
-        return "Review people"
+        return "Review groups"
     if n == 1:
-        return "Review 1 person to name"
-    return f"Review {n} people to name"
+        return "Review 1 group to name"
+    return f"Review {n} groups to name"
 
 
 def library_summary(store: Path) -> dict | None:
@@ -54,15 +73,7 @@ def library_summary(store: Path) -> dict | None:
         )
         unnamed = int(
             conn.execute(
-                """
-                SELECT COUNT(*) FROM clusters c
-                WHERE (c.status IS NULL OR c.status != 'ignored')
-                  AND NOT EXISTS (
-                    SELECT 1 FROM faces f
-                    WHERE f.cluster_id = c.cluster_id
-                      AND f.person_id IS NOT NULL
-                  )
-                """
+                f"SELECT COUNT(*) FROM ({_UNNAMED_GROUPS_SQL}) AS unnamed_groups"
             ).fetchone()[0]
         )
         row = conn.execute(
@@ -88,6 +99,43 @@ def library_summary(store: Path) -> dict | None:
         "named_people": named_people,
         "last_scan": stamp,
     }
+
+
+def unnamed_group_items(store: Path, *, limit: int = 500) -> list[dict]:
+    """Board-shaped unnamed clusters — same predicate as ``unnamed_groups``.
+
+    Read-only. Used by the To name destination so badge count and the rendered
+    group list cannot drift. Does not invent identity.
+    """
+    path = Path(store)
+    if not path.is_file() or int(limit) <= 0:
+        return []
+    conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA busy_timeout=5000")
+        rows = conn.execute(
+            f"{_UNNAMED_GROUPS_SQL} LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+    out: list[dict] = []
+    for r in rows:
+        out.append(
+            {
+                "kind": "cluster",
+                "cluster_id": r["cluster_id"],
+                "run_id": r["run_id"],
+                "face_count": int(r["face_count"] or 0),
+                "members": [],
+                "named": False,
+                "person_names": [],
+            }
+        )
+    return out
 
 
 def relative_time(stamp: str | None, *, now: datetime | None = None) -> str | None:
