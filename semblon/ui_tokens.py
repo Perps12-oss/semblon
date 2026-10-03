@@ -129,7 +129,8 @@ TERTIARY_PAD_Y = 4
 SECONDARY_FONT: tuple[str, int] = BODY
 TERTIARY_FONT: tuple[str, int] = UI
 
-INK_ON_ACCENT = "#FFFFFF"
+# Near-black on solid accent — tactile CTA, not white glow overlay.
+INK_ON_ACCENT = "#0A0A0C"
 
 # Cluster Review HTML chrome (semblon/review_chrome/tokens.css). Keep in sync.
 REVIEW_NAVY_800 = "#0F1B2D"
@@ -255,38 +256,39 @@ LIGHT = Palette(
 # "dark" for legacy callers; atmosphere id is mica_dark via ui_prefs.
 DARK = Palette(
     name="dark",
-    text_primary="#E8ECF4",
-    text_secondary="#A8B0C0",
-    text_tertiary="#6E7688",
-    text_quaternary="#4A5160",
-    surface="#12151C",
-    surface_muted="#181C26",
-    surface_raised="#1E2430",
-    border="#2A3140",
+    text_primary="#FAFAFA",
+    text_secondary="#A1A1AA",
+    text_tertiary="#71717A",
+    text_quaternary="#52525B",
+    surface="#121215",
+    surface_muted="#161618",
+    surface_raised="#1A1A1F",
+    border="#27272A",
     accent="#5B8DEF",
     danger="#E5484D",
     warning="#D9A13B",
     positive="#3FB27F",
-    focus_ring="#E8ECF4",
+    focus_ring="#FAFAFA",
 )
 
 # Photo stage under media — deeper than chrome so stills stay dominant.
-BG_STAGE = DARK.surface
+BG_STAGE = "#0A0A0C"
 BORDER_STRONG_ACTIVE = DARK.border
 ACCENT_B = DARK.accent
-ILLUMINATION_MIST = "#2A3A5C"
+ILLUMINATION_MIST = "#252A38"
 
 _ACTIVE: Palette = LIGHT
 
 # Names already imported by Home, Review, diagnostics, and empty states.
 # ``publish`` rebinds these and the same names on already-imported consumers.
 BG_CANVAS = LIGHT.surface
+BG_CHROME = LIGHT.surface
 BG_SURFACE = LIGHT.surface_raised
 BG_SUBTLE = LIGHT.surface_muted
 BG_PRESSED = LIGHT.hover
 BG_HOVER = LIGHT.hover
 BG_INSET = LIGHT.surface_muted
-BG_DARK = DARK.surface
+BG_DARK = "#0A0A0C"
 BORDER_SUBTLE = LIGHT.border
 BORDER_DEFAULT = LIGHT.border
 BORDER_STRONG = LIGHT.border
@@ -313,7 +315,8 @@ TEXT_DISABLED = INK_DISABLED
 BORDER_FOCUS = FOCUS_RING
 
 # Parallel dark constants for callers that read them without switching.
-DARK_BG_CANVAS = DARK.surface
+DARK_BG_CANVAS = "#0A0A0C"  # surface_stage — body canvas
+DARK_BG_CHROME = DARK.surface
 DARK_BG_SURFACE = DARK.surface_raised
 DARK_BG_SUBTLE = DARK.surface_muted
 DARK_BG_PRESSED = DARK.hover
@@ -332,6 +335,7 @@ DARK_ACCENT_SUBTLE = DARK.chip_accent
 
 _ALIAS_NAMES = (
     "BG_CANVAS",
+    "BG_CHROME",
     "BG_SURFACE",
     "BG_SUBTLE",
     "BG_PRESSED",
@@ -348,6 +352,7 @@ _ALIAS_NAMES = (
     "INK_TERTIARY",
     "INK_DISABLED",
     "INK_ON_DARK",
+    "INK_ON_ACCENT",
     "ACCENT",
     "ACCENT_B",
     "ACCENT_HOVER",
@@ -388,10 +393,12 @@ def active_palette() -> Palette:
 def _bind(palette: Palette) -> None:
     """Point the legacy names at ``palette`` inside this module."""
     global _ACTIVE
-    global BG_CANVAS, BG_SURFACE, BG_SUBTLE, BG_PRESSED, BG_HOVER, BG_INSET, BG_DARK
+    global BG_CANVAS, BG_CHROME, BG_SURFACE, BG_SUBTLE, BG_PRESSED, BG_HOVER
+    global BG_INSET, BG_DARK
     global BG_STAGE, BORDER_STRONG_ACTIVE, ACCENT_B, ILLUMINATION_MIST
     global BORDER_SUBTLE, BORDER_DEFAULT, BORDER_STRONG
     global INK_PRIMARY, INK_SECONDARY, INK_TERTIARY, INK_DISABLED, INK_ON_DARK
+    global INK_ON_ACCENT
     global ACCENT, ACCENT_HOVER, ACCENT_PRESSED, ACCENT_SUBTLE, NAV_ACTIVE
     global SUCCESS, WARNING, DANGER, FOCUS_RING, INFO
     global SURFACE_PRIMARY, SURFACE_SECONDARY, TEXT_PRIMARY, TEXT_SECONDARY
@@ -399,7 +406,7 @@ def _bind(palette: Palette) -> None:
 
     _ACTIVE = palette
     # Prefer atmosphere stage when this palette came from an atmosphere id.
-    stage = DARK.surface
+    stage = "#0A0A0C"
     mist = ILLUMINATION_MIST
     accent_b = palette.accent
     try:
@@ -418,7 +425,13 @@ def _bind(palette: Palette) -> None:
     except Exception:  # noqa: BLE001 — publish must not fail on import cycles
         pass
     ink_on_stage = mix("#FFFFFF", stage, 0.72)
-    BG_CANVAS = palette.surface
+    # Dark atmospheres: body canvas is deepest stage; chrome is surface one step up.
+    # Light: canvas and chrome share surface (no elevation split required).
+    BG_CHROME = palette.surface
+    if palette.name == "light":
+        BG_CANVAS = palette.surface
+    else:
+        BG_CANVAS = stage
     BG_SURFACE = palette.surface_raised
     BG_SUBTLE = palette.surface_muted
     BG_PRESSED = mix(palette.accent, palette.surface_raised, 0.10)
@@ -435,6 +448,7 @@ def _bind(palette: Palette) -> None:
     INK_TERTIARY = palette.text_tertiary
     INK_DISABLED = palette.text_quaternary
     INK_ON_DARK = ink_on_stage
+    INK_ON_ACCENT = "#0A0A0C"
     ACCENT = palette.accent
     ACCENT_B = accent_b
     ACCENT_HOVER = palette.accent_hover

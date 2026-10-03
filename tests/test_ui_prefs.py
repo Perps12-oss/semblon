@@ -56,7 +56,8 @@ def test_publish_rebinds_consumer_names():
     try:
         mica = get_atmosphere("mica_dark")
         assert tokens.ACCENT == mica.accent
-        assert tokens.BG_CANVAS == mica.surface
+        assert tokens.BG_CANVAS == mica.surface_stage
+        assert tokens.BG_CHROME == mica.surface
         assert tokens.active_palette().accent == mica.accent
     finally:
         publish(LIGHT)

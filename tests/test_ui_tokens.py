@@ -98,19 +98,38 @@ def test_font_helper_and_pad():
 def test_dark_tokens_exist_parallel():
     """DARK mirrors Mica Dark atmosphere (docs/ATMOSPHERE.md)."""
     dark = t.DARK
-    assert dark.text_primary == "#E8ECF4"
-    assert dark.text_secondary == "#A8B0C0"
-    assert dark.surface == "#12151C"
-    assert dark.surface_muted == "#181C26"
-    assert dark.surface_raised == "#1E2430"
-    assert dark.border == "#2A3140"
+    assert dark.text_primary == "#FAFAFA"
+    assert dark.text_secondary == "#A1A1AA"
+    assert dark.text_tertiary == "#71717A"
+    assert dark.text_quaternary == "#52525B"
+    assert dark.surface == "#121215"
+    assert dark.surface_muted == "#161618"
+    assert dark.surface_raised == "#1A1A1F"
+    assert dark.border == "#27272A"
     assert dark.accent == "#5B8DEF"
     assert dark.danger == "#E5484D"
     assert dark.warning == "#D9A13B"
     assert dark.positive == "#3FB27F"
     assert dark.focus_ring == dark.text_primary
-    assert t.DARK_BG_CANVAS == dark.surface
+    # Body canvas is deepest stage; chrome is surface one step up.
+    assert t.DARK_BG_CANVAS == "#0A0A0C"
+    assert t.DARK_BG_CHROME == dark.surface
+    assert t.INK_ON_ACCENT == "#0A0A0C"
     assert t.DARK_ACCENT == dark.accent
     css = dark.css_vars()
     assert css["--accent"] == "#5B8DEF"
     assert "QWidget" in t.qt_stylesheet(dark)
+
+
+def test_dark_publish_splits_canvas_and_chrome():
+    """Dark atmospheres: BG_CANVAS = stage, BG_CHROME = surface."""
+    from semblon.atmosphere import get_atmosphere
+
+    mica = get_atmosphere("mica_dark")
+    t.publish(mica.as_palette())
+    assert t.BG_CANVAS == mica.surface_stage == "#0A0A0C"
+    assert t.BG_CHROME == mica.surface == "#121215"
+    assert t.BG_SURFACE == mica.surface_raised == "#1A1A1F"
+    t.publish(t.LIGHT)
+    assert t.BG_CANVAS == t.LIGHT.surface
+    assert t.BG_CHROME == t.LIGHT.surface

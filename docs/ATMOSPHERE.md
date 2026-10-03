@@ -17,7 +17,7 @@ Prefs: single `appearance.json` `theme` key (`semblon/ui_prefs.py`).
 | Id | Role |
 |---|---|
 | `light` | Compatibility light |
-| `mica_dark` | Default dark — quiet slate / sapphire |
+| `mica_dark` | Default dark — layered cool charcoal + sapphire accent |
 | `cyber_obsidian` | Near-black / electric cyan |
 | `neon_ember` | Warm darkroom / amber |
 | `tokyo_synth` | Ink-violet / magenta + emerald dual-tone |

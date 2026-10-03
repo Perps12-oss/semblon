@@ -84,6 +84,7 @@ try:
     from semblon.ui_tokens import (
         ACCENT,
         BG_CANVAS,
+        BG_CHROME,
         BG_DARK,
         BG_SUBTLE,
         BG_SURFACE,
@@ -128,6 +129,7 @@ except ImportError:  # pragma: no cover - mid-merge stub
     Button = None
     ACCENT = "#2E6BE6"
     BG_CANVAS = "#FFFFFF"
+    BG_CHROME = "#FFFFFF"
     BG_DARK = "#1C1C1D"
     BG_SUBTLE = "#F5F5F4"
     BG_SURFACE = "#FFFFFF"
@@ -1002,20 +1004,20 @@ class HomeApp:
         self._condensed: bool | None = None
         self._stage_forced = False
 
-        top = ttk.Frame(self._main, padding=(SP_20, SP_16, SP_20, SP_12))
+        top = ttk.Frame(self._main, padding=(SP_20, SP_16, SP_20, SP_12), style="Chrome.TFrame")
         top.pack(fill=tk.X)
         self._top = top
         self._to_name = tk.StringVar(value="")
 
         self.btn_brand = _button(
-            top, "Semblon", self._open_home_stage, kind="tertiary", plate=BG_CANVAS
+            top, "Semblon", self._open_home_stage, kind="tertiary", plate=BG_CHROME
         )
         self.btn_brand.pack(side=tk.LEFT, padx=(0, SP_12))
 
-        search_row = ttk.Frame(top)
+        search_row = ttk.Frame(top, style="Chrome.TFrame")
         search_row.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, SP_12))
         self.search_var = tk.StringVar()
-        mode_row = ttk.Frame(search_row)
+        mode_row = ttk.Frame(search_row, style="Chrome.TFrame")
         mode_row.pack(side=tk.TOP, anchor=tk.W, fill=tk.X)
         self._search_mode_buttons: dict[str, object] = {}
         from semblon.ui_primitives import SEARCH_MODES
@@ -1026,11 +1028,11 @@ class HomeApp:
                 label,
                 lambda k=key: self._set_search_mode(k),
                 kind="secondary" if key == self._search_mode else "tertiary",
-                plate=BG_CANVAS,
+                plate=BG_CHROME,
             )
             btn.pack(side=tk.LEFT, padx=(0, SP_4))
             self._search_mode_buttons[key] = btn
-        entry_row = ttk.Frame(search_row)
+        entry_row = ttk.Frame(search_row, style="Chrome.TFrame")
         entry_row.pack(side=tk.TOP, fill=tk.X, pady=(SP_4, 0))
         self._search_entry = ttk.Entry(entry_row, textvariable=self.search_var, width=28)
         self._search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -1047,7 +1049,12 @@ class HomeApp:
         self._search_entry.bind("<FocusIn>", self._search_focus_in)
         self._search_entry.bind("<FocusOut>", self._search_focus_out)
         self.btn_search = _button(
-            entry_row, "Search", self._run_unified_search, kind="tertiary", icon="search"
+            entry_row,
+            "Search",
+            self._run_unified_search,
+            kind="tertiary",
+            icon="search",
+            plate=BG_CHROME,
         )
         self.btn_search.pack(side=tk.LEFT, padx=(SP_8, 0))
         self._search_entry.bind("<Return>", lambda _e: self._run_unified_search())
@@ -1073,19 +1080,28 @@ class HomeApp:
             )
 
         # Compact contextual modes — Discover / People / Activity (not MAIN destinations).
-        modes = ttk.Frame(top)
+        modes = ttk.Frame(top, style="Chrome.TFrame")
         modes.pack(side=tk.RIGHT, padx=(0, SP_8))
         self._modes = modes
         self.btn_discover = _button(
-            modes, "Discover", lambda: self._navigate("lens"), kind="tertiary", icon="lens"
+            modes,
+            "Discover",
+            lambda: self._navigate("lens"),
+            kind="tertiary",
+            icon="lens",
+            plate=BG_CHROME,
         )
         self.btn_discover.pack(side=tk.LEFT, padx=(0, SP_4))
         self.btn_people = _button(
-            modes, "People", self._open_people_mode, kind="tertiary"
+            modes, "People", self._open_people_mode, kind="tertiary", plate=BG_CHROME
         )
         self.btn_people.pack(side=tk.LEFT, padx=(0, SP_4))
         self.btn_activity = _button(
-            modes, "Activity", lambda: self._navigate("activity"), kind="tertiary"
+            modes,
+            "Activity",
+            lambda: self._navigate("activity"),
+            kind="tertiary",
+            plate=BG_CHROME,
         )
         self.btn_activity.pack(side=tk.LEFT)
         self.btn_unknown = self.btn_people
@@ -1098,11 +1114,21 @@ class HomeApp:
         }
 
         self.btn_folder = _button(
-            top, "Add Folder", self._choose_folder, kind="secondary", icon="folder-plus"
+            top,
+            "Add Folder",
+            self._choose_folder,
+            kind="secondary",
+            icon="folder-plus",
+            plate=BG_CHROME,
         )
         self.btn_folder.pack(side=tk.RIGHT, padx=(SP_8, 0))
         self.btn_settings = _button(
-            top, "Settings", lambda: self._navigate("settings"), kind="tertiary", icon="settings"
+            top,
+            "Settings",
+            lambda: self._navigate("settings"),
+            kind="tertiary",
+            icon="settings",
+            plate=BG_CHROME,
         )
         self.btn_settings.pack(side=tk.RIGHT)
         self._nav_buttons["settings"] = self.btn_settings
@@ -1176,7 +1202,7 @@ class HomeApp:
         self._footer_local = tk.StringVar(value="● Local")
         self._footer_counts = tk.StringVar(value="")
         self._footer_ready = tk.StringVar(value="Ready")
-        foot = ttk.Frame(self._main, padding=(SP_20, SP_8))
+        foot = ttk.Frame(self._main, padding=(SP_20, SP_8), style="Chrome.TFrame")
         foot.pack(side=tk.BOTTOM, fill=tk.X)
         self._status_bar = foot
         self._footer_local_lbl = tk.Label(
@@ -1184,7 +1210,7 @@ class HomeApp:
             textvariable=self._footer_local,
             font=META,
             fg=TEXT_SECONDARY,
-            bg=BG_CANVAS,
+            bg=BG_CHROME,
         )
         self._footer_local_lbl.pack(side=tk.LEFT)
         self._footer_counts_lbl = tk.Label(
@@ -1192,7 +1218,7 @@ class HomeApp:
             textvariable=self._footer_counts,
             font=META,
             fg=TEXT_SECONDARY,
-            bg=BG_CANVAS,
+            bg=BG_CHROME,
         )
         self._footer_counts_lbl.pack(side=tk.LEFT, padx=(SP_12, 0))
         # Keep _library_status for older refresh paths; mirror into counts when set.
@@ -1201,7 +1227,7 @@ class HomeApp:
             textvariable=self._footer_ready,
             font=META,
             fg=TEXT_SECONDARY,
-            bg=BG_CANVAS,
+            bg=BG_CHROME,
         )
         self._footer_ready_lbl.pack(side=tk.RIGHT)
         self._footer_pulse_color = TEXT_SECONDARY
@@ -4855,7 +4881,26 @@ class HomeApp:
             if lbl is None:
                 continue
             try:
-                lbl.configure(bg=BG_CANVAS, fg=TEXT_SECONDARY)
+                lbl.configure(bg=BG_CHROME, fg=TEXT_SECONDARY)
+            except tk.TclError:
+                pass
+        for chrome_btn in (
+            getattr(self, "btn_brand", None),
+            getattr(self, "btn_search", None),
+            getattr(self, "btn_discover", None),
+            getattr(self, "btn_people", None),
+            getattr(self, "btn_activity", None),
+            getattr(self, "btn_folder", None),
+            getattr(self, "btn_settings", None),
+            *list((getattr(self, "_search_mode_buttons", None) or {}).values()),
+        ):
+            if chrome_btn is None or not hasattr(chrome_btn, "_plate"):
+                continue
+            try:
+                chrome_btn._plate = BG_CHROME
+                chrome_btn.configure(bg=BG_CHROME)
+                if hasattr(chrome_btn, "_redraw"):
+                    chrome_btn._redraw()
             except tk.TclError:
                 pass
         # Inspector / contextual drawer — raised surface with accent edge when selected.

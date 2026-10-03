@@ -634,25 +634,42 @@ class StageCapabilityCard:
             c.delete("all")
         except Exception:  # noqa: BLE001
             return
+        # RESTING sits on the deep canvas (no grey box). Elevation only on
+        # HOVER / SELECTED — spacing and type carry hierarchy at rest.
+        canvas_bg = tokens.surface_stage
+        elevated = state is not InteractionState.RESTING
+        plate_fill = tokens.surface_raised if elevated else canvas_bg
         try:
-            c.configure(bg=tokens.surface_raised, highlightthickness=0)
+            c.configure(bg=canvas_bg, highlightthickness=0)
         except Exception:  # noqa: BLE001
             pass
-        # Card plate
         edge = 3 if state is InteractionState.SELECTED else (
-            2 if state is InteractionState.HOVER else 1
+            2 if state is InteractionState.HOVER else 0
         )
         try:
-            c.create_rectangle(
-                edge,
-                edge,
-                self._w - edge,
-                self._h - edge,
-                fill=tokens.surface_raised,
-                outline=tokens.border if state is not InteractionState.RESTING else tokens.surface,
-                width=edge,
-                tags=("plate",),
-            )
+            if elevated:
+                c.create_rectangle(
+                    edge,
+                    edge,
+                    self._w - edge,
+                    self._h - edge,
+                    fill=plate_fill,
+                    outline=tokens.border if state is InteractionState.HOVER else tokens.accent,
+                    width=max(edge, 1),
+                    tags=("plate",),
+                )
+            else:
+                # Invisible plate for hit-area / tag_lower; matches canvas.
+                c.create_rectangle(
+                    0,
+                    0,
+                    self._w,
+                    self._h,
+                    fill=canvas_bg,
+                    outline="",
+                    width=0,
+                    tags=("plate",),
+                )
         except Exception:  # noqa: BLE001
             return
         # Title + body

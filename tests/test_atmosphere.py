@@ -210,8 +210,14 @@ def test_stage_capability_card_hover_selected_not_conflated():
             atmosphere_id="mica_dark",
         )
         assert card._state is InteractionState.RESTING
+        # RESTING is unboxed — canvas stage fill, no raised plate edge.
+        from semblon.atmosphere import get_atmosphere
+
+        mica = get_atmosphere("mica_dark")
+        assert card.canvas.cget("bg").lower() == mica.surface_stage.lower()
         card._on_enter()
         assert card._state is InteractionState.HOVER
+        assert card.canvas.cget("bg").lower() == mica.surface_stage.lower()
         card._on_leave()
         assert card._state is InteractionState.RESTING
         card._on_click()

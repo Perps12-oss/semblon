@@ -103,9 +103,13 @@ def test_theme_scaling_grows_pixel_metrics(root):
     btn = Button(root, text="Add a photo folder", kind="primary")
     btn.update_idletasks()
     assert btn.winfo_reqheight() >= high - 2
-    # Primary actions use atmosphere accent illumination.
+    # Primary actions use solid accent + near-black ink (tactile CTA).
     assert ACCENT == "#2E6BE6"
     fill, ink, border = btn._palette()
     assert fill == ACCENT
-    assert ink == INK_ON_ACCENT
+    assert ink == INK_ON_ACCENT == "#0A0A0C"
     assert border == ""
+    btn._hover = True
+    fill_h, ink_h, _ = btn._palette()
+    assert ink_h == INK_ON_ACCENT
+    assert fill_h != fill  # hover lightens fill but keeps dark ink

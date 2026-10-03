@@ -275,11 +275,19 @@ else:
                         tokens.text_disabled,
                         "",
                     )
-                # Accent-forward primary — atmosphere identity, not flat ink block.
+                # Solid accent + near-black ink — tactile block, not white glow.
                 if state is InteractionState.SELECTED or self._pressed:
-                    return tokens.accent, INK_ON_ACCENT, ""
+                    return (
+                        _blend("#000000", tokens.accent, 0.12),
+                        INK_ON_ACCENT,
+                        "",
+                    )
                 if state is InteractionState.HOVER:
-                    return _blend("#FFFFFF", tokens.accent, 0.18), "#FFFFFF", ""
+                    return (
+                        _blend("#FFFFFF", tokens.accent, 0.14),
+                        INK_ON_ACCENT,
+                        "",
+                    )
                 if state is InteractionState.PROCESSING:
                     return tokens.fill, tokens.ink, tokens.border
                 return tokens.accent, INK_ON_ACCENT, ""

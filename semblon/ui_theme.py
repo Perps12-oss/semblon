@@ -17,6 +17,7 @@ from semblon.ui_tokens import (
     ACCENT_SUBTLE,
     FOCUS_RING,
     BG_CANVAS,
+    BG_CHROME,
     BG_INSET,
     BG_PRESSED,
     BG_SUBTLE,
@@ -121,6 +122,7 @@ def apply_theme(root, *, force: bool = False) -> None:
         relief="flat",
     )
     style.configure("TFrame", background=BG_CANVAS)
+    style.configure("Chrome.TFrame", background=BG_CHROME)
     style.configure("TLabel", background=BG_CANVAS, foreground=INK_PRIMARY, font=body)
     style.configure(
         "Muted.TLabel", background=BG_CANVAS, foreground=INK_SECONDARY, font=body
@@ -128,6 +130,7 @@ def apply_theme(root, *, force: bool = False) -> None:
     style.configure(
         "Caption.TLabel", background=BG_CANVAS, foreground=INK_TERTIARY, font=face(CAPTION),
     )
+    style.configure("Chrome.TLabel", background=BG_CHROME, foreground=INK_SECONDARY, font=body)
     style.configure("Surface.TFrame", background=BG_SURFACE)
     style.configure(
         "Raised.TFrame",
