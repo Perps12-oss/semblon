@@ -16,6 +16,7 @@ from semblon.product_surface import (
     VERB_LABEL_IGNORE,
     VERB_LABEL_MERGE,
     VERB_LABEL_NAME,
+    VERB_LABEL_NOTE,
     VERB_LABEL_RULE_OUT,
     VERB_LABEL_SPLIT,
 )
@@ -36,6 +37,7 @@ INSPECTOR_VERB_SPECS: tuple[tuple[str, str, str, str], ...] = (
     ("split", "inspector.verb.split", VERB_LABEL_SPLIT, "_inspector_split"),
     ("rule_out", "inspector.verb.rule_out", VERB_LABEL_RULE_OUT, "_inspector_rule_out"),
     ("ignore", "inspector.verb.ignore", VERB_LABEL_IGNORE, "_inspector_ignore"),
+    ("note", "inspector.verb.note", VERB_LABEL_NOTE, "_inspector_note"),
 )
 
 
@@ -167,6 +169,38 @@ def _cmd_select_region(host: Any, _ctx: Any = None) -> None:
 
 def _cmd_ask_lens(host: Any, _ctx: Any = None) -> None:
     host._ask_with_lens()
+
+
+def _cmd_ask_selection(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_ask_about_selection"):
+        host._ask_about_selection()
+
+
+def _ask_selection_available(host: Any, _ctx: Any = None) -> bool:
+    if hasattr(host, "_selection_query_rect"):
+        return host._selection_query_rect() is not None
+    return False
+
+
+def _ask_selection_reason(host: Any, _ctx: Any = None) -> str:
+    if _ask_selection_available(host, _ctx):
+        return ""
+    return "Select a region on a photo first"
+
+
+def _cmd_name_region(host: Any, _ctx: Any = None) -> None:
+    if hasattr(host, "_name_saved_region"):
+        host._name_saved_region()
+
+
+def _name_region_available(host: Any, _ctx: Any = None) -> bool:
+    return bool(getattr(host, "_last_user_region_id", None))
+
+
+def _name_region_reason(host: Any, _ctx: Any = None) -> str:
+    if _name_region_available(host, _ctx):
+        return ""
+    return "Select and remember a region first"
 
 
 def _cmd_lens_find_similar(host: Any, _ctx: Any = None) -> None:
@@ -496,6 +530,22 @@ def build_product_registry() -> FeatureRegistry:
                     label="Ask about this photo",
                     run=_cmd_ask_lens,
                     surfaces=frozenset({"inspector", "palette", "context"}),
+                ),
+                GuiCommand(
+                    id="lens.ask_selection",
+                    label="Ask about this selection",
+                    run=_cmd_ask_selection,
+                    surfaces=frozenset({"inspector", "palette", "context"}),
+                    available=_ask_selection_available,
+                    reason=_ask_selection_reason,
+                ),
+                GuiCommand(
+                    id="lens.name_region",
+                    label="Name this region",
+                    run=_cmd_name_region,
+                    surfaces=frozenset({"inspector", "palette", "context"}),
+                    available=_name_region_available,
+                    reason=_name_region_reason,
                 ),
                 GuiCommand(
                     id="lens.search_text",

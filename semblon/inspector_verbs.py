@@ -28,6 +28,7 @@ VERB_SPLIT = "split"
 VERB_NAME = "name"
 VERB_IGNORE = "ignore"
 VERB_RULE_OUT = "rule_out"
+VERB_NOTE = "note"
 
 REASON_MERGE = "Select 2 or more items"
 REASON_SPLIT = "Select a cluster to split"
@@ -38,6 +39,7 @@ REASON_RULE_OUT_SEL = "Select a cluster or face to rule out"
 REASON_SPLIT_FACES = "Select faces within the cluster to split"
 REASON_MERGE_CLUSTERS = "Select 2 or more clusters (Merge observations)"
 REASON_NO_RUN = "No run selected"
+REASON_NOTE = "Select a face or cluster to note"
 
 
 def _clusters(selected: list[dict]) -> list[dict]:
@@ -106,6 +108,7 @@ def inspector_verb_states(
             VERB_SPLIT: dict(base_off),
             VERB_NAME: dict(base_off),
             VERB_IGNORE: _state(True, None),  # never disabled
+            VERB_NOTE: dict(base_off),
             VERB_RULE_OUT: (
                 dict(base_off)
                 if ruled_out_enabled
@@ -190,12 +193,19 @@ def inspector_verb_states(
     else:
         rule_out = _state(False, REASON_RULE_OUT_SEL)
 
+    # Note — same subject as Ignore/Name when a cluster or face is selected.
+    if ignore_item is not None:
+        note = _state(True, None, item=ignore_item)
+    else:
+        note = _state(False, REASON_NOTE)
+
     return {
         VERB_MERGE: merge,
         VERB_ASSIGN: assign,
         VERB_SPLIT: split,
         VERB_NAME: name,
         VERB_IGNORE: ignore,
+        VERB_NOTE: note,
         VERB_RULE_OUT: rule_out,
     }
 
