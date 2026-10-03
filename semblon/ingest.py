@@ -207,7 +207,9 @@ def media_skip_reason(
     None reason → process (new file, or --reprocess of an old hash on this run).
     `seen` → already ingested on an earlier run (FACE-005 incremental).
     `same_run` → already observed on this run.
-    Video is `seen` only when sampling-complete is marked.
+    Video frames on this run are never treated as a finished still; other runs
+    still see prior video observations as seen (FACE-005). Sampling-complete
+    markers are for ingest_done honesty, not a second skip key.
     """
     row = conn.execute("SELECT media_id, source_type FROM media WHERE sha256=?", (digest,)).fetchone()
     if row is None:
@@ -227,22 +229,19 @@ def media_skip_reason(
         ).fetchone()
         if same_video_run:
             return None, media_id
-        if not reprocess and video_sampling_complete(conn, media_id):
-            return "seen", media_id
-        return None, media_id
-
-    same = conn.execute(
-        "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NULL",
-        (media_id, run_id),
-    ).fetchone()
-    if same:
-        return "same_run", media_id
-    same_video = conn.execute(
-        "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NOT NULL",
-        (media_id, run_id),
-    ).fetchone()
-    if same_video:
-        return None, media_id
+    else:
+        same = conn.execute(
+            "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NULL",
+            (media_id, run_id),
+        ).fetchone()
+        if same:
+            return "same_run", media_id
+        same_video = conn.execute(
+            "SELECT 1 FROM observations WHERE media_id=? AND run_id=? AND frame_id IS NOT NULL",
+            (media_id, run_id),
+        ).fetchone()
+        if same_video:
+            return None, media_id
 
     if not reprocess:
         return "seen", media_id
