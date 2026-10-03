@@ -487,6 +487,7 @@ def events(store: Path, *, run_id: str | None = None) -> dict:
                     "when": dated[i]["when"],
                     "until": dated[j - 1]["when"],
                     "media": len(media),
+                    "media_ids": sorted(media),
                     "person_ids": sorted(people),
                 })
             i = j if j > i + 1 else i + 1
@@ -511,6 +512,8 @@ def events(store: Path, *, run_id: str | None = None) -> dict:
             out["person_ids"] = sorted(rec["person_ids"])
             out["people"] = len(rec["person_ids"])
             out["media"] = len(rec["media"])
+            # Publish ids for Moments / Timeline browse facets (not identity).
+            out["media_ids"] = sorted(rec["media"])
             return out
 
         snap_rows = conn.execute(
@@ -541,6 +544,8 @@ def events(store: Path, *, run_id: str | None = None) -> dict:
                 ev["person_ids"] = evidence.get("person_ids") or []
             if "media" in evidence:
                 ev["media"] = evidence.get("media")
+            if "media_ids" in evidence:
+                ev["media_ids"] = list(evidence.get("media_ids") or [])
             snapshot_events.append(ev)
             if ev["kind"] == "burst":
                 key = (ev.get("kind"), ev.get("folder"), ev.get("when"), ev.get("until"))
