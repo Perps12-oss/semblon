@@ -33,7 +33,7 @@ def test_save_roundtrip_and_rejects_unknown(tmp_path):
     assert save_theme_mode("dark", store) == "dark"
     path = appearance_path(store)
     assert path.is_file()
-    assert json.loads(path.read_text(encoding="utf-8")) == {"theme": "dark"}
+    assert json.loads(path.read_text(encoding="utf-8"))["theme"] == "dark"
     assert load_theme_mode(store) == "dark"
     assert save_theme_mode("neon", store) == "system"
     assert load_theme_mode(store) == "system"

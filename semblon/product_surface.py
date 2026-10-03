@@ -40,7 +40,9 @@ SETTINGS_ABOUT_BODY = (
     "on this PC. Nothing is uploaded."
 )
 SETTINGS_ADVANCED = "Advanced"
-SETTINGS_ADVANCED_HINT = "Keyboard shortcuts and export tools."
+SETTINGS_ADVANCED_HINT = (
+    "Shortcuts, export, recovery, and diagnostics — on demand, not everyday."
+)
 SETTINGS_DIAGNOSTICS = "Diagnostics"
 SETTINGS_DIAGNOSTICS_HINT = (
     "Technical details for support — runtime, models, schema, and recent jobs. "
@@ -48,6 +50,28 @@ SETTINGS_DIAGNOSTICS_HINT = (
 )
 SETTINGS_EXPORT_REVIEW = "Open export review page…"
 SETTINGS_OPEN_DIAGNOSTICS = "Advanced diagnostics…"
+SETTINGS_GRID_DENSITY = "Grid density"
+SETTINGS_SEARCH_MODE = "Default search mode"
+SETTINGS_RECOVERY = "Recovery"
+SETTINGS_RECOVERY_HINT = (
+    "Clear rebuildable Semblon data and restore presentation defaults. "
+    "Original photos and videos are never deleted."
+)
+SETTINGS_RESET = "Reset"
+SETTINGS_RESET_TITLE = "Reset Semblon to defaults"
+SETTINGS_RESET_HINT = (
+    "Reset Semblon's settings, cached/derived application data, and generated "
+    "figures/previews so the application behaves like a fresh installation."
+)
+SETTINGS_RESET_SAFE = "Your photos and videos will not be deleted."
+SETTINGS_RESET_BUTTON = "Reset app"
+SETTINGS_RESET_CONFIRM = (
+    "Reset Semblon to defaults?\n\n"
+    "This will clear Semblon's cached and derived data and restore application "
+    "settings to their defaults.\n\n"
+    "Your original photos and videos will not be deleted.\n\n"
+    "This action cannot be undone."
+)
 # Compact chrome / palette destinations (Model D — not a MAIN sidebar).
 SETTINGS_SHORTCUTS: tuple[tuple[str, str], ...] = (
     ("Search", "Ctrl+F"),
@@ -662,7 +686,7 @@ class SettingsSection:
 
 
 def settings_contributions() -> tuple[SettingsSection, ...]:
-    """Product sections. Home still builds the window."""
+    """Everyday product sections. Recovery/Reset lives under Advanced (on-demand)."""
     return (
         SettingsSection("library", SETTINGS_LIBRARY, SETTINGS_LIBRARY_HINT),
         SettingsSection("processing", SETTINGS_PROCESSING, SETTINGS_PROCESSING_CPU),

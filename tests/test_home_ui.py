@@ -175,6 +175,15 @@ def test_home_settings_is_user_panel_not_dump():
     assert "Library location" in fill or "SETTINGS_LIBRARY" in fill
     assert "Use GPU when available" in fill or "SETTINGS_GPU" in fill or "Processing on this computer" in fill or "SETTINGS_PROCESSING_CPU" in fill
     assert "SETTINGS_DIAGNOSTICS" in fill or "Diagnostics" in fill
+    assert "SETTINGS_RESET_BUTTON" in fill or "Reset app" in fill
+    assert "SETTINGS_RECOVERY" in fill
+    assert "SETTINGS_GRID_DENSITY" in fill
+    assert "SETTINGS_SEARCH_MODE" in fill
+    assert "_reset_app_to_defaults" in fill
+    # Reset is on-demand under Advanced → Recovery, not an everyday top section.
+    reset_at = fill.index("SETTINGS_RESET_BUTTON")
+    advanced_at = fill.index("SETTINGS_ADVANCED")
+    assert advanced_at < reset_at
     assert "format_execution_status_lines" not in fill
     assert "weights_status" not in fill
     assert "buffalo_l" not in fill

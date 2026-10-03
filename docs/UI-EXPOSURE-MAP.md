@@ -83,6 +83,8 @@ Nav/registry source: `product_features.py` / `gui_registry` (internal route ids)
 | Activity | `activity` | `application.activity_memory` | **CANONICAL** — operational pulse/sheet, not MAIN peer |
 | Discover (was Lens) | verbs + optional `lens` route id | region select / find similar / ask | **CANONICAL** — capability; **not** MAIN “Lens” destination |
 | Settings | Settings button | `_show_settings` | **CANONICAL** — header utility |
+| Settings → Advanced → Recovery → Reset app | On-demand under Advanced | `app_reset.reset_app_to_defaults` | **CANONICAL** — clears Semblon-owned rebuildable state only; never original media. Not everyday Settings. |
+| Settings → Appearance defaults | Grid density / search mode / theme | `ui_prefs` keys | **CANONICAL** — everyday presentation prefs; same keys as chrome chips |
 | Inspector verbs | right pane | merge / assign / split / name / rule-out / ignore | **CANONICAL** — soft labels via `product_surface`; on demand |
 | Ingest / Pause / Cancel | Home job client | `JobEngine` via Application façade | **CANONICAL** — job controls, not nav |
 
