@@ -94,10 +94,10 @@ def with_discovery_prompt(lines: list[str], *, has_query_rect: bool) -> list[str
         out.pop()
     out.append("")
     if has_query_rect:
-        out.append("Find Similar looks for visually similar photos.")
-        out.append("This is similarity — not identity.")
+        out.append("Find Similar — selected region (C). Not whole-image search.")
+        out.append("This is region similarity — not identity.")
     else:
-        out.append("Select a region or detail, then Find Similar to continue exploring.")
+        out.append("Select a region or detail, then Find Similar (region basis) to continue.")
     return out
 
 
@@ -105,11 +105,14 @@ def result_set_lines(summary: dict | None) -> list[str]:
     summary = summary or {}
     status = str(summary.get("status") or "").upper()
     kind = str(summary.get("kind") or SIMILAR_KIND)
-    label = "similar" if kind == SIMILAR_KIND else kind
+    basis = summary.get("similarity_basis") or (
+        "Selected region" if kind in {SIMILAR_KIND, "region"} else kind
+    )
     if status in {"UNAVAILABLE", "ERROR"}:
         return [
             summary.get("reason") or "Find Similar is not available yet.",
             "",
+            f"Basis: {basis}",
             "Your library stays open. Try another photo or finish understanding photos first.",
         ]
     items = list(summary.get("items") or [])
@@ -117,12 +120,14 @@ def result_set_lines(summary: dict | None) -> list[str]:
         return [
             summary.get("reason") or "No similar images found yet.",
             "",
+            f"Basis: {basis}",
             "Open another detail in this photo, or pick a different photo and try again.",
         ]
     n = len(items)
     return [
-        f"{n} {label} result{'s' if n != 1 else ''}.",
+        f"{n} region-similar result{'s' if n != 1 else ''}.",
         "",
+        f"Basis: {basis} (C) — not whole-image · not exact/near integrity.",
         "Open a result to keep exploring — select a detail and Find Similar again.",
         "This is visual similarity, not a person identity.",
     ]

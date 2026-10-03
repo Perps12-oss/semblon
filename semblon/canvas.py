@@ -392,6 +392,8 @@ else:
         # Resolved from tokens at paint time (MediaTile / Atmosphere).
         _THUMB_CELL = 156
         _THUMB_PAD = 8
+        _THUMB_OVERSCAN = 2
+        _GRID_DENSITY = "comfortable"
 
         def __init__(
             self,
@@ -502,8 +504,10 @@ else:
             self._thumb_canvas.bind("<Leave>", self._on_thumb_leave)
             self._thumb_canvas.bind(
                 "<MouseWheel>",
-                lambda e: self._thumb_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"),
+                self._on_thumb_wheel,
             )
+            self._view_model = None
+            self._virt_range: tuple[int, int] = (0, 0)
 
             # Keep a hidden listbox for tests / fallback index tracking.
             self._listbox = tk.Listbox(self.frame, width=1, exportselection=False, height=1)
@@ -595,6 +599,18 @@ else:
             self._back.pack(side=tk.LEFT)
             self._preview_wrap.pack(fill=tk.BOTH, expand=True)
 
+        def set_density(self, density: str) -> None:
+            from semblon.media_grid import DENSITIES, density_geometry
+
+            dens = (density or "comfortable").strip().lower()
+            if dens not in DENSITIES:
+                dens = "comfortable"
+            geom = density_geometry(dens)
+            self._GRID_DENSITY = dens
+            self._THUMB_CELL = int(geom["cell"])
+            self._THUMB_PAD = int(geom["pad"])
+            self._THUMB_OVERSCAN = int(geom["overscan"])
+
         def _thumb_cols(self) -> int:
             width = 0
             try:
@@ -606,6 +622,10 @@ else:
                 return 4
             return max(2, width // cell)
 
+        def _on_thumb_wheel(self, event) -> None:
+            self._thumb_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            self._paint_visible_thumbs()
+
         def _on_thumb_configure(self, event) -> None:
             if self._open or event.width < 40:
                 return
@@ -613,6 +633,8 @@ else:
             if cols != getattr(self, "_laid_cols", None):
                 self._laid_cols = cols
                 self._rebuild_thumbs()
+            else:
+                self._paint_visible_thumbs()
 
         def _on_preview_configure(self, event) -> None:
             if not self._open or self._img is None:
@@ -744,7 +766,46 @@ else:
                 self._paint_thumb_plate(prev)
 
         def _rebuild_thumbs(self) -> None:
-            """Photo grid across the stage. Tiles fill in; a click opens one."""
+            """Photo grid via MediaGridViewModel. Viewport virtualization + overscan."""
+            from semblon.media_grid import build_media_grid, density_geometry
+            from semblon.ui_primitives import MEDIA_TILE_GEOMETRY
+
+            self._clear_thumbs()
+            self._thumb_filled: set[int] = set()
+            self._thumb_job += 1
+            geom = density_geometry(getattr(self, "_GRID_DENSITY", "comfortable"))
+            self._THUMB_CELL = int(geom["cell"])
+            self._THUMB_PAD = int(geom["pad"])
+            self._THUMB_OVERSCAN = int(geom["overscan"])
+            cell = self._THUMB_CELL
+            pad = self._THUMB_PAD
+            label_band = MEDIA_TILE_GEOMETRY.label_band
+            cols = self._thumb_cols()
+            self._laid_cols = cols
+            self._thumb_cells: dict[int, tuple[int, int]] = {}
+            self._view_model = build_media_grid(
+                self._media,
+                density=getattr(self, "_GRID_DENSITY", "comfortable"),
+                compare_marks=getattr(self, "_compare_marks", None),
+            )
+            n = len(self._media)
+            # Precompute cell origins for all rows (layout math only — no decode).
+            for idx in range(n):
+                row, col = divmod(idx, cols)
+                x0 = pad + col * (cell + pad)
+                y0 = pad + row * (cell + pad + label_band)
+                self._thumb_cells[idx] = (x0, y0)
+            rows = (n + cols - 1) // cols if n else 0
+            height = pad + rows * (cell + pad + label_band) + pad
+            width = pad + cols * (cell + pad)
+            self._thumb_canvas.configure(scrollregion=(0, 0, width, max(height, 1)))
+            self._virt_range = (0, 0)
+            self._paint_visible_thumbs()
+            self._paint_compare_marks()
+
+        def _paint_visible_thumbs(self) -> None:
+            """Create/fill only tiles in the viewport (+ overscan). Hover never analyzes."""
+            from semblon.media_grid import visible_index_range
             from semblon.product_surface import basename_path
             from semblon.ui_primitives import (
                 MEDIA_TILE_GEOMETRY,
@@ -753,22 +814,53 @@ else:
             )
             from semblon.ui_tokens import CAPTION
 
-            self._clear_thumbs()
-            self._thumb_filled: set[int] = set()
-            self._thumb_job += 1
-            job = self._thumb_job
+            n = len(self._media)
+            if n <= 0:
+                return
             cell = self._THUMB_CELL
             pad = self._THUMB_PAD
             label_band = MEDIA_TILE_GEOMETRY.label_band
-            cols = self._thumb_cols()
-            self._laid_cols = cols
-            self._thumb_cells: dict[int, tuple[int, int]] = {}
+            cols = max(1, getattr(self, "_laid_cols", None) or self._thumb_cols())
+            try:
+                top = float(self._thumb_canvas.canvasy(0))
+                vh = float(self._thumb_canvas.winfo_height() or 400)
+            except tk.TclError:
+                top, vh = 0.0, 400.0
+            start, end = visible_index_range(
+                scroll_top=top,
+                viewport_h=vh,
+                cell=cell,
+                pad=pad,
+                label_band=label_band,
+                cols=cols,
+                total=n,
+                overscan_rows=getattr(self, "_THUMB_OVERSCAN", 2),
+            )
+            prev = getattr(self, "_virt_range", (0, 0))
+            # Drop plates far outside the new window to bound canvas item count.
+            keep = set(range(start, end))
+            for idx in list(self._thumb_plates.keys()):
+                if idx not in keep:
+                    plate = self._thumb_plates.pop(idx, None)
+                    label = self._thumb_labels.pop(idx, None)
+                    for iid in (plate, label):
+                        if iid is not None:
+                            try:
+                                self._thumb_hitmap.pop(iid, None)
+                                self._thumb_canvas.delete(iid)
+                            except tk.TclError:
+                                pass
+                    self._thumb_filled.discard(idx)
             resting = media_tile_colors("loading")
-            for idx, m in enumerate(self._media):
-                row, col = divmod(idx, cols)
-                x0 = pad + col * (cell + pad)
-                y0 = pad + row * (cell + pad + label_band)
-                self._thumb_cells[idx] = (x0, y0)
+            pending: list[int] = []
+            for idx in range(start, end):
+                if idx in self._thumb_plates:
+                    continue
+                spot = self._thumb_cells.get(idx)
+                if spot is None:
+                    continue
+                x0, y0 = spot
+                m = self._media[idx]
                 iid = self._thumb_canvas.create_rectangle(
                     x0,
                     y0,
@@ -781,7 +873,11 @@ else:
                 )
                 self._thumb_plates[idx] = iid
                 self._thumb_hitmap[iid] = idx
-                label = truncate_label(basename_path(m.get("path")))
+                vm = getattr(self, "_view_model", None)
+                label = truncate_label(
+                    (vm.items[idx].label if vm and idx < len(vm.items) else None)
+                    or basename_path(m.get("path"))
+                )
                 tid = self._thumb_canvas.create_text(
                     x0 + cell // 2,
                     y0 + cell + 2,
@@ -793,11 +889,9 @@ else:
                 )
                 self._thumb_labels[idx] = tid
                 self._thumb_hitmap[tid] = idx
-            rows = (len(self._media) + cols - 1) // cols if self._media else 0
-            height = pad + rows * (cell + pad + label_band) + pad
-            width = pad + cols * (cell + pad)
-            self._thumb_canvas.configure(scrollregion=(0, 0, width, max(height, 1)))
-            pending = list(range(len(self._media)))
+                pending.append(idx)
+            self._virt_range = (start, end)
+            job = self._thumb_job
 
             def pump() -> None:
                 if job != self._thumb_job:
@@ -816,7 +910,8 @@ else:
                     self.frame.after(1, pump)
                 except tk.TclError:
                     pass
-            self._paint_compare_marks()
+            if prev != (start, end):
+                self._paint_compare_marks()
 
         def _fill_thumb(self, idx: int) -> None:
             if idx >= len(self._media):

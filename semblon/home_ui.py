@@ -909,6 +909,11 @@ class HomeApp:
         self._inspector_collapsed = False
         self._last_progress_event: ProgressEvent | None = None
         self._library_filter = "all"
+        self._browse_facet: str | None = None  # timeline | folders | moments
+        self._browse_buckets: list[dict] = []
+        self._browse_bucket_index: int = 0
+        self._search_mode: str = "people"  # people | text | whole | region
+        self._grid_density: str = "comfortable"
         self._similar_media_ids: list[str] | None = None
         self._library_return: dict | None = None
         from semblon.culling_compare import CompareSession
@@ -920,6 +925,8 @@ class HomeApp:
         self._duplicate_groups: list[dict] = []
         self._duplicate_group_index: int = 0
         self._duplicate_scan: dict | None = None
+        self._saved_regions: list[dict] = []
+        self._saved_region_index: int = 0
         from semblon.scan_present import ScanPace
 
         self._scan_pace = ScanPace()
@@ -966,7 +973,24 @@ class HomeApp:
         search_row = ttk.Frame(top)
         search_row.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, SP_12))
         self.search_var = tk.StringVar()
-        self._search_entry = ttk.Entry(search_row, textvariable=self.search_var, width=28)
+        mode_row = ttk.Frame(search_row)
+        mode_row.pack(side=tk.TOP, anchor=tk.W, fill=tk.X)
+        self._search_mode_buttons: dict[str, object] = {}
+        from semblon.ui_primitives import SEARCH_MODES
+
+        for key, label in SEARCH_MODES:
+            btn = _button(
+                mode_row,
+                label,
+                lambda k=key: self._set_search_mode(k),
+                kind="secondary" if key == "people" else "tertiary",
+                plate=BG_CANVAS,
+            )
+            btn.pack(side=tk.LEFT, padx=(0, SP_4))
+            self._search_mode_buttons[key] = btn
+        entry_row = ttk.Frame(search_row)
+        entry_row.pack(side=tk.TOP, fill=tk.X, pady=(SP_4, 0))
+        self._search_entry = ttk.Entry(entry_row, textvariable=self.search_var, width=28)
         self._search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         try:
             self._search_entry.configure(takefocus=True)
@@ -981,9 +1005,10 @@ class HomeApp:
         self._search_entry.bind("<FocusIn>", self._search_focus_in)
         self._search_entry.bind("<FocusOut>", self._search_focus_out)
         self.btn_search = _button(
-            search_row, "Search", self._search_person, kind="tertiary", icon="search"
+            entry_row, "Search", self._run_unified_search, kind="tertiary", icon="search"
         )
-        self._search_entry.bind("<Return>", lambda _e: self._search_person())
+        self.btn_search.pack(side=tk.LEFT, padx=(SP_8, 0))
+        self._search_entry.bind("<Return>", lambda _e: self._run_unified_search())
         self.root.bind("<Control-f>", lambda _e: self._search_entry.focus_set())
         self.root.bind("<Control-k>", self._open_command_palette)
         self.root.bind("<Control-Key-0>", lambda _e: self._open_home_stage())
@@ -1191,6 +1216,12 @@ class HomeApp:
 
         # Defer store load: CanvasWorkspace.reload → on_select must not run before
         # Inspector widgets exist, and before this attribute assignment completes.
+        try:
+            from semblon.media_grid import load_grid_density
+
+            self._grid_density = load_grid_density(self.store)
+        except Exception:  # noqa: BLE001
+            self._grid_density = "comfortable"
         self._canvas_ws = CanvasWorkspace(
             work,
             store=None,
@@ -1201,6 +1232,17 @@ class HomeApp:
             job_engine=self.engine,
         )
         self._canvas_ws._on_compare_toggle = self._toggle_compare_candidate
+        if hasattr(self._canvas_ws, "set_density"):
+            self._canvas_ws.set_density(self._grid_density)
+        try:
+            self._canvas_ws._thumb_canvas.bind(
+                "<Button-3>", self._on_library_context_menu, add="+"
+            )
+            self._canvas_ws.preview.bind(
+                "<Button-3>", self._on_library_context_menu, add="+"
+            )
+        except (tk.TclError, AttributeError):
+            pass
         self._compare_pane = tk.Frame(work, bg=BG_CANVAS)
         self._compare_tiles = tk.Frame(self._compare_pane, bg=BG_CANVAS)
         self._compare_tiles.pack(fill=tk.BOTH, expand=True, padx=SP_8, pady=SP_8)
@@ -1339,6 +1381,10 @@ class HomeApp:
             kind="secondary",
         )
         self.btn_open_dup_group.pack(fill=tk.X, pady=1)
+        self.btn_saved_regions = _button(
+            discover.body, "Saved Regions", self._show_saved_regions, kind="secondary"
+        )
+        self.btn_saved_regions.pack(fill=tk.X, pady=1)
         self.btn_ask_lens = _button(
             discover.body, "Ask about this photo", self._ask_with_lens, kind="secondary", icon="lens"
         )
@@ -2593,6 +2639,19 @@ class HomeApp:
             self._set_inspector_collapsed(True)
 
         evidence = list(lines)
+        # Structured Inspector depth for open media (wireable fields only).
+        if media_id and not selected_hit and self.store.is_file():
+            try:
+                from semblon.inspector_present import (
+                    inspector_section_lines,
+                    media_detail_record,
+                )
+
+                rec = media_detail_record(self.store, media_id)
+                if rec:
+                    evidence = inspector_section_lines(rec)
+            except Exception:  # noqa: BLE001
+                pass
         if media_id and title != "Details":
             evidence = with_discovery_prompt(evidence, has_query_rect=bool(query_rect))
 
@@ -3110,7 +3169,7 @@ class HomeApp:
         self._show_stage()
 
     def _build_library_chrome(self) -> None:
-        """Filter chips + optional review banner + Clear Search for Library."""
+        """Filter chips + browse facets + density + Clear Search for Library."""
         bar = self._library_chrome
         for child in bar.winfo_children():
             child.destroy()
@@ -3137,7 +3196,7 @@ class HomeApp:
         filters = tk.Frame(shell, bg=BG_CANVAS)
         filters.pack(anchor=tk.W, pady=(SP_8, 0))
         self._lib_filter_buttons: dict[str, object] = {}
-        from semblon.fluid_shell import LIBRARY_FILTERS
+        from semblon.fluid_shell import BROWSE_FACETS, LIBRARY_FILTERS
 
         for key, label in LIBRARY_FILTERS:
             btn = _button(
@@ -3149,6 +3208,43 @@ class HomeApp:
             )
             btn.pack(side=tk.LEFT, padx=(0, SP_8))
             self._lib_filter_buttons[key] = btn
+        facets = tk.Frame(shell, bg=BG_CANVAS)
+        facets.pack(anchor=tk.W, pady=(SP_4, 0))
+        self._browse_facet_buttons: dict[str, object] = {}
+        for key, label in BROWSE_FACETS:
+            btn = _button(
+                facets,
+                label,
+                lambda k=key: self._open_browse_facet(k),
+                kind="tertiary",
+                plate=BG_CANVAS,
+            )
+            btn.pack(side=tk.LEFT, padx=(0, SP_8))
+            self._browse_facet_buttons[key] = btn
+        density = tk.Frame(shell, bg=BG_CANVAS)
+        density.pack(anchor=tk.W, pady=(SP_4, 0))
+        self._density_buttons: dict[str, object] = {}
+        for key, label in (("comfortable", "Comfortable"), ("compact", "Compact")):
+            btn = _button(
+                density,
+                label,
+                lambda k=key: self._set_grid_density(k),
+                kind="secondary"
+                if key == getattr(self, "_grid_density", "comfortable")
+                else "tertiary",
+                plate=BG_CANVAS,
+            )
+            btn.pack(side=tk.LEFT, padx=(0, SP_8))
+            self._density_buttons[key] = btn
+        self._result_count_var = tk.StringVar(value="")
+        tk.Label(
+            density,
+            textvariable=self._result_count_var,
+            font=BODY,
+            bg=BG_CANVAS,
+            fg=TEXT_SECONDARY,
+            anchor="w",
+        ).pack(side=tk.LEFT, padx=(SP_8, 0))
         self._similar_bar = tk.Frame(shell, bg=BG_CANVAS)
         self._similar_title = tk.StringVar(value="")
         tk.Label(
@@ -3186,6 +3282,9 @@ class HomeApp:
 
     def _set_library_filter(self, key: str) -> None:
         self._library_filter = key or "all"
+        self._browse_facet = None
+        self._browse_buckets = []
+        self._browse_bucket_index = 0
         self._similar_media_ids = None
         if hasattr(self, "_discovery"):
             self._discovery.clear()
@@ -3198,6 +3297,79 @@ class HomeApp:
         self._library_return = None
         self._exit_compare(silent=True)
         self._show_library(filter_key=self._library_filter)
+
+    def _set_grid_density(self, density: str) -> None:
+        from semblon.media_grid import DENSITIES, save_grid_density
+
+        dens = (density or "comfortable").strip().lower()
+        if dens not in DENSITIES:
+            dens = "comfortable"
+        self._grid_density = dens
+        try:
+            save_grid_density(dens, self.store)
+        except Exception:  # noqa: BLE001
+            pass
+        for key, btn in (getattr(self, "_density_buttons", {}) or {}).items():
+            if hasattr(btn, "set_kind"):
+                btn.set_kind("secondary" if key == dens else "tertiary")
+        ws = getattr(self, "_canvas_ws", None)
+        if ws is not None and hasattr(ws, "set_density"):
+            ws.set_density(dens)
+            if hasattr(ws, "_rebuild_thumbs") and not getattr(ws, "_open", False):
+                ws._rebuild_thumbs()
+
+    def _open_browse_facet(self, facet: str) -> None:
+        """Timeline / Folders / Moments → bucket list → Canvas media_ids filter."""
+        from semblon.library_browse import (
+            bucket_lines,
+            folder_buckets,
+            moment_buckets,
+            timeline_buckets,
+        )
+
+        key = (facet or "").strip().lower()
+        self._browse_facet = key
+        if key == "timeline":
+            self._browse_buckets = timeline_buckets(self.store)
+        elif key == "folders":
+            self._browse_buckets = folder_buckets(self.store)
+        elif key == "moments":
+            self._browse_buckets = moment_buckets(
+                self.store, run_id=getattr(self, "_last_run_id", None)
+            )
+        else:
+            self._browse_buckets = []
+        self._browse_bucket_index = 0
+        for fk, btn in (getattr(self, "_browse_facet_buttons", {}) or {}).items():
+            if hasattr(btn, "set_kind"):
+                btn.set_kind("secondary" if fk == key else "tertiary")
+        self._set_inspector(key.title() if key else "Browse", bucket_lines(self._browse_buckets, facet=key))
+        self._set_inspector_collapsed(False)
+        if self._browse_buckets:
+            self._apply_browse_bucket(0)
+
+    def _apply_browse_bucket(self, index: int) -> None:
+        buckets = list(getattr(self, "_browse_buckets", None) or [])
+        if not buckets:
+            return
+        idx = max(0, min(int(index), len(buckets) - 1))
+        self._browse_bucket_index = idx
+        bucket = buckets[idx]
+        media_ids = [str(m) for m in (bucket.get("media_ids") or []) if m]
+        filt = getattr(self, "_library_filter", "all") or "all"
+        if media_ids:
+            self._show_library(filter_key=filt, similar_media_ids=media_ids)
+        label = bucket.get("label") or "Group"
+        self._set_inspector(
+            (self._browse_facet or "Browse").title(),
+            [
+                str(label),
+                f"{len(media_ids)} photo{'s' if len(media_ids) != 1 else ''}",
+                "",
+                f"Group {idx + 1} of {len(buckets)} · ← / → to move · Esc clears filter.",
+            ],
+        )
+        self._set_inspector_collapsed(False)
 
     def _show_library(
         self,
@@ -3270,6 +3442,10 @@ class HomeApp:
             )
         try:
             if not comparing:
+                if hasattr(self._canvas_ws, "set_density"):
+                    self._canvas_ws.set_density(
+                        getattr(self, "_grid_density", "comfortable")
+                    )
                 self._canvas_ws.reload(
                     self.store,
                     self._last_run_id,
@@ -3281,6 +3457,11 @@ class HomeApp:
                     self, "_compare"
                 ):
                     self._canvas_ws.set_compare_marks(self._compare.selected_ids)
+                n = len(getattr(self._canvas_ws, "_media", None) or [])
+                if hasattr(self, "_result_count_var"):
+                    self._result_count_var.set(
+                        f"{n:,} shown" if n else "No photos in this view"
+                    )
         except Exception as e:  # noqa: BLE001
             self._set_inspector("Details", [f"Library unavailable: {e}"])
             self._set_inspector_collapsed(False)
@@ -3498,9 +3679,9 @@ class HomeApp:
         self._sync_discovery_actions()
 
     def _scan_duplicates(self) -> None:
-        """Exact SHA-256 duplicate scan → grouped results (Memory Canvas context)."""
+        """Integrity (A) Exact + Near scan → grouped results on Memory Canvas."""
         from semblon.discovery_loop import DiscoveryFrame
-        from semblon.duplicates import find_exact_duplicate_groups, group_lines
+        from semblon.duplicates import find_integrity_groups
 
         filt = getattr(self, "_library_filter", "all") or "all"
         focus = getattr(self, "_insp_media_id", None)
@@ -3522,9 +3703,10 @@ class HomeApp:
         self._set_inspector(
             "Duplicates",
             [
-                "Scanning for exact duplicates (SHA-256)…",
+                "Scanning Exact (SHA-256) and Near match (aHash/dHash)…",
                 "",
-                "Near duplicates are unavailable in this build.",
+                "Exact and Near are integrity similarity (A).",
+                "Not Find Similar (region) and not whole-image search.",
             ],
         )
         self._set_inspector_collapsed(False)
@@ -3534,7 +3716,7 @@ class HomeApp:
                 root.update_idletasks()
             except tk.TclError:
                 pass
-        result = find_exact_duplicate_groups(self.store)
+        result = find_integrity_groups(self.store)
         self._apply_duplicate_result(result)
 
     def _apply_duplicate_result(self, result: dict | None) -> None:
@@ -5232,6 +5414,189 @@ class HomeApp:
                 seen.add(mid)
                 out.append(mid)
         return out
+
+    def _set_search_mode(self, mode: str) -> None:
+        from semblon.ui_primitives import SEARCH_MODES
+
+        key = (mode or "people").strip().lower()
+        valid = {k for k, _ in SEARCH_MODES}
+        if key not in valid:
+            key = "people"
+        self._search_mode = key
+        for k, btn in (getattr(self, "_search_mode_buttons", {}) or {}).items():
+            if hasattr(btn, "set_kind"):
+                btn.set_kind("secondary" if k == key else "tertiary")
+        if key == "region":
+            self._set_inspector(
+                "Search",
+                [
+                    "Region search (C)",
+                    "",
+                    "Select a region on an open photo, then Find Similar.",
+                    "Basis: Selected region — not whole-image · not integrity duplicates.",
+                ],
+            )
+            self._set_inspector_collapsed(False)
+
+    def _run_unified_search(self) -> None:
+        """People | Text in photos | Whole image | Region — one field, mode chips."""
+        mode = getattr(self, "_search_mode", "people") or "people"
+        if mode == "region":
+            self._set_search_mode("region")
+            if hasattr(self, "_find_similar_in_workspace"):
+                # Prefer existing region query; otherwise guide the user.
+                if getattr(self, "_discovery", None) and self._discovery.query_rect:
+                    self._find_similar_in_workspace()
+                else:
+                    self._set_inspector(
+                        "Search",
+                        [
+                            "Region mode",
+                            "",
+                            "Open a photo, select a region, then Search or Find Similar.",
+                            "Basis: Selected region (C).",
+                        ],
+                    )
+                    self._set_inspector_collapsed(False)
+            return
+        if mode == "whole":
+            self._search_whole_image()
+            return
+        if mode == "text":
+            self._search_text_mode()
+            return
+        self._search_person()
+
+    def _search_text_mode(self) -> None:
+        from semblon.search import SearchError, search_text
+
+        q = (self.search_var.get() or "").strip()
+        ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+        if q in {ph, SEARCH_PLACEHOLDER, SEARCH_PLACEHOLDER_PHOTOS}:
+            q = ""
+        if not q:
+            messagebox.showinfo("Semblon", "Type text that appears in a photo.")
+            return
+        if not self.store.is_file():
+            self._set_inspector("Search", search_no_store().as_lines())
+            return
+        try:
+            text_rec = search_text(self.store, q)
+        except SearchError as e:
+            if is_expected_condition(e):
+                self._present_search(
+                    {"kind": "text", "query": q, "count": 0, "status": "NO_RESULT"},
+                    extra_lines=[str(e)],
+                )
+            else:
+                self._show_failure(e)
+            return
+        self._present_search(text_rec, text_rec=text_rec)
+
+    def _search_whole_image(self) -> None:
+        from semblon.search import SearchError, search_similar_media
+
+        if not self.store.is_file():
+            self._set_inspector("Search", search_no_store().as_lines())
+            return
+        q = (self.search_var.get() or "").strip()
+        ph = getattr(self, "_search_placeholder", SEARCH_PLACEHOLDER)
+        if q in {ph, SEARCH_PLACEHOLDER, SEARCH_PLACEHOLDER_PHOTOS}:
+            q = ""
+        mid = q or getattr(self, "_insp_media_id", None)
+        if not mid:
+            self._present_search(
+                {
+                    "kind": "similar",
+                    "query": "",
+                    "count": 0,
+                    "status": "UNAVAILABLE",
+                    "items": [],
+                },
+                extra_lines=[
+                    "Whole image (B)",
+                    "Open a photo first, or type a media id.",
+                    "Basis: Whole photo · search_similar — not Find Similar (region).",
+                ],
+            )
+            return
+        try:
+            rec = search_similar_media(self.store, str(mid))
+        except SearchError as e:
+            self._show_failure(e)
+            return
+        media_ids = list(rec.get("media_ids") or [])
+        self._present_search(rec)
+        if media_ids:
+            filt = getattr(self, "_library_filter", "all") or "all"
+            self._show_library(filter_key=filt, similar_media_ids=media_ids)
+
+    def _show_saved_regions(self) -> None:
+        """WIRED browse of list_user_regions — no second storage."""
+        from semblon.user_region import list_user_regions
+
+        if not self.store.is_file():
+            self._set_inspector(
+                "Saved Regions",
+                ["No library yet.", "", "Add a photo folder, then save regions from Discover."],
+            )
+            self._set_inspector_collapsed(False)
+            return
+        try:
+            regions = list_user_regions(
+                self.store, run_id=getattr(self, "_last_run_id", None)
+            )
+        except Exception as e:  # noqa: BLE001
+            self._set_inspector("Saved Regions", [f"Could not list regions: {e}"])
+            self._set_inspector_collapsed(False)
+            return
+        self._saved_regions = list(regions or [])
+        self._saved_region_index = 0
+        if not self._saved_regions:
+            self._set_inspector(
+                "Saved Regions",
+                [
+                    "No saved regions yet.",
+                    "",
+                    "Select a region on a photo and use Name this region.",
+                    "Regions are observations — not persons.",
+                ],
+            )
+            self._set_inspector_collapsed(False)
+            return
+        lines = [
+            "Saved Regions",
+            "",
+            f"{len(self._saved_regions)} region{'s' if len(self._saved_regions) != 1 else ''}.",
+            "Open filters the Memory Canvas · Find Similar uses region basis (C).",
+            "",
+        ]
+        for i, r in enumerate(self._saved_regions[:12], start=1):
+            name = r.get("named") or "(unnamed)"
+            mid = r.get("media_id") or "?"
+            lines.append(f"{i}. {name} · media {mid}")
+        if len(self._saved_regions) > 12:
+            lines.append(f"…and {len(self._saved_regions) - 12} more.")
+        self._set_inspector("Saved Regions", lines)
+        self._set_inspector_collapsed(False)
+        # Focus first region on Canvas when it has a media_id.
+        first = self._saved_regions[0]
+        mid = first.get("media_id")
+        if mid:
+            filt = getattr(self, "_library_filter", "all") or "all"
+            self._show_library(filter_key=filt, similar_media_ids=[str(mid)])
+            self._focus_library_media(str(mid))
+
+    def _on_library_context_menu(self, event) -> None:
+        from semblon.context_menu import popup_context_menu
+
+        ctx = {}
+        if hasattr(self, "_inspector_context"):
+            try:
+                ctx = self._inspector_context()
+            except Exception:  # noqa: BLE001
+                ctx = {}
+        popup_context_menu(self, event, context=ctx)
 
     def _search_person(self) -> None:
         from semblon.search import SearchError, search_people, search_person, search_text
