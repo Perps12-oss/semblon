@@ -1245,20 +1245,19 @@ class HomeApp:
         self._sel_list.bind("<<ListboxSelect>>", lambda _e: self._on_inspector_sel_change())
 
         ttk.Label(insp, text=DETAILS_HEADING, font=CAPTION).pack(
-            anchor=tk.W, pady=(4, 0)
+            anchor=tk.W, pady=(SP_8, 0)
         )
         evid_frame = ttk.Frame(insp)
-        evid_frame.pack(fill=tk.BOTH, expand=True, pady=(2, 4))
-        self._inspector = tk.Listbox(evid_frame, exportselection=False, height=8)
-        if style_listbox is not None:
-            style_listbox(self._inspector)
-        sb = ttk.Scrollbar(evid_frame, orient=tk.VERTICAL, command=self._inspector.yview)
-        self._inspector.configure(yscrollcommand=sb.set)
-        self._inspector.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        sb.pack(side=tk.LEFT, fill=tk.Y)
+        evid_frame.pack(fill=tk.BOTH, expand=True, pady=(SP_4, SP_8))
+        from semblon.ui_primitives import ActionGroup, InspectorBody
+
+        self._inspector_body = InspectorBody(evid_frame, width=260)
+        self._inspector_body.pack(fill=tk.BOTH, expand=True)
+        # Compatibility alias — older helpers still say self._inspector.
+        self._inspector = self._inspector_body
 
         ttk.Label(insp, text="What you can do", font=CAPTION).pack(
-            anchor=tk.W, pady=(4, 0)
+            anchor=tk.W, pady=(SP_4, 0)
         )
         ttk.Label(
             insp,
@@ -1269,16 +1268,18 @@ class HomeApp:
         ).pack(anchor=tk.W)
 
         actions = ttk.Frame(insp)
-        actions.pack(fill=tk.X, pady=(4, 0))
+        actions.pack(fill=tk.X, pady=(SP_4, 0))
         self._verb_reason = tk.StringVar(value="")
 
         # Primary: type a name and save it. Add-to-person is for an existing person.
-        name_row = ttk.Frame(actions)
+        identity = ActionGroup(actions, "Identity")
+        identity.pack(fill=tk.X)
+        name_row = ttk.Frame(identity.body)
         name_row.pack(fill=tk.X, pady=1)
         ttk.Label(name_row, text=VERB_LABEL_NAME).pack(side=tk.LEFT)
         self._name_var = tk.StringVar()
         self._name_entry = ttk.Entry(name_row, textvariable=self._name_var)
-        self._name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(6, 0))
+        self._name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(SP_8, 0))
         self._name_entry.bind("<Return>", lambda _e: self._inspector_name_commit())
         self._name_entry.bind("<Escape>", lambda _e: self._inspector_name_cancel())
         self._name_var.trace_add("write", lambda *_a: self._sync_name_save_button())
@@ -1300,7 +1301,7 @@ class HomeApp:
             cmd = verb_cmds.get(cmd_id)
             label = cmd.label if cmd is not None else fallback
             btn = _button(
-                actions,
+                identity.body,
                 label,
                 lambda c=cmd, k=key: self._run_inspector_verb(k, c),
                 kind=_verb_kind.get(key, "secondary"),
@@ -1308,44 +1309,55 @@ class HomeApp:
             btn.pack(fill=tk.X, pady=1)
             setattr(self, f"btn_{key}", btn)
             self._verb_buttons[key] = btn
+
+        discover = ActionGroup(actions, "Discover")
+        discover.pack(fill=tk.X)
         self.btn_region = _button(
-            actions, "Select a region", self._open_region_select, kind="secondary"
+            discover.body, "Select a region", self._open_region_select, kind="secondary"
         )
         self.btn_region.pack(fill=tk.X, pady=1)
         self.btn_find_similar = _button(
-            actions, "Find Similar", self._find_similar_in_workspace, kind="secondary"
+            discover.body, "Find Similar", self._find_similar_in_workspace, kind="secondary"
         )
         self.btn_find_similar.pack(fill=tk.X, pady=1)
         self.btn_ask_selection = _button(
-            actions, "Ask about this selection", self._ask_about_selection, kind="secondary"
+            discover.body, "Ask about this selection", self._ask_about_selection, kind="secondary"
         )
         self.btn_ask_selection.pack(fill=tk.X, pady=1)
         self.btn_name_region = _button(
-            actions, "Name this region", self._name_saved_region, kind="secondary"
+            discover.body, "Name this region", self._name_saved_region, kind="secondary"
         )
         self.btn_name_region.pack(fill=tk.X, pady=1)
-        self.btn_compare = _button(
-            actions, "Compare", self._enter_compare, kind="secondary"
-        )
-        self.btn_compare.pack(fill=tk.X, pady=1)
-        self.btn_keep = _button(actions, "Keep", lambda: self._compare_decide("keep"), kind="secondary")
-        self.btn_keep.pack(fill=tk.X, pady=1)
-        self.btn_reject = _button(
-            actions, "Reject", lambda: self._compare_decide("reject"), kind="secondary"
-        )
-        self.btn_reject.pack(fill=tk.X, pady=1)
         self.btn_duplicates = _button(
-            actions, "Find Duplicates", self._scan_duplicates, kind="secondary"
+            discover.body, "Find Duplicates", self._scan_duplicates, kind="secondary"
         )
         self.btn_duplicates.pack(fill=tk.X, pady=1)
         self.btn_open_dup_group = _button(
-            actions, "Open Duplicate Group", self._open_selected_duplicate_group, kind="secondary"
+            discover.body,
+            "Open Duplicate Group",
+            self._open_selected_duplicate_group,
+            kind="secondary",
         )
         self.btn_open_dup_group.pack(fill=tk.X, pady=1)
         self.btn_ask_lens = _button(
-            actions, "Ask about this photo", self._ask_with_lens, kind="secondary", icon="lens"
+            discover.body, "Ask about this photo", self._ask_with_lens, kind="secondary", icon="lens"
         )
         self.btn_ask_lens.pack(fill=tk.X, pady=1)
+
+        compare_grp = ActionGroup(actions, "Compare")
+        compare_grp.pack(fill=tk.X)
+        self.btn_compare = _button(
+            compare_grp.body, "Compare", self._enter_compare, kind="secondary"
+        )
+        self.btn_compare.pack(fill=tk.X, pady=1)
+        self.btn_keep = _button(
+            compare_grp.body, "Keep", lambda: self._compare_decide("keep"), kind="secondary"
+        )
+        self.btn_keep.pack(fill=tk.X, pady=1)
+        self.btn_reject = _button(
+            compare_grp.body, "Reject", lambda: self._compare_decide("reject"), kind="secondary"
+        )
+        self.btn_reject.pack(fill=tk.X, pady=1)
         # Registry contextual commands (person.history, identify, Leave Compare, …).
         # compare.exit is packed here so Leave Compare is an Inspector control.
         self._registry_cmd_buttons: dict[str, object] = {}
@@ -1365,16 +1377,19 @@ class HomeApp:
             }:
                 # Verbs packed from INSPECTOR_VERB_SPECS / discovery / duplicates above.
                 continue
+            parent = compare_grp.body if cmd.id == "compare.exit" else actions
             btn = _button(
-                actions,
+                parent,
                 cmd.label,
                 lambda c=cmd: self._run_registry_command(c),
                 kind="secondary",
             )
             btn.pack(fill=tk.X, pady=1)
             self._registry_cmd_buttons[cmd.id] = btn
+            if cmd.id == "compare.exit":
+                self.btn_leave_compare = btn
         ttk.Label(insp, textvariable=self._verb_reason, wraplength=260).pack(
-            anchor=tk.W, pady=(4, 0)
+            anchor=tk.W, pady=(SP_4, 0)
         )
 
         # Selection context for Inspector verbs (not identity).
@@ -1410,9 +1425,13 @@ class HomeApp:
             from semblon.product_surface import SEL_HEADING_IDLE
 
             self._sel_heading.set(SEL_HEADING_IDLE)
-        self._inspector.delete(0, tk.END)
-        for line in lines:
-            self._inspector.insert(tk.END, line)
+        body = getattr(self, "_inspector_body", None) or self._inspector
+        if hasattr(body, "set_lines"):
+            body.set_lines(lines, default_title=title if title else "Details")
+        else:
+            body.delete(0, tk.END)
+            for line in lines:
+                body.insert(tk.END, line)
         # Non-selection views keep verb disable reasons honest.
         # Lens keeps the current media_id — clearing it would break the workspace.
         if title in {
@@ -5141,6 +5160,79 @@ class HomeApp:
         """First-class canvas is the Home workspace; keep Toplevel as escape hatch."""
         self._navigate("library")
 
+    def _present_search(
+        self,
+        rec: dict | None,
+        *,
+        extra_lines: list[str] | None = None,
+        text_rec: dict | None = None,
+    ) -> None:
+        """Render Search with shared chrome; filter Memory Canvas when media ids exist."""
+        from semblon.ui_primitives import (
+            build_search_presentation,
+            media_ids_from_search_rec,
+            search_header_lines,
+        )
+
+        primary = rec if isinstance(rec, dict) else (text_rec if isinstance(text_rec, dict) else {})
+        body_lines: list[str] = []
+        if extra_lines:
+            body_lines.extend(extra_lines)
+            body_lines.append("")
+        if isinstance(rec, dict):
+            body_lines.extend(format_search_lines(rec))
+        if isinstance(text_rec, dict) and text_rec is not rec:
+            if body_lines:
+                body_lines.append("")
+            body_lines.extend(format_search_lines(text_rec))
+        media_ids = media_ids_from_search_rec(rec)
+        if not media_ids and isinstance(text_rec, dict):
+            media_ids = self._media_ids_for_text_search(text_rec)
+        pres = build_search_presentation(primary, lines=body_lines, media_ids=media_ids)
+        header = search_header_lines(pres)
+        # Drop duplicate "Search"/"People" title rows from body when header already sets mode.
+        trimmed = [ln for ln in body_lines if ln.strip() and ln.strip() != "Search"]
+        lines = header + ([""] + trimmed if trimmed else [])
+        self._set_inspector("Search", lines)
+        self._set_inspector_collapsed(False)
+        if media_ids:
+            filt = getattr(self, "_library_filter", "all") or "all"
+            self._show_library(filter_key=filt, similar_media_ids=media_ids)
+
+    def _media_ids_for_text_search(self, text_rec: dict) -> list[str]:
+        """Resolve OCR hit observation_ids → media_ids (presentation only)."""
+        items = list(text_rec.get("items") or [])
+        obs_ids = [
+            str(it.get("observation_id"))
+            for it in items
+            if isinstance(it, dict) and it.get("observation_id")
+        ]
+        if not obs_ids or not self.store.is_file():
+            return []
+        try:
+            from semblon.store import connect
+
+            con = connect(self.store)
+            try:
+                qmarks = ",".join("?" for _ in obs_ids)
+                rows = con.execute(
+                    f"SELECT observation_id, media_id FROM observations "
+                    f"WHERE observation_id IN ({qmarks})",
+                    obs_ids,
+                ).fetchall()
+            finally:
+                con.close()
+        except Exception:  # noqa: BLE001
+            return []
+        out: list[str] = []
+        seen: set[str] = set()
+        for r in rows:
+            mid = str(r["media_id"] or "").strip()
+            if mid and mid not in seen:
+                seen.add(mid)
+                out.append(mid)
+        return out
+
     def _search_person(self) -> None:
         from semblon.search import SearchError, search_people, search_person, search_text
 
@@ -5170,20 +5262,20 @@ class HomeApp:
             return
         if not (named.get("items") or []):
             # Still try text/OCR over owned memory — people search is not the only door.
-            lines: list[str] = []
+            extra: list[str] = []
             if self.engine.busy:
-                lines.extend(search_library_analysing().as_lines())
-                lines.append("")
+                extra.extend(search_library_analysing().as_lines())
             else:
-                lines.extend(search_no_named_people().as_lines())
-                lines.append("")
+                extra.extend(search_no_named_people().as_lines())
             try:
                 text_rec = search_text(self.store, q)
             except SearchError:
                 text_rec = None
-            if text_rec is not None:
-                lines.extend(format_search_lines(text_rec))
-            self._set_inspector("Search", lines)
+            self._present_search(
+                {"kind": "text", "query": q, "count": int((text_rec or {}).get("count") or 0)},
+                extra_lines=extra,
+                text_rec=text_rec,
+            )
             return
         try:
             rec = search_person(self.store, q)
@@ -5192,20 +5284,24 @@ class HomeApp:
                 lines = search_no_matches(q).as_lines()
                 if self.engine.busy:
                     lines = search_library_analysing().as_lines() + [""] + lines
-                self._set_inspector("Search", lines)
+                self._present_search(
+                    {"kind": "person", "query": q, "count": 0, "items": []},
+                    extra_lines=lines,
+                )
             else:
                 self._show_failure(e)
             return
-        lines = format_search_lines(rec)
+        extra_busy: list[str] | None = None
         if self.engine.busy and int(rec.get("count") or 0) == 0:
-            lines = search_library_analysing().as_lines() + [""] + lines
+            extra_busy = search_library_analysing().as_lines()
         # Broader lookup when people miss: OCR/text over owned memory (not ANN theatre).
+        text_rec = None
         if int(rec.get("count") or 0) == 0:
             try:
                 text_rec = search_text(self.store, q)
             except SearchError:
                 text_rec = None
-            if text_rec is not None and (
+            if text_rec is not None and not (
                 int(text_rec.get("count") or 0) > 0
                 or text_rec.get("status")
                 in {
@@ -5216,9 +5312,8 @@ class HomeApp:
                     "NO_RESULT",
                 }
             ):
-                lines.append("")
-                lines.extend(format_search_lines(text_rec))
-        self._set_inspector("Search", lines)
+                text_rec = None
+        self._present_search(rec, extra_lines=extra_busy, text_rec=text_rec)
 
     def _build_settings_workspace(self) -> None:
         """Settings is a first-class workspace route — not a Toplevel popup."""
