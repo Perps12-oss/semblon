@@ -75,9 +75,11 @@ def probe_model_overrides() -> dict[str, str]:
     except Exception:
         pass
     try:
-        from semblon.sam2_runtime import sam2_ready
+        from semblon.sam2_runtime import SAM2_AVAILABLE, SAM2_READY, probe_sam2
 
-        if callable(sam2_ready) and sam2_ready():
+        # Lightweight probe only — never force-load weights here.
+        status = probe_sam2(attempt_load=False)
+        if status.state in {SAM2_AVAILABLE, SAM2_READY}:
             overrides["grounding"] = "AVAILABLE"
     except Exception:
         pass
