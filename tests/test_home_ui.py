@@ -244,13 +244,34 @@ def test_home_processing_state_replaces_marketing_landing():
     start = inspect.getsource(home_ui.HomeApp._start_process)
     assert "_show_library_or_onboard" in start
     sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
-    assert "processing_home" in sync or "on_library" in sync
+    # Busy path must pack Pause/Cancel even on Library / Memory Canvas.
+    assert "btn_pause_toggle.pack" in sync
+    assert "btn_cancel_prog.pack" in sync
+    assert "if busy:" in sync
+    assert "not processing_home" not in sync
     build = inspect.getsource(home_ui.HomeApp._build_processing_home)
     assert "Add a photo folder" not in build
     assert "Building your photo library" in build or "processing_home_headline" in build
     assert '"Cancel"' in build
     assert "Already discovered" in build
     assert "height=16" in build or "height=14" in inspect.getsource(home_ui.StillProgressBar.__init__)
+
+
+def test_library_busy_exposes_pause_resume_cancel_controls():
+    """Memory Canvas / Library ingest must show JobEngine Pause/Cancel chrome."""
+    import semblon.home_ui as home_ui
+
+    sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
+    assert "_ingest_running" in sync
+    # When busy, progress Pause/Cancel are packed (not gated off by on_library).
+    busy_block = sync.split("if busy:")[1].split("else:")[0]
+    assert "btn_pause_toggle.pack" in busy_block
+    assert "btn_cancel_prog.pack" in busy_block
+    idle_block = sync.split("if busy:")[1].split("else:", 1)[1]
+    assert "pack_forget" in idle_block
+    assert home_ui.HomeApp._toggle_pause_resume is not None
+    assert home_ui.HomeApp._request_cancel is not None
+    assert home_ui.HomeApp._resume is not None
 
 
 def test_home_landing_wraplength_avoids_clipping():
