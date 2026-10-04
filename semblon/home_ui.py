@@ -94,6 +94,7 @@ try:
         BORDER_SUBTLE,
         CAPTION,
         DISPLAY,
+        HERO,
         META,
         MONO,
         H1,
@@ -101,6 +102,9 @@ try:
         H3,
         INK_SECONDARY,
         INK_TERTIARY,
+        INSPECTOR_WIDTH,
+        REVIEW_NAV_ACTIVE_BG,
+        REVIEW_NAV_ACTIVE_FG,
         SIDEBAR_WIDTH,
         SP_4,
         SP_8,
@@ -139,6 +143,7 @@ except ImportError:  # pragma: no cover - mid-merge stub
     BORDER_SUBTLE = "#E4E4E2"
     CAPTION = ("Segoe UI", 10)
     DISPLAY = ("Segoe UI", 22, "bold")
+    HERO = DISPLAY
     H1 = ("Segoe UI", 15, "bold")
     H2 = ("Segoe UI", 15, "bold")
     H3 = ("Segoe UI", 12)
@@ -146,6 +151,9 @@ except ImportError:  # pragma: no cover - mid-merge stub
     INK_TERTIARY = "#8A8A8A"
     META = ("Segoe UI", 11)
     MONO = ("Cascadia Code", 11)
+    INSPECTOR_WIDTH = 320
+    REVIEW_NAV_ACTIVE_BG = "#12343A"
+    REVIEW_NAV_ACTIVE_FG = "#5EEAD4"
     SIDEBAR_WIDTH = 228
     SP_4 = 4
     SP_8 = 8
@@ -5186,7 +5194,7 @@ class HomeApp:
     def _set_inspector_collapsed(self, collapsed: bool) -> None:
         """Reserve the inspector column so route changes do not jump width."""
         self._inspector_collapsed = collapsed
-        self._body.columnconfigure(1, weight=0, minsize=320)
+        self._body.columnconfigure(1, weight=0, minsize=INSPECTOR_WIDTH)
         self._body.columnconfigure(0, weight=5)
         try:
             self._inspector_frame.grid()
@@ -5207,7 +5215,11 @@ class HomeApp:
         """One active mode: teal text on a tinted chip. Hover is not a second accent."""
         try:
             style = ttk.Style(self.root)
-            style.configure("NavActive.TButton", foreground="#5EEAD4", background="#12343A")
+            style.configure(
+                "NavActive.TButton",
+                foreground=REVIEW_NAV_ACTIVE_FG,
+                background=REVIEW_NAV_ACTIVE_BG,
+            )
             style.configure("NavIdle.TButton", foreground="#C5D0DE")
         except tk.TclError:
             style = None
@@ -6626,7 +6638,9 @@ class HomeApp:
                 width=72,
                 height=32,
                 highlightthickness=2 if aid == current_mode else 1,
-                highlightbackground="#5EEAD4" if aid == current_mode else BORDER_DEFAULT,
+                highlightbackground=(
+                    REVIEW_NAV_ACTIVE_FG if aid == current_mode else BORDER_DEFAULT
+                ),
                 bd=0,
             )
             swatch.pack(side=tk.LEFT, padx=(0, 10))

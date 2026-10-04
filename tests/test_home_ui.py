@@ -164,6 +164,21 @@ def test_home_landing_has_no_engineering_leak():
         assert "R3" not in blob
 
 
+def test_home_settings_uses_hero_font_and_shared_inspector_width():
+    """Fluent Settings title + reserved inspector column share review tokens."""
+    import semblon.home_ui as home_ui
+    from semblon import ui_tokens
+
+    assert home_ui.HERO == ui_tokens.HERO
+    assert home_ui.INSPECTOR_WIDTH == 320
+    assert ui_tokens.INSPECTOR_WIDTH == 320
+    fill = inspect.getsource(home_ui.HomeApp._fill_settings_body)
+    assert "font=HERO" in fill
+    assert "minsize=INSPECTOR_WIDTH" in inspect.getsource(
+        home_ui.HomeApp._set_inspector_collapsed
+    )
+
+
 def test_home_settings_is_user_panel_not_dump():
     """§6 — Settings is an in-shell workspace route; diagnostics go to Diagnostics."""
     import semblon.home_ui as home_ui

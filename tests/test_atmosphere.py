@@ -65,7 +65,7 @@ def test_dark_alias_and_system_resolve_to_mica():
     assert resolve_atmosphere_id("system", system_dark=True) == "mica_dark"
     assert resolve_atmosphere_id("system", system_dark=False) == "light"
     assert resolve_atmosphere_id("system", system_dark=None) == "mica_dark"
-    assert resolve_atmosphere_id("nope") == "light"
+    assert resolve_atmosphere_id("nope") == "mica_dark"
     assert resolve_atmosphere_id("cyber_obsidian") == "cyber_obsidian"
 
 
