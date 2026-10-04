@@ -1839,6 +1839,8 @@ class HomeApp:
         from semblon.home_shell import LENS_UNDERSTANDING_TITLE
         from semblon.selection import LENS_HEADLINE, LENS_SUBCOPY
 
+        if self._pane_is_ready("lens"):
+            return
         for child in self._lens.winfo_children():
             child.destroy()
         shell = ttk.Frame(self._lens, padding=(SP_24, SP_20))
@@ -2047,6 +2049,7 @@ class HomeApp:
                     "Semblon uses available understanding — missing models say so.",
                 ],
             )
+        self._mark_pane_ready("lens")
 
     def _show_lens_workspace(self) -> None:
         self._hide_workspace_panes()
@@ -2851,6 +2854,8 @@ class HomeApp:
 
     def _build_processing_home(self) -> None:
         """PROCESSING state — results framing while a job runs (not marketing + telemetry)."""
+        if self._pane_is_ready("processing"):
+            return
         for child in self._processing.winfo_children():
             child.destroy()
         from semblon.product_surface import (
@@ -2971,6 +2976,8 @@ class HomeApp:
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
+        self._mark_pane_ready("processing")
+
     def _build_result_card_shell(self) -> None:
         """Result summary card shell (UX Rescue §11); content filled on completion."""
         for child in self._result_card.winfo_children():
@@ -3030,6 +3037,22 @@ class HomeApp:
             kind="secondary",
             plate=BG_SURFACE,
         )
+
+
+    def _pane_is_ready(self, key: str) -> bool:
+        return key in getattr(self, "_pane_ready", set())
+
+    def _mark_pane_ready(self, key: str) -> None:
+        ready = getattr(self, "_pane_ready", None)
+        if ready is None:
+            self._pane_ready = set()
+            ready = self._pane_ready
+        ready.add(key)
+
+    def _invalidate_panes(self) -> None:
+        """Drop mounted pages so the next visit rebuilds offscreen after a theme change."""
+        self._pane_ready = set()
+        self._settings_pad = None
 
     def _hide_workspace_panes(self) -> None:
         self._canvas_ws.pack_forget()
@@ -3282,6 +3305,11 @@ class HomeApp:
 
         self._hide_workspace_panes()
         self._set_inspector_collapsed(True)
+        if self._pane_is_ready("stage"):
+            self._landing.pack(fill=tk.BOTH, expand=True)
+            self._refresh_footer()
+            self._sync_activity_chrome()
+            return
         for child in self._landing.winfo_children():
             child.destroy()
         root = tk.Frame(self._landing, bg=BG_CANVAS)
@@ -3362,6 +3390,7 @@ class HomeApp:
             justify=tk.LEFT,
             anchor="w",
         ).pack(anchor=tk.W, pady=(SP_16, 0))
+        self._mark_pane_ready("stage")
         self._landing.pack(fill=tk.BOTH, expand=True)
         self._refresh_footer()
         self._sync_activity_chrome()
@@ -4827,6 +4856,7 @@ class HomeApp:
         aid = resolve_atmosphere_id(kept)
 
         def _finish() -> None:
+            self._invalidate_panes()
             if apply_theme is not None:
                 reset_theme_for_tests()
                 apply_theme(self.root, force=True)
