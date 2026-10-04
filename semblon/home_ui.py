@@ -998,10 +998,29 @@ class HomeApp:
         self._inspector_role = self._PANE_INSPECTOR
 
         # Model D — full-bleed main; compact header chrome (no MAIN sidebar).
+        try:
+            from semblon.atmosphere_render import GradientBackdrop
+
+            self._gradient = GradientBackdrop(self.root)
+        except Exception:  # noqa: BLE001
+            self._gradient = None
         self._shell = tk.Frame(self.root, bg=BG_CANVAS)
         self._shell.pack(fill=tk.BOTH, expand=True)
+        self._theme_band = tk.Canvas(self._shell, height=72, highlightthickness=0, bd=0)
+        self._theme_band.pack(fill=tk.X)
         self._main = ttk.Frame(self._shell)
         self._main.pack(fill=tk.BOTH, expand=True)
+        try:
+            from semblon.atmosphere import get_atmosphere
+            from semblon.atmosphere_render import paint_vertical_gradient
+            from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
+
+            spec = get_atmosphere(resolve_atmosphere_id(load_theme_mode(self.store)))
+            paint_vertical_gradient(self._theme_band, spec.surface, spec.mist or spec.accent, 72)
+            if self._gradient is not None:
+                self._gradient.set_stops(spec.surface, spec.mist or spec.accent)
+        except Exception:  # noqa: BLE001
+            pass
         self._sidebar = None  # no permanent MAIN sidebar (docs/SHELL-IA.md)
         self._rail = None
         self._nav_rows: list[tuple[str, object]] = []
@@ -4848,6 +4867,37 @@ class HomeApp:
         publish_atmosphere(aid)
 
 
+
+    def _paint_theme_gradient(self, aid: str) -> None:
+        from semblon.atmosphere import get_atmosphere
+
+        spec = get_atmosphere(aid)
+        backdrop = getattr(self, "_gradient", None)
+        if backdrop is not None:
+            backdrop.set_stops(spec.surface, spec.mist or spec.accent)
+        band = getattr(self, "_theme_band", None)
+        if band is not None:
+            from semblon.atmosphere_render import paint_vertical_gradient
+
+            paint_vertical_gradient(band, spec.surface, spec.mist or spec.accent, 72)
+        try:
+            self._shell.configure(bg=spec.surface)
+        except Exception:
+            pass
+        rows = getattr(self, "_theme_rows", {}) or {}
+        for key, row in rows.items():
+            canvas = row.get("canvas")
+            if canvas is None:
+                continue
+            try:
+                canvas.configure(highlightthickness=2 if key == aid else 1)
+            except Exception:
+                pass
+
+    def _on_theme_row(self, aid: str) -> None:
+        self._theme_var.set(aid)
+        self._preview_theme(aid)
+
     def _on_theme_list(self, _event=None) -> None:
         box = getattr(self, "_theme_list", None)
         ids = getattr(self, "_theme_ids", [])
@@ -4869,6 +4919,7 @@ class HomeApp:
 
         self._theme_preview = mode
         aid = resolve_atmosphere_id(mode)
+        self._paint_theme_gradient(aid)
         label = ATMOSPHERE_LABELS.get(aid, aid)
         status = getattr(self, "_theme_status", None)
         if status is not None:
@@ -4897,6 +4948,7 @@ class HomeApp:
         self._theme_preview = kept
         self._theme_saved = kept
         aid = resolve_atmosphere_id(kept)
+        self._paint_theme_gradient(aid)
         label = ATMOSPHERE_LABELS.get(aid, aid)
         status = getattr(self, "_theme_status", None)
         if status is not None:
@@ -6557,29 +6609,39 @@ class HomeApp:
         self._theme_var = tk.StringVar(value=current_mode)
         self._theme_preview = current_mode
         self._theme_saved = current_mode
+        from semblon.atmosphere_render import paint_vertical_gradient
+
         self._theme_ids = [aid for aid in ATMOSPHERE_IDS if aid in ATMOSPHERE_LABELS]
-        self._theme_list = tk.Listbox(
-            appear,
-            height=10,
-            activestyle="none",
-            exportselection=False,
-            bg=BG_SURFACE,
-            fg=TEXT_PRIMARY,
-            selectbackground="#12343A",
-            selectforeground="#5EEAD4",
-            highlightthickness=1,
-            highlightbackground=BORDER_DEFAULT,
-            relief=tk.FLAT,
-        )
+        self._theme_rows = {}
+        list_host = tk.Frame(appear, bg=BG_CANVAS)
+        list_host.pack(fill=tk.X, pady=(0, SP_8))
         for aid in self._theme_ids:
             spec = get_atmosphere(aid)
-            self._theme_list.insert(tk.END, f"{spec.label}    {spec.surface} → {spec.accent}")
-        try:
-            self._theme_list.selection_set(self._theme_ids.index(current_mode))
-        except ValueError:
-            pass
-        self._theme_list.pack(fill=tk.X, pady=(0, SP_8))
-        self._theme_list.bind("<<ListboxSelect>>", self._on_theme_list)
+            row = tk.Frame(list_host, bg=BG_CANVAS)
+            row.pack(fill=tk.X, pady=3)
+            swatch = tk.Canvas(
+                row,
+                width=72,
+                height=32,
+                highlightthickness=2 if aid == current_mode else 1,
+                highlightbackground="#5EEAD4" if aid == current_mode else BORDER_DEFAULT,
+                bd=0,
+            )
+            swatch.pack(side=tk.LEFT, padx=(0, 10))
+            swatch.bind("<Configure>", lambda e, c=swatch, a=spec.surface, b=spec.accent: paint_vertical_gradient(c, a, b, e.height))
+            paint_vertical_gradient(swatch, spec.surface, spec.accent, 32)
+            name = tk.Label(
+                row,
+                text=spec.label,
+                font=BODY,
+                bg=BG_CANVAS,
+                fg=TEXT_PRIMARY,
+                anchor="w",
+            )
+            name.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            for widget in (row, swatch, name):
+                widget.bind("<Button-1>", lambda _e, a=aid: self._on_theme_row(a))
+            self._theme_rows[aid] = {"canvas": swatch, "row": row}
         self._theme_status = tk.StringVar(value="Saved theme.")
         ttk.Label(
             appear,
