@@ -24,9 +24,9 @@ Prefs: single `appearance.json` `theme` key (`semblon/ui_prefs.py`).
 | `aurora` through `rose_quartz` | Ten additional gradient palettes |
 
 Stored modes: `system`, `light`, `dark` (alias → `mica_dark`), plus all atmosphere ids.
-Missing or invalid saved preferences default to `mica_dark`. `system` follows the OS when
-available; an unreadable OS theme defaults to `mica_dark`. Invalid explicit mode names fall
-back to `light`.
+Missing, damaged, or invalid saved preferences default to `mica_dark`. `system` follows the
+OS when available; an unreadable OS theme defaults to `mica_dark`. Invalid explicit mode
+names also resolve to `mica_dark` (not light, not black).
 
 ## InteractionState
 

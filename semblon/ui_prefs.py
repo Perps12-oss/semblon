@@ -328,7 +328,8 @@ def resolve_atmosphere_id(
     if picked == "light":
         return "light"
     if picked != "system":
-        return "light"
+        # Unknown explicit names match load_theme_mode: Mica Dark, not light.
+        return DEFAULT_DARK_ATMOSPHERE
     dark = system_is_dark() if system_dark is _SYSTEM_DARK_UNSET else system_dark
     # Unknown (registry unreadable) stays Mica Dark. Explicit light Windows stays light.
     if dark is False:

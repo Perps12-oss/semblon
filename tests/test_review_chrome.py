@@ -50,7 +50,7 @@ def test_export_html_matches_chrome_mock_markers(tmp_path):
     text = out.read_text(encoding="utf-8")
     assert 'data-mode="snapshot"' in text
     assert "Cluster Review" in text
-    assert "REVIEW REQUIRED" in text
+    assert "REVIEW REQUIRED (HIGHEST PRIORITY)" in text
     assert "STRONG" in text
     assert "UNASSIGNED" in text
     assert f'id="{EVIDENCE_SCRIPT_ID}"' in text
@@ -61,9 +61,11 @@ def test_export_html_matches_chrome_mock_markers(tmp_path):
     assert 'class="sidebar"' in text
     assert 'id="page-title"' in text
     assert 'class="page-head"' in text
+    assert 'class="stats-toolbar"' in text
     assert 'class="topbar"' not in text
     assert "--bg-nav: #10161C" in text
     assert "--bg-app: #141A22" in text
+    assert "box-shadow: -8px 0 24px" not in text
     assert 'data-op="same"' in text
     assert "disabled" in text
     assert "Open Semblon Home to decide" in text

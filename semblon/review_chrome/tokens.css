@@ -62,14 +62,14 @@
   --chip-plus-bg: #2A3544;
   --chip-plus-fg: #F4F7FB;
 
-  --radius-card: 12px;
+  --radius-card: 10px;
   --radius-badge: 6px;
-  --radius-thumb: 8px;
+  --radius-thumb: 6px;
   --radius-btn: 8px;
   --shadow-card: none;
 
   --topbar-h: 0px;
-  --sidebar-w: 240px;
+  --sidebar-w: 248px;
   --inspector-w: 360px;
-  --font: "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif;
+  --font: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
 }

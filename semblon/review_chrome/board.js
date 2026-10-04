@@ -359,7 +359,7 @@
     if (showReview) {
       html += sectionHtml(
         "review",
-        "REVIEW REQUIRED (highest priority)",
+        "REVIEW REQUIRED (HIGHEST PRIORITY)",
         "review",
         "These clusters have low confidence, mixed faces or unusual similarity scores.",
         reviewBody || '<p class="none-line">none</p>'

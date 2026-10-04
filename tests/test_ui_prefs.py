@@ -25,7 +25,10 @@ def test_missing_file_is_mica_dark_and_unknown_system_stays_dark(tmp_path):
     dark_pal = resolve_palette("dark")
     assert dark_pal.accent == mica.accent
     assert dark_pal.surface == mica.surface
-    assert resolve_palette("nope").accent == LIGHT.accent
+    mica_pal = resolve_palette("nope")
+    assert mica_pal.accent == mica.accent
+    assert mica_pal.surface == mica.surface
+    assert resolve_atmosphere_id("nope") == "mica_dark"
 
 
 def test_system_theme_uses_detection_only_when_not_overridden(monkeypatch):
