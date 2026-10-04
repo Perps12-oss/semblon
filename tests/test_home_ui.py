@@ -21,6 +21,45 @@ from semblon.review import name_cluster, name_face
 from tests.test_review import _clustered
 
 
+def test_native_surfaces_follow_the_active_theme(tmp_path):
+    import semblon.home_ui as home_ui
+    import semblon.ui_primitives as ui_primitives
+    from semblon.atmosphere import get_atmosphere
+    from semblon.atmosphere_render import publish_atmosphere
+    from semblon.ui_tokens import LIGHT, publish
+
+    app = home_ui.HomeApp(store=tmp_path / "s.sqlite")
+    try:
+        ember = get_atmosphere("neon_ember")
+        publish_atmosphere("neon_ember")
+        assert ui_primitives.BG_SURFACE == ember.surface_raised
+        app._paint_theme_gradient("neon_ember")
+        app._restyle_native_surfaces()
+        assert app._theme_band.cget("bg").lower() == ember.surface.lower()
+        assert app._sel_list.cget("bg").lower() == ember.surface_raised.lower()
+        assert app._inspector_body._canvas.cget("bg").lower() == ember.surface_raised.lower()
+
+        mica = get_atmosphere("mica_dark")
+        publish_atmosphere("mica_dark")
+        app._paint_theme_gradient("mica_dark")
+        app._restyle_native_surfaces()
+        assert app._theme_band.cget("bg").lower() == mica.surface.lower()
+        assert app._sel_list.cget("bg").lower() == mica.surface_raised.lower()
+        assert app._inspector_body._canvas.cget("bg").lower() == mica.surface_raised.lower()
+    finally:
+        app.root.destroy()
+        publish(LIGHT)
+
+
+def test_home_settings_title_uses_hero_font():
+    import semblon.home_ui as home_ui
+    from semblon.ui_tokens import HERO
+
+    assert home_ui.HERO == HERO
+    fill = inspect.getsource(home_ui.HomeApp._fill_settings_body)
+    assert "font=HERO" in fill
+
+
 def test_activity_lines_include_group_semantics(tmp_path):
     store = tmp_path / "s.sqlite"
     assigned = _clustered(store)
