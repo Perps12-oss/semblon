@@ -1,0 +1,420 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Window
+import QtMultimedia
+
+ApplicationWindow {
+    id: window
+    width: 1440
+    height: 900
+    visible: true
+    title: "Semblon"
+    color: "#141A22"
+
+    readonly property int motion: shell.reducedMotion ? 0 : 180
+
+    Shortcut {
+        sequences: [StandardKey.Cancel, "Escape"]
+        onActivated: shell.escape()
+    }
+    Shortcut {
+        sequence: "Right"
+        enabled: shell.focusId !== ""
+        onActivated: shell.focusNext()
+    }
+    Shortcut {
+        sequence: "Left"
+        enabled: shell.focusId !== ""
+        onActivated: shell.focusPrev()
+    }
+    Shortcut {
+        sequence: "Return"
+        enabled: shell.focusId === "" && !shell.empty
+        onActivated: shell.openIndex(grid.currentIndex)
+    }
+
+    header: Rectangle {
+        color: "#141A22"
+        height: 72
+        width: window.width
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 1
+            color: "#243140"
+        }
+
+        Column {
+            id: brand
+            anchors.left: parent.left
+            anchors.leftMargin: 28
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+
+            Text {
+                id: wordmark
+                text: "Semblon"
+                color: "#E7EEF5"
+                font.family: "Segoe UI Variable"
+                font.pixelSize: 20
+                font.weight: Font.DemiBold
+                MouseArea {
+                    anchors.fill: parent
+                    anchors.margins: -6
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: shell.wordmark()
+                }
+            }
+            Text {
+                id: lensLine
+                objectName: "lensLine"
+                text: shell.lensLabel
+                color: "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                font.letterSpacing: 0.4
+            }
+        }
+
+        Rectangle {
+            id: command
+            width: 320
+            height: 36
+            radius: 8
+            color: "#1C2430"
+            border.color: commandField.activeFocus ? "#2DD4BF" : "#243140"
+            border.width: 1
+            anchors.left: brand.right
+            anchors.leftMargin: 36
+            anchors.verticalCenter: parent.verticalCenter
+
+            TextField {
+                id: commandField
+                objectName: "commandField"
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                verticalAlignment: TextInput.AlignVCenter
+                placeholderText: "Find"
+                placeholderTextColor: "#6E8294"
+                color: "#E7EEF5"
+                font.family: "Segoe UI"
+                font.pixelSize: 14
+                background: Item {}
+                selectByMouse: true
+                onAccepted: shell.submitCommand(text)
+            }
+        }
+
+        Row {
+            anchors.right: parent.right
+            anchors.rightMargin: 28
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 10
+            visible: shell.jobActive
+            objectName: "processingMark"
+
+            Item {
+                width: 16
+                height: 16
+                anchors.verticalCenter: parent.verticalCenter
+                RotationAnimation on rotation {
+                    running: shell.jobActive && !shell.reducedMotion
+                    loops: Animation.Infinite
+                    duration: 1100
+                    from: 0
+                    to: 360
+                }
+                Canvas {
+                    anchors.fill: parent
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.reset()
+                        ctx.strokeStyle = "#2DD4BF"
+                        ctx.lineWidth = 1.5
+                        ctx.beginPath()
+                        ctx.arc(width / 2, height / 2, 6, 0, Math.PI * 1.35)
+                        ctx.stroke()
+                    }
+                    Component.onCompleted: requestPaint()
+                }
+            }
+            Text {
+                text: shell.jobLabel
+                color: "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+    }
+
+    Item {
+        id: stage
+        anchors.fill: parent
+
+        GridView {
+            id: grid
+            objectName: "fieldGrid"
+            anchors.fill: parent
+            anchors.margins: 22
+            visible: !shell.empty
+            opacity: shell.focusId === "" ? 1 : 0
+            cellWidth: 196
+            cellHeight: 196
+            cacheBuffer: 400
+            boundsBehavior: Flickable.StopAtBounds
+            model: archiveModel
+            currentIndex: 0
+            enabled: shell.focusId === ""
+            keyNavigationEnabled: shell.focusId === ""
+            highlightFollowsCurrentItem: false
+            Behavior on opacity { NumberAnimation { duration: window.motion } }
+
+            delegate: Item {
+                width: grid.cellWidth
+                height: grid.cellHeight
+
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    color: "#1C2430"
+                    radius: 2
+
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        visible: kind !== "video"
+                        source: kind !== "video" ? ("image://archive/t/" + mediaId) : ""
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        cache: true
+                    }
+
+                    Text {
+                        visible: kind === "video"
+                        anchors.centerIn: parent
+                        text: "Play"
+                        color: "#E7EEF5"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        font.letterSpacing: 1.2
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: "transparent"
+                        border.width: tile.containsMouse || grid.currentIndex === index ? 1 : 0
+                        border.color: grid.currentIndex === index ? "#2DD4BF" : "#3D4C5C"
+                        radius: 2
+                    }
+
+                    MouseArea {
+                        id: tile
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            grid.currentIndex = index
+                            shell.setScroll(grid.contentY)
+                            shell.openFocus(mediaId)
+                        }
+                    }
+                }
+            }
+
+            onContentYChanged: {
+                if (shell.focusId === "")
+                    shell.setScroll(contentY)
+            }
+
+            Connections {
+                target: shell
+                function onFocusChanged() {
+                    if (shell.focusId === "")
+                        grid.contentY = shell.scrollY
+                }
+            }
+        }
+
+        Column {
+            objectName: "emptyState"
+            visible: shell.empty
+            anchors.centerIn: parent
+            spacing: 14
+            width: 420
+
+            Text {
+                width: parent.width
+                text: "Your archive is empty"
+                color: "#E7EEF5"
+                font.family: "Segoe UI Variable"
+                font.pixelSize: 28
+                font.weight: Font.DemiBold
+                horizontalAlignment: Text.AlignHCenter
+            }
+            Text {
+                width: parent.width
+                text: shell.jobActive
+                      ? "Adding the folder. The archive will appear here."
+                      : "Add a folder of photos. The files stay where they are."
+                color: "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 15
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+            Item { width: 1; height: 8 }
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: addLabel.implicitWidth + 36
+                height: 40
+                radius: 8
+                color: addArea.containsMouse ? "#12343A" : "#1C2430"
+                border.color: "#2DD4BF"
+                border.width: 1
+                visible: !shell.jobActive
+                Text {
+                    id: addLabel
+                    anchors.centerIn: parent
+                    text: "Add a folder"
+                    color: "#5EEAD4"
+                    font.family: "Segoe UI"
+                    font.pixelSize: 14
+                }
+                MouseArea {
+                    id: addArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: shell.addFolder()
+                }
+            }
+        }
+
+        Item {
+            id: focusLayer
+            objectName: "focusLayer"
+            anchors.fill: parent
+            visible: shell.focusId !== ""
+            opacity: shell.focusId !== "" ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: window.motion } }
+
+            Rectangle {
+                anchors.fill: parent
+                color: "#10161C"
+            }
+
+            Image {
+                anchors.fill: parent
+                anchors.margins: 48
+                visible: shell.focusKind !== "video"
+                source: (shell.focusId !== "" && shell.focusKind !== "video")
+                        ? ("image://archive/f/" + shell.focusId) : ""
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                cache: false
+            }
+
+            VideoOutput {
+                id: videoOut
+                anchors.fill: parent
+                anchors.margins: 48
+                visible: shell.focusKind === "video" && shell.focusUrl !== ""
+            }
+
+            MediaPlayer {
+                id: player
+                videoOutput: videoOut
+                audioOutput: AudioOutput {}
+                onMediaStatusChanged: {
+                    if (mediaStatus === MediaPlayer.LoadedMedia && shell.focusKind === "video")
+                        play()
+                }
+            }
+
+            Text {
+                objectName: "videoMissing"
+                visible: shell.focusKind === "video" && shell.focusUrl === ""
+                anchors.centerIn: parent
+                text: "This video is not available"
+                color: "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 15
+            }
+
+            Text {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.margins: 22
+                text: "Back"
+                color: backArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 14
+                MouseArea {
+                    id: backArea
+                    anchors.fill: parent
+                    anchors.margins: -8
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: shell.escape()
+                }
+            }
+
+            Text {
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.margins: 22
+                text: shell.focusName
+                color: "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+            }
+
+            Text {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 18
+                text: "‹"
+                color: "#E7EEF5"
+                font.pixelSize: 28
+                opacity: prevArea.containsMouse ? 1 : 0.35
+                MouseArea {
+                    id: prevArea
+                    anchors.fill: parent
+                    anchors.margins: -12
+                    hoverEnabled: true
+                    onClicked: shell.focusPrev()
+                }
+            }
+            Text {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.rightMargin: 18
+                text: "›"
+                color: "#E7EEF5"
+                font.pixelSize: 28
+                opacity: nextArea.containsMouse ? 1 : 0.35
+                MouseArea {
+                    id: nextArea
+                    anchors.fill: parent
+                    anchors.margins: -12
+                    hoverEnabled: true
+                    onClicked: shell.focusNext()
+                }
+            }
+
+            Connections {
+                target: shell
+                function onFocusChanged() {
+                    player.stop()
+                    if (shell.focusKind === "video" && shell.focusUrl !== "")
+                        player.source = shell.focusUrl
+                    else
+                        player.source = ""
+                }
+            }
+        }
+    }
+}

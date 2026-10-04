@@ -1,4 +1,10 @@
-"""Native shell main window — R3-BRIEF §4 IA.
+"""Legacy three-column widgets. Not launched by `semblon shell`.
+
+The archive shell is qml/Shell.qml via host.py.
+Kept so an existing import of ShellWindow still loads. Do not wire it back
+as the daily window.
+
+Native shell main window — R3-BRIEF §4 IA.
 
 Library | Workspace / Intelligence Canvas | Inspector
 Job bar: Choose folder · Pause · Resume · Cancel

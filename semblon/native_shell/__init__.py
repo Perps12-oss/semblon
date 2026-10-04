@@ -1,9 +1,8 @@
-"""R3 native production shell (Qt/PySide).
+"""Qt Quick archive shell (`semblon shell`).
 
-Authorized path: SEM-ARCH-V1.4 §D.2 / §I.5 / r3-artifacts/07-shell-decision.md.
-Talks only through semblon.application.Application (JobEngine door).
-Does not import FaceKit, process_folder, or ingest. Tk Home remains the
-compatibility frontend; tools/s8_toolkit_spike remains reference-only.
+One archive, viewed through a lens, drawn as a field, entered as focus.
+Optional client of Application. Not the product Home (`semblon home`).
+Does not import FaceKit or call process_folder directly.
 """
 
 from __future__ import annotations
