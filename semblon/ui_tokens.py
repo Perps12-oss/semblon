@@ -269,7 +269,7 @@ DARK = Palette(
     danger="#E5484D",
     warning="#D9A13B",
     positive="#3FB27F",
-    focus_ring="#E8ECF4",
+    focus_ring="#F4F7FB",
 )
 
 # Photo stage under media — deeper than chrome so stills stay dominant.

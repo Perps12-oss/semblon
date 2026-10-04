@@ -21,9 +21,12 @@ Prefs: single `appearance.json` `theme` key (`semblon/ui_prefs.py`).
 | `cyber_obsidian` | Near-black / electric cyan |
 | `neon_ember` | Warm darkroom / amber |
 | `tokyo_synth` | Ink-violet / magenta + emerald dual-tone |
+| `aurora` through `rose_quartz` | Ten additional gradient palettes |
 
-Stored modes: `system`, `light`, `dark` (alias → `mica_dark`), plus the four atmosphere ids.
-`system` + OS dark → `mica_dark`. Unknown OS theme → `light`.
+Stored modes: `system`, `light`, `dark` (alias → `mica_dark`), plus all atmosphere ids.
+Missing or invalid saved preferences default to `mica_dark`. `system` follows the OS when
+available; an unreadable OS theme defaults to `mica_dark`. Invalid explicit mode names fall
+back to `light`.
 
 ## InteractionState
 

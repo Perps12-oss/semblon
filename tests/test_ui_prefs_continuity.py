@@ -51,7 +51,7 @@ def test_presentation_prefs_roundtrip(tmp_path: Path) -> None:
     assert load_library_filter(store) == "videos"
     assert load_prefer_gpu(store) is True
     assert load_grid_density(store) == "compact"
-    assert load_theme_mode(store) == "system"  # never set
+    assert load_theme_mode(store) == "mica_dark"  # never set
 
 
 def test_canonical_defaults_when_absent(
@@ -59,7 +59,7 @@ def test_canonical_defaults_when_absent(
 ) -> None:
     store = tmp_path / "store.sqlite"
     monkeypatch.setattr(ui_prefs, "default_store_path", lambda: store)
-    assert load_theme_mode(store) == "system"
+    assert load_theme_mode(store) == "mica_dark"
     assert load_grid_density(store) == "comfortable"
     assert load_search_mode(store) == "people"
     assert load_library_filter(store) == "all"
@@ -70,7 +70,7 @@ def test_canonical_defaults_when_absent(
 def test_corrupt_prefs_fall_back_safely(tmp_path: Path) -> None:
     store = tmp_path / "store.sqlite"
     appearance_path(store).write_text("{not-json", encoding="utf-8")
-    assert load_theme_mode(store) == "system"
+    assert load_theme_mode(store) == "mica_dark"
     assert load_grid_density(store) == "comfortable"
     assert load_search_mode(store) == "people"
     assert load_library_filter(store) == "all"
@@ -90,7 +90,7 @@ def test_invalid_enum_values_fall_back(tmp_path: Path) -> None:
         library_filter="slides",
         prefer_gpu="maybe",
     )
-    assert load_theme_mode(store) == "system"
+    assert load_theme_mode(store) == "mica_dark"
     assert load_grid_density(store) == "comfortable"
     assert load_search_mode(store) == "people"
     assert load_library_filter(store) == "all"
@@ -108,7 +108,7 @@ def test_reset_restores_canonical_presentation_prefs(tmp_path: Path) -> None:
     save_prefer_gpu(False, store)
     assert reset_app_to_defaults(store).ok
     assert not appearance_path(store).exists()
-    assert load_theme_mode(store) == "system"
+    assert load_theme_mode(store) == "mica_dark"
     assert load_grid_density(store) == "comfortable"
     assert load_search_mode(store) == "people"
     assert load_library_filter(store) == "all"

@@ -318,6 +318,8 @@ def resolve_atmosphere_id(mode: str, *, system_dark: bool | None = None) -> str:
         return picked
     if picked == "light":
         return "light"
+    if picked != "system":
+        return "light"
     dark = system_is_dark() if system_dark is None else system_dark
     # Unknown (registry unreadable) stays Mica Dark. Explicit light Windows stays light.
     if dark is False:

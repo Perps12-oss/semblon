@@ -90,6 +90,7 @@ try:
         BODY,
         BODY_SMALL,
         BODY_STRONG,
+        BORDER_DEFAULT,
         BORDER_SUBTLE,
         CAPTION,
         DISPLAY,
@@ -134,6 +135,7 @@ except ImportError:  # pragma: no cover - mid-merge stub
     BODY = ("Segoe UI", 12)
     BODY_SMALL = ("Segoe UI", 11)
     BODY_STRONG = ("Segoe UI", 12, "bold")
+    BORDER_DEFAULT = "#E4E4E2"
     BORDER_SUBTLE = "#E4E4E2"
     CAPTION = ("Segoe UI", 10)
     DISPLAY = ("Segoe UI", 22, "bold")
