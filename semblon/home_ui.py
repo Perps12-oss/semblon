@@ -6212,6 +6212,31 @@ class HomeApp:
                 text_rec = None
         self._present_search(rec, extra_lines=extra_busy, text_rec=text_rec)
 
+
+    def _settings_card(self, parent, title: str, hint: str = ""):
+        """Hairline card used by Settings. Same surface stack as review chrome."""
+        card = tk.Frame(
+            parent,
+            bg=BG_SURFACE,
+            highlightbackground=BORDER_DEFAULT,
+            highlightthickness=1,
+            padx=16,
+            pady=14,
+        )
+        card.pack(fill=tk.X, pady=(0, 12))
+        ttk.Label(card, text=title, font=BODY_STRONG).pack(anchor=tk.W)
+        if hint:
+            ttk.Label(
+                card,
+                text=hint,
+                font=CAPTION,
+                foreground=TEXT_SECONDARY,
+                wraplength=640,
+            ).pack(anchor=tk.W, pady=(4, 8))
+        body = ttk.Frame(card)
+        body.pack(fill=tk.X)
+        return body
+
     def _build_settings_workspace(self) -> None:
         """Settings is a first-class workspace route — not a Toplevel popup."""
         for child in self._settings.winfo_children():
@@ -6292,8 +6317,14 @@ class HomeApp:
                 pass
 
         head = ttk.Frame(pad)
-        head.pack(fill=tk.X)
-        ttk.Label(head, text=SETTINGS_TITLE, font=H2).pack(side=tk.LEFT)
+        head.pack(fill=tk.X, pady=(0, SP_16))
+        ttk.Label(head, text=SETTINGS_TITLE, font=HERO).pack(anchor=tk.W)
+        ttk.Label(
+            head,
+            text="Library, appearance, and recovery on this computer.",
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+        ).pack(anchor=tk.W, pady=(4, 0))
 
         sections = {s.id: s for s in settings_contributions()}
         library = sections["library"]
@@ -6301,20 +6332,11 @@ class HomeApp:
         appearance = sections["appearance"]
         about = sections["about"]
 
-        ttk.Label(pad, text=library.title, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_16, SP_8)
-        )
-        ttk.Label(
-            pad,
-            text=library.hint,
-            font=CAPTION,
-            foreground=TEXT_SECONDARY,
-            wraplength=640,
-        ).pack(anchor=tk.W)
-        ttk.Label(pad, text="Library location", font=BODY).pack(
+        lib = self._settings_card(pad, library.title, library.hint)
+        ttk.Label(lib, text="Library location", font=BODY).pack(
             anchor=tk.W, pady=(SP_8, 0)
         )
-        loc_row = ttk.Frame(pad)
+        loc_row = ttk.Frame(lib)
         loc_row.pack(fill=tk.X, pady=(SP_8, 0))
         self._settings_lib_var = tk.StringVar(value=str(self.store))
         ttk.Label(
@@ -6330,11 +6352,13 @@ class HomeApp:
 
         # Packs / advanced model tooling — after first success only (UI-EXPOSURE-MAP).
         if self._library_has_media():
-            ttk.Label(pad, text="Packs", font=BODY_STRONG).pack(
-                anchor=tk.W, pady=(SP_24, SP_8)
+            packs = self._settings_card(
+                pad,
+                "Packs",
+                "Missing packs stay missing. They are not an empty library.",
             )
             ttk.Label(
-                pad,
+                packs,
                 text="Missing packs stay missing. They are not an empty library.",
                 font=CAPTION,
                 foreground=TEXT_SECONDARY,
@@ -6346,15 +6370,13 @@ class HomeApp:
             for row in list(cap_rows["ready"]) + list(cap_rows["tracked"]):
                 state = row.get("state") or "Available"
                 ttk.Label(
-                    pad,
+                    packs,
                     text=f"{row['label']} — {state}",
                     font=BODY,
                     wraplength=640,
                 ).pack(anchor=tk.W, pady=(SP_4, 0))
 
-        ttk.Label(pad, text=processing.title, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
-        )
+        proc = self._settings_card(pad, processing.title, processing.hint)
         gpu_available = False
         try:
             from semblon.engine import select_execution_provider
@@ -6378,27 +6400,25 @@ class HomeApp:
                     pass
 
             ttk.Checkbutton(
-                pad,
+                proc,
                 text=SETTINGS_GPU,
                 variable=self._gpu_var,
                 command=_on_gpu,
             ).pack(anchor=tk.W)
         else:
             ttk.Label(
-                pad,
+                proc,
                 text=processing.hint,
                 font=CAPTION,
                 foreground=TEXT_SECONDARY,
             ).pack(anchor=tk.W)
 
-        ttk.Label(pad, text=appearance.title, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
-        )
+        appear = self._settings_card(pad, appearance.title, appearance.hint)
         # Everyday defaults — same keys as library/search chrome; no second stack.
-        ttk.Label(pad, text=SETTINGS_GRID_DENSITY, font=BODY).pack(
+        ttk.Label(appear, text=SETTINGS_GRID_DENSITY, font=BODY).pack(
             anchor=tk.W, pady=(SP_8, 0)
         )
-        dens_row = ttk.Frame(pad)
+        dens_row = ttk.Frame(appear)
         dens_row.pack(anchor=tk.W, pady=(SP_4, 0))
         self._settings_density_var = tk.StringVar(
             value=getattr(self, "_grid_density", "comfortable") or "comfortable"
@@ -6412,12 +6432,12 @@ class HomeApp:
                 command=lambda k=key: self._set_grid_density(k),
             ).pack(side=tk.LEFT, padx=(0, SP_12))
 
-        ttk.Label(pad, text=SETTINGS_SEARCH_MODE, font=BODY).pack(
+        ttk.Label(appear, text=SETTINGS_SEARCH_MODE, font=BODY).pack(
             anchor=tk.W, pady=(SP_12, 0)
         )
         from semblon.ui_primitives import SEARCH_MODES as _SEARCH_MODE_CHOICES
 
-        mode_row = ttk.Frame(pad)
+        mode_row = ttk.Frame(appear)
         mode_row.pack(anchor=tk.W, pady=(SP_4, 0))
         self._settings_search_var = tk.StringVar(
             value=getattr(self, "_search_mode", "people") or "people"
@@ -6433,7 +6453,7 @@ class HomeApp:
 
         from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
 
-        ttk.Label(pad, text="Theme", font=BODY).pack(anchor=tk.W, pady=(SP_12, 0))
+        ttk.Label(appear, text="Theme", font=BODY).pack(anchor=tk.W, pady=(SP_12, 0))
         current_mode = load_theme_mode(self.store)
         self._theme_var = tk.StringVar(value=current_mode)
         for mode, label in (
@@ -6441,7 +6461,7 @@ class HomeApp:
             ("light", "Light"),
         ):
             ttk.Radiobutton(
-                pad,
+                appear,
                 text=label,
                 value=mode,
                 variable=self._theme_var,
@@ -6449,12 +6469,12 @@ class HomeApp:
             ).pack(anchor=tk.W)
 
         ttk.Label(
-            pad,
+            appear,
             text="Atmospheres — hover a tile to preview states; click to apply",
             font=CAPTION,
             foreground=TEXT_SECONDARY,
         ).pack(anchor=tk.W, pady=(SP_12, SP_8))
-        preview_row = ttk.Frame(pad)
+        preview_row = ttk.Frame(appear)
         preview_row.pack(anchor=tk.W, fill=tk.X)
         try:
             from semblon.atmosphere_render import build_atmosphere_previews
@@ -6476,97 +6496,68 @@ class HomeApp:
 
             for aid in DARK_ATMOSPHERE_IDS:
                 ttk.Radiobutton(
-                    pad,
+                    appear,
                     text=ATMOSPHERE_LABELS.get(aid, aid),
                     value=aid,
                     variable=self._theme_var,
                     command=lambda m=aid: self._set_theme_mode(m),
                 ).pack(anchor=tk.W)
 
-        ttk.Label(pad, text=about.title, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
-        )
+        about_card = self._settings_card(pad, about.title, about.hint)
         try:
             from semblon import __version__ as _ver
         except Exception:  # noqa: BLE001
             _ver = "1.4.0"
-        ttk.Label(pad, text="Semblon", font=H2).pack(anchor=tk.W)
+        ttk.Label(about_card, text="Semblon", font=H2).pack(anchor=tk.W)
         ttk.Label(
-            pad, text=f"Version {_ver}", font=CAPTION, foreground=TEXT_SECONDARY
+            about_card, text=f"Version {_ver}", font=CAPTION, foreground=TEXT_SECONDARY
         ).pack(anchor=tk.W, pady=(SP_8, 0))
         ttk.Label(
-            pad,
+            about_card,
             text=about.hint,
             font=BODY,
             wraplength=640,
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
-        ttk.Label(pad, text=SETTINGS_ADVANCED, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
-        )
-        ttk.Label(
-            pad,
-            text=SETTINGS_ADVANCED_HINT,
-            font=CAPTION,
-            foreground=TEXT_SECONDARY,
-            wraplength=640,
-        ).pack(anchor=tk.W)
+        advanced = self._settings_card(pad, SETTINGS_ADVANCED, SETTINGS_ADVANCED_HINT)
         for shortcut, keys in SETTINGS_SHORTCUTS:
-            row = ttk.Frame(pad)
+            row = ttk.Frame(advanced)
             row.pack(fill=tk.X, pady=1)
             ttk.Label(row, text=shortcut, font=BODY).pack(side=tk.LEFT)
             ttk.Label(
                 row, text=keys, font=META, foreground=TEXT_SECONDARY
             ).pack(side=tk.RIGHT)
         _button(
-            pad,
+            advanced,
             SETTINGS_EXPORT_REVIEW,
             self._open_html,
             kind="tertiary",
         ).pack(anchor=tk.W, pady=(SP_12, 0))
 
         # Recovery — on-demand under Advanced (exposure ladder). Not everyday.
-        ttk.Label(pad, text=SETTINGS_RECOVERY, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_16, SP_8)
-        )
+        recovery = self._settings_card(pad, SETTINGS_RECOVERY, SETTINGS_RECOVERY_HINT)
         ttk.Label(
-            pad,
-            text=SETTINGS_RECOVERY_HINT,
-            font=CAPTION,
-            foreground=TEXT_SECONDARY,
-            wraplength=640,
-        ).pack(anchor=tk.W)
-        ttk.Label(
-            pad,
+            recovery,
             text=SETTINGS_RESET_TITLE,
             font=BODY,
         ).pack(anchor=tk.W, pady=(SP_8, 0))
         ttk.Label(
-            pad,
+            recovery,
             text=SETTINGS_RESET_SAFE,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
             wraplength=640,
         ).pack(anchor=tk.W, pady=(SP_4, 0))
         _button(
-            pad,
+            recovery,
             SETTINGS_RESET_BUTTON,
             self._reset_app_to_defaults,
             kind="secondary",
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
-        ttk.Label(pad, text=SETTINGS_DIAGNOSTICS, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
-        )
-        ttk.Label(
-            pad,
-            text=SETTINGS_DIAGNOSTICS_HINT,
-            font=CAPTION,
-            foreground=TEXT_SECONDARY,
-            wraplength=640,
-        ).pack(anchor=tk.W)
+        diag = self._settings_card(pad, SETTINGS_DIAGNOSTICS, SETTINGS_DIAGNOSTICS_HINT)
         _button(
-            pad,
+            diag,
             SETTINGS_OPEN_DIAGNOSTICS,
             self._open_advanced_diagnostics,
             kind="tertiary",
