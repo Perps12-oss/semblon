@@ -1,4 +1,4 @@
-"""Entry for the native production shell."""
+"""Entry for `semblon shell` — one archive, Qt Quick."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def run_native_shell(store: Path | None = None) -> int:
-    """Open the Qt/PySide production shell. Requires optional PySide6."""
+    """Open the archive shell. Requires optional PySide6. Does not replace `semblon home`."""
     try:
         from PySide6.QtWidgets import QApplication
     except ImportError as e:  # pragma: no cover - env without gui extra
@@ -16,14 +16,8 @@ def run_native_shell(store: Path | None = None) -> int:
         )
         raise SystemExit(2) from e
 
-    from semblon.application import Application
-    from semblon.native_shell.window import ShellWindow
-    from semblon.process import default_store_path
+    del QApplication
+    from semblon.native_shell.host import build_shell
 
-    app = QApplication.instance() or QApplication([])
-    app.setApplicationName("Semblon")
-    app.setOrganizationName("Semblon")
-    session = Application(store if store is not None else default_store_path())
-    window = ShellWindow(session)
-    window.show()
+    app, _engine = build_shell(store)
     return int(app.exec())
