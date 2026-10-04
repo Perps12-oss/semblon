@@ -4847,13 +4847,60 @@ class HomeApp:
         aid = resolve_atmosphere_id(load_theme_mode(self.store))
         publish_atmosphere(aid)
 
+
+    def _on_theme_list(self, _event=None) -> None:
+        box = getattr(self, "_theme_list", None)
+        ids = getattr(self, "_theme_ids", [])
+        if box is None:
+            return
+        sel = box.curselection()
+        if not sel:
+            return
+        aid = ids[sel[0]]
+        self._theme_var.set(aid)
+        self._preview_theme(aid)
+
+    def _preview_theme(self, mode: str) -> None:
+        """Apply a theme live. Does not write appearance.json."""
+        from semblon.atmosphere import ATMOSPHERE_LABELS
+        from semblon.atmosphere_render import transition_to
+        from semblon.ui_prefs import resolve_atmosphere_id
+        from semblon.ui_theme import apply_theme, reset_theme_for_tests
+
+        self._theme_preview = mode
+        aid = resolve_atmosphere_id(mode)
+        label = ATMOSPHERE_LABELS.get(aid, aid)
+        status = getattr(self, "_theme_status", None)
+        if status is not None:
+            status.set(f"Previewing {label}. Not saved.")
+
+        def _finish() -> None:
+            if apply_theme is not None:
+                reset_theme_for_tests()
+                apply_theme(self.root, force=True)
+            self._restyle_chrome()
+
+        transition_to(self.root, aid, on_done=_finish)
+
+    def _save_theme(self) -> None:
+        """Persist the previewed theme. This is the only write."""
+        mode = getattr(self, "_theme_preview", None) or self._theme_var.get()
+        self._set_theme_mode(mode)
+
     def _set_theme_mode(self, mode: str) -> None:
+        from semblon.atmosphere import ATMOSPHERE_LABELS
         from semblon.atmosphere_render import transition_to
         from semblon.ui_prefs import resolve_atmosphere_id, save_theme_mode
         from semblon.ui_theme import apply_theme, reset_theme_for_tests
 
         kept = save_theme_mode(mode, self.store)
+        self._theme_preview = kept
+        self._theme_saved = kept
         aid = resolve_atmosphere_id(kept)
+        label = ATMOSPHERE_LABELS.get(aid, aid)
+        status = getattr(self, "_theme_status", None)
+        if status is not None:
+            status.set(f"Saved {label}.")
 
         def _finish() -> None:
             self._invalidate_panes()
@@ -6495,57 +6542,55 @@ class HomeApp:
                 command=lambda k=key: self._set_search_mode(k),
             ).pack(side=tk.LEFT, padx=(0, SP_8))
 
+        from semblon.atmosphere import ATMOSPHERE_IDS, ATMOSPHERE_LABELS, get_atmosphere
         from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
 
         ttk.Label(appear, text="Theme", font=BODY).pack(anchor=tk.W, pady=(SP_12, 0))
-        current_mode = load_theme_mode(self.store)
-        self._theme_var = tk.StringVar(value=current_mode)
-        for mode, label in (
-            ("system", "System"),
-            ("light", "Light"),
-        ):
-            ttk.Radiobutton(
-                appear,
-                text=label,
-                value=mode,
-                variable=self._theme_var,
-                command=lambda m=mode: self._set_theme_mode(m),
-            ).pack(anchor=tk.W)
-
         ttk.Label(
             appear,
-            text="Atmospheres — hover a tile to preview states; click to apply",
+            text="Click a theme to preview it. Save theme writes the choice.",
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-        ).pack(anchor=tk.W, pady=(SP_12, SP_8))
-        preview_row = ttk.Frame(appear)
-        preview_row.pack(anchor=tk.W, fill=tk.X)
+            wraplength=640,
+        ).pack(anchor=tk.W, pady=(SP_4, SP_8))
+        current_mode = resolve_atmosphere_id(load_theme_mode(self.store))
+        self._theme_var = tk.StringVar(value=current_mode)
+        self._theme_preview = current_mode
+        self._theme_saved = current_mode
+        self._theme_ids = [aid for aid in ATMOSPHERE_IDS if aid in ATMOSPHERE_LABELS]
+        self._theme_list = tk.Listbox(
+            appear,
+            height=10,
+            activestyle="none",
+            exportselection=False,
+            bg=BG_SURFACE,
+            fg=TEXT_PRIMARY,
+            selectbackground="#12343A",
+            selectforeground="#5EEAD4",
+            highlightthickness=1,
+            highlightbackground=BORDER_DEFAULT,
+            relief=tk.FLAT,
+        )
+        for aid in self._theme_ids:
+            spec = get_atmosphere(aid)
+            self._theme_list.insert(tk.END, f"{spec.label}    {spec.surface} → {spec.accent}")
         try:
-            from semblon.atmosphere_render import build_atmosphere_previews
-
-            def _pick(aid: str) -> None:
-                self._theme_var.set(aid)
-                self._set_theme_mode(aid)
-
-            tiles = build_atmosphere_previews(
-                preview_row,
-                current=resolve_atmosphere_id(current_mode),
-                on_select=_pick,
-            )
-            self._atmosphere_tiles = tiles
-            for i, tile in enumerate(tiles):
-                tile.widget().grid(row=0, column=i, padx=(0, SP_8), pady=2)
-        except Exception:  # noqa: BLE001 — radios still work without previews
-            from semblon.atmosphere import ATMOSPHERE_LABELS, DARK_ATMOSPHERE_IDS
-
-            for aid in DARK_ATMOSPHERE_IDS:
-                ttk.Radiobutton(
-                    appear,
-                    text=ATMOSPHERE_LABELS.get(aid, aid),
-                    value=aid,
-                    variable=self._theme_var,
-                    command=lambda m=aid: self._set_theme_mode(m),
-                ).pack(anchor=tk.W)
+            self._theme_list.selection_set(self._theme_ids.index(current_mode))
+        except ValueError:
+            pass
+        self._theme_list.pack(fill=tk.X, pady=(0, SP_8))
+        self._theme_list.bind("<<ListboxSelect>>", self._on_theme_list)
+        self._theme_status = tk.StringVar(value="Saved theme.")
+        ttk.Label(
+            appear,
+            textvariable=self._theme_status,
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+        ).pack(anchor=tk.W)
+        _button(appear, "Save theme", self._save_theme, kind="primary").pack(
+            anchor=tk.W, pady=(SP_8, 0)
+        )
+        self._atmosphere_tiles = []
 
         about_card = self._settings_card(pad, about.title, about.hint)
         try:
