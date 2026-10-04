@@ -965,6 +965,12 @@ class HomeApp:
 
         self.root = tk.Tk()
         self.root.title("Semblon")
+        # Paint the shell before the first map so startup is not a white frame.
+        try:
+            self.root.configure(bg=BG_CANVAS)
+            self.root.option_add("*Background", BG_CANVAS)
+        except tk.TclError:
+            pass
         from semblon.ui_theme import px
 
         self.root.minsize(px(self.root, WINDOW_MIN[0]), px(self.root, WINDOW_MIN[1]))
@@ -5047,16 +5053,14 @@ class HomeApp:
         }
 
     def _set_inspector_collapsed(self, collapsed: bool) -> None:
-        """Hide Details when nothing to inspect; ~320px when open."""
+        """Reserve the inspector column so route changes do not jump width."""
         self._inspector_collapsed = collapsed
-        if collapsed:
-            self._inspector_frame.grid_remove()
-            self._body.columnconfigure(1, weight=0, minsize=0)
-            self._body.columnconfigure(0, weight=5)
-        else:
+        self._body.columnconfigure(1, weight=0, minsize=320)
+        self._body.columnconfigure(0, weight=5)
+        try:
             self._inspector_frame.grid()
-            self._body.columnconfigure(1, weight=0, minsize=320)
-            self._body.columnconfigure(0, weight=5)
+        except tk.TclError:
+            return
 
     def _on_root_configure(self, event) -> None:
         if event.widget is not self.root:
@@ -5069,13 +5073,23 @@ class HomeApp:
         self._condensed = shell_is_condensed(int(width))
 
     def _mark_nav_active(self, nav_id: str) -> None:
-        """Best-effort active nav styling in ttk (underline / state)."""
+        """One active mode: teal text on a tinted chip. Hover is not a second accent."""
+        try:
+            style = ttk.Style(self.root)
+            style.configure("NavActive.TButton", foreground="#5EEAD4", background="#12343A")
+            style.configure("NavIdle.TButton", foreground="#C5D0DE")
+        except tk.TclError:
+            style = None
         for nid, btn in self._nav_buttons.items():
             try:
                 if nid == nav_id:
                     btn.state(["pressed"])
+                    if style is not None:
+                        btn.configure(style="NavActive.TButton")
                 else:
                     btn.state(["!pressed"])
+                    if style is not None:
+                        btn.configure(style="NavIdle.TButton")
             except tk.TclError:
                 pass
 
@@ -6569,8 +6583,6 @@ class HomeApp:
         self._set_inspector_collapsed(True)
         if not getattr(self, "_settings_pad", None):
             self._build_settings_workspace()
-        else:
-            self._fill_settings_body()
         self._settings.pack(fill=tk.BOTH, expand=True)
         self._set_inspector(
             "Settings",

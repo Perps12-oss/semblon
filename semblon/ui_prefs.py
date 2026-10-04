@@ -9,7 +9,7 @@ Missing or damaged files fall back to canonical defaults. Corrupt prefs must
 never prevent launch.
 
 Canonical defaults (absent file / absent key):
-  theme            → system
+  theme            → mica_dark
   grid_density     → comfortable
   search_mode      → people
   library_filter   → all
@@ -149,16 +149,16 @@ def _update_machine(**updates: object) -> dict:
 
 
 def load_theme_mode(store: Path | None = None) -> str:
-    """Return a stored theme mode. Missing or damaged files are system."""
+    """Return a stored theme mode. Missing or damaged files are Mica Dark."""
     mode = str(load_prefs(store).get(KEY_THEME) or "").strip().lower()
-    return mode if mode in THEME_MODES else "system"
+    return mode if mode in THEME_MODES else "mica_dark"
 
 
 def save_theme_mode(mode: str, store: Path | None = None) -> str:
     """Persist theme without wiping other preference keys."""
     kept = mode.strip().lower() if isinstance(mode, str) else ""
     if kept not in THEME_MODES:
-        kept = "system"
+        kept = "mica_dark"
     update_prefs(store, **{KEY_THEME: kept})
     return kept
 
@@ -319,9 +319,10 @@ def resolve_atmosphere_id(mode: str, *, system_dark: bool | None = None) -> str:
     if picked == "light":
         return "light"
     dark = system_is_dark() if system_dark is None else system_dark
-    if dark is True:
-        return DEFAULT_DARK_ATMOSPHERE
-    return "light"
+    # Unknown (registry unreadable) stays Mica Dark. Explicit light Windows stays light.
+    if dark is False:
+        return "light"
+    return DEFAULT_DARK_ATMOSPHERE
 
 
 def resolve_palette(mode: str, *, system_dark: bool | None = None) -> Palette:

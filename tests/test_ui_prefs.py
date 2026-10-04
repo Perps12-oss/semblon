@@ -15,10 +15,10 @@ from semblon.ui_prefs import (
 from semblon.ui_tokens import LIGHT, publish
 
 
-def test_missing_file_is_system_and_resolves_light_when_unknown(tmp_path):
+def test_missing_file_is_mica_dark_and_unknown_system_stays_dark(tmp_path):
     store = tmp_path / "store.sqlite"
-    assert load_theme_mode(store) == "system"
-    assert resolve_atmosphere_id("system", system_dark=None) == "light"
+    assert load_theme_mode(store) == "mica_dark"
+    assert resolve_atmosphere_id("system", system_dark=None) == "mica_dark"
     assert resolve_atmosphere_id("system", system_dark=False) == "light"
     assert resolve_atmosphere_id("system", system_dark=True) == "mica_dark"
     mica = get_atmosphere("mica_dark")
@@ -35,16 +35,16 @@ def test_save_roundtrip_and_rejects_unknown(tmp_path):
     assert path.is_file()
     assert json.loads(path.read_text(encoding="utf-8"))["theme"] == "dark"
     assert load_theme_mode(store) == "dark"
-    assert save_theme_mode("neon", store) == "system"
-    assert load_theme_mode(store) == "system"
+    assert save_theme_mode("neon", store) == "mica_dark"
+    assert load_theme_mode(store) == "mica_dark"
     assert save_theme_mode("tokyo_synth", store) == "tokyo_synth"
     assert load_theme_mode(store) == "tokyo_synth"
 
 
-def test_damaged_file_falls_back_to_system(tmp_path):
+def test_damaged_file_falls_back_to_mica_dark(tmp_path):
     store = tmp_path / "store.sqlite"
     appearance_path(store).write_text("{", encoding="utf-8")
-    assert load_theme_mode(store) == "system"
+    assert load_theme_mode(store) == "mica_dark"
 
 
 def test_publish_rebinds_consumer_names():
