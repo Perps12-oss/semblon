@@ -90,6 +90,7 @@ try:
         BODY,
         BODY_SMALL,
         BODY_STRONG,
+        BORDER_DEFAULT,
         BORDER_SUBTLE,
         CAPTION,
         DISPLAY,
@@ -134,6 +135,7 @@ except ImportError:  # pragma: no cover - mid-merge stub
     BODY = ("Segoe UI", 12)
     BODY_SMALL = ("Segoe UI", 11)
     BODY_STRONG = ("Segoe UI", 12, "bold")
+    BORDER_DEFAULT = "#E4E4E2"
     BORDER_SUBTLE = "#E4E4E2"
     CAPTION = ("Segoe UI", 10)
     DISPLAY = ("Segoe UI", 22, "bold")
@@ -965,6 +967,12 @@ class HomeApp:
 
         self.root = tk.Tk()
         self.root.title("Semblon")
+        # Paint the shell before the first map so startup is not a white frame.
+        try:
+            self.root.configure(bg=BG_CANVAS)
+            self.root.option_add("*Background", BG_CANVAS)
+        except tk.TclError:
+            pass
         from semblon.ui_theme import px
 
         self.root.minsize(px(self.root, WINDOW_MIN[0]), px(self.root, WINDOW_MIN[1]))
@@ -992,10 +1000,29 @@ class HomeApp:
         self._inspector_role = self._PANE_INSPECTOR
 
         # Model D — full-bleed main; compact header chrome (no MAIN sidebar).
+        try:
+            from semblon.atmosphere_render import GradientBackdrop
+
+            self._gradient = GradientBackdrop(self.root)
+        except Exception:  # noqa: BLE001
+            self._gradient = None
         self._shell = tk.Frame(self.root, bg=BG_CANVAS)
         self._shell.pack(fill=tk.BOTH, expand=True)
+        self._theme_band = tk.Canvas(self._shell, height=72, highlightthickness=0, bd=0)
+        self._theme_band.pack(fill=tk.X)
         self._main = ttk.Frame(self._shell)
         self._main.pack(fill=tk.BOTH, expand=True)
+        try:
+            from semblon.atmosphere import get_atmosphere
+            from semblon.atmosphere_render import paint_vertical_gradient
+            from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
+
+            spec = get_atmosphere(resolve_atmosphere_id(load_theme_mode(self.store)))
+            paint_vertical_gradient(self._theme_band, spec.surface, spec.mist or spec.accent, 72)
+            if self._gradient is not None:
+                self._gradient.set_stops(spec.surface, spec.mist or spec.accent)
+        except Exception:  # noqa: BLE001
+            pass
         self._sidebar = None  # no permanent MAIN sidebar (docs/SHELL-IA.md)
         self._rail = None
         self._nav_rows: list[tuple[str, object]] = []
@@ -1833,6 +1860,8 @@ class HomeApp:
         from semblon.home_shell import LENS_UNDERSTANDING_TITLE
         from semblon.selection import LENS_HEADLINE, LENS_SUBCOPY
 
+        if self._pane_is_ready("lens"):
+            return
         for child in self._lens.winfo_children():
             child.destroy()
         shell = ttk.Frame(self._lens, padding=(SP_24, SP_20))
@@ -2041,6 +2070,7 @@ class HomeApp:
                     "Semblon uses available understanding — missing models say so.",
                 ],
             )
+        self._mark_pane_ready("lens")
 
     def _show_lens_workspace(self) -> None:
         self._hide_workspace_panes()
@@ -2845,6 +2875,8 @@ class HomeApp:
 
     def _build_processing_home(self) -> None:
         """PROCESSING state — results framing while a job runs (not marketing + telemetry)."""
+        if self._pane_is_ready("processing"):
+            return
         for child in self._processing.winfo_children():
             child.destroy()
         from semblon.product_surface import (
@@ -2965,6 +2997,8 @@ class HomeApp:
             justify=tk.LEFT,
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
+        self._mark_pane_ready("processing")
+
     def _build_result_card_shell(self) -> None:
         """Result summary card shell (UX Rescue §11); content filled on completion."""
         for child in self._result_card.winfo_children():
@@ -3024,6 +3058,22 @@ class HomeApp:
             kind="secondary",
             plate=BG_SURFACE,
         )
+
+
+    def _pane_is_ready(self, key: str) -> bool:
+        return key in getattr(self, "_pane_ready", set())
+
+    def _mark_pane_ready(self, key: str) -> None:
+        ready = getattr(self, "_pane_ready", None)
+        if ready is None:
+            self._pane_ready = set()
+            ready = self._pane_ready
+        ready.add(key)
+
+    def _invalidate_panes(self) -> None:
+        """Drop mounted pages so the next visit rebuilds offscreen after a theme change."""
+        self._pane_ready = set()
+        self._settings_pad = None
 
     def _hide_workspace_panes(self) -> None:
         self._canvas_ws.pack_forget()
@@ -3276,6 +3326,11 @@ class HomeApp:
 
         self._hide_workspace_panes()
         self._set_inspector_collapsed(True)
+        if self._pane_is_ready("stage"):
+            self._landing.pack(fill=tk.BOTH, expand=True)
+            self._refresh_footer()
+            self._sync_activity_chrome()
+            return
         for child in self._landing.winfo_children():
             child.destroy()
         root = tk.Frame(self._landing, bg=BG_CANVAS)
@@ -3356,6 +3411,7 @@ class HomeApp:
             justify=tk.LEFT,
             anchor="w",
         ).pack(anchor=tk.W, pady=(SP_16, 0))
+        self._mark_pane_ready("stage")
         self._landing.pack(fill=tk.BOTH, expand=True)
         self._refresh_footer()
         self._sync_activity_chrome()
@@ -4812,15 +4868,96 @@ class HomeApp:
         aid = resolve_atmosphere_id(load_theme_mode(self.store))
         publish_atmosphere(aid)
 
+
+
+    def _paint_theme_gradient(self, aid: str) -> None:
+        from semblon.atmosphere import get_atmosphere
+
+        spec = get_atmosphere(aid)
+        backdrop = getattr(self, "_gradient", None)
+        if backdrop is not None:
+            backdrop.set_stops(spec.surface, spec.mist or spec.accent)
+        band = getattr(self, "_theme_band", None)
+        if band is not None:
+            from semblon.atmosphere_render import paint_vertical_gradient
+
+            paint_vertical_gradient(band, spec.surface, spec.mist or spec.accent, 72)
+        try:
+            self._shell.configure(bg=spec.surface)
+        except Exception:
+            pass
+        rows = getattr(self, "_theme_rows", {}) or {}
+        for key, row in rows.items():
+            canvas = row.get("canvas")
+            if canvas is None:
+                continue
+            try:
+                canvas.configure(highlightthickness=2 if key == aid else 1)
+            except Exception:
+                pass
+
+    def _on_theme_row(self, aid: str) -> None:
+        self._theme_var.set(aid)
+        self._preview_theme(aid)
+
+    def _on_theme_list(self, _event=None) -> None:
+        box = getattr(self, "_theme_list", None)
+        ids = getattr(self, "_theme_ids", [])
+        if box is None:
+            return
+        sel = box.curselection()
+        if not sel:
+            return
+        aid = ids[sel[0]]
+        self._theme_var.set(aid)
+        self._preview_theme(aid)
+
+    def _preview_theme(self, mode: str) -> None:
+        """Apply a theme live. Does not write appearance.json."""
+        from semblon.atmosphere import ATMOSPHERE_LABELS
+        from semblon.atmosphere_render import transition_to
+        from semblon.ui_prefs import resolve_atmosphere_id
+        from semblon.ui_theme import apply_theme, reset_theme_for_tests
+
+        self._theme_preview = mode
+        aid = resolve_atmosphere_id(mode)
+        self._paint_theme_gradient(aid)
+        label = ATMOSPHERE_LABELS.get(aid, aid)
+        status = getattr(self, "_theme_status", None)
+        if status is not None:
+            status.set(f"Previewing {label}. Not saved.")
+
+        def _finish() -> None:
+            if apply_theme is not None:
+                reset_theme_for_tests()
+                apply_theme(self.root, force=True)
+            self._restyle_chrome()
+
+        transition_to(self.root, aid, on_done=_finish)
+
+    def _save_theme(self) -> None:
+        """Persist the previewed theme. This is the only write."""
+        mode = getattr(self, "_theme_preview", None) or self._theme_var.get()
+        self._set_theme_mode(mode)
+
     def _set_theme_mode(self, mode: str) -> None:
+        from semblon.atmosphere import ATMOSPHERE_LABELS
         from semblon.atmosphere_render import transition_to
         from semblon.ui_prefs import resolve_atmosphere_id, save_theme_mode
         from semblon.ui_theme import apply_theme, reset_theme_for_tests
 
         kept = save_theme_mode(mode, self.store)
+        self._theme_preview = kept
+        self._theme_saved = kept
         aid = resolve_atmosphere_id(kept)
+        self._paint_theme_gradient(aid)
+        label = ATMOSPHERE_LABELS.get(aid, aid)
+        status = getattr(self, "_theme_status", None)
+        if status is not None:
+            status.set(f"Saved {label}.")
 
         def _finish() -> None:
+            self._invalidate_panes()
             if apply_theme is not None:
                 reset_theme_for_tests()
                 apply_theme(self.root, force=True)
@@ -5047,16 +5184,14 @@ class HomeApp:
         }
 
     def _set_inspector_collapsed(self, collapsed: bool) -> None:
-        """Hide Details when nothing to inspect; ~320px when open."""
+        """Reserve the inspector column so route changes do not jump width."""
         self._inspector_collapsed = collapsed
-        if collapsed:
-            self._inspector_frame.grid_remove()
-            self._body.columnconfigure(1, weight=0, minsize=0)
-            self._body.columnconfigure(0, weight=5)
-        else:
+        self._body.columnconfigure(1, weight=0, minsize=320)
+        self._body.columnconfigure(0, weight=5)
+        try:
             self._inspector_frame.grid()
-            self._body.columnconfigure(1, weight=0, minsize=320)
-            self._body.columnconfigure(0, weight=5)
+        except tk.TclError:
+            return
 
     def _on_root_configure(self, event) -> None:
         if event.widget is not self.root:
@@ -5069,13 +5204,23 @@ class HomeApp:
         self._condensed = shell_is_condensed(int(width))
 
     def _mark_nav_active(self, nav_id: str) -> None:
-        """Best-effort active nav styling in ttk (underline / state)."""
+        """One active mode: teal text on a tinted chip. Hover is not a second accent."""
+        try:
+            style = ttk.Style(self.root)
+            style.configure("NavActive.TButton", foreground="#5EEAD4", background="#12343A")
+            style.configure("NavIdle.TButton", foreground="#C5D0DE")
+        except tk.TclError:
+            style = None
         for nid, btn in self._nav_buttons.items():
             try:
                 if nid == nav_id:
                     btn.state(["pressed"])
+                    if style is not None:
+                        btn.configure(style="NavActive.TButton")
                 else:
                     btn.state(["!pressed"])
+                    if style is not None:
+                        btn.configure(style="NavIdle.TButton")
             except tk.TclError:
                 pass
 
@@ -6212,6 +6357,31 @@ class HomeApp:
                 text_rec = None
         self._present_search(rec, extra_lines=extra_busy, text_rec=text_rec)
 
+
+    def _settings_card(self, parent, title: str, hint: str = ""):
+        """Hairline card used by Settings. Same surface stack as review chrome."""
+        card = tk.Frame(
+            parent,
+            bg=BG_SURFACE,
+            highlightbackground=BORDER_DEFAULT,
+            highlightthickness=1,
+            padx=16,
+            pady=14,
+        )
+        card.pack(fill=tk.X, pady=(0, 12))
+        ttk.Label(card, text=title, font=BODY_STRONG).pack(anchor=tk.W)
+        if hint:
+            ttk.Label(
+                card,
+                text=hint,
+                font=CAPTION,
+                foreground=TEXT_SECONDARY,
+                wraplength=640,
+            ).pack(anchor=tk.W, pady=(4, 8))
+        body = ttk.Frame(card)
+        body.pack(fill=tk.X)
+        return body
+
     def _build_settings_workspace(self) -> None:
         """Settings is a first-class workspace route — not a Toplevel popup."""
         for child in self._settings.winfo_children():
@@ -6292,8 +6462,14 @@ class HomeApp:
                 pass
 
         head = ttk.Frame(pad)
-        head.pack(fill=tk.X)
-        ttk.Label(head, text=SETTINGS_TITLE, font=H2).pack(side=tk.LEFT)
+        head.pack(fill=tk.X, pady=(0, SP_16))
+        ttk.Label(head, text=SETTINGS_TITLE, font=HERO).pack(anchor=tk.W)
+        ttk.Label(
+            head,
+            text="Library, appearance, and recovery on this computer.",
+            font=BODY,
+            foreground=TEXT_SECONDARY,
+        ).pack(anchor=tk.W, pady=(4, 0))
 
         sections = {s.id: s for s in settings_contributions()}
         library = sections["library"]
@@ -6301,20 +6477,11 @@ class HomeApp:
         appearance = sections["appearance"]
         about = sections["about"]
 
-        ttk.Label(pad, text=library.title, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_16, SP_8)
-        )
-        ttk.Label(
-            pad,
-            text=library.hint,
-            font=CAPTION,
-            foreground=TEXT_SECONDARY,
-            wraplength=640,
-        ).pack(anchor=tk.W)
-        ttk.Label(pad, text="Library location", font=BODY).pack(
+        lib = self._settings_card(pad, library.title, library.hint)
+        ttk.Label(lib, text="Library location", font=BODY).pack(
             anchor=tk.W, pady=(SP_8, 0)
         )
-        loc_row = ttk.Frame(pad)
+        loc_row = ttk.Frame(lib)
         loc_row.pack(fill=tk.X, pady=(SP_8, 0))
         self._settings_lib_var = tk.StringVar(value=str(self.store))
         ttk.Label(
@@ -6330,11 +6497,13 @@ class HomeApp:
 
         # Packs / advanced model tooling — after first success only (UI-EXPOSURE-MAP).
         if self._library_has_media():
-            ttk.Label(pad, text="Packs", font=BODY_STRONG).pack(
-                anchor=tk.W, pady=(SP_24, SP_8)
+            packs = self._settings_card(
+                pad,
+                "Packs",
+                "Missing packs stay missing. They are not an empty library.",
             )
             ttk.Label(
-                pad,
+                packs,
                 text="Missing packs stay missing. They are not an empty library.",
                 font=CAPTION,
                 foreground=TEXT_SECONDARY,
@@ -6346,15 +6515,13 @@ class HomeApp:
             for row in list(cap_rows["ready"]) + list(cap_rows["tracked"]):
                 state = row.get("state") or "Available"
                 ttk.Label(
-                    pad,
+                    packs,
                     text=f"{row['label']} — {state}",
                     font=BODY,
                     wraplength=640,
                 ).pack(anchor=tk.W, pady=(SP_4, 0))
 
-        ttk.Label(pad, text=processing.title, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
-        )
+        proc = self._settings_card(pad, processing.title, processing.hint)
         gpu_available = False
         try:
             from semblon.engine import select_execution_provider
@@ -6378,27 +6545,25 @@ class HomeApp:
                     pass
 
             ttk.Checkbutton(
-                pad,
+                proc,
                 text=SETTINGS_GPU,
                 variable=self._gpu_var,
                 command=_on_gpu,
             ).pack(anchor=tk.W)
         else:
             ttk.Label(
-                pad,
+                proc,
                 text=processing.hint,
                 font=CAPTION,
                 foreground=TEXT_SECONDARY,
             ).pack(anchor=tk.W)
 
-        ttk.Label(pad, text=appearance.title, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
-        )
+        appear = self._settings_card(pad, appearance.title, appearance.hint)
         # Everyday defaults — same keys as library/search chrome; no second stack.
-        ttk.Label(pad, text=SETTINGS_GRID_DENSITY, font=BODY).pack(
+        ttk.Label(appear, text=SETTINGS_GRID_DENSITY, font=BODY).pack(
             anchor=tk.W, pady=(SP_8, 0)
         )
-        dens_row = ttk.Frame(pad)
+        dens_row = ttk.Frame(appear)
         dens_row.pack(anchor=tk.W, pady=(SP_4, 0))
         self._settings_density_var = tk.StringVar(
             value=getattr(self, "_grid_density", "comfortable") or "comfortable"
@@ -6412,12 +6577,12 @@ class HomeApp:
                 command=lambda k=key: self._set_grid_density(k),
             ).pack(side=tk.LEFT, padx=(0, SP_12))
 
-        ttk.Label(pad, text=SETTINGS_SEARCH_MODE, font=BODY).pack(
+        ttk.Label(appear, text=SETTINGS_SEARCH_MODE, font=BODY).pack(
             anchor=tk.W, pady=(SP_12, 0)
         )
         from semblon.ui_primitives import SEARCH_MODES as _SEARCH_MODE_CHOICES
 
-        mode_row = ttk.Frame(pad)
+        mode_row = ttk.Frame(appear)
         mode_row.pack(anchor=tk.W, pady=(SP_4, 0))
         self._settings_search_var = tk.StringVar(
             value=getattr(self, "_search_mode", "people") or "people"
@@ -6431,142 +6596,121 @@ class HomeApp:
                 command=lambda k=key: self._set_search_mode(k),
             ).pack(side=tk.LEFT, padx=(0, SP_8))
 
+        from semblon.atmosphere import ATMOSPHERE_IDS, ATMOSPHERE_LABELS, get_atmosphere
         from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
 
-        ttk.Label(pad, text="Theme", font=BODY).pack(anchor=tk.W, pady=(SP_12, 0))
-        current_mode = load_theme_mode(self.store)
-        self._theme_var = tk.StringVar(value=current_mode)
-        for mode, label in (
-            ("system", "System"),
-            ("light", "Light"),
-        ):
-            ttk.Radiobutton(
-                pad,
-                text=label,
-                value=mode,
-                variable=self._theme_var,
-                command=lambda m=mode: self._set_theme_mode(m),
-            ).pack(anchor=tk.W)
-
+        ttk.Label(appear, text="Theme", font=BODY).pack(anchor=tk.W, pady=(SP_12, 0))
         ttk.Label(
-            pad,
-            text="Atmospheres — hover a tile to preview states; click to apply",
+            appear,
+            text="Click a theme to preview it. Save theme writes the choice.",
             font=CAPTION,
             foreground=TEXT_SECONDARY,
-        ).pack(anchor=tk.W, pady=(SP_12, SP_8))
-        preview_row = ttk.Frame(pad)
-        preview_row.pack(anchor=tk.W, fill=tk.X)
-        try:
-            from semblon.atmosphere_render import build_atmosphere_previews
+            wraplength=640,
+        ).pack(anchor=tk.W, pady=(SP_4, SP_8))
+        current_mode = resolve_atmosphere_id(load_theme_mode(self.store))
+        self._theme_var = tk.StringVar(value=current_mode)
+        self._theme_preview = current_mode
+        self._theme_saved = current_mode
+        from semblon.atmosphere_render import paint_vertical_gradient
 
-            def _pick(aid: str) -> None:
-                self._theme_var.set(aid)
-                self._set_theme_mode(aid)
-
-            tiles = build_atmosphere_previews(
-                preview_row,
-                current=resolve_atmosphere_id(current_mode),
-                on_select=_pick,
+        self._theme_ids = [aid for aid in ATMOSPHERE_IDS if aid in ATMOSPHERE_LABELS]
+        self._theme_rows = {}
+        list_host = tk.Frame(appear, bg=BG_CANVAS)
+        list_host.pack(fill=tk.X, pady=(0, SP_8))
+        for aid in self._theme_ids:
+            spec = get_atmosphere(aid)
+            row = tk.Frame(list_host, bg=BG_CANVAS)
+            row.pack(fill=tk.X, pady=3)
+            swatch = tk.Canvas(
+                row,
+                width=72,
+                height=32,
+                highlightthickness=2 if aid == current_mode else 1,
+                highlightbackground="#5EEAD4" if aid == current_mode else BORDER_DEFAULT,
+                bd=0,
             )
-            self._atmosphere_tiles = tiles
-            for i, tile in enumerate(tiles):
-                tile.widget().grid(row=0, column=i, padx=(0, SP_8), pady=2)
-        except Exception:  # noqa: BLE001 — radios still work without previews
-            from semblon.atmosphere import ATMOSPHERE_LABELS, DARK_ATMOSPHERE_IDS
-
-            for aid in DARK_ATMOSPHERE_IDS:
-                ttk.Radiobutton(
-                    pad,
-                    text=ATMOSPHERE_LABELS.get(aid, aid),
-                    value=aid,
-                    variable=self._theme_var,
-                    command=lambda m=aid: self._set_theme_mode(m),
-                ).pack(anchor=tk.W)
-
-        ttk.Label(pad, text=about.title, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
+            swatch.pack(side=tk.LEFT, padx=(0, 10))
+            swatch.bind("<Configure>", lambda e, c=swatch, a=spec.surface, b=spec.accent: paint_vertical_gradient(c, a, b, e.height))
+            paint_vertical_gradient(swatch, spec.surface, spec.accent, 32)
+            name = tk.Label(
+                row,
+                text=spec.label,
+                font=BODY,
+                bg=BG_CANVAS,
+                fg=TEXT_PRIMARY,
+                anchor="w",
+            )
+            name.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            for widget in (row, swatch, name):
+                widget.bind("<Button-1>", lambda _e, a=aid: self._on_theme_row(a))
+            self._theme_rows[aid] = {"canvas": swatch, "row": row}
+        self._theme_status = tk.StringVar(value="Saved theme.")
+        ttk.Label(
+            appear,
+            textvariable=self._theme_status,
+            font=CAPTION,
+            foreground=TEXT_SECONDARY,
+        ).pack(anchor=tk.W)
+        _button(appear, "Save theme", self._save_theme, kind="primary").pack(
+            anchor=tk.W, pady=(SP_8, 0)
         )
+        self._atmosphere_tiles = []
+
+        about_card = self._settings_card(pad, about.title, about.hint)
         try:
             from semblon import __version__ as _ver
         except Exception:  # noqa: BLE001
             _ver = "1.4.0"
-        ttk.Label(pad, text="Semblon", font=H2).pack(anchor=tk.W)
+        ttk.Label(about_card, text="Semblon", font=H2).pack(anchor=tk.W)
         ttk.Label(
-            pad, text=f"Version {_ver}", font=CAPTION, foreground=TEXT_SECONDARY
+            about_card, text=f"Version {_ver}", font=CAPTION, foreground=TEXT_SECONDARY
         ).pack(anchor=tk.W, pady=(SP_8, 0))
         ttk.Label(
-            pad,
+            about_card,
             text=about.hint,
             font=BODY,
             wraplength=640,
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
-        ttk.Label(pad, text=SETTINGS_ADVANCED, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
-        )
-        ttk.Label(
-            pad,
-            text=SETTINGS_ADVANCED_HINT,
-            font=CAPTION,
-            foreground=TEXT_SECONDARY,
-            wraplength=640,
-        ).pack(anchor=tk.W)
+        advanced = self._settings_card(pad, SETTINGS_ADVANCED, SETTINGS_ADVANCED_HINT)
         for shortcut, keys in SETTINGS_SHORTCUTS:
-            row = ttk.Frame(pad)
+            row = ttk.Frame(advanced)
             row.pack(fill=tk.X, pady=1)
             ttk.Label(row, text=shortcut, font=BODY).pack(side=tk.LEFT)
             ttk.Label(
                 row, text=keys, font=META, foreground=TEXT_SECONDARY
             ).pack(side=tk.RIGHT)
         _button(
-            pad,
+            advanced,
             SETTINGS_EXPORT_REVIEW,
             self._open_html,
             kind="tertiary",
         ).pack(anchor=tk.W, pady=(SP_12, 0))
 
         # Recovery — on-demand under Advanced (exposure ladder). Not everyday.
-        ttk.Label(pad, text=SETTINGS_RECOVERY, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_16, SP_8)
-        )
+        recovery = self._settings_card(pad, SETTINGS_RECOVERY, SETTINGS_RECOVERY_HINT)
         ttk.Label(
-            pad,
-            text=SETTINGS_RECOVERY_HINT,
-            font=CAPTION,
-            foreground=TEXT_SECONDARY,
-            wraplength=640,
-        ).pack(anchor=tk.W)
-        ttk.Label(
-            pad,
+            recovery,
             text=SETTINGS_RESET_TITLE,
             font=BODY,
         ).pack(anchor=tk.W, pady=(SP_8, 0))
         ttk.Label(
-            pad,
+            recovery,
             text=SETTINGS_RESET_SAFE,
             font=CAPTION,
             foreground=TEXT_SECONDARY,
             wraplength=640,
         ).pack(anchor=tk.W, pady=(SP_4, 0))
         _button(
-            pad,
+            recovery,
             SETTINGS_RESET_BUTTON,
             self._reset_app_to_defaults,
             kind="secondary",
         ).pack(anchor=tk.W, pady=(SP_8, 0))
 
-        ttk.Label(pad, text=SETTINGS_DIAGNOSTICS, font=BODY_STRONG).pack(
-            anchor=tk.W, pady=(SP_24, SP_8)
-        )
-        ttk.Label(
-            pad,
-            text=SETTINGS_DIAGNOSTICS_HINT,
-            font=CAPTION,
-            foreground=TEXT_SECONDARY,
-            wraplength=640,
-        ).pack(anchor=tk.W)
+        diag = self._settings_card(pad, SETTINGS_DIAGNOSTICS, SETTINGS_DIAGNOSTICS_HINT)
         _button(
-            pad,
+            diag,
             SETTINGS_OPEN_DIAGNOSTICS,
             self._open_advanced_diagnostics,
             kind="tertiary",
@@ -6578,8 +6722,6 @@ class HomeApp:
         self._set_inspector_collapsed(True)
         if not getattr(self, "_settings_pad", None):
             self._build_settings_workspace()
-        else:
-            self._fill_settings_body()
         self._settings.pack(fill=tk.BOTH, expand=True)
         self._set_inspector(
             "Settings",

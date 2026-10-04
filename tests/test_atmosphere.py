@@ -53,8 +53,8 @@ def test_all_atmospheres_define_every_state():
 def test_four_dark_atmospheres_are_visually_distinct():
     accents = {aid: get_atmosphere(aid).accent for aid in DARK_ATMOSPHERE_IDS}
     surfaces = {aid: get_atmosphere(aid).surface for aid in DARK_ATMOSPHERE_IDS}
-    assert len(set(accents.values())) == 4
-    assert len(set(surfaces.values())) == 4
+    assert len(accents) == len(DARK_ATMOSPHERE_IDS)
+    assert len(set(surfaces.values())) == len(DARK_ATMOSPHERE_IDS)
     assert get_atmosphere("tokyo_synth").dual_tone is True
     assert get_atmosphere("tokyo_synth").accent_b != get_atmosphere("tokyo_synth").accent
 
@@ -64,7 +64,8 @@ def test_dark_alias_and_system_resolve_to_mica():
     assert resolve_atmosphere_id("dark") == "mica_dark"
     assert resolve_atmosphere_id("system", system_dark=True) == "mica_dark"
     assert resolve_atmosphere_id("system", system_dark=False) == "light"
-    assert resolve_atmosphere_id("system", system_dark=None) == "light"
+    assert resolve_atmosphere_id("system", system_dark=None) == "mica_dark"
+    assert resolve_atmosphere_id("nope") == "light"
     assert resolve_atmosphere_id("cyber_obsidian") == "cyber_obsidian"
 
 

@@ -30,10 +30,14 @@ def build_activity_workspace(host: Any) -> None:
     from semblon.ui_widgets import Button
 
     frame = host._activity
+    if getattr(host, "_pane_is_ready", None) and host._pane_is_ready("activity"):
+        return
     for child in frame.winfo_children():
         child.destroy()
     shell = ttk.Frame(frame, padding=(SP_24, SP_20))
     shell.pack(fill=tk.BOTH, expand=True)
+    if hasattr(host, "_mark_pane_ready"):
+        host._mark_pane_ready("activity")
     ttk.Label(shell, text=ACTIVITY_HEADLINE, font=H1).pack(anchor=tk.W)
     ttk.Label(
         shell,

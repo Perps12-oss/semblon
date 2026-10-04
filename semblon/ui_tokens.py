@@ -132,12 +132,14 @@ TERTIARY_FONT: tuple[str, int] = UI
 INK_ON_ACCENT = "#FFFFFF"
 
 # Cluster Review HTML chrome (semblon/review_chrome/tokens.css). Keep in sync.
-REVIEW_NAVY_800 = "#0F1B2D"
-REVIEW_BG_MAIN = "#F7F8FA"
+REVIEW_NAVY_800 = "#10161C"  # review rail; name kept for callers
+REVIEW_BG_MAIN = "#141A22"
+REVIEW_BG_CARD = "#1C2430"
+REVIEW_ACCENT = "#2DD4BF"
 REVIEW_STRONG_MIN_INTRA = 0.50
 REVIEW_SIDEBAR_W = 240
 REVIEW_INSPECTOR_W = 360
-REVIEW_TOPBAR_H = 64
+REVIEW_TOPBAR_H = 0
 
 
 def mix(src: str, onto: str, amount: float) -> str:
@@ -255,19 +257,19 @@ LIGHT = Palette(
 # "dark" for legacy callers; atmosphere id is mica_dark via ui_prefs.
 DARK = Palette(
     name="dark",
-    text_primary="#E8ECF4",
-    text_secondary="#A8B0C0",
-    text_tertiary="#6E7688",
-    text_quaternary="#4A5160",
-    surface="#12151C",
-    surface_muted="#181C26",
-    surface_raised="#1E2430",
-    border="#2A3140",
-    accent="#5B8DEF",
+    text_primary="#F4F7FB",
+    text_secondary="#A8B3C2",
+    text_tertiary="#7E8B9C",
+    text_quaternary="#5C6A7A",
+    surface="#141A22",
+    surface_muted="#10161C",
+    surface_raised="#1C2430",
+    border="#2A3544",
+    accent="#2DD4BF",
     danger="#E5484D",
     warning="#D9A13B",
     positive="#3FB27F",
-    focus_ring="#E8ECF4",
+    focus_ring="#F4F7FB",
 )
 
 # Photo stage under media — deeper than chrome so stills stay dominant.

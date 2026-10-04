@@ -192,7 +192,9 @@ def test_home_settings_is_user_panel_not_dump():
     assert "_settings_win" not in src
     assert "_settings.pack" in src or "self._settings.pack" in src
     assert "_navigate(\"settings\")" in inspect.getsource(home_ui.HomeApp.__init__)
-    assert "build_atmosphere_previews" in fill
+    assert 'text="Theme"' in fill
+    assert "self._on_theme_row" in fill
+    assert "Save theme" in fill
     assert "Canvas" in build
     assert "_hide_workspace_panes" in src
 

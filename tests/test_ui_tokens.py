@@ -98,13 +98,13 @@ def test_font_helper_and_pad():
 def test_dark_tokens_exist_parallel():
     """DARK mirrors Mica Dark atmosphere (docs/ATMOSPHERE.md)."""
     dark = t.DARK
-    assert dark.text_primary == "#E8ECF4"
-    assert dark.text_secondary == "#A8B0C0"
-    assert dark.surface == "#12151C"
-    assert dark.surface_muted == "#181C26"
-    assert dark.surface_raised == "#1E2430"
-    assert dark.border == "#2A3140"
-    assert dark.accent == "#5B8DEF"
+    assert dark.text_primary == "#F4F7FB"
+    assert dark.text_secondary == "#A8B3C2"
+    assert dark.surface == "#141A22"
+    assert dark.surface_muted == "#10161C"
+    assert dark.surface_raised == "#1C2430"
+    assert dark.border == "#2A3544"
+    assert dark.accent == "#2DD4BF"
     assert dark.danger == "#E5484D"
     assert dark.warning == "#D9A13B"
     assert dark.positive == "#3FB27F"
@@ -112,5 +112,5 @@ def test_dark_tokens_exist_parallel():
     assert t.DARK_BG_CANVAS == dark.surface
     assert t.DARK_ACCENT == dark.accent
     css = dark.css_vars()
-    assert css["--accent"] == "#5B8DEF"
+    assert css["--accent"] == "#2DD4BF"
     assert "QWidget" in t.qt_stylesheet(dark)

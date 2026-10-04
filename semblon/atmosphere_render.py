@@ -797,3 +797,63 @@ __all__ = [
     "system_prefers_reduced_motion",
     "transition_to",
 ]
+
+
+def mix_hex(a: str, b: str, t: float) -> str:
+    def rgb(value: str) -> tuple[int, int, int]:
+        value = value.lstrip("#")
+        return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
+
+    ar, ag, ab = rgb(a)
+    br, bg, bb = rgb(b)
+    t = min(1.0, max(0.0, t))
+    return "#{:02X}{:02X}{:02X}".format(
+        int(ar + (br - ar) * t),
+        int(ag + (bg - ag) * t),
+        int(ab + (bb - ab) * t),
+    )
+
+
+def paint_vertical_gradient(canvas, c1: str, c2: str, height: int | None = None) -> None:
+    """Paint a two-stop vertical gradient. Tk has no gradient fill."""
+    canvas.delete("gradient")
+    width = max(canvas.winfo_width(), 2)
+    height = height or max(canvas.winfo_height(), 2)
+    steps = max(height, 2)
+    for i in range(steps):
+        color = mix_hex(c1, c2, i / (steps - 1))
+        canvas.create_line(0, i, width, i, fill=color, tags="gradient")
+    canvas.tag_lower("gradient")
+
+
+class GradientBackdrop:
+    """Full-window gradient behind the shell. Content frames stay solid cards."""
+
+    def __init__(self, root) -> None:
+        import tkinter as tk
+
+        self.root = root
+        self.canvas = tk.Canvas(root, highlightthickness=0, bd=0)
+        self.canvas.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.canvas.lower()
+        self._c1 = "#141A22"
+        self._c2 = "#12343A"
+        root.bind("<Configure>", self._on_resize, add="+")
+
+    def set_stops(self, c1: str, c2: str) -> None:
+        self._c1 = c1
+        self._c2 = c2
+        try:
+            self.root.configure(bg=c1)
+        except Exception:
+            pass
+        self.paint()
+
+    def paint(self) -> None:
+        self.canvas.lower()
+        paint_vertical_gradient(self.canvas, self._c1, self._c2)
+
+    def _on_resize(self, event) -> None:
+        if event.widget is not self.root:
+            return
+        self.paint()

@@ -1,69 +1,75 @@
 /* Semblon Cluster Review — colour tokens (one table, both hosts). */
 :root {
-  --navy-900: #0B1628;
-  --navy-800: #0F1B2D;
-  --navy-700: #152238;
-  --navy-600: #1B2B44;
+  --bg-app: #141A22;
+  --bg-nav: #10161C;
+  --bg-main: #141A22;
+  --bg-card: #1C2430;
+  --text-primary: #F4F7FB;
+  --text-secondary: #A8B3C2;
+  --text-muted: #7E8B9C;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
   --sidebar-text: #C5D0DE;
   --sidebar-text-muted: #8A9BB0;
-  --sidebar-active-bg: #1E3A5F;
-  --sidebar-active-text: #FFFFFF;
+  --sidebar-active-bg: #12343A;
+  --sidebar-active-text: #5EEAD4;
+  --accent: #2DD4BF;
+  --accent-text: #042F2E;
+  --nav-hover: #1B2836;
 
-  --bg-app: #F4F6F8;
-  --bg-main: #F7F8FA;
-  --bg-card: #FFFFFF;
-  --text-primary: #1C2430;
-  --text-secondary: #5B6573;
-  --text-muted: #8B93A0;
-  --border: #E4E7EC;
-  --border-strong: #D0D5DD;
+  /* Aliases so older chrome rules still resolve. */
+  --navy-900: #0B1218;
+  --navy-800: #10161C;
+  --navy-700: #1B2836;
+  --navy-600: #243140;
 
-  --review-bg: #FDECEC;
-  --review-border: #F3C1C1;
-  --review-title: #C62828;
+  --review-bg: rgba(229, 57, 53, 0.10);
+  --review-border: rgba(229, 57, 53, 0.28);
+  --review-title: #F3B4B4;
   --review-badge-bg: #E53935;
   --review-badge-fg: #FFFFFF;
 
-  --check-bg: #FFF8E6;
-  --check-border: #F3D48A;
+  --check-bg: rgba(245, 197, 66, 0.10);
+  --check-border: rgba(245, 197, 66, 0.28);
   --check-badge-bg: #F5C542;
   --check-badge-fg: #5A4300;
 
-  --good-bg: #EAF7EF;
-  --good-border: #B7E0C4;
-  --good-title: #1B7A3A;
+  --good-bg: rgba(47, 174, 90, 0.10);
+  --good-border: rgba(47, 174, 90, 0.28);
+  --good-title: #8FD9A8;
   --good-badge-bg: #2FAE5A;
   --good-badge-fg: #FFFFFF;
 
-  --unassigned-bg: #F3EEFB;
-  --unassigned-border: #D9C8F0;
-  --unassigned-title: #6B3FA0;
+  --unassigned-bg: rgba(107, 63, 160, 0.12);
+  --unassigned-border: rgba(217, 200, 240, 0.22);
+  --unassigned-title: #D4C2EE;
 
-  --mixed-alert-bg: #FDECEC;
-  --mixed-alert-border: #F3C1C1;
-  --mixed-alert-title: #C62828;
+  --mixed-alert-bg: rgba(229, 57, 53, 0.10);
+  --mixed-alert-border: rgba(229, 57, 53, 0.28);
+  --mixed-alert-title: #F3B4B4;
 
   --sim-bad: #E53935;
   --sim-ok: #2FAE5A;
 
-  --btn-same-bg: #EAF7EF;
-  --btn-same-fg: #1B7A3A;
-  --btn-same-border: #B7E0C4;
-  --btn-diff-bg: #FFFFFF;
-  --btn-diff-fg: #C62828;
-  --btn-diff-border: #F3C1C1;
+  --btn-same-bg: rgba(47, 174, 90, 0.12);
+  --btn-same-fg: #8FD9A8;
+  --btn-same-border: rgba(47, 174, 90, 0.35);
+  --btn-diff-bg: transparent;
+  --btn-diff-fg: #F3B4B4;
+  --btn-diff-border: rgba(229, 57, 53, 0.35);
 
-  --chip-plus-bg: #1C2430;
-  --chip-plus-fg: #FFFFFF;
+  --chip-plus-bg: #2A3544;
+  --chip-plus-fg: #F4F7FB;
 
-  --radius-card: 16px;
+  --radius-card: 12px;
   --radius-badge: 6px;
   --radius-thumb: 8px;
-  --radius-btn: 10px;
-  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --radius-btn: 8px;
+  --shadow-card: none;
 
-  --topbar-h: 64px;
+  --topbar-h: 0px;
   --sidebar-w: 240px;
   --inspector-w: 360px;
-  --font: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font: "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif;
 }

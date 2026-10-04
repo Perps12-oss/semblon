@@ -33,6 +33,16 @@ ATMOSPHERE_IDS = (
     "cyber_obsidian",
     "neon_ember",
     "tokyo_synth",
+    "aurora",
+    "dusk",
+    "harbor",
+    "ember_glass",
+    "glacier",
+    "orchid",
+    "forest",
+    "copper",
+    "midnight_blue",
+    "rose_quartz",
 )
 
 DARK_ATMOSPHERE_IDS = (
@@ -40,6 +50,16 @@ DARK_ATMOSPHERE_IDS = (
     "cyber_obsidian",
     "neon_ember",
     "tokyo_synth",
+    "aurora",
+    "dusk",
+    "harbor",
+    "ember_glass",
+    "glacier",
+    "orchid",
+    "forest",
+    "copper",
+    "midnight_blue",
+    "rose_quartz",
 )
 
 DEFAULT_DARK_ATMOSPHERE = "mica_dark"
@@ -58,6 +78,16 @@ ATMOSPHERE_LABELS: Mapping[str, str] = {
     "cyber_obsidian": "Cyber Obsidian",
     "neon_ember": "Neon Ember",
     "tokyo_synth": "Tokyo Synth",
+    "aurora": "Aurora",
+    "dusk": "Dusk",
+    "harbor": "Harbor",
+    "ember_glass": "Ember Glass",
+    "glacier": "Glacier",
+    "orchid": "Orchid",
+    "forest": "Forest",
+    "copper": "Copper",
+    "midnight_blue": "Midnight Blue",
+    "rose_quartz": "Rose Quartz",
 }
 
 
@@ -201,24 +231,25 @@ LIGHT = AtmosphereSpec(
 MICA_DARK = AtmosphereSpec(
     id="mica_dark",
     label="Mica Dark",
-    surface="#12151C",
-    surface_muted="#181C26",
-    surface_raised="#1E2430",
-    surface_stage="#0B0D12",
-    surface_inset="#161A22",
-    text_primary="#E8ECF4",
-    text_secondary="#A8B0C0",
-    text_tertiary="#6E7688",
-    text_quaternary="#4A5160",
-    border="#2A3140",
+    # Aligned to review chrome: page #141A22, rail #10161C, card #1C2430, accent #2DD4BF.
+    surface="#141A22",
+    surface_muted="#10161C",
+    surface_raised="#1C2430",
+    surface_stage="#0E141B",
+    surface_inset="#10161C",
+    text_primary="#F4F7FB",
+    text_secondary="#A8B3C2",
+    text_tertiary="#7E8B9C",
+    text_quaternary="#5C6A7A",
+    border="#2A3544",
     border_strong="#3A4558",
-    accent="#5B8DEF",
-    accent_b="#5B8DEF",
+    accent="#2DD4BF",
+    accent_b="#5EEAD4",
     danger="#E5484D",
     warning="#D9A13B",
     positive="#3FB27F",
-    focus_ring="#E8ECF4",
-    mist="#2A3A5C",
+    focus_ring="#F4F7FB",
+    mist="#12343A",
     dual_tone=False,
     spotlight_radius_px=160,
     spotlight_intensity=0.28,
@@ -306,12 +337,63 @@ TOKYO_SYNTH = AtmosphereSpec(
     processing_period_ms=1200,
 )
 
+
+def _gradient(spec_id: str, label: str, surface: str, muted: str, raised: str, accent: str, accent_b: str, mist: str) -> AtmosphereSpec:
+    return AtmosphereSpec(
+        id=spec_id,
+        label=label,
+        surface=surface,
+        surface_muted=muted,
+        surface_raised=raised,
+        surface_stage=muted,
+        surface_inset=muted,
+        text_primary="#F4F7FB",
+        text_secondary="#C5D0DE",
+        text_tertiary="#8A9BB0",
+        text_quaternary="#5C6A7A",
+        border="#2A3544",
+        border_strong="#3A4558",
+        accent=accent,
+        accent_b=accent_b,
+        danger="#E5484D",
+        warning="#D9A13B",
+        positive="#3FB27F",
+        focus_ring="#F4F7FB",
+        mist=mist,
+        dual_tone=True,
+        spotlight_radius_px=170,
+        spotlight_intensity=0.30,
+        processing_period_ms=1600,
+    )
+
+
+AURORA = _gradient("aurora", "Aurora", "#142033", "#10182A", "#1C2C44", "#2DD4BF", "#7C8CFF", "#1B3A4A")
+DUSK = _gradient("dusk", "Dusk", "#24182C", "#1A1222", "#32243C", "#C084FC", "#F0ABFC", "#3A2450")
+HARBOR = _gradient("harbor", "Harbor", "#15242C", "#101C24", "#1C303C", "#38BDF8", "#67E8F9", "#123044")
+EMBER_GLASS = _gradient("ember_glass", "Ember Glass", "#2A1C16", "#201610", "#3A2820", "#FB923C", "#FDBA74", "#4A2A18")
+GLACIER = _gradient("glacier", "Glacier", "#172430", "#121C28", "#223244", "#7DD3FC", "#BAE6FD", "#1A3348")
+ORCHID = _gradient("orchid", "Orchid", "#2A1830", "#1E1224", "#3A2444", "#E879F9", "#F0ABFC", "#4A2060")
+FOREST = _gradient("forest", "Forest", "#14241C", "#101C16", "#1C3226", "#34D399", "#6EE7B7", "#143828")
+COPPER = _gradient("copper", "Copper", "#2A2018", "#201810", "#3A2C22", "#D4A574", "#E7C7A1", "#4A3424")
+MIDNIGHT_BLUE = _gradient("midnight_blue", "Midnight Blue", "#121C32", "#0E1628", "#1A2744", "#60A5FA", "#93C5FD", "#1A2C58")
+ROSE_QUARTZ = _gradient("rose_quartz", "Rose Quartz", "#2C1C24", "#22161C", "#3C2832", "#FB7185", "#FDA4AF", "#4A2434")
+
 ATMOSPHERES: Mapping[str, AtmosphereSpec] = {
     LIGHT.id: LIGHT,
     MICA_DARK.id: MICA_DARK,
     CYBER_OBSIDIAN.id: CYBER_OBSIDIAN,
     NEON_EMBER.id: NEON_EMBER,
     TOKYO_SYNTH.id: TOKYO_SYNTH,
+    AURORA.id: AURORA,
+    DUSK.id: DUSK,
+    HARBOR.id: HARBOR,
+    EMBER_GLASS.id: EMBER_GLASS,
+    GLACIER.id: GLACIER,
+    ORCHID.id: ORCHID,
+    FOREST.id: FOREST,
+    COPPER.id: COPPER,
+    MIDNIGHT_BLUE.id: MIDNIGHT_BLUE,
+    ROSE_QUARTZ.id: ROSE_QUARTZ,
 }
 
 

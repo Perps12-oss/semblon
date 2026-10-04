@@ -89,7 +89,7 @@ def test_reset_restores_canonical_defaults(tmp_path: Path) -> None:
 
     result = reset_app_to_defaults(store)
     assert result.ok
-    assert load_theme_mode(store) == "system"
+    assert load_theme_mode(store) == "mica_dark"
     assert not appearance_path(store).exists()
     from semblon.media_grid import load_grid_density
 
