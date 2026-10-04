@@ -57,7 +57,13 @@ def test_export_html_matches_chrome_mock_markers(tmp_path):
     assert 'id="review"' in text
     assert 'id="strong"' in text
     assert 'id="unassigned"' in text
-    assert "--navy-800: #0F1B2D" in text
+    assert 'class="wordmark"' in text
+    assert 'class="sidebar"' in text
+    assert 'id="page-title"' in text
+    assert 'class="page-head"' in text
+    assert 'class="topbar"' not in text
+    assert "--bg-nav: #10161C" in text
+    assert "--bg-app: #141A22" in text
     assert 'data-op="same"' in text
     assert "disabled" in text
     assert "Open Semblon Home to decide" in text

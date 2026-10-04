@@ -651,6 +651,16 @@
         btn.classList.add("is-active");
         state.nav = btn.getAttribute("data-nav");
         state.page = 1;
+        var titles = {
+          overview: "Overview",
+          clusters: "Clusters",
+          unassigned: "Unassigned",
+          rejected: "Rejected",
+          worst: "Worst Pairs",
+          stats: "Stats"
+        };
+        var pt = $("page-title");
+        if (pt) pt.textContent = titles[state.nav] || "Clusters";
         if (state.nav === "stats" || state.nav === "overview") {
           $("run-details").classList.add("is-open");
         } else {
