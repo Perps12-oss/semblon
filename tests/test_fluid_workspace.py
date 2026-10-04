@@ -106,7 +106,7 @@ def test_details_drawer_hides_without_selection():
     assert '_set_inspector_collapsed(True)' in sel
     assert 'title = "Details"' in sel or 'title = "Details"' in sel
     collapsed = inspect.getsource(home_ui.HomeApp._set_inspector_collapsed)
-    assert "minsize=320" in collapsed
+    assert "minsize=INSPECTOR_WIDTH" in collapsed
 
 
 def test_find_similar_command_label():
