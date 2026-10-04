@@ -36,6 +36,13 @@ from semblon.ui_tokens import Palette
 
 _FILE_NAME = "appearance.json"
 
+
+class _SystemDarkUnset:
+    pass
+
+
+_SYSTEM_DARK_UNSET = _SystemDarkUnset()
+
 # Library-scoped keys (cleared when Reset removes appearance.json beside store).
 KEY_THEME = "theme"
 KEY_GRID_DENSITY = "grid_density"
@@ -309,7 +316,9 @@ def system_is_dark() -> bool | None:
         return None
 
 
-def resolve_atmosphere_id(mode: str, *, system_dark: bool | None = None) -> str:
+def resolve_atmosphere_id(
+    mode: str, *, system_dark: bool | None | _SystemDarkUnset = _SYSTEM_DARK_UNSET
+) -> str:
     """Map a stored mode to an atmosphere id."""
     picked = mode.strip().lower() if isinstance(mode, str) else "system"
     if picked == "dark":
@@ -320,13 +329,15 @@ def resolve_atmosphere_id(mode: str, *, system_dark: bool | None = None) -> str:
         return "light"
     if picked != "system":
         return "light"
-    dark = system_is_dark() if system_dark is None else system_dark
+    dark = system_is_dark() if system_dark is _SYSTEM_DARK_UNSET else system_dark
     # Unknown (registry unreadable) stays Mica Dark. Explicit light Windows stays light.
     if dark is False:
         return "light"
     return DEFAULT_DARK_ATMOSPHERE
 
 
-def resolve_palette(mode: str, *, system_dark: bool | None = None) -> Palette:
+def resolve_palette(
+    mode: str, *, system_dark: bool | None | _SystemDarkUnset = _SYSTEM_DARK_UNSET
+) -> Palette:
     """Map a stored mode to a resting palette."""
     return palette_for(resolve_atmosphere_id(mode, system_dark=system_dark))

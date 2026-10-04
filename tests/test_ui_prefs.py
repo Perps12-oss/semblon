@@ -28,6 +28,12 @@ def test_missing_file_is_mica_dark_and_unknown_system_stays_dark(tmp_path):
     assert resolve_palette("nope").accent == LIGHT.accent
 
 
+def test_system_theme_uses_detection_only_when_not_overridden(monkeypatch):
+    monkeypatch.setattr("semblon.ui_prefs.system_is_dark", lambda: False)
+    assert resolve_atmosphere_id("system") == "light"
+    assert resolve_atmosphere_id("system", system_dark=None) == "mica_dark"
+
+
 def test_save_roundtrip_and_rejects_unknown(tmp_path):
     store = tmp_path / "lib" / "store.sqlite"
     assert save_theme_mode("dark", store) == "dark"
