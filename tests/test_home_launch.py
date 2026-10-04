@@ -1,15 +1,15 @@
-"""Production Home launch installs lens_home before Tk."""
+"""Production Home launch starts Tk without patching HomeApp."""
 
 from __future__ import annotations
 
 import inspect
 
-from semblon.lens_home import install, open_region_select, run_product_home
+from semblon.lens_home import open_region_select, run_product_home
 
 
-def test_product_home_installs_handler():
+def test_product_home_does_not_patch_home():
     src = inspect.getsource(run_product_home)
-    assert "install(HomeApp)" in src
+    assert "install(" not in src
     assert "run_home_ui" in src
 
 
@@ -25,9 +25,20 @@ def test_cli_home_uses_product_launch():
     assert "return run_home_ui" not in home_block
 
 
-def test_install_replaces_region_select():
-    class Fake:
-        _open_region_select = None
+def test_region_select_calls_similar_search_directly():
+    import semblon.application as application
+    import semblon.home_ui as home_ui
 
-    install(Fake)
-    assert Fake._open_region_select is open_region_select
+    method = inspect.getsource(home_ui.HomeApp._open_region_select)
+    assert "open_region_select(self)" in method
+    assert "run_lens_query" not in method
+    handler = inspect.getsource(open_region_select)
+    assert "remember_selection" in handler
+    assert "run_lens_query" not in handler
+    init = inspect.getsource(application.Application.__init__)
+    assert "install(" not in init
+    assert "_install_lens_home" not in init
+    ask = inspect.getsource(home_ui.HomeApp._lens_ask_whole)
+    assert "run_lens_query" in ask
+    assert "remember_selection" not in ask
+    assert "x=" not in ask

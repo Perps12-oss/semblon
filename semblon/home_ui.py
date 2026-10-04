@@ -1614,81 +1614,10 @@ class HomeApp:
             self._sel_heading.set(title)
 
     def _open_region_select(self) -> None:
-        """Start region select — embedded in Lens pane when on that route."""
-        from semblon.selection import lens_result_summary, media_file, mount_region_select
+        """Draw a region, then search similar photos. Not a whole-photo ask."""
+        from semblon.lens_home import open_region_select
 
-        path = media_file(self.store, getattr(self, "_insp_media_id", None))
-        if path is None:
-            self._set_inspector(
-                "Lens",
-                [
-                    "Open a photo first.",
-                    "Then select something to look at. Semblon uses available understanding.",
-                    "Nothing was searched.",
-                ],
-            )
-            if getattr(self, "_nav", None) == "lens":
-                self._refresh_lens_workspace()
-            return
-
-        def done(lines: list[str]) -> None:
-            try:
-                self._set_inspector("Lens", lines or ["Nothing was searched."])
-            except Exception:  # noqa: BLE001 — never crash Home on Lens result paint
-                pass
-            if hasattr(self, "_refresh_lens_workspace"):
-                try:
-                    self._refresh_lens_workspace()
-                except Exception:  # noqa: BLE001
-                    pass
-
-        def on_report(report) -> None:
-            self._last_lens_result = lens_result_summary(report)
-            if hasattr(self, "_refresh_library_shell"):
-                try:
-                    self._refresh_library_shell()
-                except Exception:  # noqa: BLE001
-                    pass
-
-        def on_busy(flag: bool) -> None:
-            self._lens_busy = bool(flag)
-            if hasattr(self, "_lens_status"):
-                from semblon.selection import LENS_BUSY
-
-                try:
-                    self._lens_status.set(LENS_BUSY if flag else "")
-                except Exception:  # noqa: BLE001
-                    pass
-            self._set_lens_processing(flag)
-
-        schedule = lambda fn: self.root.after(0, fn)  # noqa: E731
-
-        # Prefer the Lens workspace stage when that route is active.
-        if getattr(self, "_nav", None) == "lens" and hasattr(self, "_lens_stage"):
-            for child in self._lens_stage.winfo_children():
-                child.destroy()
-            mounted = mount_region_select(
-                self._lens_stage,
-                path,
-                on_lines=done,
-                on_report=on_report,
-                on_busy=on_busy,
-                schedule=schedule,
-            )
-            if mounted is not None:
-                mounted.pack(fill=tk.BOTH, expand=True)
-            return
-
-        from semblon.selection import open_region_window
-
-        open_region_window(
-            self.root,
-            path,
-            done,
-            on_report=on_report,
-            on_busy=on_busy,
-            schedule=schedule,
-        )
+        open_region_select(self)
 
     def _set_lens_processing(self, busy: bool) -> None:
         """Drive Find Similar / Lens controls into PROCESSING visual state."""

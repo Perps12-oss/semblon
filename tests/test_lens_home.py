@@ -146,8 +146,10 @@ def test_soft_labels_exclude_capability_and_provider_jargon():
 
 def test_lens_errors_do_not_crash_home_handlers():
     import semblon.home_ui as home_ui
+    from semblon.lens_home import open_region_select
 
-    region = inspect.getsource(home_ui.HomeApp._open_region_select)
+    region = inspect.getsource(open_region_select)
+    assert "open_region_select(self)" in inspect.getsource(home_ui.HomeApp._open_region_select)
     assert "except Exception" in region
     whole = inspect.getsource(home_ui.HomeApp._lens_ask_whole)
     assert "on_error" in whole

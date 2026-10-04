@@ -107,19 +107,10 @@ def activity_memory(store: Path, run_id: str | None = None) -> dict:
     return load_activity_memory(store, run_id)
 
 
-def _install_lens_home() -> None:
-    """Home mouse-up persists the user box and finds similar photos."""
-    from semblon.home_ui import HomeApp
-    from semblon.lens_home import install
-
-    install(HomeApp)
-
-
 class Application:
     def __init__(self, store: Path | None = None):
         self.store = Path(store) if store is not None else default_store_path()
         self.engine = JobEngine(self.store)
-        _install_lens_home()
 
     def job_current(self) -> JobHandle | None:
         return self.engine.current()

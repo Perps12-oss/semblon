@@ -91,14 +91,8 @@ def open_region_select(home) -> None:
     )
 
 
-def install(home_cls):
-    home_cls._open_region_select = open_region_select
-    return home_cls
-
-
 def run_product_home(store: Path | None = None) -> int:
-    """Canonical Home launch. Installs Lens persist+find, then starts Tk."""
-    from semblon.home_ui import HomeApp, run_home_ui
+    """Canonical Home launch. Region select is a HomeApp method, not a class patch."""
+    from semblon.home_ui import run_home_ui
 
-    install(HomeApp)
     return run_home_ui(store=store)
