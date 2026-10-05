@@ -1,6 +1,6 @@
 @echo off
 setlocal
-rem Repo-root / MSI-install launcher: double-click = tk Home; args = power-user CLI.
+rem Repo-root / MSI-install launcher: double-click = PySide6 archive (semblon shell).
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "VENV_PY=%ROOT%\.venv\Scripts\python.exe"
@@ -34,7 +34,7 @@ if exist "%VENV_PY%" (
     exit /b %ERRORLEVEL%
   )
   echo Semblon package missing in .venv. Reinstalling editable install...
-  "%VENV_PY%" -m pip install -e "%ROOT%"
+  "%VENV_PY%" -m pip install -e "%ROOT%[gui]"
   if errorlevel 1 (
     echo Reinstall failed. Run:
     echo   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
@@ -83,7 +83,7 @@ if exist "%ALT_PY%" (
     exit /b %ERRORLEVEL%
   )
   echo Semblon package missing in nested .venv. Reinstalling editable install...
-  "%ALT_PY%" -m pip install -e "%ALT_ROOT%"
+  "%ALT_PY%" -m pip install -e "%ALT_ROOT%[gui]"
   if errorlevel 1 (
     echo Reinstall failed. Run tools\install-windows.ps1 from the checkout root.
     exit /b 1

@@ -2,7 +2,7 @@
 
 Architecture boundary proof only (SEM-ARCH-V1.4 D.1):
 
-    external client  <->  TCP 127.0.0.1  <->  JobEngine  <->  process_folder
+    external client  <->  TCP 127.0.0.1  <->  Application  <->  JobEngine  <->  process_folder
 
 Not the product IPC stack. Not named pipes. Not WinUI. Does not import Tk.
 Does not write faces.person_id. Does not touch identity compare.
@@ -28,7 +28,8 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
-from semblon.jobs import JobBusy, JobEngine, JobHandle, JobResult
+from semblon.application import Application
+from semblon.jobs import JobBusy, JobHandle, JobResult
 from semblon.progress import ProgressEvent
 
 DEFAULT_HOST = "127.0.0.1"
@@ -74,13 +75,14 @@ def _result_payload(result: JobResult | None) -> dict | None:
 
 
 class IpcProbeServer:
-    """One JobEngine behind a loopback TCP acceptor. Probe, not product."""
+    """Loopback probe in front of Application. Not a second job owner."""
 
     def __init__(self, store: Path, *, host: str = DEFAULT_HOST, port: int = 0):
         self.store = Path(store)
         self.host = host
         self.port = int(port)
-        self.engine = JobEngine(self.store)
+        self.app = Application(self.store)
+        self.engine = self.app.engine
         self._sock: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -114,11 +116,11 @@ class IpcProbeServer:
     def stop(self) -> None:
         self._stop.set()
         try:
-            self.engine.cancel()
+            self.app.cancel_job()
         except Exception:  # noqa: BLE001 — best-effort on shutdown
             pass
         deadline = time.monotonic() + 2.0
-        while self.engine.busy and time.monotonic() < deadline:
+        while self.app.busy and time.monotonic() < deadline:
             time.sleep(0.02)
         with self._clients_lock:
             clients = list(self._clients)
@@ -258,10 +260,10 @@ class IpcProbeServer:
             return {
                 "id": req_id,
                 "ok": True,
-                "state": self.engine.state,
-                "busy": self.engine.busy,
-                "paused": self.engine.paused,
-                "current": _handle_payload(self.engine.current()),
+                "state": self.app.state,
+                "busy": self.app.busy,
+                "paused": self.app.paused,
+                "current": _handle_payload(self.app.job_current()),
                 "store": str(self.store),
             }
         if op == "submit_ingest":
@@ -274,7 +276,7 @@ class IpcProbeServer:
                 }
             resume = bool(msg.get("resume", False))
             try:
-                handle = self.engine.submit_ingest(
+                handle = self.app.submit_ingest(
                     Path(folder),
                     resume=resume,
                     on_event=self._on_event,
@@ -284,14 +286,14 @@ class IpcProbeServer:
                 return {"id": req_id, "ok": False, "error": _jsonable(e)}
             return {"id": req_id, "ok": True, "handle": _handle_payload(handle)}
         if op == "cancel":
-            self.engine.cancel()
-            return {"id": req_id, "ok": True, "state": self.engine.state}
+            self.app.cancel_job()
+            return {"id": req_id, "ok": True, "state": self.app.state}
         if op == "pause":
-            self.engine.pause()
-            return {"id": req_id, "ok": True, "state": self.engine.state, "paused": self.engine.paused}
+            self.app.pause_job()
+            return {"id": req_id, "ok": True, "state": self.app.state, "paused": self.app.paused}
         if op == "unpause":
-            self.engine.unpause()
-            return {"id": req_id, "ok": True, "state": self.engine.state, "paused": self.engine.paused}
+            self.app.unpause_job()
+            return {"id": req_id, "ok": True, "state": self.app.state, "paused": self.app.paused}
         if op == "result":
             with self._result_lock:
                 result = self._last_result

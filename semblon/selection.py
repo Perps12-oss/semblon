@@ -8,12 +8,10 @@ The user's rectangle is authoritative. Models may add a second observation.
 from __future__ import annotations
 
 import sqlite3
-import threading
 from pathlib import Path
 from typing import Callable
 
 from semblon.geometry import widget_to_image
-from semblon.lens import query_image
 from semblon.runtime_contract import failure_disguised_as_empty
 
 LENS_HEADLINE = "Lens"
@@ -169,101 +167,23 @@ def media_file(store: Path, media_id: str | None) -> Path | None:
     return path if path.is_file() else None
 
 
+def load_media_bgr(store: Path, media_id: str | None):
+    """Decode the stored file for a media id. UI image objects are not accepted."""
+    path = media_file(store, media_id)
+    if path is None:
+        return None
+    try:
+        import cv2
+    except ImportError:
+        return None
+    return cv2.imread(str(path), cv2.IMREAD_COLOR)
+
+
 def media_basename(store: Path, media_id: str | None) -> str | None:
     path = media_file(store, media_id)
     if path is None:
         return None
     return path.name
-
-
-def run_lens_query(
-    image_path: Path,
-    *,
-    x: int | None = None,
-    y: int | None = None,
-    w: int | None = None,
-    h: int | None = None,
-    schedule: Callable[[Callable[[], None]], None] | None = None,
-    on_lines: Callable[[list[str]], None] | None = None,
-    on_report: Callable | None = None,
-    on_error: Callable[[BaseException], None] | None = None,
-    on_busy: Callable[[bool], None] | None = None,
-) -> None:
-    """Capability query only. Never writes the store. Persist+find is on_rect."""
-
-    def _finish_ok(report) -> None:
-        if on_report is not None:
-            try:
-                on_report(report)
-            except Exception:  # noqa: BLE001
-                pass
-        if on_lines is not None:
-            try:
-                on_lines(format_query_lines(report))
-            except Exception as exc:  # noqa: BLE001
-                if on_error is not None:
-                    on_error(exc)
-                elif on_lines is not None:
-                    on_lines(["Semblon could not finish looking. Nothing was searched."])
-
-    def _finish_err(exc: BaseException) -> None:
-        if on_error is not None:
-            try:
-                on_error(exc)
-                return
-            except Exception:  # noqa: BLE001
-                pass
-        if on_lines is not None:
-            on_lines(["Semblon could not finish looking.", "Nothing was searched."])
-
-    def work() -> None:
-        try:
-            import cv2
-
-            image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
-            if image is None:
-                lines = ["Could not read that photo. Nothing was searched."]
-
-                def _bad() -> None:
-                    if on_busy is not None:
-                        on_busy(False)
-                    if on_lines is not None:
-                        on_lines(lines)
-
-                if schedule is not None:
-                    schedule(_bad)
-                else:
-                    _bad()
-                return
-            report = query_image(image, x=x, y=y, w=w, h=h)
-
-            def _ok() -> None:
-                if on_busy is not None:
-                    on_busy(False)
-                _finish_ok(report)
-
-            if schedule is not None:
-                schedule(_ok)
-            else:
-                _ok()
-        except Exception as exc:  # noqa: BLE001
-
-            def _err() -> None:
-                if on_busy is not None:
-                    on_busy(False)
-                _finish_err(exc)
-
-            if schedule is not None:
-                schedule(_err)
-            else:
-                _err()
-
-    if on_busy is not None:
-        on_busy(True)
-    if schedule is None:
-        work()
-        return
-    threading.Thread(target=work, name="semblon-lens-query", daemon=True).start()
 
 
 def _prepare_view(image_path: Path):
@@ -381,22 +301,7 @@ def mount_region_select(
                 _run_rect()
             return
 
-        def _done_lines(lines: list[str]) -> None:
-            on_lines(lines)
-            if on_close is not None:
-                on_close()
-
-        run_lens_query(
-            image_path,
-            x=rect["x"],
-            y=rect["y"],
-            w=rect["w"],
-            h=rect["h"],
-            schedule=schedule,
-            on_lines=_done_lines,
-            on_report=on_report,
-            on_busy=_busy,
-        )
+        on_lines(["Draw a region first. Nothing was searched."])
 
     canvas.bind("<ButtonPress-1>", press)
     canvas.bind("<B1-Motion>", drag)

@@ -239,8 +239,10 @@ def test_cancel_while_paused(tmp_path, monkeypatch):
 def test_home_pause_and_unpause_wired():
     src = inspect.getsource(HomeApp)
     assert "_request_pause" in src
-    assert "engine.pause" in src
-    assert "engine.unpause" in src
+    assert "pause_job" in src
+    assert "unpause_job" in src
+    assert "engine.pause" not in src
+    assert "engine.unpause" not in src
     assert "btn_pause" in src
 
 
@@ -248,7 +250,10 @@ def test_home_submits_through_job_engine():
     src = inspect.getsource(HomeApp)
     assert "submit_ingest" in src
     assert "JobBusy" in src
-    assert "JobEngine" in inspect.getsource(HomeApp.__init__)
+    init = inspect.getsource(HomeApp.__init__)
+    assert "Application(" in init
+    assert "self.engine = self.app.engine" in init
+    assert "JobEngine(" not in init
     open_src = inspect.getsource(HomeApp._open_review_ui)
     assert "parent=self.root" in open_src
     assert "withdraw" not in open_src

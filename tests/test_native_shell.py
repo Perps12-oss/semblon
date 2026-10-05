@@ -53,7 +53,7 @@ def test_shell_command_loads_qml_archive_not_the_widget_columns():
 
 def test_archive_model_fetches_a_window_not_the_library(tmp_path):
     pytest.importorskip("PySide6")
-    from semblon.archive_session import ArchiveSession
+    from semblon.application import Application
     from semblon.native_shell.model import ArchiveModel
     from semblon.store import connect, init_db
 
@@ -71,7 +71,8 @@ def test_archive_model_fetches_a_window_not_the_library(tmp_path):
         conn.commit()
     finally:
         conn.close()
-    session = ArchiveSession(store)
+    app_facade = Application(store)
+    session = app_facade.archive
     calls: list[tuple[int, int]] = []
     real = session.window
 
@@ -80,7 +81,7 @@ def test_archive_model_fetches_a_window_not_the_library(tmp_path):
         return real(offset, limit)
 
     session.window = wrapped  # type: ignore[method-assign]
-    model = ArchiveModel(session)
+    model = ArchiveModel(app_facade)
     model.reload()
     assert model.rowCount() == 500
     assert calls == []
@@ -182,6 +183,70 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     engine.deleteLater()
 
 
+def test_shell_ask_and_similar_use_application_media_id(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell
+    from semblon.store import connect, init_db
+
+    asked = []
+    found = []
+
+    def fake_query(self, media_id, rect=None, **kwargs):
+        asked.append((media_id, rect, kwargs))
+        return {
+            "status": "NO_RESULT",
+            "lines": ["Nothing was searched."],
+            "reason": "Nothing was searched.",
+            "region": {"x": 0, "y": 0, "w": 8, "h": 8},
+            "media_id": media_id,
+        }
+
+    def fake_similar(self, media_id, x, y, w, h, **kwargs):
+        found.append((media_id, x, y, w, h))
+        return {"region": {}, "similar": {"status": "NO_RESULT", "items": []}, "persons": 0}
+
+    monkeypatch.setattr(Application, "query_media", fake_query)
+    monkeypatch.setattr(Application, "remember_and_find_region", fake_similar)
+
+    photo = tmp_path / "a.png"
+    photo.write_bytes(b"not-decoded")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    try:
+        init_db(conn)
+        conn.execute(
+            "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+            ("m1", "folder", str(photo), "h", 40, 20, 3, 1),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    bridge = engine._semblon_bridge
+    assert root.findChild(QObject, "lensLine").property("text") == "Time"
+    bridge.openFocus("m1")
+    bridge.askPhoto()
+    assert asked == [("m1", None, {})]
+    assert "Nothing was searched" in bridge.resultText
+    bridge.findSimilar()
+    assert found == []
+    bridge.setRegion(0.25, 0.5, 0.5, 0.25)
+    bridge.findSimilar()
+    assert found == [("m1", 10, 10, 20, 5)]
+    assert root.findChild(QObject, "askPhoto") is not None
+    assert root.findChild(QObject, "resultText") is not None
+    engine.deleteLater()
+
+
 def test_run_native_shell_exits_when_pyside_missing(tmp_path, monkeypatch):
     import builtins
 
@@ -212,5 +277,72 @@ def test_cli_registers_shell_command():
             assert e.code == 0
     text = buf.getvalue() + err.getvalue()
     lowered = text.lower()
-    assert "not the product home" in lowered
+    assert "pyside6" in lowered
+    assert "forward" in lowered
+    assert "not the product home" not in lowered
     assert "native production shell" not in lowered
+
+
+def test_bridge_archive_media_ask_similar_and_ingest_use_application(tmp_path, monkeypatch):
+    """Real Application methods. No QML. No monkeypatch of query or archive reads."""
+    pytest.importorskip("PySide6")
+    cv2 = pytest.importorskip("cv2")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    import numpy as np
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+    from semblon.store import connect, init_db
+
+    photo = tmp_path / "a.png"
+    assert cv2.imwrite(str(photo), np.zeros((20, 40, 3), np.uint8))
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(photo), "h", 40, 20, 3, 1),
+    )
+    conn.commit()
+    conn.close()
+
+    seen: dict = {}
+
+    def fake_process(folder, **kwargs):
+        seen["folder"] = Path(folder)
+        seen["kwargs"] = kwargs
+        return {"run_id": "r-bridge", "out": None}
+
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
+
+    qapp = QApplication.instance() or QApplication([])
+    del qapp
+    jobs = Application(store)
+    model = ArchiveModel(jobs)
+    bridge = ShellBridge(model, jobs)
+    assert model.rowCount() == 1
+    assert bridge.path_for("m1") == str(photo)
+    assert jobs.media_path("m1") == str(photo)
+    bridge.openFocus("m1")
+    bridge.askPhoto()
+    assert bridge.resultText
+    assert "searched" in bridge.resultText.lower() or "Nothing" in bridge.resultText
+    bridge.setRegion(0.1, 0.1, 0.4, 0.4)
+    bridge.findSimilar()
+    assert bridge.resultText
+    import time
+
+    bridge._start_ingest(tmp_path)
+    deadline = time.monotonic() + 2
+    while "kwargs" not in seen and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert seen["kwargs"]["open_review"] is False
+    host = (
+        Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "host.py"
+    ).read_text(encoding="utf-8")
+    assert "ArchiveSession(" not in host
+    assert "Application(" in host
+    assert "sqlite" not in host.lower()
+

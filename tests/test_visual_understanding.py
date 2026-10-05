@@ -284,6 +284,20 @@ def test_job_engine_visual_slot(tmp_path, monkeypatch):
 
     engine = JobEngine(tmp_path / "s.sqlite")
     img = _scene("product", 100)
+    from semblon.store import connect, init_db
+    import cv2
+
+    photo = tmp_path / "m.png"
+    frame = np.ascontiguousarray(np.asarray(img)[:, :, :3][:, :, ::-1])
+    assert cv2.imwrite(str(photo), frame)
+    conn = connect(tmp_path / "s.sqlite")
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m", "folder", str(photo), "h", int(img.shape[1]), int(img.shape[0]), 1, 1),
+    )
+    conn.commit()
+    conn.close()
     started = threading.Event()
     release = threading.Event()
     done = {"n": 0}
@@ -310,10 +324,10 @@ def test_job_engine_visual_slot(tmp_path, monkeypatch):
         done["n"] += 1
         done["status"] = res.status
 
-    engine.submit_visual_analyze(media_id="m", image=img, on_done=on_done)
+    engine.submit_visual_analyze(media_id="m", on_done=on_done)
     assert started.wait(2)
     with pytest.raises(JobBusy):
-        engine.submit_visual_analyze(media_id="m2", image=img)
+        engine.submit_visual_analyze(media_id="m2")
     release.set()
     deadline = time.monotonic() + 5
     while engine.visual_busy and time.monotonic() < deadline:

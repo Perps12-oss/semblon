@@ -34,7 +34,6 @@ def test_home_settings_separates_advanced_and_diagnostics():
     from semblon.product_surface import (
         SETTINGS_ADVANCED,
         SETTINGS_DIAGNOSTICS,
-        SETTINGS_EXPORT_REVIEW,
         SETTINGS_OPEN_DIAGNOSTICS,
     )
 
@@ -42,11 +41,11 @@ def test_home_settings_separates_advanced_and_diagnostics():
     assert "SETTINGS_DIAGNOSTICS" in src
     assert "SETTINGS_ADVANCED" in src
     assert "SETTINGS_OPEN_DIAGNOSTICS" in src
-    assert "SETTINGS_EXPORT_REVIEW" in src
+    assert "SETTINGS_EXPORT_REVIEW" not in src
+    assert "_open_html" not in src
     assert SETTINGS_DIAGNOSTICS == "Diagnostics"
     assert SETTINGS_ADVANCED == "Advanced"
     assert "diagnostics" in SETTINGS_OPEN_DIAGNOSTICS.lower()
-    assert "export review" in SETTINGS_EXPORT_REVIEW.lower()
     for bad in (
         "format_execution_status_lines",
         "weights_status",

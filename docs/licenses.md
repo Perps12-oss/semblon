@@ -15,7 +15,7 @@ Do not bundle buffalo_l into a frozen installer until that decision exists. `too
 | insightface | identity engine | typically MIT **code**; weights separate | code yes; **weights no** until pack licence |
 | buffalo_l ONNX | identity weights | often research/non-commercial | **no** |
 | pytest | dev | MIT | not shipped |
-| PySide6 | optional `.[gui]` — native `semblon shell` + S8 spike reference | LGPL; not required for Tk Home/review-ui | optional extra only |
+| PySide6 | production UI extra `.[gui]` (`semblon shell`). Windows installer installs it. S8 spike stays research | LGPL. Not required for the headless engine or the legacy Tk clients | required on the production install path; not a headless dependency |
 | OpenCV local visual understanding | open-vocab VisualSegment default provider | already a Semblon runtime dep | yes (code path) |
 | open_clip / CLIP weights | optional concept ranking | model licences separate; Semblon does not bundle | **no weights** |
 | SAM 2 (`SAM-2` 1.0 from `facebookresearch/sam2`) | optional class-agnostic spatial discovery | code Apache-2.0; checkpoints are Meta weights, not Semblon redistribution | **no checkpoints** |
@@ -23,4 +23,4 @@ Do not bundle buffalo_l into a frozen installer until that decision exists. `too
 
 Future candidates (MediaPipe, CLIP/successors, other packs) need a separate code **and** model licence check before they enter the plan as more than a name. A licence veto beats a technically attractive model.
 
-PySide6 / Qt 6: **LGPL**. Dynamic link from optional extra `.[gui]` (native production shell `semblon shell`; S8 spike remains reference). Not a core dependency. Do not statically link Qt without a separate licence pass. See `docs/S8-TOOLKIT.md`, `docs/APPLICATION_API.md`.
+PySide6 / Qt 6: **LGPL**. Dynamic link from extra `.[gui]`. That extra is the production shell (`semblon shell`). The Windows installer installs it. It is not a headless-engine dependency. The S8 spike remains research. Do not statically link Qt without a separate licence pass. See `docs/ARCHITECTURE.md`, `docs/S8-TOOLKIT.md`.

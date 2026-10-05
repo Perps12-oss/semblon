@@ -80,11 +80,6 @@ def test_process_without_on_event_matches_today(tmp_path):
             "semblon.process.cluster_run",
             return_value={"clusters": 1, "clustered": 3, "unassigned": 0, "cluster_s": 0.01},
         ),
-        patch(
-            "semblon.process.export_review",
-            return_value={"run_id": "RUN-ABC", "out": str(out), "clusters": 1, "faces": 3},
-        ),
-        patch("semblon.process._try_open", return_value=False),
     ):
         rec = process_folder(
             folder,
@@ -95,10 +90,11 @@ def test_process_without_on_event_matches_today(tmp_path):
         )
 
     assert rec["run_id"] == "RUN-ABC"
-    assert rec["out"] == str(out)
+    assert rec["out"] is None
+    assert not out.is_file()
     assert ing.call_args.kwargs.get("on_event") is None
     assert any("Ingesting" in line for line in lines)
-    assert any("Review ready" in line for line in lines)
+    assert any("Library ready" in line for line in lines)
 
 
 def test_process_events_stage_order(tmp_path):
@@ -168,11 +164,6 @@ def test_process_events_stage_order(tmp_path):
             "semblon.process.cluster_run",
             return_value={"clusters": 1, "clustered": 3, "unassigned": 0, "cluster_s": 0.02},
         ),
-        patch(
-            "semblon.process.export_review",
-            return_value={"run_id": "RUN-SMOKE", "out": str(out), "clusters": 1, "faces": 3},
-        ),
-        patch("semblon.process._try_open", return_value=False),
     ):
         rec = process_folder(
             folder,
@@ -509,32 +500,75 @@ def test_process_resume_skips_finished_stages(tmp_path):
     )
     conn.commit()
     conn.close()
+    # Clustered runs are complete. review.html is not a remaining stage.
+    assert find_resumable_run(store, folder) is None
+    assert not out.exists()
+
+
+def test_resume_skips_finished_ingest_without_writing_html(tmp_path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    store = tmp_path / "store.sqlite"
+    out = tmp_path / "review.html"
+    from semblon.store import connect, init_db
+
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, finished_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution, notes)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "r-resume",
+            "t0",
+            "t1",
+            "0.0.1",
+            "pack-a",
+            2,
+            "l2",
+            json.dumps({"folder": str(folder.resolve())}),
+            "{}",
+            "x64",
+            "native",
+            None,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO media VALUES ('m1','folder',?,?,100,100,0,1)",
+        (str(folder / "a.jpg"), "aaa"),
+    )
+    conn.execute("INSERT INTO observations VALUES ('o1','m1',NULL,NULL,'r-resume')")
+    conn.execute(
+        """INSERT INTO faces(face_id,observation_id,run_id,bbox_x1,bbox_y1,bbox_x2,bbox_y2,
+           det_score,face_w,face_h,size_band,status,embedding,embedding_pack,embedding_dim,cluster_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        ("f1", "o1", "r-resume", 0, 0, 20, 20, 0.9, 20, 20, "80-119", "ok", b"xxxxxxxx", "pack-a", 2, None),
+    )
+    conn.commit()
+    conn.close()
     assert find_resumable_run(store, folder) == "r-resume"
 
     with (
         patch("semblon.process.ingest") as ing,
-        patch("semblon.process.cluster_run") as clu,
         patch(
-            "semblon.process.export_review",
-            return_value={"run_id": "r-resume", "out": str(out)},
-        ) as exp,
-        patch("semblon.process._try_open", return_value=False),
+            "semblon.process.cluster_run",
+            return_value={"clusters": 1, "clustered": 1, "unassigned": 0},
+        ) as clu,
     ):
         rec = process_folder(
             folder,
             store=store,
             out=out,
-            open_review=False,
             resume=True,
             progress=lambda *_: None,
         )
 
     ing.assert_not_called()
-    clu.assert_not_called()
-    exp.assert_called_once()
+    clu.assert_called_once()
     assert rec["run_id"] == "r-resume"
+    assert rec["out"] is None
     assert rec["ingest"]["resumed"] is True
-    assert rec["cluster"]["resumed"] is True
+    assert not out.is_file()
 
 
 def test_ingest_resume_reuses_run_id(tmp_path):

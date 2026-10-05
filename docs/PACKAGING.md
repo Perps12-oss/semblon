@@ -9,8 +9,10 @@
 ```text
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
 semblon.cmd --help
-semblon.cmd home
+semblon.cmd shell
 ```
+
+The installer runs `pip install -e ".[gui]"` so PySide6 is present. Double-click `semblon.cmd` opens the PySide6 archive. `semblon home` is the legacy Tk client, not the product door.
 
 Does not bundle model weights. First real ingest may download buffalo_l into `%USERPROFILE%\.insightface\models\buffalo_l` via InsightFace.
 

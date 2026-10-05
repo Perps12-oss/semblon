@@ -66,7 +66,7 @@ def test_shell_bridge_missing_store(tmp_path):
     b = ShellBridge(tmp_path / "missing.sqlite", None)
     assert b.runId == ""
     assert b.items == []
-    assert "store not found" in b.message or "not found" in b.message.lower()
+    assert b.message == "no_store"
 
 
 def test_shell_bridge_loads_board_and_names(tmp_path):

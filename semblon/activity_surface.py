@@ -10,6 +10,7 @@ raw event schemas in soft output.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -433,3 +434,76 @@ def activity_workspace_sections(view: dict[str, Any]) -> list[dict[str, Any]]:
         }
     )
     return sections
+
+
+def read_activity_snapshot(store: Path, run_id: str) -> dict:
+    """Read-only observation-graph snapshot. Not a person enrolment record."""
+    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        groups_rows = conn.execute(
+            """
+            SELECT kind, member_count, status
+            FROM observation_groups
+            WHERE run_id=?
+            ORDER BY rowid DESC
+            LIMIT 12
+            """,
+            (run_id,),
+        ).fetchall()
+        rel_rows = conn.execute(
+            """
+            SELECT kind, src_person_id, evidence_json, confirmed
+            FROM relationships
+            WHERE run_id=?
+            ORDER BY rowid DESC
+            LIMIT 12
+            """,
+            (run_id,),
+        ).fetchall()
+        event_rows = conn.execute(
+            """
+            SELECT label, t_start, t_end, folder
+            FROM events
+            WHERE run_id=?
+            ORDER BY rowid DESC
+            LIMIT 12
+            """,
+            (run_id,),
+        ).fetchall()
+        track_count = int(
+            conn.execute("SELECT COUNT(*) FROM tracks WHERE run_id=?", (run_id,)).fetchone()[0]
+        )
+    finally:
+        conn.close()
+
+    groups = [dict(r) for r in groups_rows]
+    relationships: list[dict] = []
+    for row in rel_rows:
+        rel = dict(row)
+        evidence = {}
+        raw = rel.get("evidence_json")
+        if raw:
+            try:
+                evidence = json.loads(raw)
+            except json.JSONDecodeError:
+                evidence = {}
+        rel["name_a"] = evidence.get("name_a") or evidence.get("src_name")
+        rel["name_b"] = evidence.get("name_b") or evidence.get("dst_name")
+        ids = evidence.get("person_ids")
+        if isinstance(ids, list):
+            if not rel.get("src_person_id") and len(ids) > 0:
+                rel["src_person_id"] = ids[0]
+            rel["other_person_ids"] = [str(i) for i in ids[1:] if i]
+        else:
+            rel["other_person_ids"] = []
+        relationships.append(rel)
+
+    events = [dict(r) for r in event_rows]
+    return {
+        "groups": groups,
+        "relationships": relationships,
+        "events": events,
+        "track_count": track_count,
+    }

@@ -1,8 +1,7 @@
 """Qt Quick archive shell (`semblon shell`).
 
-One archive, viewed through a lens, drawn as a field, entered as focus.
-Optional client of Application. Not the product Home (`semblon home`).
-Does not import FaceKit or call process_folder directly.
+Forward product UI. One archive, viewed through a lens (Time by default).
+Client of Application. Does not import FaceKit, Tk, or call process_folder.
 """
 
 from __future__ import annotations

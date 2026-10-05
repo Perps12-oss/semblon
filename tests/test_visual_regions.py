@@ -60,6 +60,22 @@ def _seed(path: Path):
     conn.close()
 
 
+def _bind_scene(store: Path, rgb, media_id: str = "m1") -> None:
+    """Point media_id at a real file. The job decodes it; callers do not pass arrays."""
+    import cv2
+
+    photo = store.parent / f"{media_id}.png"
+    frame = np.ascontiguousarray(np.asarray(rgb)[:, :, :3][:, :, ::-1])
+    assert cv2.imwrite(str(photo), frame)
+    conn = connect(store)
+    conn.execute(
+        "UPDATE media SET path=?, width=?, height=? WHERE media_id=?",
+        (str(photo), int(rgb.shape[1]), int(rgb.shape[0]), media_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def test_containment_keeps_nested_nms_drops_heavy_overlap():
     rgb, person, _hood, _hand = _scene()
     jacket = person.copy()
@@ -309,7 +325,8 @@ def test_visual_job_finishes_without_a_person(tmp_path):
         box["result"] = result
         done.set()
 
-    engine.submit_visual(media_id="m1", image=rgb, run_id="r1", on_done=on_done)
+    _bind_scene(store, rgb)
+    engine.submit_visual(media_id="m1", run_id="r1", on_done=on_done)
     assert done.wait(8)
     assert box["result"].status == "completed"
     assert box["result"].rec["persons"] == 0
@@ -349,11 +366,12 @@ def test_visual_job_holds_the_single_door(tmp_path, monkeypatch):
     _seed(store)
     engine = JobEngine(store)
     rgb, *_ = _scene()
-    engine.submit_visual(media_id="m1", image=rgb, run_id="r1")
+    _bind_scene(store, rgb)
+    engine.submit_visual(media_id="m1", run_id="r1")
     assert started.wait(2)
     try:
         try:
-            engine.submit_visual(media_id="m1", image=rgb, run_id="r1")
+            engine.submit_visual(media_id="m1", run_id="r1")
             raised = False
         except JobBusy:
             raised = True
@@ -428,9 +446,9 @@ def test_open_photo_gate_and_reloaded_pointer(tmp_path):
     def score(region, noun, parent=None):
         return 0.05
 
+    _bind_scene(store, rgb)
     engine.submit_visual(
         media_id="m1",
-        image=rgb,
         run_id="r1",
         score_fn=score,
         view_w=rgb.shape[1],
@@ -552,9 +570,9 @@ def test_coarse_pass_publishes_before_sam2(tmp_path, monkeypatch):
     done = threading.Event()
     box: dict = {}
     rgb, *_ = _scene()
+    _bind_scene(store, rgb)
     engine.submit_visual(
         media_id="m1",
-        image=rgb,
         run_id="r1",
         on_event=lambda event: events.append(event.kind),
         on_done=lambda result: (box.__setitem__("result", result), done.set()),

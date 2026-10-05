@@ -1,4 +1,10 @@
-"""Derived visual index. SQLite embeddings stay authoritative. Face vectors are excluded."""
+"""Derived exact visual index. Not an approximate nearest-neighbour index.
+
+SQLite embeddings stay authoritative. This module writes a normalised matrix
+and answers neighbours with an exact dot product (`matrix @ query`). There is
+no ANN library. The historical name `ann_index` is not a claim that search is
+approximate. Face vectors are excluded.
+"""
 
 from __future__ import annotations
 

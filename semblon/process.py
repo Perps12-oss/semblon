@@ -1,7 +1,8 @@
-"""Happy-path folder processing: ingest -> cluster -> export review.html.
+"""Happy-path folder processing: ingest -> cluster.
 
-Owns run_id so the user does not copy it. Does not change thresholds or clustering.
-Optional on_event is the UI-agnostic progress contract. progress=print stays the CLI log.
+Synchronous headless path. Does not construct a JobEngine — the product shell
+owns that engine through Application. Does not write or open review.html.
+The library is the review surface (`semblon shell`).
 """
 
 from __future__ import annotations
@@ -14,7 +15,6 @@ import time
 from pathlib import Path, PureWindowsPath
 
 from semblon.cluster import DEFAULT_EPS, DEFAULT_MIN_SAMPLES, ClusterError, cluster_run
-from semblon.export import ExportError, export_review
 from semblon.ingest import CancelledError, ingest, video_sampling_complete
 from semblon.progress import (
     KIND_CANCELLED,
@@ -59,6 +59,7 @@ def default_store_path() -> Path:
 
 
 def default_review_out(store: Path) -> Path:
+    """Path of a retired review.html artifact. Used only to delete leftovers."""
     if _looks_windows_path(store):
         p = PureWindowsPath(str(store))
         return Path(str(p.with_name("review.html")))
@@ -296,7 +297,8 @@ def inspect_run_stages(
     if not isinstance(timings, dict):
         timings = {}
     cluster_done = ingest_done and (n_ok == 0 or n_clusters > 0)
-    export_done = bool(out) and Path(out).is_file()
+    # The library is the review surface. review.html is not a process stage.
+    export_done = cluster_done
     return {
         "run_id": run_id,
         "ingest_done": ingest_done,
@@ -404,7 +406,7 @@ def process_folder(
     store: Path | None = None,
     out: Path | None = None,
     reprocess: bool = False,
-    open_review: bool = True,
+    open_review: bool = False,
     progress=print,
     on_event: ProgressCallback = None,
     cancel=None,
@@ -413,7 +415,13 @@ def process_folder(
     prefer_gpu: bool = False,
     resume: bool = False,
 ) -> dict:
-    """Run ingest -> cluster -> export. Uses frozen cluster defaults."""
+    """Run ingest then cluster. Synchronous. Does not construct a JobEngine.
+
+    The product UI is `semblon shell` (PySide6 → Application). This function is
+    the headless CLI path. `out` and `open_review` are ignored: review.html is
+    not written and nothing is opened in a browser.
+    """
+    del out, open_review
     folder = Path(folder)
     t0 = time.perf_counter()
     if not folder.is_dir():
@@ -425,12 +433,11 @@ def process_folder(
         raise ProcessError(err)
 
     store_path = Path(store) if store is not None else default_store_path()
-    out_path = Path(out) if out is not None else default_review_out(store_path)
     store_path.parent.mkdir(parents=True, exist_ok=True)
 
     resume_run = find_resumable_run(store_path, folder) if resume else None
     stages = (
-        inspect_run_stages(store_path, resume_run, out=out_path, folder=folder)
+        inspect_run_stages(store_path, resume_run, folder=folder)
         if resume_run
         else None
     )
@@ -522,8 +529,8 @@ def process_folder(
             cancel, run_id=run_id, progress=progress, on_event=on_event, started=t0
         )
 
-        # FACE-005 skip-all creates a new empty run. Review that and the HTML
-        # would be blank even though prior faces still exist on the store.
+        # FACE-005 skip-all creates a new empty run. Reviewing that run would
+        # hide prior faces that still exist on the store.
         if resume_run and stages and stages["cluster_done"] and run_id == resume_run:
             clu = _cluster_record_from_run(store_path, run_id)
             progress(f"Resume: skip cluster (run_id={run_id})")
@@ -606,54 +613,38 @@ def process_folder(
             cancel, run_id=run_id, progress=progress, on_event=on_event, started=t0
         )
 
-        if resume_run and stages and stages["export_done"] and out_path.is_file():
-            exp = {"run_id": run_id, "out": str(out_path.resolve()), "resumed": True}
-            progress(f"Resume: skip export ({out_path.resolve()})")
-            emit(
-                on_event,
-                make_event(
-                    STAGE_EXPORT,
-                    KIND_COMPLETED,
-                    run_id=run_id,
-                    path=str(out_path.resolve()),
-                    message="Resume: skip export",
-                    outcome="skipped_stage",
-                ),
-            )
-        else:
-            progress(f"Writing review HTML: {out_path.resolve()}")
-            emit(
-                on_event,
-                make_event(
-                    STAGE_EXPORT,
-                    KIND_STARTED,
-                    run_id=run_id,
-                    path=str(out_path.resolve()),
-                ),
-            )
-            try:
-                exp = export_review(store_path, run_id, out_path)
-            except ExportError as e:
-                raise ProcessError(str(e)) from e
-            emit(
-                on_event,
-                make_event(
-                    STAGE_EXPORT,
-                    KIND_COMPLETED,
-                    run_id=run_id,
-                    path=str(exp["out"]),
-                ),
-            )
-            progress(f"Review ready: {exp['out']}")
+        exp = {
+            "run_id": run_id,
+            "out": None,
+            "note": "review lives in the library; review.html is not written",
+        }
+        progress(f"Library ready. run_id={run_id}")
+        emit(
+            on_event,
+            make_event(
+                STAGE_EXPORT,
+                KIND_STARTED,
+                run_id=run_id,
+                message="Library ready",
+            ),
+        )
+        emit(
+            on_event,
+            make_event(
+                STAGE_EXPORT,
+                KIND_COMPLETED,
+                run_id=run_id,
+                message="Library ready",
+                outcome="library",
+            ),
+        )
 
         opened = False
-        if open_review:
-            opened = _try_open(Path(exp["out"]), progress)
 
         rec = {
             "run_id": run_id,
             "store": str(store_path.resolve()),
-            "out": exp["out"],
+            "out": None,
             "opened": opened,
             "ingest": ing,
             "cluster": clu,
@@ -665,7 +656,7 @@ def process_folder(
                 STAGE_PROCESS,
                 KIND_COMPLETED,
                 run_id=run_id,
-                path=str(exp["out"]),
+                path=str(store_path.resolve()),
                 elapsed_s=round(time.perf_counter() - t0, 3),
                 files_total=ing.get("files"),
                 files_processed=ing.get("files"),
@@ -686,29 +677,6 @@ def process_folder(
             ),
         )
         raise
-
-
-def _try_open(path: Path, progress) -> bool:
-    try:
-        if sys.platform == "win32":
-            os.startfile(str(path))  # type: ignore[attr-defined]
-            progress("Opened review in your default browser.")
-            return True
-        if sys.platform == "darwin":
-            import subprocess
-
-            subprocess.Popen(["open", str(path)])  # noqa: S603,S607
-            progress("Opened review.")
-            return True
-        import subprocess
-
-        subprocess.Popen(["xdg-open", str(path)])  # noqa: S603,S607
-        progress("Opened review.")
-        return True
-    except OSError as e:
-        progress(f"Could not open review automatically ({e}). Open it yourself:")
-        progress(f"  {path}")
-        return False
 
 
 def _drop_empty_run(store: Path, run_id: str) -> bool:

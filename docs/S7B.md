@@ -1,5 +1,7 @@
 # S7b — Derived video tracks
 
+**Superseded in part (2026-10-05):** mentions of `review.html` below are historical. That HTML surface is retired. Track derivation itself is unchanged. Production shell: `docs/ARCHITECTURE.md`.
+
 **Status:** implemented as derived evidence with persisted snapshot (`tracks` + `track_members`).  
 **Depends on:** S7a sampled observations (`frame_id`, `t_ms`); S8 inspectability (`path`+`frame_id`+`bbox`).  
 **Does not depend on:** schema columns, ByteTrack / parked §20 libraries, video DBSCAN, S7c webcam, S7d RTSP, Canvas.  

@@ -1,10 +1,14 @@
 # Semblon shell information architecture — LOCKED
 
-**Status:** LOCKED (2026-10-02)  
-**Model:** **D — Memory-first Stage dissolve**  
-**Scope:** Tk Home product shell only. One GUI. No second shell.
+**Superseded 2026-10-05 as the production shell IA** by the completed PySide6 migration (`docs/ARCHITECTURE.md`).
 
-Authority companions: `docs/PRODUCT.md`, `docs/ATMOSPHERE.md`, `docs/UI-EXPOSURE-MAP.md`, `docs/CONTRACTS.md`.
+This document still locks Model D for the **legacy Tk Home client only**. It is not the production shell. New production UI work is Field + Focus on `semblon shell`, not another Model D implementation and not a permanent MAIN sidebar.
+
+**Status:** LOCKED (2026-10-02) for Tk Home  
+**Model:** **D — Memory-first Stage dissolve**  
+**Scope:** legacy Tk client. Not the production architecture.
+
+Authority companions: `docs/PRODUCT.md`, `docs/ATMOSPHERE.md`, `docs/UI-EXPOSURE-MAP.md`, `docs/CONTRACTS.md`. Production shell: `docs/ARCHITECTURE.md`.
 
 Do **not** reopen sidebar-vs-stage unless implementation evidence shows a concrete technical or usability failure of Model D. Do **not** ship a persistent MAIN sidebar as a temporary scaffold.
 

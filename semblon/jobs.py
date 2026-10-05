@@ -35,6 +35,16 @@ OnDone = Callable[["JobResult"], None]
 OnVisualDone = Callable[["VisualJobResult"], None]
 
 
+def _load_job_bgr(store: Path, media_id: str | None):
+    """Decode the stored file. Callers do not pass pixel arrays across this boundary."""
+    from semblon.selection import load_media_bgr
+
+    loaded = load_media_bgr(store, media_id)
+    if loaded is None:
+        raise FileNotFoundError(f"could not read media {media_id}")
+    return loaded
+
+
 class JobBusy(RuntimeError):
     """A job is already running. Second submit is refused."""
 
@@ -184,18 +194,19 @@ class JobEngine:
         self,
         *,
         media_id: str,
-        image,
         run_id: str,
         on_event: OnEvent | None = None,
         on_done: OnDone | None = None,
         nouns: list[str] | None = None,
         score_fn=None,
         config=None,
-        color: str = "rgb",
         view_w: int | None = None,
         view_h: int | None = None,
     ) -> JobHandle:
-        """Background visual-region analysis. Same door as ingest. Not pointer-time."""
+        """Background visual-region analysis. Same door as ingest. Not pointer-time.
+
+        The stored file is decoded inside the worker. No ndarray crosses this call.
+        """
         handle = JobHandle(
             kind=KIND_VISUAL,
             folder=self.store,
@@ -212,7 +223,7 @@ class JobEngine:
             self._current = handle
         thread = threading.Thread(
             target=self._run_visual_regions,
-            args=(handle, image, run_id, on_event, on_done, nouns, score_fn, config, color, view_w, view_h),
+            args=(handle, run_id, on_event, on_done, nouns, score_fn, config, view_w, view_h),
             daemon=True,
             name="semblon-job-visual-regions",
         )
@@ -224,14 +235,12 @@ class JobEngine:
     def _run_visual_regions(
         self,
         handle: JobHandle,
-        image,
         run_id: str,
         on_event,
         on_done,
         nouns,
         score_fn,
         config,
-        color,
         view_w,
         view_h,
     ) -> None:
@@ -244,17 +253,14 @@ class JobEngine:
 
         result = JobResult(status="failed", run_id=run_id)
         try:
+            image = _load_job_bgr(self.store, handle.media_id)
             if on_event:
                 on_event(ProgressEvent(stage="visual", kind="started", message="understanding"))
             if self._gate():
                 result = JobResult(status="cancelled", run_id=run_id)
             else:
                 frame = np.asarray(image)
-                rgb = (
-                    np.ascontiguousarray(frame[:, :, :3][:, :, ::-1])
-                    if color == "bgr"
-                    else np.ascontiguousarray(frame[:, :, :3])
-                )
+                rgb = np.ascontiguousarray(frame[:, :, :3][:, :, ::-1])
                 height, width = int(rgb.shape[0]), int(rgb.shape[1])
                 scene = load_scene_inputs(
                     self.store, media_id=handle.media_id or "", run_id=run_id, height=height, width=width
@@ -330,7 +336,6 @@ class JobEngine:
         self,
         *,
         media_id: str,
-        image,
         existing_faces: list | None = None,
         observation_id: str | None = None,
         force: bool = False,
@@ -341,6 +346,7 @@ class JobEngine:
 
         Concurrent with ingest is allowed — visual does not take the ingest lock.
         A second visual submit for any media is JobBusy until the first finishes.
+        The stored file is decoded inside the worker.
         """
         handle = VisualJobHandle(
             kind=KIND_VISUAL_ANALYZE, media_id=str(media_id), store=self.store
@@ -354,7 +360,6 @@ class JobEngine:
                 target=self._run_visual,
                 args=(
                     handle,
-                    image,
                     existing_faces,
                     observation_id,
                     force,
@@ -374,7 +379,6 @@ class JobEngine:
     def _run_visual(
         self,
         handle: VisualJobHandle,
-        image,
         existing_faces: list | None,
         observation_id: str | None,
         force: bool,
@@ -387,6 +391,8 @@ class JobEngine:
                 result = VisualJobResult(status="cancelled", media_id=handle.media_id)
             else:
                 from semblon.visual_analyze import analyze_and_cache
+
+                image = _load_job_bgr(self.store, handle.media_id)
 
                 def _prog(stage: str, extra: dict):
                     if self._visual_cancel.is_set():

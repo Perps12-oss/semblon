@@ -68,8 +68,9 @@ def test_ask_selection_and_name_region_methods_exist():
     assert hasattr(home_ui.HomeApp, "_name_saved_region")
     assert hasattr(home_ui.HomeApp, "_selection_query_rect")
     ask_src = inspect.getsource(home_ui.HomeApp._ask_about_selection)
-    assert "run_lens_query" in ask_src
-    assert 'x=int(rect["x"])' in ask_src
+    assert "query_media" in ask_src
+    assert "run_lens_query" not in ask_src
+    assert "dict(rect)" in ask_src
     # Must stay distinct from Find Similar stack.
     assert "remember_selection" not in ask_src
     assert "remember_and_find" not in ask_src
@@ -171,8 +172,8 @@ def test_pause_resume_cancel_use_job_engine_contracts():
     pause_src = inspect.getsource(home_ui.HomeApp._request_pause)
     cancel_src = inspect.getsource(home_ui.HomeApp._request_cancel)
     toggle_src = inspect.getsource(home_ui.HomeApp._toggle_pause_resume)
-    assert "engine.pause()" in pause_src
-    assert "engine.cancel()" in cancel_src
+    assert "pause_job" in pause_src
+    assert "cancel_job" in cancel_src
     assert "_request_pause" in toggle_src
     assert "_resume" in toggle_src
     # Cancel must not delete media / unlink files.

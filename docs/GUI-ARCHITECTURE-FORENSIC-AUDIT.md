@@ -1,6 +1,18 @@
 # GUI architecture forensic audit
 
-**Date:** 2026-09-27. **Retest:** 2026-09-28.  
+**Superseded 2026-10-05 by the completed PySide6 production migration.**
+
+**Historical audit.** Anatomy below is the tree as examined on 2026-09-27 / 2026-09-28. It is not the current architecture.
+
+**Current architecture (2026-10-05):**
+
+```
+PySide6 shell → Application → ArchiveSession / JobEngine / Lens → domain / storage → providers
+```
+
+`lens_home.py` and the widget `native_shell/window.py` are deleted. `review.html` and `review_chrome/` are retired. Production UI is `semblon shell`. Tk Home remains a legacy client. Do not read the tables below as a description of the live product shell.
+
+**Date of the audit:** 2026-09-27. **Retest:** 2026-09-28.  
 **Source of the anatomy below:** `main` at `142e36f`, then rechecked on `origin/main` `646d44b` and `origin/cursor/gui-feature-registry-c466` `1c40dd0` (PR #112, not merged).  
 **Method:** production launch path and Python sources, then a fetch of every remote branch.  
 **Scope:** research. This file does not authorize a GUI rewrite, a second product shell, schema changes, or identity-threshold changes.

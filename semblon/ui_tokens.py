@@ -8,8 +8,9 @@ emphasis; body, ui, meta, and caption stay regular (400). Letter-spacing
 is not a Tk font attribute.
 
 The previous warm-paper palette (#FBFAF7 / #4338CA) is retired. Light and
-dark values below are the product tokens. Qt stylesheets and Tk both read
-this module so the optional shell does not become a second Home.
+dark values below are the product tokens. Tk and any leftover widget
+stylesheet read this module. The forward shell is Qt Quick and does not
+use `qt_stylesheet`.
 """
 
 from __future__ import annotations
@@ -131,7 +132,7 @@ TERTIARY_FONT: tuple[str, int] = UI
 
 INK_ON_ACCENT = "#FFFFFF"
 
-# Cluster Review HTML chrome (semblon/review_chrome/tokens.css). Keep in sync.
+# Review palette. The HTML chrome that once mirrored these values is retired.
 REVIEW_NAVY_800 = "#10161C"  # review rail; name kept for callers
 REVIEW_BG_MAIN = "#141A22"
 REVIEW_BG_CARD = "#1C2430"
@@ -477,7 +478,7 @@ def publish(palette: Palette) -> None:
 
 
 def qt_stylesheet(palette: Palette | None = None) -> str:
-    """QSS for the optional Qt shell. Not a second product Home."""
+    """QSS kept for tests and the retired widget window. The QML shell does not use it."""
     p = palette or active_palette()
     return (
         "QWidget { background: %s; color: %s; font-family: 'Segoe UI'; font-size: 14px; }\n"

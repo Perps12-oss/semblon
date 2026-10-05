@@ -21,18 +21,19 @@ class _Report:
         self.region = region or {"x": 0, "y": 0, "w": 10, "h": 10}
 
 
-def test_canonical_entry_is_tk_home():
-    assert canonical_product_entry() == "semblon home"
+def test_canonical_entry_is_pyside_shell():
+    assert canonical_product_entry() == "semblon shell"
     import semblon.cli as cli
 
     src = inspect.getsource(cli.main)
-    assert "authoritative production GUI" in src
-    assert "not the product Home" in src
+    assert "PySide6 archive shell" in src or "forward" in src.lower()
+    assert "legacy Tk" in src
     assert "secondary Review workspace" in src
     assert "secondary observation workspace" in src
     assert 'cmd == "home"' in src
     assert "run_home_ui" in src
     assert "run_native_shell" in src
+    assert "lens_home" not in src
 
 
 def test_exposure_registry_covers_required_classes():
@@ -52,7 +53,9 @@ def test_exposure_registry_covers_required_classes():
     assert any("review.html" in name.lower() for name, *_ in stale)
     assert any("Canvas" in name for name, *_ in stale)
     optional = paths_by_class("OPTIONAL")
-    assert any("shell" in name.lower() or "Qt" in name for name, *_ in optional)
+    assert any("spike" in name.lower() or "s8" in name.lower() for name, *_ in optional)
+    canonical = paths_by_class("CANONICAL")
+    assert any("PySide6" in name or "shell" in name.lower() for name, *_ in canonical)
 
 
 def test_home_product_chrome_drops_review_html_and_job_bar_canvas():
@@ -64,7 +67,8 @@ def test_home_product_chrome_drops_review_html_and_job_bar_canvas():
     assert "btn_canvas.pack" not in sync
     assert "btn_html" not in sync
     settings = inspect.getsource(home_ui.HomeApp._fill_settings_body)
-    assert "SETTINGS_EXPORT_REVIEW" in settings or "Open export review page" in settings
+    assert "SETTINGS_EXPORT_REVIEW" not in settings
+    assert "_open_html" not in settings
     assert "SETTINGS_ADVANCED" in settings or "Advanced" in settings
     show = inspect.getsource(home_ui.HomeApp._show_settings)
     assert "Toplevel" not in show
@@ -73,7 +77,7 @@ def test_home_product_chrome_drops_review_html_and_job_bar_canvas():
     assert "canvas" not in home_ui.HOME_CONTROLS_ALWAYS_ON
     forbidden = product_chrome_forbidden_labels()
     assert "Open review.html" in forbidden
-    assert hasattr(home_ui.HomeApp, "_open_html")
+    assert not hasattr(home_ui.HomeApp, "_open_html")
 
 
 def test_interactive_launcher_opens_home_only():
@@ -83,8 +87,8 @@ def test_interactive_launcher_opens_home_only():
 
     script = interactive_script_path(Path(".").resolve())
     text = script.read_text(encoding="utf-8")
-    assert "-m semblon home" in text
-    assert "semblon shell" not in text
+    assert "-m semblon shell" in text
+    assert "-m semblon home" not in text
 
 
 def test_lens_lines_use_plain_labels_not_internal_ids():
