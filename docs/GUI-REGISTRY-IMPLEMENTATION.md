@@ -1,5 +1,7 @@
 # GUI registry implementation
 
+**Superseded 2026-10-05 by the completed PySide6 production migration.** This file records the Tk Home registry. It is not the production shell. Do not resurrect `lens_home`. Production architecture: `docs/ARCHITECTURE.md`.
+
 **Date:** 2026-09-28  
 **Slice:** internal feature registry for Tk Home (`semblon home`).  
 **Authority:** research in PR #110 (`docs/GUI-*-*.md`); north star remains `docs/SEM-ARCH-V1.4.md`.  

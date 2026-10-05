@@ -68,7 +68,10 @@ def test_home_and_review_never_call_process_folder_directly():
     assert not _module_calls_process_folder(review)
     home_src = inspect.getsource(HomeApp)
     assert "submit_ingest" in home_src
-    assert "JobEngine" in inspect.getsource(HomeApp.__init__)
+    init = inspect.getsource(HomeApp.__init__)
+    assert "Application(" in init
+    assert "self.engine = self.app.engine" in init
+    assert "JobEngine(" not in init
     review_src = inspect.getsource(ReviewApp)
     assert "submit_ingest" not in review_src
     assert "JobEngine" not in review_src

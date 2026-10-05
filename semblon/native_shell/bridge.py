@@ -1,4 +1,4 @@
-"""QML-facing session. Qt reports input; ArchiveSession decides transitions."""
+"""QML-facing session. Qt reports input. Application owns archive and jobs."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtWidgets import QFileDialog
 
 from semblon.application import Application, JobBusy
-from semblon.archive_session import ArchiveSession
 from semblon.native_shell.model import ArchiveModel
 
 
@@ -37,16 +36,19 @@ class ShellBridge(QObject):
     jobChanged = Signal()
     emptyChanged = Signal()
     ingestFinished = Signal()
+    resultChanged = Signal()
 
-    def __init__(self, session: ArchiveSession, model: ArchiveModel, jobs: Application):
+    def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
-        self._session = session
-        self._model = model
         self._jobs = jobs
+        self._session = jobs.archive
+        self._model = model
         self._job_active = False
         self._job_state = "idle"
-        self._empty = session.count() == 0
+        self._empty = self._jobs.archive_count() == 0
         self._reduced = reduced_motion()
+        self._result_text = ""
+        self._region_norm: tuple[float, float, float, float] | None = None
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
@@ -64,17 +66,17 @@ class ShellBridge(QObject):
 
     @Property(str, notify=focusChanged)
     def focusKind(self) -> str:
-        item = self._session.media(self._session.focus_id or "")
+        item = self._jobs.media(self._session.focus_id or "")
         return item.source_type if item else ""
 
     @Property(str, notify=focusChanged)
     def focusName(self) -> str:
-        item = self._session.media(self._session.focus_id or "")
+        item = self._jobs.media(self._session.focus_id or "")
         return item.name if item else ""
 
     @Property(str, notify=focusChanged)
     def focusUrl(self) -> str:
-        item = self._session.media(self._session.focus_id or "")
+        item = self._jobs.media(self._session.focus_id or "")
         if item is None or item.source_type != "video":
             return ""
         path = Path(item.path)
@@ -110,16 +112,26 @@ class ShellBridge(QObject):
 
     @Property(int, notify=libraryChanged)
     def count(self) -> int:
-        return self._session.count()
+        return self._jobs.archive_count()
+
+    @Property(str, notify=resultChanged)
+    def resultText(self) -> str:
+        return self._result_text
+
+    def _set_result(self, text: str) -> None:
+        self._result_text = text
+        self.resultChanged.emit()
 
     @Slot(str)
     def openFocus(self, media_id: str) -> None:
+        self._region_norm = None
         self._session.open_focus(media_id)
+        self._set_result("")
         self.focusChanged.emit()
 
     @Slot(int)
     def openIndex(self, index: int) -> None:
-        rows = self._session.window(index, 1)
+        rows = self._jobs.archive_window(index, 1)
         if not rows:
             return
         self._session.open_focus(rows[0].media_id)
@@ -133,12 +145,16 @@ class ShellBridge(QObject):
 
     @Slot()
     def focusNext(self) -> None:
+        self._region_norm = None
         self._session.move_focus(1)
+        self._set_result("")
         self.focusChanged.emit()
 
     @Slot()
     def focusPrev(self) -> None:
+        self._region_norm = None
         self._session.move_focus(-1)
+        self._set_result("")
         self.focusChanged.emit()
 
     @Slot()
@@ -167,11 +183,88 @@ class ShellBridge(QObject):
             return
         self._start_ingest(Path(folder))
 
-    def path_for(self, media_id: str) -> str | None:
-        item = self._session.media(media_id)
+    @Slot()
+    def askPhoto(self) -> None:
+        """Whole-frame Lens query for the open memory. Engine loads the file."""
+        media_id = self._session.focus_id
+        if not media_id:
+            self._set_result("Open a photo first.\nNothing was searched.")
+            return
+        try:
+            rec = self._jobs.query_media(media_id)
+        except Exception as exc:  # noqa: BLE001 — show the failure, do not invent a match
+            self._set_result(f"Semblon could not finish looking.\n{exc}")
+            return
+        lines = rec.get("lines") or [rec.get("reason") or "Nothing was searched."]
+        self._set_result("\n".join(str(line) for line in lines))
+
+    @Slot(float, float, float, float)
+    def setRegion(self, nx: float, ny: float, nw: float, nh: float) -> None:
+        """Normalized image-space rectangle from the focus view. Not a widget image."""
+        self._region_norm = (
+            max(0.0, min(1.0, float(nx))),
+            max(0.0, min(1.0, float(ny))),
+            max(0.0, min(1.0, float(nw))),
+            max(0.0, min(1.0, float(nh))),
+        )
+
+    def _pixel_rect(self) -> tuple[int, int, int, int] | None:
+        media_id = self._session.focus_id
+        if not media_id or self._region_norm is None:
+            return None
+        item = self._jobs.media(media_id)
         if item is None:
             return None
-        return item.path
+        width = int(item.width or 0)
+        height = int(item.height or 0)
+        if width <= 0 or height <= 0:
+            return None
+        nx, ny, nw, nh = self._region_norm
+        if nw <= 0 or nh <= 0:
+            return None
+        x = max(0, min(width - 1, int(round(nx * width))))
+        y = max(0, min(height - 1, int(round(ny * height))))
+        rw = max(1, int(round(nw * width)))
+        rh = max(1, int(round(nh * height)))
+        if x + rw > width:
+            rw = width - x
+        if y + rh > height:
+            rh = height - y
+        return x, y, rw, rh
+
+    @Slot()
+    def findSimilar(self) -> None:
+        """Region Similar through Application.remember_and_find_region."""
+        media_id = self._session.focus_id
+        if not media_id:
+            self._set_result("Open a photo first.\nNothing was searched.")
+            return
+        rect = self._pixel_rect()
+        if rect is None:
+            self._set_result("Draw a region on the photo first.\nNothing was searched.")
+            return
+        x, y, w, h = rect
+        try:
+            rec = self._jobs.remember_and_find_region(media_id, x, y, w, h)
+        except Exception as exc:  # noqa: BLE001
+            self._set_result(f"Find Similar could not run.\n{exc}")
+            return
+        from semblon.lens_release import format_similar_lines
+
+        self._set_result("\n".join(format_similar_lines(rec)))
+
+    @Slot()
+    def pauseJob(self) -> None:
+        self._jobs.pause_job()
+        self._poll_job()
+
+    @Slot()
+    def cancelJob(self) -> None:
+        self._jobs.cancel_job()
+        self._poll_job()
+
+    def path_for(self, media_id: str) -> str | None:
+        return self._jobs.media_path(media_id)
 
     def _start_ingest(self, folder: Path) -> None:
         try:
@@ -201,7 +294,7 @@ class ShellBridge(QObject):
 
     def _refresh_library(self) -> None:
         self._model.reload()
-        empty = self._session.count() == 0
+        empty = self._jobs.archive_count() == 0
         self.libraryChanged.emit()
         if empty != self._empty:
             self._empty = empty

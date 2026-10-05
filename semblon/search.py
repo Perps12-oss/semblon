@@ -286,8 +286,9 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
 def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index: bool = False) -> dict:
     """Modality-scoped nearest items. Face identity is forbidden here.
 
-    A derived index is used when it has been built. Otherwise the library is
-    scanned and the result says so. Demanding a missing index is not an empty match.
+    A derived matrix index, when present, is an exact dot-product scan — not an
+    approximate nearest-neighbour index. Otherwise the library is scanned and
+    the result says so. Demanding a missing index is not an empty match.
     """
     from semblon.ann_index import has_index, search_index
 

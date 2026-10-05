@@ -246,6 +246,20 @@ def test_cancel_visual_job(tmp_path, monkeypatch):
     from semblon.jobs import JobEngine
 
     engine = JobEngine(tmp_path / "s.sqlite")
+    photo = tmp_path / "m.png"
+    blank = np.zeros((32, 32, 3), np.uint8)
+    import cv2
+    from semblon.store import connect, init_db
+
+    assert cv2.imwrite(str(photo), blank)
+    conn = connect(tmp_path / "s.sqlite")
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m", "folder", str(photo), "h", 32, 32, 1, 1),
+    )
+    conn.commit()
+    conn.close()
 
     class Slow(LocalSemanticVisualProvider):
         def discover_regions(self, image):
@@ -261,9 +275,7 @@ def test_cancel_visual_job(tmp_path, monkeypatch):
     def on_done(result):
         done["status"] = result.status
 
-    engine.submit_visual_analyze(
-        media_id="m", image=np.zeros((32, 32, 3), np.uint8), on_done=on_done
-    )
+    engine.submit_visual_analyze(media_id="m", on_done=on_done)
     deadline = time.monotonic() + 5
     while "status" not in done and time.monotonic() < deadline:
         time.sleep(0.02)

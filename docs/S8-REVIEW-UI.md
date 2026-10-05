@@ -1,6 +1,8 @@
 # S8 Interactive Review slice
 
-**Status:** shipping vertical on main-line work; **S8 Reviewability** (video face thumbs) is on `main` (PR #28). Static `review.html` (`export`) uses the same `path`+`frame_id`+`bbox` seek/crop.  
+**Superseded 2026-10-05 by the completed PySide6 production migration.** `review.html` is retired and is not a production surface. The notes below record the slice as it shipped. Board operations live in `review_board` / `review.py`. Tk review-ui is a legacy client.
+
+**Status (historical):** shipping vertical on main-line work; **S8 Reviewability** (video face thumbs) is on `main` (PR #28). Static `review.html` (`export`) used the same `path`+`frame_id`+`bbox` seek/crop.  
 **This is** the beginning of S8 (smallest interactive vertical).  
 **Design target** for the broader canvas: `docs/SEM-ARCH-V1.4.md` / `docs/R3-BRIEF.md`. This file is the shipping review slice, not the plan.  
 **Not yet:** full shell, Intelligence Canvas, identify/inbox UI, search. S7b derived tracks are rendered here; the engine stays in `semblon tracks`.

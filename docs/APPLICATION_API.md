@@ -1,21 +1,41 @@
 # Application API (APP-1 / R1)
 
-**Status:** extracted from existing Python. Not a framework. Not WinUI.  
-**Date:** 2026-09-22  
-**Code:** `semblon/application.py` (`Application` façade), `semblon/jobs.py`, Home control policy in `semblon/home_ui.py`, native shell in `semblon/native_shell/`  
-**Authority:** `docs/CONTRACTS.md`, `docs/SEM-ARCH-V1.4.md`. This page names UI-visible capabilities. It does not add columns.
+**Status:** Canonical application boundary. UI-independent. Not a framework. Not WinUI.  
+**Updated:** 2026-10-05. Extracted 2026-09-22.  
+**Code:** `semblon/application.py`  
+**Authority:** `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/SEM-ARCH-V1.4.md`. This page names capabilities. It does not add columns.
 
-A future native client may also consume this surface. **One shipping GUI:** tk Home + `review-ui` (#54). Home is a client of this API. Optional Qt `semblon shell` (#67) is KEEP optional — not a second product Home.
+Production architecture (COMPLETE 2026-10-05):
 
-```
-UI  →  Application / Job boundary  →  existing Python implementation
+```text
+                    PySide6
+                       │
+                       ▼
+                 Application
+                       │
+        ┌──────────────┼──────────────┐
+        ▼              ▼              ▼
+      Archive         Jobs       Lens / Search
+        │              │              │
+        └──────────────┼──────────────┘
+                       ▼
+                Domain / Storage
+                       │
+                 Providers / ML
 ```
 
-not:
+Rules for this façade:
 
-```
-Home button  →  Home-owned worker  →  Tk callback chain  →  ingest
-```
+- PySide6 is the production client. Tk Home and Tk review-ui are temporary legacy clients. They do not define the API.
+- `Application` does not import a UI toolkit, Home, canvas, review UI, or Qt.
+- Clients do not query storage themselves. Archive windows and media paths go through `Application`. The UI may decode the file it was given.
+- Commands take a media id (and, for a region, a rectangle). They do not take a live image array.
+- `JobEngine` is constructed only here.
+- `query_media` is the Lens door. `remember_and_find_region` is the Region Similar door.
+- `semblon process` is synchronous headless ingest. It does not construct a second `JobEngine` and it does not write `review.html`.
+- Review mutations (`apply_*` / `review.py`) stay domain operations. There is no production Review page and no `review.html`.
+
+A September 2026 note called tk Home the one shipping GUI and Qt optional. That note is historical.
 
 ## Nouns
 
@@ -27,7 +47,7 @@ Home button  →  Home-owned worker  →  Tk callback chain  →  ingest
 | Pause | Cooperative; same job stays claimed; not consuming ingest work | `JobEngine.pause` / `unpause` · `Application.pause_job` / `unpause_job` |
 | Application state | store path, latest run with faces | `default_store_path`, `latest_run_id` |
 | Review state | board items (cluster / track / unassigned) | `load_board` / `Application.board` |
-| Person operations | Name / Merge / Split / Ignore / Note / Rule out (gate default ON; ship claim CLOSED / DONE §I.5) | `apply_*` → `review.py` (Home Inspector + review-ui) |
+| Person operations | Name / Merge / Split / Ignore / Note / Rule out (gate default ON; ship claim CLOSED / DONE §I.5) | `apply_*` → `review_board` → `review.py` (legacy Tk clients may call the same ops) |
 | Search / read snapshots | people, unknown, activity, person query, canvas overlay | `search_*`, `inbox`, `activity` / Home `read_activity_snapshot`, `load_canvas` |
 
 CONTRACTS family this maps onto: Media, Observation, Face, Embedding, Track, Episode (not a first-class UI command yet), Person, Decision, SearchResult, Job, Progress, Cancellation.
@@ -42,7 +62,7 @@ Reads:
 | `people(store)` | `search_people` · `Application.people` | Named persons only |
 | `search_person(store, query)` | `search_person` | Lookup, not identity |
 | `inbox(store, run_id)` | `inbox` · `Application.inbox` | UNKNOWN is valid |
-| `activity(store, run_id?)` | `application.activity` → Home `read_activity_snapshot` | groups / relationships / events; track ≠ person |
+| `activity(store, run_id?)` | `application.activity` → `activity_surface.read_activity_snapshot` | groups / relationships / events; track ≠ person |
 | `activity_memory(store, run_id?)` | `application.activity_memory` → `activity_surface.load_activity_memory` | Soft Home Activity / Memory (processing + people together + moments); not identity |
 | `canvas(store, run_id?)` | `load_canvas` · `Application.canvas` | Overlay payload. Cluster ≠ person |
 | `job_current()` | `Application.job_current` / `busy` / `state` / `paused` | Handle while running; None when idle |
@@ -55,7 +75,7 @@ Mutations (one writer: Python domain ops):
 | `pause_job()` | `Application.pause_job` → `JobEngine.pause` | Cooperative at file/stage gates |
 | `unpause_job()` | `Application.unpause_job` → `JobEngine.unpause` | Continues the **same** in-flight job |
 | `cancel_job()` | `Application.cancel_job` → `JobEngine.cancel` | Cooperative at file boundaries; works while paused |
-| `apply_name` | `review_ui.apply_name` | Cluster / track members / unassigned face |
+| `apply_name` | `review_board.apply_name` | Cluster / track members / unassigned face |
 | `apply_merge` | `apply_merge` | Clusters only |
 | `apply_split` | `apply_split` | Faces leave the cluster |
 | `apply_ignore` | `apply_ignore` | Hide from board |
@@ -104,26 +124,27 @@ Callbacks on `submit_ingest` are a Python convenience, not the IPC. R2 serialize
 
 Tk objects · Tk event-loop · Qt objects · FaceKit · Python UI callbacks as the public shape · SQLite connection objects · worker threads · InsightFace / ORT sessions · clusterer internals.
 
-## Production shell (Tk Home) vs optional Qt
+## Production clients (2026-10-05)
+
+Production UI is PySide6 `semblon shell` → `Application`. See `docs/ARCHITECTURE.md`.
 
 | Surface | Command | Role |
 |---|---|---|
-| **Production GUI shell** | `semblon home` | **One shipping GUI** (#54). Wired #63–#66; UNWIRED claims closed #65. Library \| Workspace/Canvas \| Inspector. |
-| `review-ui` | `semblon review-ui` | KEEP evidence vertical (Toplevel on Home or standalone). |
-| Optional Qt shell | `semblon shell` | KEEP optional Application API client (#67). **Not** a second product Home. |
-| `review.html` | export | Engineering / forensic artifact — **not** the normal user workflow. |
-| S8 toolkit spike | `tools/s8_toolkit_spike` | Reference only. Do not auto-promote. |
+| **Production GUI** | `semblon shell` | The only production UI. Installer includes `.[gui]`. |
+| Legacy Tk Home | `semblon home` | Temporary legacy client. Not a basis for new product work. |
+| Legacy Tk review | `semblon review-ui` | Temporary legacy client. Not a production Review page. |
+| `review.html` | — | **Retired.** No production writer. Do not resurrect. |
+| S8 toolkit spike | `tools/s8_toolkit_spike` | Research only. Does not create a second production architecture. |
 
-Home IA (R3-BRIEF §4) on the production Tk shell:
+Do not resurrect Tk Home as the product door, `review.html`, `review_chrome`, `lens_home`, `native_shell/window.py`, or a parallel application/storage path. The production architecture is PySide6 → Application.
 
-```text
-Library sidebar │ Workspace / Intelligence Canvas │ Inspector
-```
+A September note called `semblon home` the one shipping GUI (#54) and `semblon shell` an optional client (#67). That note is historical.
 
-Job controls: Choose folder / Pause / Resume / Cancel.  
+Job controls on a client (folder / Pause / Resume / Cancel) call `Application`. They do not open storage and they do not construct a `JobEngine`.
+
 While running (not paused): Pause on, Resume off, Cancel on.  
 While paused: Pause off, Resume on (`unpause_job`), Cancel on.  
-While idle with a cancelled/interrupted folder: Resume on (resume-after-cancel).  
+While idle with a cancelled/interrupted folder: Resume on (resume-after-cancel).
 
 | Operation | During ingest | Actual dependency |
 |---|---|---|
@@ -135,7 +156,7 @@ While idle with a cancelled/interrupted folder: Resume on (resume-after-cancel).
 | Cancel | allowed | cooperative cancel (also from paused) |
 | Resume after cancel | idle only | new submit with `resume=True` |
 
-`JobEngine` is the only ingest door for Home / native shell / Review / IPC probe. Headless CLI `semblon process` / `ingest` may call `process_folder` directly — that is not a second application door. Home, Review, and `semblon shell` must never import or call `process_folder`.
+`JobEngine` is constructed only by `Application`. Headless CLI `semblon process` may call `process_folder` directly. That is not a second application door and it does not write `review.html`. UI clients must not import or call `process_folder`.
 
 ## Identity firewall
 

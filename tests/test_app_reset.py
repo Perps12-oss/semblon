@@ -230,7 +230,7 @@ def test_home_reset_requires_confirmation_and_calls_service() -> None:
     assert "askyesno" in src
     assert "SETTINGS_RESET_CONFIRM" in src
     assert "reset_app_to_defaults" in src
-    assert "engine.busy" in src
+    assert "self.app.busy" in src
     assert "SETTINGS_RESET_BUTTON" in fill
     assert "SETTINGS_RECOVERY" in fill
 

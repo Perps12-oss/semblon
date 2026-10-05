@@ -1,5 +1,7 @@
 # R3 §8.7 — Shell decision packet (evidence → winner)
 
+**Superseded 2026-10-05 by the completed PySide6 production migration.** The decision recorded below is historical evidence. The production shell is now PySide6 → Application (`docs/ARCHITECTURE.md`).
+
 **Status:** **CLOSED / DONE** (owner declaration 2026-09-21).  
 **Authority:** `docs/SEM-ARCH-V1.4.md` §D.2 / §I.5 / §J · visual contract `docs/R3-BRIEF.md`.  
 **Outcome:** Native production shell is **authorized**. Look-and-feel follows Artifacts 1–4 + R3-BRIEF.  

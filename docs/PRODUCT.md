@@ -57,11 +57,17 @@ This amendment does **not** erase frozen v1. It records what the shipping applic
 
 **Level 2 — production capabilities (shipping):** `process` / `home` / `review-ui` (KEEP GUI; v1 still “no GUI required”); incremental ingest; backup/restore; integrity report (orphans + `PRAGMA integrity_check`; missing originals counted, do not fail `ok`); cooperative cancel (GUI + SIGINT at file boundaries); FaceKit CPU **recorded** in `runtime_json` (ingest still `load_app()`); evidence-based `search` of named persons (RO) / identify; S7a sampled video + S7b derived tracks; S6 memory; portable CI without weight download.
 
-**Home shell IA (LOCKED 2026-10-02):** Model D — Memory-first Stage dissolve (`docs/SHELL-IA.md`). Capability Stage → Memory Canvas → contextual discovery. No permanent MAIN sidebar. Faces remain a capability, not product centre. Does not amend Level 1 identity. External feature/UX precedent map: `docs/REFERENCE-STACK.md` (companion only; does not amend this contract).
+**Home shell IA (LOCKED 2026-10-02, legacy Tk client):** Model D — Memory-first Stage dissolve (`docs/SHELL-IA.md`). Capability Stage → Memory Canvas → contextual discovery. No permanent MAIN sidebar. Faces remain a capability, not product centre. Does not amend Level 1 identity. External feature/UX precedent map: `docs/REFERENCE-STACK.md` (companion only; does not amend this contract).
 
 Stall watchdog (`semblon/watchdog.py`) is **wired on Home** status (`stalled` ≠ killed). It does not kill jobs. Folder watcher remains v1 **out**.
 
 **Level 3 — experimental / unavailable:** GPU when no EP is present; buffalo_l redistribution; MSI with bundled weights; 10k live library (harness exists); optional OCR/CLIP/MediaPipe extras when not installed.
+
+## Production UI (amended 2026-10-05)
+
+This amendment does **not** erase frozen v1 or the 2026-09-19 amendment. It records the closed shell.
+
+The production UI is the PySide6 archive (`semblon shell`) → `Application`. Identity contract is unchanged. `semblon home` and `review-ui` are temporary legacy clients, not a second product. `review.html` is retired. No production Review page replaces it. Baseline: `docs/ARCHITECTURE.md`. What is still open (Find, Field + Focus, polish, eventual Tk retirement) is `docs/COMPLETION-MATRIX.md`.
 
 ## Full-stack acceleration (2026-09-19)
 

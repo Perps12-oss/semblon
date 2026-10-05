@@ -60,17 +60,6 @@ def test_process_folder_orchestrates_and_owns_run_id(tmp_path):
                 "unassigned": 0,
             },
         ) as clu,
-        patch(
-            "semblon.process.export_review",
-            return_value={
-                "run_id": "RUN-ABC",
-                "out": str(out),
-                "clusters": 2,
-                "faces": 5,
-                "bytes": 100,
-            },
-        ) as exp,
-        patch("semblon.process._try_open", return_value=False) as opener,
     ):
         rec = process_folder(
             folder,
@@ -89,17 +78,17 @@ def test_process_folder_orchestrates_and_owns_run_id(tmp_path):
     assert clu.call_args.args[1] == "RUN-ABC"
     assert clu.call_args.kwargs["eps"] == 0.40
     assert clu.call_args.kwargs["min_samples"] == 2
-    exp.assert_called_once_with(store, "RUN-ABC", out)
-    opener.assert_called_once()
     assert rec["run_id"] == "RUN-ABC"
+    assert rec["out"] is None
+    assert not out.is_file()
     assert any("Ingesting" in line for line in lines)
-    assert any("Review ready" in line for line in lines)
+    assert any("Library ready" in line for line in lines)
 
 
-def test_process_skip_all_exports_prior_run_with_faces(tmp_path):
-    """A later empty ingest must not overwrite review.html with a blank page."""
-    from semblon.export import EVIDENCE_SCRIPT_ID
+def test_process_skip_all_keeps_prior_run_with_faces(tmp_path):
+    """A later empty ingest must not hide the prior run that still has faces."""
     from tests.test_review_ui import _seed
+    from semblon.review_board import load_board
 
     folder = tmp_path / "photos"
     folder.mkdir()
@@ -131,7 +120,6 @@ def test_process_skip_all_exports_prior_run_with_faces(tmp_path):
             },
         ),
         patch("semblon.process.cluster_run") as clu,
-        patch("semblon.process._try_open", return_value=False),
     ):
         rec = process_folder(
             folder,
@@ -143,18 +131,11 @@ def test_process_skip_all_exports_prior_run_with_faces(tmp_path):
 
     clu.assert_not_called()
     assert rec["run_id"] == "r1"
-    html = out.read_text(encoding="utf-8")
-    assert EVIDENCE_SCRIPT_ID in html
-    # Cluster Review chrome embeds counts in #semblon-run-evidence, not classic
-    # ``<span>faces N</span>`` markup.
-    marker = f'id="{EVIDENCE_SCRIPT_ID}"'
-    start = html.index(marker)
-    open_gt = html.index(">", start) + 1
-    close = html.index("</script>", open_gt)
-    payload = json.loads(html[open_gt:close])
-    assert payload["run_id"] == "r1"
-    assert payload["counts"]["faces"] == 5
-    assert "Cluster Review" in html
+    assert rec["out"] is None
+    assert not out.is_file()
+    board = load_board(store, "r1")
+    assert board["run_id"] == "r1"
+    assert sum(item["face_count"] for item in board["items"]) >= 1
     assert any("reviewing existing run_id=r1" in line for line in lines)
 
 
@@ -183,18 +164,15 @@ def test_cli_process_wires_flags(tmp_path, monkeypatch):
             str(folder),
             "--store",
             str(store),
-            "--out",
-            str(out),
-            "--no-open",
             "--reprocess",
         ]
     )
     assert rc == 0
     assert Path(seen["folder"]) == folder
     assert seen["kwargs"]["store"] == store
-    assert seen["kwargs"]["out"] == out
+    assert "out" not in seen["kwargs"]
+    assert "open_review" not in seen["kwargs"]
     assert seen["kwargs"]["reprocess"] is True
-    assert seen["kwargs"]["open_review"] is False
     assert seen["kwargs"]["resume"] is False
     assert callable(seen["kwargs"].get("on_event"))
 

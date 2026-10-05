@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def run_native_shell(store: Path | None = None) -> int:
-    """Open the archive shell. Requires optional PySide6. Does not replace `semblon home`."""
+    """Open the archive shell. Requires PySide6. This is the forward product UI."""
     try:
         from PySide6.QtWidgets import QApplication
     except ImportError as e:  # pragma: no cover - env without gui extra

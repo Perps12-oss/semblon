@@ -39,17 +39,17 @@ if (-not (Test-Path $VenvPy)) {
 
 & $VenvPy -m pip install -U pip
 & $VenvPy -m pip install -r (Join-Path $Root "requirements.txt")
-& $VenvPy -m pip install -e .
-# Optional research only: pip install -e ".[gui]"  (S8 toolkit spike; not product Home)
+# Product shell is PySide6 (`semblon shell`). The gui extra is required.
+& $VenvPy -m pip install -e ".[gui]"
 
-& $VenvPy -c "import semblon; print('import ok', semblon.__version__)"
+& $VenvPy -c "import semblon, PySide6; print('import ok', semblon.__version__, 'PySide6', PySide6.__version__)"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Install finished but 'import semblon' failed. Delete .venv and re-run this script."
 }
 
 Write-Host ""
 Write-Host "Install complete. Double-click semblon.cmd or run:"
-Write-Host "  .\semblon.cmd home"
+Write-Host "  .\semblon.cmd shell"
 Write-Host "Store default: %LOCALAPPDATA%\Semblon\store.sqlite"
 Write-Host "Upgrade preserves that store. Uninstall: tools\uninstall-windows.ps1 (keeps store)."
 Write-Host "buffalo_l is internal evaluation only - see docs/licenses.md"

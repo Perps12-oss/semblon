@@ -81,6 +81,7 @@ def test_search_presentation_and_media_ids():
 
 
 def test_canvas_thumb_paint_uses_media_tile_colors():
+    pytest.importorskip("tkinter")
     import semblon.canvas as canvas
 
     # Paint lives in virtualized _paint_visible_thumbs; rebuild builds ViewModel layout.

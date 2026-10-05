@@ -1,6 +1,8 @@
 # S8 toolkit investigation
 
-**Status:** dump-gate vertical wired (`tools/s8_toolkit_spike/`). Presentation + Name/Merge/Split/Ignore/Note via `review_ui` → `review.py`. **Not** full AppShell / Intelligence Canvas. Does **not** replace tkinter `review-ui`.  
+**Superseded 2026-10-05 by the completed PySide6 production migration.** This spike is research. It is not the production shell. Production UI is `semblon shell` → `Application` (`docs/ARCHITECTURE.md`). Do not revive it as a second product Home.
+
+**Status (historical):** dump-gate vertical wired (`tools/s8_toolkit_spike/`). Presentation + Name/Merge/Split/Ignore/Note via `review_ui` → `review.py`. **Not** full AppShell / Intelligence Canvas. Does **not** replace the legacy Tk `review-ui`.  
 **Planned work:** `docs/SEM-ARCH-V1.4.md`. This spike is not the plan.
 
 ## Recon (what already exists)
@@ -75,4 +77,4 @@ Qt / PySide6 is **LGPL**. Local-only Semblon can dynamically link. Recorded in `
 - Grow this spike into Intelligence Canvas or S7 UI.
 - Retune `eps`.
 - Replace `semblon review-ui` until dump-gate + product decision say so.
-- Revive a second product shell beside tk Home. Product Home is `semblon home` (tk). User-facing progress copy lives in `semblon.ui_copy`.
+- Revive a second product shell. Historical text said product Home was `semblon home` (tk). **Superseded 2026-10-05:** production Home is `semblon shell`. User-facing progress copy lives in `semblon.ui_copy`.
