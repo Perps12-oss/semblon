@@ -4,6 +4,8 @@
 **Date:** 2026-10-03  
 **Slice:** docs-only — `grok/reference-stack`
 
+**Superseded in part (2026-10-05):** the hierarchy below must not be read as choosing Tk Home. Production architecture is `docs/ARCHITECTURE.md` (PySide6 → Application). `SHELL-IA.md` locks Model D for the legacy Tk client only.
+
 ## Authority and boundaries
 
 Governing hierarchy (higher wins):

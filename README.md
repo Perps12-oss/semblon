@@ -24,14 +24,15 @@ Equivalent by hand:
 py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -U pip
 .venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe -m pip install -e .
+.venv\Scripts\python.exe -m pip install -e ".[gui]"
 ```
 
-Then **double-click `semblon.cmd`** to open **tk Home**: Choose folder, watch progress (Pause / Cancel / Resume), and Open Review to name people. `review-ui` is the review vertical. Face crops come from path+bbox (same idea as `review.html`).
+Then **double-click `semblon.cmd`** to open the **PySide6 archive**: the Time lens over one library, open a memory, ask about the photo, and add a folder. `semblon home` is the legacy Tk surface. `review-ui` is the legacy Tk review vertical. The installer includes PySide6 (`pip install -e ".[gui]"`).
 
-**Status:** the shipping UI is **tk Home + `review-ui`** (`semblon home` / `semblon review-ui`). The QML/PySide tree under `tools/s8_toolkit_spike/` is a research spike, not a product UI. There is no second product shell.
+**Status:** architecture migration **COMPLETE** (2026-10-05). Production UI is the **PySide6 archive** (`semblon shell`) → `Application`. Baseline: `docs/ARCHITECTURE.md`. The engine is Python. Tk Home remains only as `semblon home`. Tk `review-ui` is a legacy client. `review.html` is retired. The QML tree under `tools/s8_toolkit_spike/` is a research spike, not this shell. Next work is the product (Field + Focus), not another shell.
 
 ```text
+semblon.cmd shell
 semblon.cmd home
 semblon.cmd review-ui
 ```
@@ -46,10 +47,11 @@ That will:
 
 1. Ingest the folder into `%LOCALAPPDATA%\Semblon\store.sqlite` (or pass `--store`)
 2. Cluster with the frozen S1 settings
-3. Write `review.html` beside the store
-4. Open the review page in your browser
+3. Leave the run in the library. Open it with `semblon shell` (double-click `semblon.cmd`)
 
-Optional flags: `--store`, `--out`, `--no-open`, `--reprocess`.
+`semblon process` is synchronous and headless. It does not start a second job engine and it does not write `review.html`.
+
+Optional flags: `--store`, `--reprocess`, `--resume`.
 
 `buffalo_l` downloads on first run into `%USERPROFILE%\.insightface\models\buffalo_l` (internal evaluation only).
 
@@ -70,12 +72,12 @@ python -c "import sys; print(sys.executable)"
 
 python -m pip install -U pip
 python -m pip install -r requirements.txt
-python -m pip install -e .
+python -m pip install -e ".[gui]"
 
 semblon --help
 ```
 
-`pip install -r requirements.txt` then `pip install -e .` is required. That pulls `insightface`, `onnxruntime`, `opencv-python-headless`, and `numpy`, and registers the `semblon` console script. Do not install those packages one failure at a time.
+`pip install -r requirements.txt` then `pip install -e ".[gui]"` is required. That pulls `insightface`, `onnxruntime`, `opencv-python-headless`, `numpy`, and PySide6, and registers the `semblon` console script. Do not install those packages one failure at a time.
 
 Equivalent module entry (same code path):
 
@@ -95,7 +97,7 @@ Power-user surface (still supported). Happy path above is `process`.
 semblon lab profile --image "D:\photos\face.jpg" --out "docs\runtime.md"
 
 semblon process "D:\photos\dump"
-semblon process "D:\photos\dump" --store "D:\semblon\store.sqlite" --out "D:\semblon\review.html"
+semblon process "D:\photos\dump" --store "D:\semblon\store.sqlite"
 semblon review-ui --store "D:\semblon\store.sqlite"
 semblon review-ui --store "D:\semblon\store.sqlite" --run RUN_ID
 
@@ -106,7 +108,6 @@ semblon live --store "D:\semblon\store.sqlite" --source 0 --seconds 5 --hz 1
 semblon live --store "D:\semblon\store.sqlite" --source "rtsp://cam/stream" --seconds 0 --hz 5 --reembed-s 2 --retain-s 30
 
 semblon cluster --run RUN_ID --store "D:\semblon\store.sqlite"
-semblon export --run RUN_ID --store "D:\semblon\store.sqlite" --out "review.html"
 semblon export --run RUN_ID --store "D:\semblon\store.sqlite" --views "D:\semblon\views"
 
 semblon review --run RUN_ID --store "D:\semblon\store.sqlite" merge --clusters SURVIVOR DONOR
@@ -142,9 +143,7 @@ semblon memory events --store "D:\semblon\store.sqlite"
 
 Quote Windows paths. Put a space between `--out` and the next argument — do not glue `docs\runtime.md` onto another path.
 
-Double-click `review.html`. No server. Page order: counts → REVIEW REQUIRED → STRONG → UNASSIGNED → REJECTED → DECISIONS.
-
-DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Use `review.html` to decide whether it survives — including whether different people stay separated on a mixed dump.
+DBSCAN on `1 − cosine` for `status=ok` faces only (`eps=0.40`, `min_samples=2`) is a hypothesis. Name, merge, split, ignore, and note are decisions on the store (`review.py` / `review_board`). Cluster is not a person. The product place to look at the library is the PySide6 archive, not a generated HTML page.
 
 Corrections write `decisions` rows. Naming links `cluster_person` and stamps `faces.person_id`; the cluster id is never the person id.
 

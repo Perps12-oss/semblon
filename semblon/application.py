@@ -1,20 +1,22 @@
-"""Language-neutral application façade.
+"""UI-independent application façade.
 
-A future native UI talks to these names, not to Home widgets or FaceKit.
-Mutations stay in review.py via review_ui.apply_*. Reads are RO SQLite.
-Job ownership lives in semblon.jobs. Home and Review are clients only —
-they must not own the ingest worker (CLI `process`/`ingest` remain
-headless doors; Tk surfaces and the native shell submit through JobEngine
-via this façade or an equivalent JobEngine handle).
+PySide6 (`semblon shell`) is the forward shell. Legacy Tk Home is a client.
+This module does not import a UI toolkit or a UI package.
+
+The façade owns the JobEngine and the archive session. UIs submit and
+observe. Visual commands take a media id and, where needed, a pixel rect.
+The engine loads the file. Live image arrays are not the command interface.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from semblon.canvas import load_canvas
-from semblon.home_ui import home_control_states, read_activity_snapshot
+from semblon.activity_surface import load_activity_memory, read_activity_snapshot
+from semblon.archive_session import ArchiveSession, MediaRef
+from semblon.canvas_data import load_canvas
 from semblon.inbox import inbox
+from semblon.job_controls import home_control_states
 from semblon.jobs import (
     KIND_INGEST,
     KIND_VISUAL,
@@ -30,7 +32,7 @@ from semblon.jobs import (
     OnEvent,
 )
 from semblon.process import default_store_path, latest_run_id
-from semblon.review_ui import (
+from semblon.review_board import (
     apply_ignore,
     apply_merge,
     apply_name,
@@ -50,10 +52,12 @@ __all__ = [
     "STATE_PAUSED",
     "STATE_RUNNING",
     "Application",
+    "ArchiveSession",
     "JobBusy",
     "JobEngine",
     "JobHandle",
     "JobResult",
+    "MediaRef",
     "activity",
     "activity_memory",
     "apply_ignore",
@@ -63,7 +67,6 @@ __all__ = [
     "apply_rule_out",
     "apply_split",
     "board",
-    "chrome_board",
     "default_store_path",
     "home_control_states",
     "inbox",
@@ -71,7 +74,6 @@ __all__ = [
     "load_board",
     "load_canvas",
     "resolve_run_id",
-    "review_document",
     "search_people",
     "search_person",
 ]
@@ -82,35 +84,22 @@ def board(store: Path, run_id: str | None = None) -> dict:
     return load_board(store, rid)
 
 
-def chrome_board(store: Path, run_id: str | None = None, *, mode: str = "live") -> dict:
-    from semblon.review_chrome import build_chrome_board
-
-    rid = resolve_run_id(store, run_id)
-    return build_chrome_board(store, rid, mode=mode)
-
-
-def review_document(store: Path, run_id: str | None = None, *, mode: str = "live") -> str:
-    from semblon.review_chrome import render_review_document_from_store
-
-    rid = resolve_run_id(store, run_id)
-    return render_review_document_from_store(store, rid, mode=mode)
-
-
 def activity(store: Path, run_id: str | None = None) -> dict:
     rid = resolve_run_id(store, run_id)
     return read_activity_snapshot(store, rid)
 
 
 def activity_memory(store: Path, run_id: str | None = None) -> dict:
-    from semblon.activity_surface import load_activity_memory
-
     return load_activity_memory(store, run_id)
 
 
 class Application:
+    """One process boundary. Shells do not open the store themselves."""
+
     def __init__(self, store: Path | None = None):
         self.store = Path(store) if store is not None else default_store_path()
         self.engine = JobEngine(self.store)
+        self.archive = ArchiveSession(self.store, jobs=self)
 
     def job_current(self) -> JobHandle | None:
         return self.engine.current()
@@ -151,23 +140,28 @@ class Application:
     def analyse_visual(
         self,
         media_id: str,
-        image,
         *,
         run_id: str,
         nouns: list[str] | None = None,
         score_fn=None,
         view_w: int | None = None,
         view_h: int | None = None,
-        color: str = "rgb",
     ) -> dict:
-        """Synchronous visual understanding. Does not enrol a person."""
+        """Synchronous visual understanding for one media id. Does not enrol a person.
+
+        The file is decoded from the store. Callers do not pass pixel arrays.
+        """
         import numpy as np
 
+        from semblon.selection import load_media_bgr
         from semblon.visual.engine import analyse
         from semblon.visual.persist import load_scene_inputs, persist_analysis
 
+        image = load_media_bgr(self.store, media_id)
+        if image is None:
+            raise FileNotFoundError(f"could not read media {media_id}")
         frame = np.asarray(image)
-        rgb = np.ascontiguousarray(frame[:, :, :3][:, :, ::-1]) if color == "bgr" else frame
+        rgb = np.ascontiguousarray(frame[:, :, :3][:, :, ::-1])
         height, width = int(rgb.shape[0]), int(rgb.shape[1])
         scene = load_scene_inputs(self.store, media_id=media_id, run_id=run_id, height=height, width=width)
         analysis = analyse(
@@ -187,8 +181,64 @@ class Application:
         rec["persons_touched"] = False
         return rec
 
-    def submit_visual(self, media_id: str, image, *, run_id: str, **kwargs):
-        return self.engine.submit_visual(media_id=media_id, image=image, run_id=run_id, **kwargs)
+    def submit_visual(self, media_id: str, *, run_id: str, **kwargs):
+        """Background visual understanding. The engine decodes the stored file."""
+        return self.engine.submit_visual(media_id=media_id, run_id=run_id, **kwargs)
+
+    def submit_visual_analyze(
+        self,
+        media_id: str,
+        *,
+        existing_faces: list | None = None,
+        observation_id: str | None = None,
+        force: bool = False,
+        on_progress=None,
+        on_done=None,
+    ):
+        """Background open-vocabulary analysis. The engine decodes the stored file."""
+        return self.engine.submit_visual_analyze(
+            media_id=media_id,
+            existing_faces=existing_faces,
+            observation_id=observation_id,
+            force=force,
+            on_progress=on_progress,
+            on_done=on_done,
+        )
+
+    def query_media(
+        self,
+        media_id: str,
+        rect: dict | None = None,
+        *,
+        capabilities: tuple[str, ...] | None = None,
+    ) -> dict:
+        """Whole-frame or region Lens query. Loads the file. No UI image object."""
+        from semblon.lens import query_image
+        from semblon.selection import format_query_lines, lens_result_summary, load_media_bgr
+
+        image = load_media_bgr(self.store, media_id)
+        if image is None:
+            reason = "Could not read that photo. Nothing was searched."
+            return {
+                "status": "UNAVAILABLE",
+                "reason": reason,
+                "lines": ["Could not read that photo.", "Nothing was searched."],
+                "media_id": str(media_id) if media_id else "",
+                "region": None,
+                "item_count": 0,
+            }
+        kwargs: dict = {}
+        if rect:
+            kwargs["x"] = int(rect["x"])
+            kwargs["y"] = int(rect["y"])
+            kwargs["w"] = int(rect["w"])
+            kwargs["h"] = int(rect["h"])
+        report = query_image(image, capabilities=capabilities, **kwargs)
+        summary = lens_result_summary(report)
+        summary["lines"] = format_query_lines(report)
+        summary["region"] = dict(getattr(report, "region", {}) or {})
+        summary["media_id"] = str(media_id)
+        return summary
 
     def visual_capabilities(self) -> dict:
         from semblon.visual.engine import capabilities
@@ -214,12 +264,6 @@ class Application:
     def board(self, run_id: str | None = None) -> dict:
         return board(self.store, run_id)
 
-    def chrome_board(self, run_id: str | None = None, *, mode: str = "live") -> dict:
-        return chrome_board(self.store, run_id, mode=mode)
-
-    def review_document(self, run_id: str | None = None, *, mode: str = "live") -> str:
-        return review_document(self.store, run_id, mode=mode)
-
     def activity(self, run_id: str | None = None) -> dict:
         return activity(self.store, run_id)
 
@@ -236,6 +280,22 @@ class Application:
     def canvas(self, run_id: str | None = None) -> dict:
         rid = resolve_run_id(self.store, run_id)
         return load_canvas(self.store, rid)
+
+    def media(self, media_id: str) -> MediaRef | None:
+        """Canonical media lookup. Shells do not query the media table themselves."""
+        return self.archive.media(media_id)
+
+    def media_path(self, media_id: str) -> str | None:
+        item = self.media(media_id)
+        if item is None or not item.path:
+            return None
+        return item.path
+
+    def archive_count(self) -> int:
+        return self.archive.count()
+
+    def archive_window(self, offset: int, limit: int) -> list[MediaRef]:
+        return self.archive.window(offset, limit)
 
     def remember_region(
         self,
@@ -296,3 +356,4 @@ class Application:
             run_id=run_id,
             limit=limit,
         )
+

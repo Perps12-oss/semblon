@@ -148,6 +148,38 @@ ApplicationWindow {
                 font.pixelSize: 13
                 anchors.verticalCenter: parent.verticalCenter
             }
+            Text {
+                objectName: "pauseJob"
+                text: "Pause"
+                color: pauseArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                anchors.verticalCenter: parent.verticalCenter
+                MouseArea {
+                    id: pauseArea
+                    anchors.fill: parent
+                    anchors.margins: -6
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: shell.pauseJob()
+                }
+            }
+            Text {
+                objectName: "cancelJob"
+                text: "Cancel"
+                color: cancelArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                anchors.verticalCenter: parent.verticalCenter
+                MouseArea {
+                    id: cancelArea
+                    anchors.fill: parent
+                    anchors.margins: -6
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: shell.cancelJob()
+                }
+            }
         }
     }
 
@@ -307,6 +339,7 @@ ApplicationWindow {
             }
 
             Image {
+                id: photo
                 anchors.fill: parent
                 anchors.margins: 48
                 visible: shell.focusKind !== "video"
@@ -315,6 +348,74 @@ ApplicationWindow {
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
                 cache: false
+            }
+
+            MouseArea {
+                id: regionDrag
+                anchors.fill: photo
+                enabled: shell.focusKind !== "video" && photo.paintedWidth > 0
+                property real rx: 0
+                property real ry: 0
+                property real rw: 0
+                property real rh: 0
+                property bool hasRect: false
+                property real x0: 0
+                property real y0: 0
+
+                function contentOrigin() {
+                    return Qt.point(
+                        (width - photo.paintedWidth) / 2,
+                        (height - photo.paintedHeight) / 2
+                    )
+                }
+
+                onPressed: function(mouse) {
+                    x0 = mouse.x
+                    y0 = mouse.y
+                    rx = mouse.x
+                    ry = mouse.y
+                    rw = 0
+                    rh = 0
+                    hasRect = true
+                }
+                onPositionChanged: function(mouse) {
+                    if (!pressed)
+                        return
+                    rx = Math.min(x0, mouse.x)
+                    ry = Math.min(y0, mouse.y)
+                    rw = Math.abs(mouse.x - x0)
+                    rh = Math.abs(mouse.y - y0)
+                }
+                onReleased: function(mouse) {
+                    var origin = contentOrigin()
+                    var pw = photo.paintedWidth
+                    var ph = photo.paintedHeight
+                    if (pw <= 1 || ph <= 1 || rw < 4 || rh < 4) {
+                        hasRect = false
+                        return
+                    }
+                    var nx = (rx - origin.x) / pw
+                    var ny = (ry - origin.y) / ph
+                    var nw = rw / pw
+                    var nh = rh / ph
+                    shell.setRegion(
+                        Math.max(0, Math.min(1, nx)),
+                        Math.max(0, Math.min(1, ny)),
+                        Math.max(0, Math.min(1, nw)),
+                        Math.max(0, Math.min(1, nh))
+                    )
+                }
+            }
+
+            Rectangle {
+                visible: regionDrag.hasRect && shell.focusKind !== "video"
+                x: photo.x + regionDrag.rx
+                y: photo.y + regionDrag.ry
+                width: regionDrag.rw
+                height: regionDrag.rh
+                color: "#332DD4BF"
+                border.color: "#2DD4BF"
+                border.width: 1
             }
 
             VideoOutput {
@@ -372,6 +473,71 @@ ApplicationWindow {
                 font.pixelSize: 13
             }
 
+            Column {
+                objectName: "focusInspector"
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 22
+                spacing: 8
+                width: 220
+
+                Rectangle {
+                    width: parent.width
+                    height: 32
+                    radius: 6
+                    color: askArea.containsMouse ? "#12343A" : "#1C2430"
+                    border.color: "#2DD4BF"
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Ask about this photo"
+                        color: "#5EEAD4"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: askArea
+                        objectName: "askPhoto"
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: shell.askPhoto()
+                    }
+                }
+                Rectangle {
+                    width: parent.width
+                    height: 32
+                    radius: 6
+                    color: similarArea.containsMouse ? "#12343A" : "#1C2430"
+                    border.color: "#3D4C5C"
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Similar"
+                        color: "#E7EEF5"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: similarArea
+                        objectName: "findSimilar"
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: shell.findSimilar()
+                    }
+                }
+                Text {
+                    objectName: "resultText"
+                    width: parent.width
+                    text: shell.resultText
+                    color: "#8AA0B2"
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             Text {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
@@ -408,6 +574,7 @@ ApplicationWindow {
             Connections {
                 target: shell
                 function onFocusChanged() {
+                    regionDrag.hasRect = false
                     player.stop()
                     if (shell.focusKind === "video" && shell.focusUrl !== "")
                         player.source = shell.focusUrl

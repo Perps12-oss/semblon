@@ -30,7 +30,6 @@ def test_cancel_after_ingest_skips_cluster_and_export(tmp_path):
             },
         ),
         patch("semblon.process.cluster_run") as clu,
-        patch("semblon.process.export_review") as exp,
         patch("semblon.process.persist_run_stage"),
     ):
         with pytest.raises(ProcessCancelled) as ei:
@@ -44,7 +43,7 @@ def test_cancel_after_ingest_skips_cluster_and_export(tmp_path):
             )
     assert ei.value.run_id == "RUN-C"
     clu.assert_not_called()
-    exp.assert_not_called()
+    assert not out.is_file()
 
 
 def test_cancel_after_cluster_skips_export(tmp_path):
@@ -73,7 +72,6 @@ def test_cancel_after_cluster_skips_export(tmp_path):
             },
         ),
         patch("semblon.process.cluster_run", side_effect=fake_cluster) as clu,
-        patch("semblon.process.export_review") as exp,
         patch("semblon.process.persist_run_stage"),
     ):
         with pytest.raises(ProcessCancelled) as ei:
@@ -87,4 +85,4 @@ def test_cancel_after_cluster_skips_export(tmp_path):
             )
     assert ei.value.run_id == "RUN-E"
     clu.assert_called_once()
-    exp.assert_not_called()
+    assert not out.is_file()

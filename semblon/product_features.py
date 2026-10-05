@@ -204,17 +204,16 @@ def _name_region_reason(host: Any, _ctx: Any = None) -> str:
 
 
 def _cmd_lens_find_similar(host: Any, _ctx: Any = None) -> None:
-    """Histogram region search via region_search.remember_and_find.
+    """Histogram region search via Application.remember_and_find_region.
 
     Prefers an in-canvas selection (discovery loop). Falls back to region window.
-    This is not search.search_similar (embedding stack). Do not merge stacks.
+    This is not search.search_similar (embedding neighbours). Do not merge stacks.
     """
     if hasattr(host, "_find_similar_in_workspace"):
         host._find_similar_in_workspace()
         return
-    from semblon.lens_home import open_region_select
-
-    open_region_select(host)
+    if hasattr(host, "_open_region_select"):
+        host._open_region_select()
 
 
 def _compare_session(host: Any):
@@ -436,14 +435,14 @@ def _cmd_backup_library(host: Any, _ctx: Any = None) -> None:
 
 
 def _cmd_watch_folder(host: Any, _ctx: Any = None) -> None:
-    """Expose folder update: GUI starts JobEngine ingest; continuous watch stays CLI."""
+    """Folder update through Application. Continuous watch stays CLI."""
     from tkinter import filedialog, messagebox
 
     folder = filedialog.askdirectory(parent=host.root, title="Add or update this folder")
     if not folder:
         return
     try:
-        if host.engine.busy:
+        if host.app.busy:
             messagebox.showinfo(
                 "Semblon",
                 "Ingest already running. Continuous watch: semblon watch",

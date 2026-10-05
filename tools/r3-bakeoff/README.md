@@ -1,5 +1,7 @@
 # R3 toolkit bake-off harness (§8.5 / brief §6)
 
+**Superseded 2026-10-05 by the completed PySide6 production migration.** This harness is historical measurement code. It does not choose the shell. Production architecture is `docs/ARCHITECTURE.md`.
+
 **Status:** code exists — **not** product default; **no PASS claimed**.  
 **Authority:** `docs/R3-BRIEF.md` §6 · checklist `docs/r3-artifacts/05-bake-off-checklist.md`.  
 **Purpose:** runnable measurement stubs that write a results JSON matching the six bake-off criteria. A human must run them against real candidate toolkit app(s) on owner Windows hardware.

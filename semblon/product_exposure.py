@@ -24,9 +24,16 @@ ExposureClass = Literal[
 # action: KEEP | DEMOTE | MIGRATE | DELETE_FROM_PRODUCT_CHROME | EXPORT_ONLY | FORBIDDEN
 GUI_PATHS: tuple[tuple[str, ExposureClass, str, str, str], ...] = (
     (
-        "tk Home shell",
+        "PySide6 archive shell",
         "CANONICAL",
-        "semblon home / interactive double-click",
+        "semblon shell / interactive double-click",
+        "native_shell.run_native_shell",
+        "KEEP",
+    ),
+    (
+        "tk Home shell",
+        "SECONDARY",
+        "semblon home — legacy Tk surface, not the application architecture",
         "home_ui.run_home_ui",
         "KEEP",
     ),
@@ -83,7 +90,7 @@ GUI_PATHS: tuple[tuple[str, ExposureClass, str, str, str], ...] = (
         "Lens / Inspect",
         "CANONICAL",
         "open media → select region → Find Similar",
-        "home_ui / lens_home.open_region_select",
+        "home_ui.HomeApp._open_region_select → Application.remember_and_find_region",
         "KEEP",
     ),
     (
@@ -97,7 +104,7 @@ GUI_PATHS: tuple[tuple[str, ExposureClass, str, str, str], ...] = (
         "Ingest Pause/Resume/Cancel",
         "CANONICAL",
         "processing Home + progress chrome",
-        "JobEngine via Application / Home",
+        "JobEngine owned by Application; Home and the Qt shell submit",
         "KEEP",
     ),
     (
@@ -129,25 +136,25 @@ GUI_PATHS: tuple[tuple[str, ExposureClass, str, str, str], ...] = (
         "KEEP",
     ),
     (
-        "Qt semblon shell",
+        "S8 toolkit spike",
         "OPTIONAL",
-        "semblon shell",
-        "native_shell.run_native_shell",
+        "tools/s8_toolkit_spike — not the product shell",
+        "tools.s8_toolkit_spike",
         "KEEP",
     ),
     (
         "review.html product chrome",
         "STALE",
-        "was: job bar / More → Open review.html",
-        "home_ui._open_html",
+        "retired: was job bar / More / Settings export page",
+        "retired review.html",
         "DELETE_FROM_PRODUCT_CHROME",
     ),
     (
         "review.html export",
-        "SUPERSEDED",
-        "Settings → Advanced / export path",
-        "export / process default_review_out",
-        "EXPORT_ONLY",
+        "STALE",
+        "retired: process no longer writes review.html",
+        "retired export_review",
+        "DELETE_FROM_PRODUCT_CHROME",
     ),
     (
         "Job-bar Canvas primary",
@@ -216,8 +223,8 @@ def product_chrome_forbidden_labels() -> frozenset[str]:
 
 
 def canonical_product_entry() -> str:
-    """Normal product entry — tk Home only."""
-    return "semblon home"
+    """Forward product entry — PySide6 archive shell."""
+    return "semblon shell"
 
 
 def soft_capability_label(capability_id: str, *, catalog_label: str | None = None) -> str:

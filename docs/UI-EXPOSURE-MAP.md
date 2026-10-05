@@ -1,8 +1,12 @@
 # Semblon UI exposure map
 
+**Superseded 2026-10-05 by the completed PySide6 production migration.**
+
+**Current (2026-10-05):** one production UI, PySide6 `semblon shell` → `Application`. Tk Home and Tk review-ui are legacy clients. `review.html` is retired. The September 2026 shell rule below is historical.
+
 **Date:** 2026-09-25  
 **Rule:** Backend capability does not dictate navigation. Product intent dictates navigation.  
-**Shell rule:** One production GUI (`semblon home`, tk) → multiple workspaces/routes. Not separate apps or GUI stacks.
+**Historical shell rule (2026-09-25):** One production GUI (`semblon home`, tk) → multiple workspaces/routes. Not separate apps or GUI stacks.
 
 **Forensic audit (consolidation):** every GUI path is classified in
 `semblon/product_exposure.py` (`GUI_PATHS`). Actions taken in this branch:
@@ -68,8 +72,10 @@ LAB     → engineering only
 
 ## A. Canonical production UI (inside `semblon home`)
 
-**IA (LOCKED):** `docs/SHELL-IA.md` — Stage / Memory Canvas / contextual modes.  
-**Code today:** still carries historical MAIN sidebar chrome in `home_ui` / registry nav contributions. That chrome is **not** the locked product model; do not extend it. Next shell slice must dissolve Stage → Memory and replace MAIN destination list with compact contextual chrome.
+**Historical heading (2026-09-25 inventory).** Not the 2026-10-05 production UI. Production UI is PySide6 `semblon shell` → `Application` (`docs/ARCHITECTURE.md`). Do not treat the table below as the current shell.
+
+**IA (LOCKED for the legacy Tk client):** `docs/SHELL-IA.md` — Stage / Memory Canvas / contextual modes.  
+**Code at 2026-09-25:** still carries historical MAIN sidebar chrome in `home_ui` / registry nav contributions. That chrome is **not** the locked Tk model; do not extend it. “Next shell slice must dissolve Stage → Memory” was that Tk step. It is not current product work.
 
 Nav/registry source: `product_features.py` / `gui_registry` (internal route ids). CLI door: `semblon home` (`cli.py`).
 
@@ -180,6 +186,8 @@ Open photo → Lens → select region → Semblon runs available capabilities
 ---
 
 ## F. KEEP / SUPERSEDED / STALE? GUI implementations
+
+**Historical classification (2026-09-25).** Rows that call Tk Home canonical, or Qt `semblon shell` optional, are superseded. Production UI is PySide6 → Application. `review.html` is retired.
 
 | Implementation | Class | Action |
 |---|---|---|

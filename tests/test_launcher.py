@@ -40,18 +40,20 @@ def test_install_windows_script_present():
     script = repo / "tools" / "install-windows.ps1"
     assert script.is_file()
     text = script.read_text(encoding="utf-8")
-    assert "pip install -e" in text
+    assert 'pip install -e ".[gui]"' in text
+    assert "research only" not in text.lower()
+    assert "PySide6" in text
     assert "buffalo_l" in text
 
 
-def test_interactive_script_opens_home():
+def test_interactive_script_opens_shell():
     repo = Path(__file__).resolve().parents[1]
     script = interactive_script_path(repo)
     assert script.is_file()
     text = script.read_text(encoding="utf-8")
-    assert "Invoke-SemblonHome" in text
-    assert "-m semblon home" in text
-    assert "semblon shell" not in text
+    assert "Invoke-SemblonShell" in text
+    assert "-m semblon shell" in text
+    assert "-m semblon home" not in text
     assert "s8_toolkit_spike" not in text
     assert "FolderBrowserDialog" not in text
     assert "process" in text  # -Folder smoke path still processes

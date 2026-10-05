@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from semblon.cluster import cluster_run
-from semblon.export import export_review
+from semblon.review_board import load_board
 from semblon.review import (
     ReviewError,
     ignore_subject,
@@ -284,12 +284,12 @@ def test_cli_merge_then_cluster_then_export_keeps_review_identity(tmp_path):
     assert st != "ignored"
     conn.close()
 
-    out = tmp_path / "review.html"
-    export_review(store, "r1", out)
-    text = out.read_text(encoding="utf-8")
-    assert "DECISIONS" in text
-    assert "merge" in text
-    assert c1[:8] in text or c1 in text
+    board = load_board(store, "r1")
+    kinds = {item["kind"] for item in board["decisions"]}
+    assert "merge" in kinds
+    assert c1 in {item["cluster_id"] for item in board["decisions"]} or any(
+        item["cluster_id"] == c1 for item in board["decisions"]
+    )
 
 
 def test_merge_is_not_a_person_and_survives_recluster(tmp_path):
@@ -366,13 +366,20 @@ def test_ignore_and_note_export_without_person(tmp_path):
     assert note_kind == "note"
     conn.close()
 
-    out = tmp_path / "review.html"
-    export_review(store, "r1", out)
-    text = out.read_text(encoding="utf-8")
-    assert "DECISIONS" in text
-    assert "not_a_person" in text
-    assert "singleton" in text
-    assert "same person split across groups" in text
+    board = load_board(store, "r1")
+    kinds = {item["kind"] for item in board["decisions"]}
+    assert "note" in kinds
+    assert "reject" in kinds
+    conn = sqlite3.connect(str(store))
+    texts = [
+        row[0]
+        for row in conn.execute("SELECT policy_json FROM decisions")
+    ]
+    conn.close()
+    blob = " ".join(texts)
+    assert "not_a_person" in blob
+    assert "singleton" in blob
+    assert "same person split across groups" in blob
 
 
 def test_name_refuses_ignored_cluster(tmp_path):

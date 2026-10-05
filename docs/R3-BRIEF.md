@@ -1,9 +1,10 @@
 # R3 Brief v2 — production shell visual + interaction contract
 
 **Status:** APPROVED (owner review 2026-09-21)  
-**Authority:** visual / interaction language for the future native shell. Does **not** replace `docs/SEM-ARCH-V1.4.md` as roadmap.  
-**Sequencing:** R2 IPC probe DONE · Artifacts 1–4 CANONICAL · human gates (C.3 / bake-off / §8.7 / Ruled-out) **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5) → native production shell **slice 1 shipped** (`semblon shell`); deepen against this brief.  
-**Still refused:** schema columns from this brief alone; Electron / Tauri / permanent Tk AppShell / CustomTkinter; promoting `review.html` to product UX; auto-promoting `tools/s8_toolkit_spike`.
+**Authority:** visual / interaction language. Does **not** replace `docs/ARCHITECTURE.md` or `docs/SEM-ARCH-V1.4.md`.  
+**Shell:** production UI is the completed PySide6 baseline (2026-10-05). This brief does not authorize a second shell.  
+**Sequencing:** R2 IPC probe DONE · Artifacts 1–4 CANONICAL · human gates (C.3 / bake-off / §8.7 / Ruled-out) **CLOSED / DONE** (`SEM-ARCH-V1.4` §I.5) → architecture migration **COMPLETE**.  
+**Still refused:** schema columns from this brief alone; Electron / Tauri / permanent Tk AppShell / CustomTkinter; promoting `review.html` to product UX; promoting `tools/s8_toolkit_spike` to the product shell.
 
 Governing constraints:
 

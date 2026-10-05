@@ -1,44 +1,40 @@
-"""Production Home launch starts Tk without patching HomeApp."""
+"""Legacy Tk launch does not monkeypatch HomeApp."""
 
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
-from semblon.lens_home import open_region_select, run_product_home
-
-
-def test_product_home_does_not_patch_home():
-    src = inspect.getsource(run_product_home)
-    assert "install(" not in src
-    assert "run_home_ui" in src
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_cli_home_uses_product_launch():
+def test_home_launch_does_not_install_lens():
+    import semblon.cli as cli
+    import semblon.home_ui as home_ui
+
+    src = inspect.getsource(cli.main)
+    home_block = src.split('cmd == "home"', 1)[1].split('cmd == "shell"', 1)[0]
+    assert "run_home_ui" in home_block
+    assert "lens_home" not in home_block
+    assert "install(" not in home_block
+    assert not (ROOT / "semblon" / "lens_home.py").exists()
+    app = (ROOT / "semblon" / "application.py").read_text(encoding="utf-8")
+    assert "home_ui" not in app
+    assert "lens_home" not in app
+    assert "_install_lens_home" not in app
+    region = inspect.getsource(home_ui.HomeApp._open_region_select)
+    assert "remember_selection" in region
+    assert "on_rect" in region
+    # The method is the implementation. Nothing assigns over it.
+    text = (ROOT / "semblon" / "home_ui.py").read_text(encoding="utf-8")
+    assert "HomeApp._open_region_select =" not in text
+    assert "lens_home" not in text
+
+
+def test_shell_is_the_forward_gui_command():
     import semblon.cli as cli
 
     src = inspect.getsource(cli.main)
-    assert "run_product_home" in src
-    assert "from semblon.lens_home import run_product_home" in src
-    # The raw Home constructor path must not be the production command.
-    home_block = src.split('cmd == "home"', 1)[1].split('cmd == "shell"', 1)[0]
-    assert "run_product_home" in home_block
-    assert "return run_home_ui" not in home_block
-
-
-def test_region_select_calls_similar_search_directly():
-    import semblon.application as application
-    import semblon.home_ui as home_ui
-
-    method = inspect.getsource(home_ui.HomeApp._open_region_select)
-    assert "open_region_select(self)" in method
-    assert "run_lens_query" not in method
-    handler = inspect.getsource(open_region_select)
-    assert "remember_selection" in handler
-    assert "run_lens_query" not in handler
-    init = inspect.getsource(application.Application.__init__)
-    assert "install(" not in init
-    assert "_install_lens_home" not in init
-    ask = inspect.getsource(home_ui.HomeApp._lens_ask_whole)
-    assert "run_lens_query" in ask
-    assert "remember_selection" not in ask
-    assert "x=" not in ask
+    shell = src.split('cmd == "shell"', 1)[1].split('cmd == "stats"', 1)[0]
+    assert "run_native_shell" in shell
+    assert "forward" in src.lower() or "PySide6" in src

@@ -33,7 +33,7 @@ STAGE_LABELS = {
     STAGE_DISCOVER: "Looking through your folder",
     STAGE_INGEST: "Reading photos",
     STAGE_CLUSTER: "Grouping faces",
-    STAGE_EXPORT: "Writing review",
+    STAGE_EXPORT: "Library ready",
 }
 
 KIND_LABELS = {

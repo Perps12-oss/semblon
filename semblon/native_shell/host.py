@@ -10,7 +10,6 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
 from semblon.application import Application
-from semblon.archive_session import ArchiveSession
 from semblon.native_shell.bridge import ShellBridge
 from semblon.native_shell.images import ArchiveImageProvider
 from semblon.native_shell.model import ArchiveModel
@@ -27,9 +26,8 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     QQuickStyle.setStyle("Basic")
     path = Path(store) if store is not None else default_store_path()
     jobs = Application(path)
-    session = ArchiveSession(path, jobs=jobs)
-    model = ArchiveModel(session)
-    bridge = ShellBridge(session, model, jobs)
+    model = ArchiveModel(jobs)
+    bridge = ShellBridge(model, jobs)
     engine = QQmlApplicationEngine()
     engine.addImageProvider("archive", ArchiveImageProvider(bridge.path_for))
     engine.rootContext().setContextProperty("shell", bridge)
@@ -40,5 +38,5 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     # Keep Python owners alive for the engine's lifetime.
     engine._semblon_bridge = bridge  # type: ignore[attr-defined]
     engine._semblon_model = model  # type: ignore[attr-defined]
-    engine._semblon_session = session  # type: ignore[attr-defined]
+    engine._semblon_session = jobs.archive  # type: ignore[attr-defined]
     return qapp, engine

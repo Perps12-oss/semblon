@@ -35,7 +35,7 @@ RESET_MANIFEST: tuple[tuple[str, str, str], ...] = (
     ("Machine last_store (default Semblon dir)", "YES*", "Cleared only when Reset hits the default-dir prefs file"),
     ("visual_cache/ sidecars", "YES", "Rebuildable visual analysis cache beside store"),
     ("*.semblon-index.npz ANN sidecar", "YES", "Derived speed index; SQLite embeddings remain authoritative"),
-    ("review.html export beside store", "YES", "Generated export figure"),
+    ("review.html beside store", "YES", "Retired artifact; delete if a leftover file is present"),
     ("home_completion schema_meta keys", "YES", "FTUE/UI completion presentation only"),
     ("In-session UI/job chrome state", "YES", "Host clears compare/filter/GPU/search/library prefs after success"),
     ("store.sqlite (media index)", "NO", "Pointers to user media; reopening library must work"),

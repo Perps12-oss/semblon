@@ -8,7 +8,8 @@ import struct
 from pathlib import Path
 
 from semblon.cluster import cluster_run
-from semblon.export import EVIDENCE_SCRIPT_ID, _stored_json, export_review
+from semblon.export import _stored_json
+from semblon.review_board import load_board
 from semblon.store import init_db
 
 _VECTOR_KEYS = frozenset({
@@ -176,7 +177,7 @@ def test_stored_json_parses_only_valid_json():
     assert _stored_json(already) is already
 
 
-def test_export_sections_and_readonly(tmp_path):
+def test_board_sections_are_readonly(tmp_path):
     store = tmp_path / "s.sqlite"
     _seed(store).close()
     cluster_run(store, "r1", eps=0.15, min_samples=2)
@@ -185,75 +186,48 @@ def test_export_sections_and_readonly(tmp_path):
     n_clusters = before.execute("SELECT COUNT(*) FROM clusters").fetchone()[0]
     before.close()
 
-    out = tmp_path / "review.html"
-    rec = export_review(store, "r1", out, strong_min_intra=0.50)
-    assert out.is_file()
-    text = out.read_text(encoding="utf-8")
-    assert "REVIEW REQUIRED" in text
-    assert "STRONG" in text
-    assert "UNASSIGNED" in text
-    assert "REJECTED" in text
-    assert "DECISIONS" in text
-    assert "not a person" in text
-    assert rec["clusters"] == 2
+    board = load_board(store, "r1")
+    assert board["run_id"] == "r1"
+    bands = {item["band"] for item in board["items"]}
+    assert "review" in bands or "strong" in bands
+    assert "unassigned" in bands
+    assert board["decisions"] == []
     conn = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
     n_dec = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
     assert n_dec == 0
     assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == n_runs
     assert conn.execute("SELECT COUNT(*) FROM clusters").fetchone()[0] == n_clusters
     conn.close()
+    assert not (tmp_path / "review.html").exists()
 
 
-def test_export_evidence_block_has_run_and_clusters_not_embeddings(tmp_path):
+def test_board_has_run_identity_and_no_embeddings(tmp_path):
     store = tmp_path / "s.sqlite"
     _seed(store).close()
     cluster_run(store, "r1", eps=0.15, min_samples=2)
-    out = tmp_path / "review.html"
-    export_review(store, "r1", out, strong_min_intra=0.50)
-    text = out.read_text(encoding="utf-8")
-    assert f'id="{EVIDENCE_SCRIPT_ID}"' in text
-    assert 'type="application/json"' in text
-    payload = _parse_evidence(text)
+    board = load_board(store, "r1")
+    assert board["run_id"] == "r1"
+    assert board["pack_id"] == "pack-a"
+    assert board["strong_min_intra"] == 0.50
+    assert board["decisions"] == []
 
-    assert set(payload) == _EVIDENCE_KEYS
-    assert payload["schema_version"] == "1"
-    assert payload["run_id"] == "r1"
-    assert payload["pack_id"] == "pack-a"
-    assert payload["started_at"] == "t"
-    assert payload["finished_at"] is None
-    assert payload["software_version"] == "0.0.1"
-    assert payload["arch"] == "x64"
-    assert payload["execution"] == "native"
-    assert payload["embedding_dim"] == 2
-    assert payload["embedding_norm"] == "l2"
-    assert payload["ort_version"] is None
-    assert payload["peak_rss_mb"] is None
-    assert payload["strong_min_intra"] == 0.50
-    assert payload["config_json"] == {}
-    assert payload["runtime_json"] == {}
-    assert payload["timings_json"] is None
-    assert set(payload["counts"]) == _COUNT_KEYS
-    assert payload["counts"]["clusters"] == 2
-    assert payload["counts"]["ok"] == 5
-    assert payload["counts"]["faces"] == 7
-    assert payload["counts"]["low_quality"] == 1
-    assert payload["counts"]["rejected"] == 1
-    assert payload["counts"]["unassigned"] == 1
-    assert payload["counts"]["decisions"] == 0
-    assert payload["decisions"] == []
-    assert isinstance(payload["counts"]["faces"], int)
-    assert len(payload["clusters"]) == 2
-    for c in payload["clusters"]:
-        assert set(c) == {"cluster_id", "strategy", "face_count", "min_intra", "status"}
-        assert "eps=0.15" in c["strategy"]
-        assert c["face_count"] == 2
-    _assert_no_vector_fields(payload)
-    # Review chrome stays; do not scan the HTML source for the word "embedding".
-    assert 'id="review"' in text
-    assert "not a person" in text
+    def _walk(obj):
+        if isinstance(obj, dict):
+            assert "embedding" not in obj
+            assert "centroid" not in obj
+            for value in obj.values():
+                _walk(value)
+        elif isinstance(obj, list):
+            for item in obj:
+                _walk(item)
+
+    _walk(board)
+    clusters = [item for item in board["items"] if item["kind"] == "cluster"]
+    assert len(clusters) == 2
+    assert all(item["face_count"] == 2 for item in clusters)
 
 
-def test_export_unassigned_is_ok_faces_without_cluster(tmp_path):
+def test_board_unassigned_is_ok_faces_without_cluster(tmp_path):
     """OK+clustered / OK+none / low_quality / rejected — only OK+none is unassigned."""
     store = tmp_path / "s.sqlite"
     _seed(store).close()
@@ -274,31 +248,19 @@ def test_export_unassigned_is_ok_faces_without_cluster(tmp_path):
     assert rows["f7"] == ("low_quality", None)
     assert rows["f6"] == ("rejected", None)
 
-    out = tmp_path / "review.html"
-    export_review(store, "r1", out, strong_min_intra=0.50)
-    text = out.read_text(encoding="utf-8")
-    counts = _parse_evidence(text)["counts"]
-    assert counts["unassigned"] == rec["unassigned"] == 1
-    assert "UNASSIGNED 1" in text
-    assert "UNASSIGNED (1)" in text
+    board = load_board(store, "r1")
+    unassigned = [item for item in board["items"] if item["band"] == "unassigned"]
+    assert len(unassigned) == rec["unassigned"] == 1
 
 
-def test_evidence_script_neutralizes_script_close():
-    from semblon.export import _evidence_script
-
-    html = _evidence_script({"path": "</script><script>alert(1)"})
-    assert "</script><script>" not in html
-    payload = _parse_evidence(html)
-    assert payload["path"] == "</script><script>alert(1)"
-
-
-def test_cli_cluster_export(tmp_path):
+def test_cli_cluster_export_views(tmp_path):
     store = tmp_path / "s.sqlite"
     _seed(store).close()
     from semblon.cli import main
 
     assert main(["cluster", "--run", "r1", "--store", str(store), "--eps", "0.15"]) == 0
-    out = tmp_path / "r.html"
-    assert main(["export", "--run", "r1", "--store", str(store), "--out", str(out)]) == 0
-    assert out.is_file()
+    dest = tmp_path / "views"
+    assert main(["export", "--run", "r1", "--store", str(store), "--views", str(dest)]) == 0
+    assert (dest / "VIEW.txt").is_file()
+    assert not (tmp_path / "review.html").exists()
     assert main(["cluster", "--run", "missing", "--store", str(store)]) == 2

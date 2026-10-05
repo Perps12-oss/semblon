@@ -5,9 +5,9 @@ FACE-002: lab eval. Precision only on frozen confirmatory sets.
 FACE-004: identify vs persons, never clusters. Unknown is valid.
 FACE-005: incremental ingest + inbox. No watcher.
 S6: memory history / together / events. Time/place are not identity.
-process: happy-path ingest -> cluster -> export review.html.
-home: double-click opens tk Home (JobEngine ingest + Review Toplevel).
-review-ui: tkinter review vertical (Name/Merge/Split/Ignore/Note).
+process: synchronous headless ingest -> cluster. Does not construct a JobEngine.
+home: double-click opens the PySide6 archive (`semblon shell`). `semblon home` is the legacy Tk surface.
+review-ui: legacy Tk review vertical (Name/Merge/Split/Ignore/Note). Not the product shell.
 S7a: video files in the ingest folder are sampled (not every frame).
 S7b: tracks --run is derived IoU+time association (not identity, not written).
 """
@@ -271,7 +271,7 @@ def main(argv: list[str] | None = None) -> int:
 
     proc = sub.add_parser(
         "process",
-        help="happy path: ingest -> cluster -> review.html (owns run_id for you)",
+        help="headless ingest -> cluster (synchronous; not a second JobEngine)",
     )
     proc.add_argument("folder", type=Path)
     proc.add_argument(
@@ -281,20 +281,9 @@ def main(argv: list[str] | None = None) -> int:
         help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
     )
     proc.add_argument(
-        "--out",
-        default=None,
-        type=Path,
-        help="review.html path (default: beside the store)",
-    )
-    proc.add_argument(
         "--reprocess",
         action="store_true",
         help="re-embed hashes already in the store (default skips them)",
-    )
-    proc.add_argument(
-        "--no-open",
-        action="store_true",
-        help="do not open review.html automatically",
     )
     proc.add_argument("--workers", type=int, default=1)
     proc.add_argument(
@@ -315,22 +304,10 @@ def main(argv: list[str] | None = None) -> int:
     clu.add_argument("--eps", type=float, default=None, help="DBSCAN eps on 1-cosine (default 0.40)")
     clu.add_argument("--min-samples", type=int, default=None)
 
-    exp = sub.add_parser("export", help="review.html and/or person view folders")
+    exp = sub.add_parser("export", help="person view folders; originals stay put")
     exp.add_argument("--run", required=True)
     exp.add_argument("--store", required=True, type=Path)
-    exp.add_argument("--out", default=None, type=Path, help="review.html")
     exp.add_argument("--views", default=None, type=Path, help="person view folders; originals stay put")
-    exp.add_argument(
-        "--strong-min-intra",
-        type=float,
-        default=None,
-        help="min_intra >= this -> STRONG (default 0.50)",
-    )
-    exp.add_argument(
-        "--classic",
-        action="store_true",
-        help="emit legacy dark dump HTML instead of Cluster Review chrome",
-    )
 
     nam = sub.add_parser("name", help="FACE-005 name a cluster, face, or derived track -> person")
     nam.add_argument("--cluster", default=None)
@@ -457,7 +434,7 @@ def main(argv: list[str] | None = None) -> int:
 
     home = sub.add_parser(
         "home",
-        help="authoritative production GUI (tk Home): folder, scan, review, people",
+        help="legacy Tk surface (folder, scan, review). Forward shell is `semblon shell`",
     )
     home.add_argument(
         "--store",
@@ -468,8 +445,8 @@ def main(argv: list[str] | None = None) -> int:
 
     shell = sub.add_parser(
         "shell",
-        help="optional Qt client; not the product Home (requires PySide6)",
-        description="Optional Qt client. Not the product Home. Requires PySide6.",
+        help="PySide6 archive shell (forward UI; requires PySide6)",
+        description="Forward PySide6 archive. One archive, Time lens, jobs via Application.",
     )
     shell.add_argument(
         "--store",
@@ -964,9 +941,7 @@ def main(argv: list[str] | None = None) -> int:
             process_folder(
                 args.folder,
                 store=args.store,
-                out=args.out,
                 reprocess=args.reprocess,
-                open_review=not args.no_open,
                 workers=args.workers,
                 observers=observers,
                 prefer_gpu=args.prefer_gpu,
@@ -1008,23 +983,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "export":
-        from semblon.export import STRONG_MIN_INTRA, ExportError, export_review, export_views
+        from semblon.export import ExportError, export_views
 
-        if args.out is None and args.views is None:
-            print("export requires --out and/or --views", file=sys.stderr)
+        if args.views is None:
+            print("export requires --views", file=sys.stderr)
             return 2
         rec: dict = {"run_id": args.run}
         try:
-            if args.out is not None:
-                rec["html"] = export_review(
-                    args.store,
-                    args.run,
-                    args.out,
-                    strong_min_intra=STRONG_MIN_INTRA if args.strong_min_intra is None else args.strong_min_intra,
-                    classic=bool(getattr(args, "classic", False)),
-                )
-            if args.views is not None:
-                rec["views"] = export_views(args.store, args.run, args.views)
+            rec["views"] = export_views(args.store, args.run, args.views)
         except ExportError as e:
             print(str(e), file=sys.stderr)
             return 2
@@ -1175,10 +1141,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "home":
-        # Production path: Lens mouse-up install, then run_home_ui (via product launch).
-        from semblon.lens_home import run_product_home
+        # Legacy Tk surface. Does not install Lens onto the class.
+        from semblon.home_ui import run_home_ui
 
-        return run_product_home(store=args.store)
+        return run_home_ui(store=args.store)
 
     if args.cmd == "shell":
         from semblon.native_shell import run_native_shell

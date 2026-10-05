@@ -1,19 +1,19 @@
 # Semblon production status
 
-**Date:** 2026-09-22  
-**Version:** 1.4.0 (`main` + this slice: Application façade, APP-1 C.2 COMPLETE, native shell slice 1)  
-**Branch intent:** full-stack architecture on the frozen identity contract.
+**Production architecture:** COMPLETE — 2026-10-05. See `docs/ARCHITECTURE.md` and the CLOSED / OPEN split in `docs/COMPLETION-MATRIX.md`.
 
-Authority: `docs/PRODUCT.md` (v1 + 2026-09-19 production amendment), `docs/CONTRACTS.md`, `docs/SEM-ARCH-V1.4.md`.  
-**Completion matrix (current):** `docs/COMPLETION-MATRIX.md`.  
-Authoritative status: `docs/COMPLETION-MATRIX.md`.
+**Date of the capability lists below:** 2026-09-22, plus the shell correction on 2026-10-05.  
+**Version:** 1.4.0  
+**Branch intent:** full-stack architecture on the frozen identity contract. The shell migration is closed. Further work is product construction, not a new architecture.
 
-Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-ARCH-V1.4.md`.
+Authority: `docs/PRODUCT.md` (v1 + amendments), `docs/CONTRACTS.md`, `docs/ARCHITECTURE.md`, `docs/SEM-ARCH-V1.4.md`.
+
+Where a bullet below says “Home”, it means the legacy Tk client or a capability that client still calls. It is not a second production architecture.
 
 ## Hierarchy
 
 1. **Identity contract** — immutable. Unknown valid; cluster ≠ person; no silent auto-ID; native/emulated honesty. FaceKit is the only identity engine.
-2. **Production capabilities** — Home/review-ui, native shell slice 1, cancel/pause, backup, integrity, person search, Canvas overlay, observation-table write-through (“schema v2” / `SCHEMA_VERSION=4`), stall watchdog on Home, FaceKitProvider on ingest, sampled video tracks.
+2. **Production capabilities** — PySide6 archive (`semblon shell`) → `Application`; incremental ingest; backup/restore; integrity; person search; observation-table write-through (“schema v2” / `SCHEMA_VERSION=4`); FaceKitProvider on ingest; sampled video tracks. Tk Home and Tk review-ui are legacy clients of the same façade.
 3. **Experimental / unavailable** — product-default `workers>1` (opt-in CLI exists; raise default only on owner measure PASS), GPU when no EP, MSI+weights, 10k run. OCR/CLIP/pose are **PRODUCTIZED (optional)** when honesty probes pass (`docs/OPTIONAL-MODALITY-STATUS.md`); still non-identity.
 
 ## COMPLETE (verified in portable pytest)
@@ -47,11 +47,14 @@ Canonical roadmap sequencing and reconciled status categories live in `docs/SEM-
 - OCR/CLIP/pose: product path ON when probes ready; not in `requirements.txt`; CLIP/pose may fail without local weights (recorded as error/unavailable items, not crashes)
 - GPU: honest EP detection + product `prefer_gpu` when CUDA/DirectML/TensorRT listed; listed ≠ smoke-tested
 
-## COMPLETE — production GUI shell
+## COMPLETE — production GUI shell (2026-10-05)
 
-- **One shipping GUI:** tk Home + `review-ui` (**#54**)
-- Inspector verbs wired (**#63**); state-triple media cards (**#64**); Rule out WIRED + Activity via `application.activity` (**#65**); Canvas init race fixed (**#66**)
-- Optional Qt `semblon shell` (#67) is KEEP optional — **not** a second product Home and **not** an open mapped blocker
+- **Production shell:** PySide6 archive (`semblon shell`) → `Application`. Installer installs `.[gui]`. Double-click `semblon.cmd` opens that shell.
+- **Application** owns `JobEngine` and the archive session. It does not import a UI toolkit.
+- Tk Home (`semblon home`) and Tk review-ui are **legacy clients only**. Do not start new product work there.
+- `review.html` / `review_chrome` are **retired**. There is no production Review page.
+- `tools/s8_toolkit_spike` and the Live overlay are outside the production shell.
+- Inspector verbs, state-triple cards, Rule out, and Activity (`application.activity`) remain domain/client capabilities (**#63–#66**). They do not make Tk the product door.
 
 ## IN FLIGHT (delegated engineering tracks)
 

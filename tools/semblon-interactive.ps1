@@ -1,4 +1,4 @@
-# Double-click entry: Semblon home (tk Home: ingest + Open Review).
+# Double-click entry: Semblon archive shell (PySide6). Legacy Tk is `semblon home`.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Root,
@@ -29,7 +29,7 @@ function Repair-SemblonInstall {
         return $false
     }
     Write-Host "Semblon package missing in this venv. Reinstalling editable install..." -ForegroundColor Yellow
-    & $PythonExe -m pip install -e $RepoRoot
+    & $PythonExe -m pip install -e "${RepoRoot}[gui]"
     if ($LASTEXITCODE -ne 0) {
         return $false
     }
@@ -112,9 +112,9 @@ function Invoke-SemblonProcess {
     exit $LASTEXITCODE
 }
 
-function Invoke-SemblonHome {
+function Invoke-SemblonShell {
     $launch = Get-SemblonLaunch
-    & $launch.Path -m semblon home
+    & $launch.Path -m semblon shell
     exit $LASTEXITCODE
 }
 
@@ -126,4 +126,4 @@ if ($Folder) {
     Invoke-SemblonProcess -PhotoFolder $Folder
 }
 
-Invoke-SemblonHome
+Invoke-SemblonShell

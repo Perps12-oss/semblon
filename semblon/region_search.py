@@ -1,7 +1,10 @@
-"""Find similar from a persisted user box using a query-time crop vector.
+"""Find similar from a persisted user box using a query-time appearance crop.
+
+This is the region Similar operation. It is not `search.search_similar`
+(stored non-face embedding neighbours) and not Lens `query_image` (capability
+report). One path: persist the box, then compare the crop in appearance space.
 
 Does not write an embedding row for the box. Does not create a sibling item.
-Uses existing library embeddings in one space (default: appearance).
 Face identity is forbidden.
 """
 

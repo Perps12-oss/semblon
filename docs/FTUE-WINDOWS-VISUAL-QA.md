@@ -1,8 +1,10 @@
 # FTUE / First-Success — Windows visual QA checklist
 
+**Superseded 2026-10-05 by the completed PySide6 production migration.** The product path is now `semblon shell`, not `semblon home`. The checklist below was written for the legacy Tk client and is kept as that record. Do not use it as the current product path.
+
 **Status:** Checklist only. Visual QA has **not** been performed by Cursor and **must** be executed by a human on Windows (native ARM64 or x64).
 
-**Product path:** `semblon home` (tk Home). Do not use Qt `semblon shell` for this checklist.
+**Product path (historical, this checklist):** `semblon home` (tk Home).
 
 **Journey under test:**
 

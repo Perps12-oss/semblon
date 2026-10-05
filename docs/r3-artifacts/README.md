@@ -1,9 +1,11 @@
 # R3 artifacts
 
+**Superseded 2026-10-05 by the completed PySide6 production migration.** The "Next" line below is historical. Do not continue a shell migration. Production architecture: `docs/ARCHITECTURE.md`. Next product work is Field + Focus on that shell.
+
 **Status:** Artifacts 1–4 CANONICAL; hierarchy frames TEST; §8.7 shell decision **CLOSED / DONE** (owner).  
-**Authority:** `docs/R3-BRIEF.md` (visual/interaction). Roadmap: `docs/SEM-ARCH-V1.4.md` (§I.5 human gates **CLOSED / DONE** — native shell authorized).  
+**Authority:** `docs/R3-BRIEF.md` (visual/interaction). Roadmap: `docs/SEM-ARCH-V1.4.md` (§I.5 human gates **CLOSED / DONE**).  
 **Date:** 2026-09-21  
-**Next:** deepen native production shell (`semblon shell` slice 1). Still refused: Electron / Tauri / permanent Tk AppShell / CustomTkinter; inventing schema columns.
+**Next (historical, 2026-09-21):** deepen native production shell (`semblon shell` slice 1). Still refused: Electron / Tauri / permanent Tk AppShell / CustomTkinter; inventing schema columns.
 
 Open the HTML frames in a browser. Spec docs are markdown. Reviewer hesitation on a collision pair = rule or rendering fails. Hierarchy frames are **TEST, not SPEC**.
 

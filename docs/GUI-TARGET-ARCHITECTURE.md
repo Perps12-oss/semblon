@@ -1,5 +1,7 @@
 # Target GUI architecture
 
+**Superseded 2026-10-05 by the completed PySide6 production migration.** The notes below are the 2026-09-28 proposal, not the current boundary. Production architecture: `docs/ARCHITECTURE.md`.
+
 **Date:** 2026-09-27. **Retest:** 2026-09-28 against `origin/main` (`646d44b`) and open branches.  
 **Status:** proposal on this branch. An implementation of the registry exists on unmerged PR #112. Does not replace `docs/SEM-ARCH-V1.4.md`.
 

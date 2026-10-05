@@ -1,5 +1,9 @@
 # Module / Capability Registry
 
+**Superseded 2026-10-05 by the completed PySide6 production migration.**
+
+**Current (2026-10-05):** `Application` owns the only `JobEngine` and the archive session. Production UI is PySide6. `lens_home.py` and `review_chrome/` are deleted. Entries below that still say Tk Home is the production GUI are historical as of the 2026-09-28 commit they cite.
+
 **Date:** 2026-09-28  
 **Commit:** `35eeb72` (`35eeb72ede013ca8d61a78661e9fa9ba1a15c1f4`, `origin/main`, merge of PR #115)  
 **Source audits:**
@@ -37,6 +41,8 @@ Fields are the same for every entry. “State at `35eeb72`” means what the sou
 ### Shell and navigation
 
 #### `product-home`
+
+*Historical entry (commit `35eeb72`). Not the 2026-10-05 production UI. `lens_home.py` is deleted. The production door is `semblon shell` → `Application`.*
 
 - **Label:** Semblon (window title). Sidebar Photos is the landing, not a separate app.
 - **What it is:** The production GUI: one Tk process started by `semblon home`.

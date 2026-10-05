@@ -16,7 +16,6 @@ from semblon.selection import (
     format_query_lines,
     lens_result_summary,
     media_file,
-    run_lens_query,
     widget_drag_to_image,
 )
 
@@ -63,6 +62,7 @@ def test_photos_path_into_lens_with_current_asset():
     assert "Ask about this photo" in src or "Ask with Lens" in src
     ask = inspect.getsource(home_ui.HomeApp._ask_with_lens)
     assert "_open_lens" in ask
+    assert "_lens_ask_whole" in ask
     tip = inspect.getsource(__import__("semblon.product_surface", fromlist=["soft_inspector_for_media"]).soft_inspector_for_media)
     assert "Open Lens" in tip
 
@@ -146,27 +146,22 @@ def test_soft_labels_exclude_capability_and_provider_jargon():
 
 def test_lens_errors_do_not_crash_home_handlers():
     import semblon.home_ui as home_ui
-    from semblon.lens_home import open_region_select
 
-    region = inspect.getsource(open_region_select)
-    assert "open_region_select(self)" in inspect.getsource(home_ui.HomeApp._open_region_select)
+    region = inspect.getsource(home_ui.HomeApp._open_region_select)
     assert "except Exception" in region
     whole = inspect.getsource(home_ui.HomeApp._lens_ask_whole)
-    assert "on_error" in whole
-    assert "show_failure_dialog" in whole or "messagebox" in whole
-    # Off UI thread for inference
-    assert "schedule" in region
-    assert "semblon-lens-query" in inspect.getsource(
-        __import__("semblon.selection", fromlist=["run_lens_query"]).run_lens_query
-    )
+    assert "query_media" in whole
+    assert "except Exception" in whole
+    assert "semblon-lens-query" in whole
 
 
 def test_lens_does_not_write_identity():
     """Identity firewall: Lens query path must not stamp faces.person_id."""
+    import semblon.application as application
     import semblon.selection as selection
 
-    src = inspect.getsource(selection.run_lens_query)
-    assert "UPDATE" not in src.lower()
+    src = inspect.getsource(application.Application.query_media)
+    assert "UPDATE" not in src
     assert "INSERT" not in src
     assert "person_id" not in src
     home_lens = inspect.getsource(
@@ -177,7 +172,9 @@ def test_lens_does_not_write_identity():
     region = inspect.getsource(selection.mount_region_select)
     assert "person_id" not in region
     assert "sqlite" not in region.lower()
-    assert "Never writes the store" in (selection.run_lens_query.__doc__ or "")
+    assert "query_image" not in inspect.getsource(
+        __import__("semblon.home_ui", fromlist=["HomeApp"]).HomeApp._ask_about_selection
+    )
 
 
 def test_review_html_not_product_ux_regression():
@@ -188,7 +185,8 @@ def test_review_html_not_product_ux_regression():
     sync = inspect.getsource(home_ui.HomeApp._sync_chrome_for_route)
     assert "btn_html" not in sync
     settings = inspect.getsource(home_ui.HomeApp._fill_settings_body)
-    assert "SETTINGS_EXPORT_REVIEW" in settings or "Open export review page" in settings
+    assert "SETTINGS_EXPORT_REVIEW" not in settings
+    assert "_open_html" not in settings
     assert "SETTINGS_ADVANCED" in settings or "Advanced" in settings
     assert "SETTINGS_DIAGNOSTICS" in settings or "Diagnostics" in settings
     show = inspect.getsource(home_ui.HomeApp._show_settings)
@@ -214,18 +212,24 @@ def test_widget_drag_and_media_file(tmp_path):
     assert media_file(store, "m1") == img
 
 
-def test_run_lens_query_sync_unreadable(tmp_path):
+def test_query_media_unreadable_does_not_invent_a_search(tmp_path):
+    from semblon.application import Application
+    from semblon.store import connect, init_db
+
     bad = tmp_path / "nope.jpg"
     bad.write_bytes(b"x")
-    captured: list[list[str]] = []
-
-    def on_lines(lines):
-        captured.append(lines)
-
-    # cv2.imread returns None for garbage — honest empty search
-    run_lens_query(bad, on_lines=on_lines, schedule=None)
-    assert captured
-    assert "Nothing was searched" in "\n".join(captured[0])
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(bad), "h", 1, 1, 1, 1),
+    )
+    conn.commit()
+    conn.close()
+    rec = Application(store).query_media("m1")
+    assert rec["status"] == "UNAVAILABLE"
+    assert "Nothing was searched" in " ".join(rec["lines"])
 
 
 def test_exposure_map_marks_lens_workspace():

@@ -1,7 +1,7 @@
 # SEM-ARCH V1.4 — Reconciled architecture and roadmap authority
 
-**Status:** AUTHORITATIVE planned-work and architecture source  
-**Date:** 2026-09-21
+**Status:** AUTHORITATIVE planned-work source. Production shell baseline: `docs/ARCHITECTURE.md` (**COMPLETE** 2026-10-05).  
+**Date:** 2026-09-21. Shell baseline recorded 2026-10-05.
 
 This file replaces stale or duplicated roadmap interpretations.
 
@@ -21,7 +21,48 @@ No second north star is allowed.
 
 This reconciliation **does not** reopen FACE gates, retune identity thresholds, or restart old handover queues.
 
-### Current product status picture
+### Production architecture baseline (2026-10-05) — COMPLETE
+
+The architecture migration is closed. The canonical statement is `docs/ARCHITECTURE.md`. It is repeated here so this file cannot be read as still choosing Tk Home.
+
+```text
+                    PySide6
+                       │
+                       ▼
+                 Application
+                       │
+        ┌──────────────┼──────────────┐
+        ▼              ▼              ▼
+      Archive         Jobs       Lens / Search
+        │              │              │
+        └──────────────┼──────────────┘
+                       ▼
+                Domain / Storage
+                       │
+                 Providers / ML
+```
+
+Constraints:
+
+- PySide6 is the production UI. New production UI work belongs there.
+- `Application` is the only application boundary. UI clients do not open storage themselves.
+- Media lookup crosses `Application`. Decoding may stay in the UI.
+- NumPy arrays are not `Application` or `JobEngine` command parameters.
+- One `JobEngine`, owned by `Application`. `semblon process` is synchronous headless ingest, not a second engine.
+- One Lens door: `Application.query_media` → `lens.query_image`.
+- One Region Similar operation: `remember_and_find_region` → `region_search.remember_and_find`.
+- `review.html` and `review_chrome` are retired. No production Review page replaces them. Board operations stay in `review_board` / `review.py`.
+- Tk Home and Tk review-ui are temporary legacy clients, not a second architecture.
+- `tools/s8_toolkit_spike` and Live overlay are research or secondary. They do not define production architecture.
+- Do not resurrect `lens_home`, `native_shell/window.py`, `review.html`, or a parallel store path.
+
+Schema, identity thresholds, and Lens behavior were not changed by this migration.
+
+The next work is product construction on that foundation: Field + Focus, archive first, then Find, People, Decision, Appearance, and Time as lenses on the same session. Not another shell migration.
+
+### Status picture as reconciled 2026-09-21 (historical)
+
+The table below is the September reconciliation. Where it names Tk Home as the production GUI, that line is historical.
 
 | Area | Reconciled status |
 |---|---|
@@ -62,14 +103,16 @@ This reconciliation **does not** reopen FACE gates, retune identity thresholds, 
 
 ---
 
-## C) Active work (immediate priority)
+## C) APP-1 boundary (closed)
 
-## C.1 APP-1 / R1 is the next merge gate
+APP-1 is closed. The notes below are the extraction record. They are not an open merge gate and they do not keep Tk as the production UI. Current seam: `docs/ARCHITECTURE.md`.
 
-APP-1 is not a "make Tk Home nicer" project.  
-APP-1 is the extraction of a stable application/job boundary from the current implementation.
+## C.1 APP-1 / R1 (closed)
 
-Target seam:
+APP-1 was not a "make Tk Home nicer" project.  
+APP-1 extracted a stable application/job boundary.
+
+Historical target seam (the "Tk now; other later" line is not current):
 
 ```text
 UI / Frontend (Tk now; PySide/WinUI/other later)
@@ -81,7 +124,7 @@ UI / Frontend (Tk now; PySide/WinUI/other later)
      Existing ingest engine
 ```
 
-Critical rule:
+Critical rule (still true):
 
 > UI observes and commands jobs.  
 > UI does not own long-running computation.
@@ -181,13 +224,17 @@ Two-axis identity language (evidence × decision), five display states including
 **Artifacts 1–4 (canonical):** `docs/r3-artifacts/README.md` — fuller pack landed (`01-state-matrix.md`, `02-state-triple.md`, `03-collision-ledger.md`, `05-bake-off-checklist.md`). Abbreviated §3 seed in the brief is **superseded**. Related cross-product + HTML frames + hierarchy TEST + decision packet indexed there.  
 **Artifact 4 / toolkit bake-off:** **CLOSED / DONE** by owner 2026-09-21 (§I.5) — native shell authorized. Criteria remain in `05-bake-off-checklist.md` for regression; JSON rows not required to proceed.  
 **§8.7 shell decision:** **CLOSED / DONE** at `docs/r3-artifacts/07-shell-decision.md` — native production shell authorized (refusals held: Electron · Tauri · permanent Tk AppShell · CustomTkinter).  
-R3 does **not** start by polishing Tk Home. **Native shell chrome against Artifacts 1–4 is the authorized next engineering path.**
+R3 does **not** start by polishing Tk Home. **Native shell chrome against Artifacts 1–4 was the authorized engineering path. Superseded 2026-10-05:** that path is complete (`docs/ARCHITECTURE.md`). Next work is product construction, not more shell chrome.
 
 Durable **Ruled out** vs Ignore/`reject`: named slice `docs/CONTRACTS-RULED-OUT.md`. **Product-wire ship claim CLOSED / DONE** by owner 2026-09-21 (§I.5). Do not invent new columns from the brief alone.
 
 ---
 
-## E) Frontend migration constraints
+## E) Frontend migration constraints (historical — closed 2026-10-05)
+
+These constraints governed the migration. They are not current instructions.
+
+**Closed:** PySide6 `semblon shell` is the production UI. `review.html` is retired, not kept. `review-ui` is a legacy client, not the production surface. `tools/s8_toolkit_spike` stays research and was not promoted into a second product shell. Do not resume this list.
 
 1. Do not build the future shell by continuously expanding Tk Home into the final architecture.  
 2. Keep Tk Home as a temporary compatibility frontend while the boundary is extracted.  
@@ -297,7 +344,7 @@ Track at each size:
 ## I.1 Do now
 
 1. ~~APP-1 boundary / C.2 pause / C.3 Windows~~ **CLOSED**
-2. ~~Production GUI shell (tk Home)~~ **COMPLETE** (#54 one-GUI · #63–#66 wire · #65 UNWIRED closed)
+2. ~~Production GUI shell~~ **COMPLETE** — PySide6 (`docs/ARCHITECTURE.md`, 2026-10-05). The September Tk Home completion (#54) is historical and superseded.
 3. **PERF ARM64 OpenCV** — unblock / probe / measure (do not silent-swap S1)
 4. **Multi-worker / scale** — harden hash workers; keep default=1 until measured
 5. **MSI code packaging** (no buffalo_l); weights remain UNAVAILABLE legally
@@ -307,8 +354,8 @@ Track at each size:
 
 - ~~R2 IPC probe~~ **DONE**
 - ~~Artifact 4 / §8.7 / C.3 / Ruled-out ship claim~~ **CLOSED / DONE** (owner §I.5) · Ruled-out chrome **WIRED** (#65)
-- ~~Production GUI shell~~ **COMPLETE** (Tk Home — not an open “native shell” blocker)
-- Optional Qt `semblon shell` remains KEEP optional (#67); do not revive a second product Home (#54)
+- ~~Production GUI shell~~ **COMPLETE** (September record was Tk Home; superseded 2026-10-05 by PySide6)
+- ~~Optional Qt `semblon shell` KEEP optional (#67)~~ **Superseded 2026-10-05.** `semblon shell` is the production UI. Do not restore Tk as the product door.
 
 ## I.3 Parallel experimental track
 
@@ -333,7 +380,7 @@ Track at each size:
 
 ## I.5 Human verification — **CLOSED / DONE** (canonical)
 
-**Owner declaration 2026-09-21:** the following gates are **CLOSED and DONE**. They are no longer blockers, deferrals, or stop-work. Native production shell work against Artifacts 1–4 is **authorized**.
+**Owner declaration 2026-09-21:** the following gates are **CLOSED and DONE**. They are no longer blockers, deferrals, or stop-work. Native production shell work against Artifacts 1–4 was **authorized** and is **complete** as of 2026-10-05 (`docs/ARCHITECTURE.md`). It is not an open ticket.
 
 Still forbidden: inventing DDL, skipping the identity firewall, or picking Electron / Tauri / permanent Tk AppShell / CustomTkinter.
 
@@ -359,9 +406,11 @@ CURRENT MAIN
   -> Feature gates WIRED 2026-09-21 (`docs/GATES.md`)
   -> Artifact 4 bake-off + §8.7 shell decision CLOSED / DONE (owner)
   -> Ruled out product-wire claim CLOSED / DONE (owner)
-  -> Production GUI shell COMPLETE (Tk Home: #54 one-GUI · #63–#66 · #65 WIRED)
-  -> Optional Qt `semblon shell` KEEP (#67) — not a second product Home
-  -> NEXT: PERF ARM64 · workers/scale harden · MSI (no weights)
+  -> Production GUI shell COMPLETE (September: Tk Home #54 · #63–#66 · #65) — historical
+  -> Optional Qt `semblon shell` KEEP (#67) — historical; not the 2026-10-05 decision
+  -> ARCHITECTURE MIGRATION COMPLETE 2026-10-05 (PySide6 → Application; review.html retired; Tk legacy only)
+  -> NEXT: product construction (Field + Focus). Not another shell.
+  -> Still open as engineering, not architecture: PERF ARM64 · workers default · MSI (no weights) — see COMPLETION-MATRIX
   -> video/live UX expansion
   -> multimodal retrieval expansion
   -> scale/performance hardening
@@ -379,11 +428,14 @@ PERF: ARM64 + workers + provider + scale
 
 ## K) Governance and document precedence
 
-1. This file is the only architecture/roadmap authority.
-2. `docs/ARCHITECTURE.md` is a pointer only.
-3. `docs/COMPLETION-MATRIX.md` is the authoritative completion / status matrix.
-4. FACE gate docs remain closed validation evidence, not active work tickets.
-5. Draft architecture text is not implementation evidence by itself.
+1. `docs/ARCHITECTURE.md` is the production architecture baseline (**COMPLETE** 2026-10-05). It closes the shell. It does not replace the frozen product contract, the schema, or this file's gate record.
+2. This file remains the planned-work and gate authority. It is not permission to reopen the shell, restore Tk Home, or resurrect `review.html`.
+3. `docs/COMPLETION-MATRIX.md` is the closed-vs-open status matrix.
+4. `docs/PRODUCT.md` and `docs/CONTRACTS.md` remain product and schema authority.
+5. FACE gate docs remain closed validation evidence, not active work tickets.
+6. Where an older section of this file names Tk Home as the production GUI, calls Qt optional, or tells you to keep `review.html`, the 2026-10-05 baseline wins.
+
+Do not resurrect Tk Home as the product door, `review.html`, `review_chrome`, `lens_home`, `native_shell/window.py`, or a parallel application/storage path. The production architecture is PySide6 → Application.
 
 ---
 
@@ -391,6 +443,7 @@ PERF: ARM64 + workers + provider + scale
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.12 | 2026-10-05 | Production shell baseline closed: PySide6 → Application. `review.html` retired. Tk legacy only. Precedence points at `docs/ARCHITECTURE.md` for the shell. |
 | V1.4.11 | 2026-09-22 | Retire superseded parallel docs (historical SEM-ARCH / maturity / audit / verify playbook); COMPLETION-MATRIX is status authority. |
 | V1.4.9 | 2026-09-22 | APP-1 C.3 **VERIFIED ON WINDOWS** (owner live evidence); APP-1 **CLOSED**; next = deepen native shell. |
 | V1.4.8 | 2026-09-22 | APP-1 C.2 COMPLETE (`Application` pause/unpause); completion matrix; native shell slice 1 (`semblon shell`); next = deepen shell. |

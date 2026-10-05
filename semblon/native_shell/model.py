@@ -1,15 +1,15 @@
 """Windowed media model for the Field.
 
 rowCount is the archive size. QML GridView builds delegates only for the
-viewport. Each data() call fills a small cache through ArchiveSession.window,
-which is a SQL LIMIT/OFFSET slice.
+viewport. Each data() call fills a small cache through Application.archive_window,
+which is a SQL LIMIT/OFFSET slice owned by the application archive session.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
 
-from semblon.archive_session import ArchiveSession, MediaRef
+from semblon.application import Application, MediaRef
 
 _WINDOW = 120
 
@@ -20,16 +20,16 @@ _NAME = Qt.ItemDataRole.UserRole + 4
 
 
 class ArchiveModel(QAbstractListModel):
-    def __init__(self, session: ArchiveSession):
+    def __init__(self, app: Application):
         super().__init__()
-        self._session = session
+        self._app = app
         self._count = 0
-        self._cache: list[MediaRef] = []
+        self._cache: list = []
         self._cache_start = -1
 
     def reload(self) -> None:
         self.beginResetModel()
-        self._count = self._session.count()
+        self._count = self._app.archive_count()
         self._cache = []
         self._cache_start = -1
         self.endResetModel()
@@ -68,7 +68,7 @@ class ArchiveModel(QAbstractListModel):
             return None
         if self._cache_start < 0 or row < self._cache_start or row >= self._cache_start + len(self._cache):
             start = max(0, row - 40)
-            self._cache = self._session.window(start, _WINDOW)
+            self._cache = self._app.archive_window(start, _WINDOW)
             self._cache_start = start
         local = row - self._cache_start
         if local < 0 or local >= len(self._cache):

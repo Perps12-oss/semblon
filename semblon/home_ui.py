@@ -1,13 +1,9 @@
-"""Home shell — Library | Workspace/Canvas | Inspector (R3-BRIEF §4 IA).
+"""Legacy Tk Home shell.
 
-Opaque tkinter. No Mica. No second PySide Home. Ingest goes through JobEngine —
-job control, not an application lock. Review is a Toplevel on this root; Home
-keeps pumping events. Cooperative cancel and pause stop ingest between files
-(not mid-file). Progress text comes from process on_event only — no invented percent.
-
-Canvas is first-class in the workspace pane (observation overlay). Canvas never
-writes faces.person_id. Toolkit bake-off winner is still human-named (E.5: no
-PySide promote).
+Not the application architecture. PySide6 (`semblon shell`) is the forward
+shell. This window is a client of Application: it submits jobs and draws
+widgets. It does not construct a second JobEngine and it does not monkeypatch
+its own class.
 """
 
 from __future__ import annotations
@@ -16,7 +12,6 @@ import json
 import queue
 import sqlite3
 import threading
-import webbrowser
 from pathlib import Path
 
 try:
@@ -27,7 +22,9 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - host without li
     filedialog = messagebox = simpledialog = ttk = None
 
 from semblon.ui_copy import friendly_exception
-from semblon.jobs import JobBusy, JobEngine
+from semblon.jobs import JobBusy
+from semblon.job_controls import HOME_CONTROLS_ALWAYS_ON, home_control_states
+from semblon.activity_surface import read_activity_snapshot
 from semblon.ui_prefs import (
     load_library_filter,
     load_prefer_gpu,
@@ -245,18 +242,6 @@ def shell_is_condensed(width: int) -> bool:
     """Historical condensed-rail probe. Model D uses compact header only."""
     return int(width) < CONDENSED_BELOW
 
-# Job control, not an application lock. These stay usable while ingest runs.
-# review.html / Canvas are not product chrome keys (secondary / export only).
-HOME_CONTROLS_ALWAYS_ON = (
-    "review",
-    "people",
-    "unknown",
-    "activity",
-    "settings",
-    "search",
-    "live",
-)
-
 
 def resolve_home_observers() -> str:
     """Product observer CSV: base + optional modalities when MODALITY_PRODUCT + ready."""
@@ -372,32 +357,6 @@ def resolve_home_prefer_gpu() -> bool:
     from semblon.engine import product_prefer_gpu
 
     return product_prefer_gpu()
-
-
-def home_control_states(
-    *,
-    job_running: bool,
-    resume_ready: bool,
-    job_paused: bool = False,
-) -> dict[str, str]:
-    """NORMAL/DISABLED for each Home control while a job is running.
-
-    Folder / Pause / Resume / Cancel are job controls. Review / People / Search are not.
-    Resume while paused = unpause the same job. Resume while idle = resume-after-cancel.
-    """
-    on, off = "normal", "disabled"
-    states = {name: on for name in HOME_CONTROLS_ALWAYS_ON}
-    if job_running:
-        states["folder"] = off
-        states["cancel"] = on
-        states["pause"] = off if job_paused else on
-        states["resume"] = on if job_paused else off
-    else:
-        states["folder"] = on
-        states["pause"] = off
-        states["cancel"] = off
-        states["resume"] = on if resume_ready else off
-    return states
 
 
 if tk is None:
@@ -733,78 +692,6 @@ def format_library_lines(store: Path, *, source_type: str | None = None) -> list
     return lines
 
 
-def read_activity_snapshot(store: Path, run_id: str) -> dict:
-    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=5000")
-    try:
-        groups_rows = conn.execute(
-            """
-            SELECT kind, member_count, status
-            FROM observation_groups
-            WHERE run_id=?
-            ORDER BY rowid DESC
-            LIMIT 12
-            """,
-            (run_id,),
-        ).fetchall()
-        rel_rows = conn.execute(
-            """
-            SELECT kind, src_person_id, evidence_json, confirmed
-            FROM relationships
-            WHERE run_id=?
-            ORDER BY rowid DESC
-            LIMIT 12
-            """,
-            (run_id,),
-        ).fetchall()
-        event_rows = conn.execute(
-            """
-            SELECT label, t_start, t_end, folder
-            FROM events
-            WHERE run_id=?
-            ORDER BY rowid DESC
-            LIMIT 12
-            """,
-            (run_id,),
-        ).fetchall()
-        track_count = int(
-            conn.execute("SELECT COUNT(*) FROM tracks WHERE run_id=?", (run_id,)).fetchone()[0]
-        )
-    finally:
-        conn.close()
-
-    groups = [dict(r) for r in groups_rows]
-    relationships: list[dict] = []
-    for row in rel_rows:
-        rel = dict(row)
-        evidence = {}
-        raw = rel.get("evidence_json")
-        if raw:
-            try:
-                evidence = json.loads(raw)
-            except json.JSONDecodeError:
-                evidence = {}
-        rel["name_a"] = evidence.get("name_a") or evidence.get("src_name")
-        rel["name_b"] = evidence.get("name_b") or evidence.get("dst_name")
-        ids = evidence.get("person_ids")
-        if isinstance(ids, list):
-            if not rel.get("src_person_id") and len(ids) > 0:
-                rel["src_person_id"] = ids[0]
-            rel["other_person_ids"] = [str(i) for i in ids[1:] if i]
-        else:
-            rel["other_person_ids"] = []
-        relationships.append(rel)
-
-    events = [dict(r) for r in event_rows]
-    return {
-        "groups": groups,
-        "relationships": relationships,
-        "events": events,
-        "track_count": track_count,
-    }
-
-
 def json_fallback(rec: dict) -> str:
     return json.dumps(rec, indent=2)[:4000]
 
@@ -910,7 +797,10 @@ class HomeApp:
             save_last_store(self.store)
         except Exception:  # noqa: BLE001 — continuity must not block launch
             pass
-        self.engine = JobEngine(self.store)
+        from semblon.application import Application
+
+        self.app = Application(self.store)
+        self.engine = self.app.engine
         from semblon.gui_registry import default_registry
 
         self._registry = default_registry()
@@ -1016,19 +906,16 @@ class HomeApp:
             self._gradient = None
         self._shell = tk.Frame(self.root, bg=BG_CANVAS)
         self._shell.pack(fill=tk.BOTH, expand=True)
-        self._theme_band = tk.Canvas(self._shell, height=72, highlightthickness=0, bd=0)
+        self._theme_band = tk.Canvas(self._shell, height=72, highlightthickness=0, bd=0, bg=BG_CANVAS)
         self._theme_band.pack(fill=tk.X)
+        self._theme_band.bind("<Configure>", self._on_theme_band_configure)
+        self._theme_band_width = 0
         self._main = ttk.Frame(self._shell)
         self._main.pack(fill=tk.BOTH, expand=True)
         try:
-            from semblon.atmosphere import get_atmosphere
-            from semblon.atmosphere_render import paint_vertical_gradient
-            from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
+            from semblon.atmosphere_render import active_atmosphere_id
 
-            spec = get_atmosphere(resolve_atmosphere_id(load_theme_mode(self.store)))
-            paint_vertical_gradient(self._theme_band, spec.surface, spec.mist or spec.accent, 72)
-            if self._gradient is not None:
-                self._gradient.set_stops(spec.surface, spec.mist or spec.accent)
+            self._paint_theme_gradient(active_atmosphere_id())
         except Exception:  # noqa: BLE001
             pass
         self._sidebar = None  # no permanent MAIN sidebar (docs/SHELL-IA.md)
@@ -1309,7 +1196,7 @@ class HomeApp:
             on_select=self._on_canvas_select,
             show_chrome=True,
             on_image_open=self._on_image_open,
-            job_engine=self.engine,
+            application=self.app,
         )
         self._canvas_ws._on_compare_toggle = self._toggle_compare_candidate
         if hasattr(self._canvas_ws, "set_density"):
@@ -1530,6 +1417,7 @@ class HomeApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._drain_queue)
+        self._restyle_native_surfaces()
         self._restore_home_lifecycle()
 
     def _set_inspector(self, title: str, lines: list[str]) -> None:
@@ -1614,10 +1502,86 @@ class HomeApp:
             self._sel_heading.set(title)
 
     def _open_region_select(self) -> None:
-        """Draw a region, then search similar photos. Not a whole-photo ask."""
-        from semblon.lens_home import open_region_select
+        """Draw a region, persist the box, and find similar photos.
 
-        open_region_select(self)
+        This is the production region command. It is a real method — nothing
+        replaces it on the class at launch.
+        """
+        from semblon.lens_release import remember_selection
+        from semblon.selection import LENS_BUSY, media_file, open_region_window
+
+        path = media_file(self.store, getattr(self, "_insp_media_id", None))
+        if path is None:
+            self._set_inspector(
+                "Details",
+                [
+                    "Open a photo first.",
+                    "Then select something to look at.",
+                    "Nothing was searched.",
+                ],
+            )
+            self._set_inspector_collapsed(False)
+            return
+
+        def done(lines: list[str]) -> None:
+            try:
+                self._set_inspector("Details", lines or ["Nothing was searched."])
+                self._set_inspector_collapsed(False)
+            except Exception:  # noqa: BLE001
+                pass
+            summary = getattr(self, "_last_lens_result", None)
+            if summary:
+                try:
+                    self._apply_find_similar_result(summary)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        def on_rect(rect: dict) -> None:
+            media_id = getattr(self, "_insp_media_id", None)
+            if not media_id:
+                done(["Open a photo first.", "Nothing was searched."])
+                return
+            rec = remember_selection(
+                self.store,
+                media_id=str(media_id),
+                image_path=path,
+                x=int(rect["x"]),
+                y=int(rect["y"]),
+                w=int(rect["w"]),
+                h=int(rect["h"]),
+                app=self.app,
+            )
+            self._last_lens_result = rec.get("summary") or {}
+            self._last_lens_rect = {
+                "x": int(rect["x"]),
+                "y": int(rect["y"]),
+                "w": int(rect["w"]),
+                "h": int(rect["h"]),
+                "kept": True,
+            }
+            self._remember_user_region_id(rec)
+            done(rec.get("lines") or ["No similar images found yet."])
+            try:
+                self._sync_discovery_actions()
+            except Exception:  # noqa: BLE001
+                pass
+
+        def on_busy(flag: bool) -> None:
+            self._lens_busy = bool(flag)
+            if hasattr(self, "_lens_status"):
+                try:
+                    self._lens_status.set(LENS_BUSY if flag else "")
+                except Exception:  # noqa: BLE001
+                    pass
+
+        open_region_window(
+            self.root,
+            path,
+            done,
+            on_busy=on_busy,
+            schedule=lambda fn: self.root.after(0, fn),
+            on_rect=on_rect,
+        )
 
     def _set_lens_processing(self, busy: bool) -> None:
         """Drive Find Similar / Lens controls into PROCESSING visual state."""
@@ -1632,7 +1596,7 @@ class HomeApp:
                     pass
 
     def _ask_with_lens(self) -> None:
-        """Photos/Videos → Lens with the current asset (clear product path)."""
+        """Inspector: ask about the open photo. Runs the whole-frame query."""
         media_id = getattr(self, "_insp_media_id", None)
         if not media_id:
             self._set_inspector(
@@ -1644,6 +1608,7 @@ class HomeApp:
             )
             return
         self._open_lens()
+        self._lens_ask_whole()
 
     def _selection_query_rect(self) -> dict | None:
         """Current Discover/Canvas/last-remembered rectangle, if any."""
@@ -1675,12 +1640,7 @@ class HomeApp:
 
     def _ask_about_selection(self) -> None:
         """Capability query on the selected region — distinct from Find Similar."""
-        from semblon.selection import (
-            LENS_BUSY,
-            lens_result_summary,
-            media_file,
-            run_lens_query,
-        )
+        from semblon.selection import LENS_BUSY, media_file
 
         media_id = getattr(self, "_insp_media_id", None)
         path = media_file(self.store, media_id)
@@ -1697,49 +1657,38 @@ class HomeApp:
             self._set_inspector_collapsed(False)
             return
 
-        def done(lines: list[str]) -> None:
+        def done(lines: list[str], summary: dict | None) -> None:
             try:
                 self._set_inspector("Ask", lines or ["Nothing was searched."])
                 self._set_inspector_collapsed(False)
             except Exception:  # noqa: BLE001
                 pass
+            if summary is not None:
+                self._last_lens_result = summary
 
-        def on_report(report) -> None:
-            self._last_lens_result = lens_result_summary(report)
-
-        def on_busy(flag: bool) -> None:
-            self._lens_busy = bool(flag)
+        def work() -> None:
             try:
                 if hasattr(self, "_lens_status"):
-                    self._lens_status.set(LENS_BUSY if flag else "")
-            except Exception:  # noqa: BLE001
-                pass
+                    self.root.after(0, lambda: self._lens_status.set(LENS_BUSY))
+                rec = self.app.query_media(str(media_id), dict(rect))
+            except Exception as exc:  # noqa: BLE001
+                self.root.after(
+                    0,
+                    lambda: done(
+                        ["Semblon could not finish looking.", "Nothing was searched.", str(exc)],
+                        None,
+                    ),
+                )
+                return
+            lines = list(rec.get("lines") or ["Nothing was searched."])
+            self.root.after(0, lambda: done(lines, rec))
 
-        def on_error(exc: BaseException) -> None:
-            self._set_inspector(
-                "Ask",
-                ["Semblon could not finish looking.", "Nothing was searched.", str(exc)],
-            )
-            self._set_inspector_collapsed(False)
-
-        run_lens_query(
-            path,
-            x=int(rect["x"]),
-            y=int(rect["y"]),
-            w=int(rect["w"]),
-            h=int(rect["h"]),
-            schedule=lambda fn: self.root.after(0, fn),
-            on_lines=done,
-            on_report=on_report,
-            on_busy=on_busy,
-            on_error=on_error,
-        )
+        threading.Thread(target=work, name="semblon-lens-query", daemon=True).start()
 
     def _name_saved_region(self) -> None:
         """Human label on a persisted user region — not a person."""
         from tkinter import simpledialog
 
-        from semblon.application import Application
         from semblon.user_region import RegionError
 
         item_id = getattr(self, "_last_user_region_id", None)
@@ -1757,8 +1706,7 @@ class HomeApp:
         if not label or not str(label).strip():
             return
         try:
-            app = Application(self.store)
-            rec = app.name_region(str(item_id), str(label).strip())
+            rec = self.app.name_region(str(item_id), str(label).strip())
         except RegionError as e:
             messagebox.showerror("Semblon", str(e))
             return
@@ -1865,15 +1813,11 @@ class HomeApp:
         self._last_lens_result: dict | None = getattr(self, "_last_lens_result", None)
 
     def _lens_ask_whole(self) -> None:
-        """Query the full image with available understanding (backend decides)."""
-        from semblon.selection import (
-            LENS_BUSY,
-            lens_result_summary,
-            media_file,
-            run_lens_query,
-        )
+        """Query the full image through Application.query_media."""
+        from semblon.selection import LENS_BUSY, media_file
 
-        path = media_file(self.store, getattr(self, "_insp_media_id", None))
+        media_id = getattr(self, "_insp_media_id", None)
+        path = media_file(self.store, media_id)
         if path is None:
             self._set_inspector(
                 "Lens",
@@ -1884,51 +1828,54 @@ class HomeApp:
             )
             return
 
-        def done(lines: list[str]) -> None:
+        def done(lines: list[str], summary: dict | None) -> None:
             try:
                 self._set_inspector("Lens", lines or ["Nothing was searched."])
             except Exception:  # noqa: BLE001
                 pass
-            self._refresh_lens_workspace()
-
-        def on_report(report) -> None:
-            self._last_lens_result = lens_result_summary(report)
-            if hasattr(self, "_refresh_library_shell"):
-                try:
-                    self._refresh_library_shell()
-                except Exception:  # noqa: BLE001
-                    pass
-
-        def on_busy(flag: bool) -> None:
-            self._lens_busy = bool(flag)
+            if summary is not None:
+                self._last_lens_result = summary
+                if hasattr(self, "_refresh_library_shell"):
+                    try:
+                        self._refresh_library_shell()
+                    except Exception:  # noqa: BLE001
+                        pass
+            self._lens_busy = False
+            self._set_lens_processing(False)
             try:
-                self._lens_status.set(LENS_BUSY if flag else "")
-                state = tk.DISABLED if flag else tk.NORMAL
-                self.btn_lens_region.configure(state=state)
-                self.btn_lens_whole.configure(state=state)
+                if hasattr(self, "_lens_status"):
+                    self._lens_status.set("")
+                self.btn_lens_region.configure(state=tk.NORMAL)
+                self.btn_lens_whole.configure(state=tk.NORMAL)
             except Exception:  # noqa: BLE001
                 pass
-            self._set_lens_processing(flag)
-
-        def on_error(exc: BaseException) -> None:
-            try:
-                show_failure_dialog(self.root, exc, tk_mod=tk, ttk_mod=ttk)
-            except Exception:  # noqa: BLE001
-                messagebox.showerror("Semblon", "Semblon could not finish looking.")
-            self._set_inspector(
-                "Lens",
-                ["Semblon could not finish looking.", "Nothing was searched."],
-            )
             self._refresh_lens_workspace()
 
-        run_lens_query(
-            path,
-            schedule=lambda fn: self.root.after(0, fn),
-            on_lines=done,
-            on_report=on_report,
-            on_busy=on_busy,
-            on_error=on_error,
-        )
+        def work() -> None:
+            try:
+                rec = self.app.query_media(str(media_id))
+            except Exception as exc:  # noqa: BLE001
+                self.root.after(
+                    0,
+                    lambda: self._set_inspector(
+                        "Lens",
+                        ["Semblon could not finish looking.", "Nothing was searched.", str(exc)],
+                    ),
+                )
+                return
+            lines = list(rec.get("lines") or ["Nothing was searched."])
+            self.root.after(0, lambda: done(lines, rec))
+
+        self._lens_busy = True
+        self._set_lens_processing(True)
+        try:
+            if hasattr(self, "_lens_status"):
+                self._lens_status.set(LENS_BUSY)
+            self.btn_lens_region.configure(state=tk.DISABLED)
+            self.btn_lens_whole.configure(state=tk.DISABLED)
+        except Exception:  # noqa: BLE001
+            pass
+        threading.Thread(target=work, name="semblon-lens-query", daemon=True).start()
 
     def _refresh_lens_workspace(self) -> None:
         """Repaint Lens pane from current media + last result + honesty rows."""
@@ -3811,10 +3758,7 @@ class HomeApp:
                 session.set_query(media_id, rect)
 
         if rect is None:
-            # Honest fallback: draw a region (still lands results on Memory Canvas).
-            from semblon.lens_home import open_region_select
-
-            open_region_select(self)
+            self._open_region_select()
             return
 
         try:
@@ -4441,8 +4385,8 @@ class HomeApp:
         if hasattr(self, "_footer_ready"):
             self._footer_ready.set(
                 footer_status_word(
-                    busy=bool(self.engine.busy),
-                    paused=bool(self.engine.paused),
+                    busy=bool(self.app.busy),
+                    paused=bool(self.app.paused),
                 )
             )
         if hasattr(self, "_library_status"):
@@ -4523,7 +4467,7 @@ class HomeApp:
         """Push soft processing copy into the PROCESSING workspace."""
         from semblon.product_surface import processing_home_snapshot
 
-        paused = bool(getattr(self, "engine", None) and self.engine.paused)
+        paused = bool(getattr(self, "app", None) and self.app.paused)
         pace = getattr(self, "_scan_pace", None)
         snap = processing_home_snapshot(ev, paused=paused, pace=pace)
         if hasattr(self, "_proc_headline"):
@@ -4766,7 +4710,7 @@ class HomeApp:
         act = getattr(self, "btn_activity", None)
         if act is None:
             return
-        busy = bool(getattr(self.engine, "busy", False))
+        busy = bool(getattr(self.app, "busy", False))
         try:
             if hasattr(act, "configure"):
                 act.configure(text="Activity · scanning" if busy else "Activity")
@@ -4788,7 +4732,7 @@ class HomeApp:
         if cue is None:
             self._sync_activity_chrome()
             return
-        busy = bool(getattr(self.engine, "busy", False))
+        busy = bool(getattr(self.app, "busy", False))
         if busy and not cue.active:
             from semblon.atmosphere_render import active_atmosphere_id
 
@@ -4807,6 +4751,34 @@ class HomeApp:
 
 
 
+    def _on_theme_band_configure(self, event) -> None:
+        """Repaint the band at the real width. The fill comes from the active theme."""
+        band = getattr(self, "_theme_band", None)
+        if band is None or event.widget is not band:
+            return
+        width = int(event.width)
+        if width < 2 or width == getattr(self, "_theme_band_width", 0):
+            return
+        self._theme_band_width = width
+        from semblon.atmosphere_render import active_atmosphere_id
+
+        self._paint_theme_gradient(active_atmosphere_id())
+
+    def _restyle_native_surfaces(self) -> None:
+        """Tk widgets keep the color they were given. Reapply the live palette."""
+        from semblon.ui_theme import style_listbox
+
+        box = getattr(self, "_sel_list", None)
+        if box is not None:
+            style_listbox(box)
+        body = getattr(self, "_inspector_body", None)
+        canvas = getattr(body, "_canvas", None) if body is not None else None
+        if canvas is not None:
+            try:
+                canvas.configure(bg=BG_SURFACE)
+            except tk.TclError:
+                pass
+
     def _paint_theme_gradient(self, aid: str) -> None:
         from semblon.atmosphere import get_atmosphere
 
@@ -4818,6 +4790,11 @@ class HomeApp:
         if band is not None:
             from semblon.atmosphere_render import paint_vertical_gradient
 
+            try:
+                band.configure(bg=spec.surface)
+            except tk.TclError:
+                pass
+            self._theme_band_width = max(int(band.winfo_width()), 0)
             paint_vertical_gradient(band, spec.surface, spec.mist or spec.accent, 72)
         try:
             self._shell.configure(bg=spec.surface)
@@ -4917,6 +4894,7 @@ class HomeApp:
 
     def _restyle_chrome(self) -> None:
         """Repaint surfaces that captured colors when they were created."""
+        self._restyle_native_surfaces()
         try:
             self.root.configure(bg=BG_CANVAS)
         except tk.TclError:
@@ -5233,10 +5211,10 @@ class HomeApp:
 
     def _toggle_pause_resume(self) -> None:
         """Single Pause/Resume control adjacent to the progress bar."""
-        if self.engine.paused:
+        if self.app.paused:
             self._resume()
             return
-        if self.engine.busy:
+        if self.app.busy:
             self._request_pause()
             return
         # Idle resume-after-cancel
@@ -5335,19 +5313,19 @@ class HomeApp:
         self._refresh_job_controls()
 
     def _refresh_job_controls(self) -> None:
-        busy = self.engine.busy
+        busy = self.app.busy
         dup_busy = self._duplicate_scan_busy()
         self._busy = busy
         states = home_control_states(
             job_running=busy,
-            job_paused=self.engine.paused,
+            job_paused=self.app.paused,
             resume_ready=self._resume_ready,
         )
         # Pause + Resume share one toggle widget adjacent to the progress bar.
         # Duplicate scan reuses Cancel (backend want_cancel) but not Pause —
         # duplicates.py has no pause gates.
         if busy:
-            if self.engine.paused:
+            if self.app.paused:
                 self.btn_pause_toggle.configure(text="Resume", state=tk.NORMAL)
             else:
                 self.btn_pause_toggle.configure(text="Pause", state=tk.NORMAL)
@@ -5387,7 +5365,7 @@ class HomeApp:
                 pass
         if hasattr(self, "btn_proc_pause"):
             if busy:
-                if self.engine.paused:
+                if self.app.paused:
                     self.btn_proc_pause.configure(text="Resume", state=tk.NORMAL)
                 else:
                     self.btn_proc_pause.configure(text="Pause", state=tk.NORMAL)
@@ -5410,9 +5388,9 @@ class HomeApp:
                 self._show_processing_home()
 
     def _request_pause(self) -> None:
-        if not self.engine.busy or self.engine.paused:
+        if not self.app.busy or self.app.paused:
             return
-        self.engine.pause()
+        self.app.pause_job()
         self.status.set("Paused")
         self._refresh_job_controls()
         self._refresh_processing_home(getattr(self, "_last_progress_event", None))
@@ -5425,11 +5403,11 @@ class HomeApp:
             except Exception:  # noqa: BLE001
                 pass
             self._refresh_job_controls()
-            if not self.engine.busy:
+            if not self.app.busy:
                 return
-        if not self.engine.busy:
+        if not self.app.busy:
             return
-        self.engine.cancel()
+        self.app.cancel_job()
         self.status.set("Cancelling…")
         self._refresh_job_controls()
 
@@ -5485,7 +5463,7 @@ class HomeApp:
                 self._q.put(("error", result.error or RuntimeError("ingest failed")))
 
         try:
-            self.engine.submit_ingest(
+            self.app.submit_ingest(
                 path,
                 resume=resume,
                 observers=observers,
@@ -5507,7 +5485,7 @@ class HomeApp:
         from semblon.visual.persist import should_submit_visual
 
         if not should_submit_visual(
-            busy=bool(self.engine.busy),
+            busy=bool(self.app.busy),
             items=board.get("items") or [],
             media_id=media_id,
             run_id=run_id,
@@ -5517,11 +5495,9 @@ class HomeApp:
         view_w = int(getattr(ws, "_nw", 0) or 0) or None
         view_h = int(getattr(ws, "_nh", 0) or 0) or None
         try:
-            self.engine.submit_visual(
+            self.app.submit_visual(
                 media_id=media_id,
-                image=image,
                 run_id=run_id,
-                color="bgr",
                 view_w=view_w,
                 view_h=view_h,
                 on_event=self._on_visual_progress,
@@ -5556,7 +5532,7 @@ class HomeApp:
             return
 
     def _choose_folder(self) -> None:
-        if self.engine.busy:
+        if self.app.busy:
             return
         folder = filedialog.askdirectory(title="Choose a folder of photos for Semblon")
         if not folder:
@@ -5565,12 +5541,12 @@ class HomeApp:
 
     def _resume(self) -> None:
         # Same-job unpause vs resume-after-cancel (new submit with resume=True).
-        if self.engine.paused:
-            self.engine.unpause()
+        if self.app.paused:
+            self.app.unpause_job()
             self.status.set("Resuming job…")
             self._refresh_job_controls()
             return
-        if self.engine.busy or self._last_folder is None:
+        if self.app.busy or self._last_folder is None:
             return
         self._start_process(self._last_folder, resume=True)
 
@@ -5587,7 +5563,7 @@ class HomeApp:
                     )
                     from semblon.scan_present import scan_card
 
-                    paused = bool(self.engine.paused)
+                    paused = bool(self.app.paused)
                     self._last_progress_event = payload
                     if not paused and getattr(self, "_scan_pace", None) is not None:
                         self._scan_pace.observe(payload.files_processed, payload.elapsed_s)
@@ -5709,13 +5685,13 @@ class HomeApp:
                         return
         except queue.Empty:
             pass
-        if self.engine.busy:
-            if self.engine.paused:
+        if self.app.busy:
+            if self.app.paused:
                 self.status.set("Paused")
                 if self._nav in {"home", "library", "photos", "videos"}:
                     self._refresh_processing_home()
             stalled = self._wd.check()
-            if stalled is not None and stalled.kind == KIND_STALLED and not self.engine.paused:
+            if stalled is not None and stalled.kind == KIND_STALLED and not self.app.paused:
                 from semblon.product_surface import product_status_text
 
                 self.status.set(product_status_text(stalled))
@@ -5739,7 +5715,6 @@ class HomeApp:
                 break
         try:
             # Toplevel on Home's root. Home keeps pumping events. No nested mainloop.
-            # Shared Cluster Review chrome when WebView exists; else tk + review.html.
             rec = run_review_ui(
                 store=self.store,
                 run_id=self._last_run_id,
@@ -5764,19 +5739,6 @@ class HomeApp:
                     )
                 return
             self._show_failure(e)
-
-    def _open_html(self) -> None:
-        path = self._last_review_html
-        if path is None or not path.is_file():
-            from semblon.process import default_review_out
-
-            path = default_review_out(self.store)
-        if not path.is_file():
-            messagebox.showinfo(
-                "Semblon", "No review page yet. Add a photo folder first."
-            )
-            return
-        webbrowser.open(path.resolve().as_uri())
 
     def _list_window(self, title: str, lines: list[str]) -> None:
         """Legacy helper: route into Inspector (no floating list-only windows)."""
@@ -6218,7 +6180,7 @@ class HomeApp:
         if not q:
             messagebox.showinfo("Semblon", "Type a person name or text from a photo.")
             return
-        if self.engine.busy:
+        if self.app.busy:
             # State-aware: library still analysing — don't fail silently.
             self._set_inspector("Search", search_library_analysing().as_lines())
             if not self.store.is_file():
@@ -6243,7 +6205,7 @@ class HomeApp:
             # Still try text/OCR over owned memory — people search is not the only door.
             extra: list[str] = []
             action_state = None
-            if self.engine.busy:
+            if self.app.busy:
                 extra.extend(search_library_analysing().as_lines())
             else:
                 action_state = search_no_named_people()
@@ -6265,7 +6227,7 @@ class HomeApp:
         except SearchError as e:
             if is_expected_condition(e):
                 lines = search_no_matches(q).as_lines()
-                if self.engine.busy:
+                if self.app.busy:
                     lines = search_library_analysing().as_lines() + [""] + lines
                 self._present_search(
                     {"kind": "person", "query": q, "count": 0, "items": []},
@@ -6275,7 +6237,7 @@ class HomeApp:
                 self._show_failure(e)
             return
         extra_busy: list[str] | None = None
-        if self.engine.busy and int(rec.get("count") or 0) == 0:
+        if self.app.busy and int(rec.get("count") or 0) == 0:
             extra_busy = search_library_analysing().as_lines()
         # Broader lookup when people miss: OCR/text over owned memory (not ANN theatre).
         text_rec = None
@@ -6367,7 +6329,6 @@ class HomeApp:
             SETTINGS_ADVANCED_HINT,
             SETTINGS_DIAGNOSTICS,
             SETTINGS_DIAGNOSTICS_HINT,
-            SETTINGS_EXPORT_REVIEW,
             SETTINGS_GPU,
             SETTINGS_GRID_DENSITY,
             SETTINGS_OPEN_DIAGNOSTICS,
@@ -6623,14 +6584,6 @@ class HomeApp:
             ttk.Label(
                 row, text=keys, font=META, foreground=TEXT_SECONDARY
             ).pack(side=tk.RIGHT)
-        _button(
-            advanced,
-            SETTINGS_EXPORT_REVIEW,
-            self._open_html,
-            kind="tertiary",
-        ).pack(anchor=tk.W, pady=(SP_12, 0))
-
-        # Recovery — on-demand under Advanced (exposure ladder). Not everyday.
         recovery = self._settings_card(pad, SETTINGS_RECOVERY, SETTINGS_RECOVERY_HINT)
         ttk.Label(
             recovery,
@@ -6679,7 +6632,7 @@ class HomeApp:
         from semblon.app_reset import reset_app_to_defaults
         from semblon.product_surface import SETTINGS_RESET_CONFIRM
 
-        if self.engine.busy:
+        if self.app.busy:
             messagebox.showinfo(
                 "Semblon",
                 "Finish or cancel processing before resetting the app.",
@@ -6745,7 +6698,7 @@ class HomeApp:
 
     def _settings_change_library(self) -> None:
         """Pick an existing store.sqlite — presentation path only; no ingest change."""
-        if self.engine.busy:
+        if self.app.busy:
             messagebox.showinfo("Semblon", "Finish or cancel processing before changing the library.")
             return
         path = filedialog.askopenfilename(
@@ -6760,7 +6713,10 @@ class HomeApp:
             save_last_store(self.store)
         except Exception:  # noqa: BLE001
             pass
-        self.engine = JobEngine(self.store)
+        from semblon.application import Application
+
+        self.app = Application(self.store)
+        self.engine = self.app.engine
         # Reload library-scoped presentation prefs for the new store.
         try:
             self._prefer_gpu_user = load_prefer_gpu(self.store)
@@ -6797,7 +6753,7 @@ class HomeApp:
                 f"Live overlay Home entry is off.\n{require_human_note(WIRE_HOME_LIVE)}",
             )
             return
-        if self.engine.busy:
+        if self.app.busy:
             messagebox.showinfo("Semblon", "Finish or cancel ingest before Live.")
             return
         source = simpledialog.askstring(
@@ -6862,7 +6818,7 @@ class HomeApp:
             pass
 
     def _on_close(self) -> None:
-        if self.engine.busy:
+        if self.app.busy:
             if messagebox.askyesno(
                 "Semblon",
                 "Processing is still running. Cancel and exit?",

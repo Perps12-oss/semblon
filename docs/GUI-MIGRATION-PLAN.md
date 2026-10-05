@@ -1,5 +1,7 @@
 # GUI migration plan
 
+**Superseded 2026-10-05 by the completed PySide6 production migration.** The steps below are historical. Do not execute them as current work. Production architecture: `docs/ARCHITECTURE.md`.
+
 **Date:** 2026-09-27. **Retest:** 2026-09-28.  
 **Constraint:** the Tk Home that `semblon home` opens stays usable after every step. No visual redesign is required for steps 1–3. No framework change. No plugin host. No schema change. No identity-threshold change.
 
