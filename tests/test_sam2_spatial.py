@@ -399,11 +399,20 @@ def test_canvas_hover_never_infers_and_job_runs(tk_root, tmp_path, monkeypatch):
     monkeypatch.setattr("semblon.semantic_visual._clip_image_concepts", lambda *a, **k: [])
     monkeypatch.setattr("semblon.semantic_visual._vlm_image_concepts", lambda *a, **k: [])
     store = tmp_path / "store.sqlite"
-    store.write_bytes(b"")
     image_path = tmp_path / "photo.png"
     import cv2
 
     cv2.imwrite(str(image_path), np.full((120, 160, 3), (40, 90, 140), np.uint8))
+    from semblon.store import connect, init_db
+
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("photo-1", "folder", str(image_path), "photo-hash", 160, 120, 1, 1),
+    )
+    conn.commit()
+    conn.close()
     ws = CanvasWorkspace(tk_root, enable_visual=True)
     ws.pack()
     media = {"media_id": "photo-1", "path": str(image_path), "source_type": "folder"}
