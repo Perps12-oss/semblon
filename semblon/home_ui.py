@@ -906,19 +906,16 @@ class HomeApp:
             self._gradient = None
         self._shell = tk.Frame(self.root, bg=BG_CANVAS)
         self._shell.pack(fill=tk.BOTH, expand=True)
-        self._theme_band = tk.Canvas(self._shell, height=72, highlightthickness=0, bd=0)
+        self._theme_band = tk.Canvas(self._shell, height=72, highlightthickness=0, bd=0, bg=BG_CANVAS)
         self._theme_band.pack(fill=tk.X)
+        self._theme_band.bind("<Configure>", self._on_theme_band_configure)
+        self._theme_band_width = 0
         self._main = ttk.Frame(self._shell)
         self._main.pack(fill=tk.BOTH, expand=True)
         try:
-            from semblon.atmosphere import get_atmosphere
-            from semblon.atmosphere_render import paint_vertical_gradient
-            from semblon.ui_prefs import load_theme_mode, resolve_atmosphere_id
+            from semblon.atmosphere_render import active_atmosphere_id
 
-            spec = get_atmosphere(resolve_atmosphere_id(load_theme_mode(self.store)))
-            paint_vertical_gradient(self._theme_band, spec.surface, spec.mist or spec.accent, 72)
-            if self._gradient is not None:
-                self._gradient.set_stops(spec.surface, spec.mist or spec.accent)
+            self._paint_theme_gradient(active_atmosphere_id())
         except Exception:  # noqa: BLE001
             pass
         self._sidebar = None  # no permanent MAIN sidebar (docs/SHELL-IA.md)
@@ -1420,6 +1417,7 @@ class HomeApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(100, self._drain_queue)
+        self._restyle_native_surfaces()
         self._restore_home_lifecycle()
 
     def _set_inspector(self, title: str, lines: list[str]) -> None:
@@ -4753,6 +4751,34 @@ class HomeApp:
 
 
 
+    def _on_theme_band_configure(self, event) -> None:
+        """Repaint the band at the real width. The fill comes from the active theme."""
+        band = getattr(self, "_theme_band", None)
+        if band is None or event.widget is not band:
+            return
+        width = int(event.width)
+        if width < 2 or width == getattr(self, "_theme_band_width", 0):
+            return
+        self._theme_band_width = width
+        from semblon.atmosphere_render import active_atmosphere_id
+
+        self._paint_theme_gradient(active_atmosphere_id())
+
+    def _restyle_native_surfaces(self) -> None:
+        """Tk widgets keep the color they were given. Reapply the live palette."""
+        from semblon.ui_theme import style_listbox
+
+        box = getattr(self, "_sel_list", None)
+        if box is not None:
+            style_listbox(box)
+        body = getattr(self, "_inspector_body", None)
+        canvas = getattr(body, "_canvas", None) if body is not None else None
+        if canvas is not None:
+            try:
+                canvas.configure(bg=BG_SURFACE)
+            except tk.TclError:
+                pass
+
     def _paint_theme_gradient(self, aid: str) -> None:
         from semblon.atmosphere import get_atmosphere
 
@@ -4764,6 +4790,11 @@ class HomeApp:
         if band is not None:
             from semblon.atmosphere_render import paint_vertical_gradient
 
+            try:
+                band.configure(bg=spec.surface)
+            except tk.TclError:
+                pass
+            self._theme_band_width = max(int(band.winfo_width()), 0)
             paint_vertical_gradient(band, spec.surface, spec.mist or spec.accent, 72)
         try:
             self._shell.configure(bg=spec.surface)
@@ -4863,6 +4894,7 @@ class HomeApp:
 
     def _restyle_chrome(self) -> None:
         """Repaint surfaces that captured colors when they were created."""
+        self._restyle_native_surfaces()
         try:
             self.root.configure(bg=BG_CANVAS)
         except tk.TclError:

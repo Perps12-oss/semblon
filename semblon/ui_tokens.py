@@ -376,6 +376,7 @@ _ALIAS_NAMES = (
 _CONSUMERS = (
     "semblon.ui_widgets",
     "semblon.ui_theme",
+    "semblon.ui_primitives",
     "semblon.home_ui",
     "semblon.canvas",
     "semblon.review_ui",
