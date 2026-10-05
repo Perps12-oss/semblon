@@ -23,7 +23,11 @@ jobs:
           python -m pip install numpy opencv-python-headless pytest
           python -m pip install -e . --no-deps
       - name: Pytest (no live InsightFace)
+        if: runner.os == 'Windows'
         run: python -m pytest -q
+      - name: Pytest (no live InsightFace, virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python -m pytest -q
       - name: pip-audit declared runtime
         continue-on-error: true
         run: |
