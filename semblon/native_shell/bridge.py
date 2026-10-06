@@ -50,6 +50,7 @@ class ShellBridge(QObject):
         self._reduced = reduced_motion()
         self._result_text = ""
         self._region_norm: tuple[float, float, float, float] | None = None
+        self._point_source = ""
         self._similar = SimilarStripModel()
         self._similar_state = "idle"
         self._similar_note = ""
@@ -283,6 +284,101 @@ class ShellBridge(QObject):
         if not media_id:
             return ""
         return f"image://archive/t/{media_id}"
+
+    @Slot(float, float, result=str)
+    def pointAt(self, nx: float, ny: float) -> str:
+        """Settled Focus point. Stored region, else refine_from_point, then findSimilar.
+
+        Returns the normalized rect used for the overlay, or empty when nothing resolved.
+        Does not search on a miss, and does not leave a stale strip.
+        """
+        self._point_source = ""
+        media_id = self._session.focus_id
+        if not media_id:
+            self._clear_query()
+            return ""
+        item = self._jobs.media(media_id)
+        if item is None:
+            self._clear_query()
+            return ""
+        width = int(item.width or 0)
+        height = int(item.height or 0)
+        if width <= 0 or height <= 0:
+            self._clear_query()
+            return ""
+        nx = float(nx)
+        ny = float(ny)
+        if nx < 0.0 or ny < 0.0 or nx >= 1.0 or ny >= 1.0:
+            self._clear_query()
+            return ""
+        px = max(0, min(width - 1, int(nx * width)))
+        py = max(0, min(height - 1, int(ny * height)))
+        bbox = self._bbox_at_point(media_id, px, py)
+        if bbox is None:
+            self._clear_query()
+            return ""
+        x, y, w, h = bbox
+        self.setRegion(x / width, y / height, w / width, h / height)
+        self.findSimilar()
+        return f"{x / width},{y / height},{w / width},{h / height}"
+
+    def _bbox_at_point(self, media_id: str, px: int, py: int) -> tuple[int, int, int, int] | None:
+        stored = self._stored_visual_bbox(media_id, px, py)
+        if stored is not None:
+            self._point_source = "stored"
+            return stored
+        refined = self._refine_bbox(media_id, px, py)
+        if refined is None:
+            return None
+        self._point_source = "refine"
+        return refined
+
+    def _stored_visual_bbox(self, media_id: str, px: int, py: int) -> tuple[int, int, int, int] | None:
+        """Pixel hit on persisted visual.region rows. No owner-map allocation."""
+        from semblon.process import latest_run_id
+        from semblon.visual.masks import point_in_rows
+        from semblon.visual.model import PAINT_ORDER
+        from semblon.visual.persist import load_hover_rows
+
+        run_id = latest_run_id(self._jobs.store)
+        if not run_id:
+            return None
+        rows = load_hover_rows(self._jobs.store, media_id=media_id, run_id=run_id)
+        rank = {kind: index for index, kind in enumerate(PAINT_ORDER)}
+        hit = None
+        for item in sorted(rows, key=lambda row: rank.get(row.get("kind") or "unknown", 0)):
+            if point_in_rows(item.get("rows") or {}, px, py):
+                hit = item
+        if hit is None:
+            return None
+        bbox = hit.get("bbox") or []
+        if len(bbox) < 4 or bbox[0] is None:
+            return None
+        x1, y1, x2, y2 = (float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return int(x1), int(y1), max(1, int(round(x2 - x1))), max(1, int(round(y2 - y1)))
+
+    def _refine_bbox(self, media_id: str, px: int, py: int) -> tuple[int, int, int, int] | None:
+        from semblon.selection import load_media_bgr
+        from semblon.semantic_visual import LocalSemanticVisualProvider
+
+        image = load_media_bgr(self._jobs.store, media_id)
+        if image is None:
+            return None
+        try:
+            raw = LocalSemanticVisualProvider().refine_from_point(image, px, py)
+        except Exception:
+            return None
+        if not raw or not raw.get("bbox"):
+            return None
+        box = raw["bbox"]
+        if len(box) < 4:
+            return None
+        x1, y1, x2, y2 = (float(box[0]), float(box[1]), float(box[2]), float(box[3]))
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return int(x1), int(y1), max(1, int(round(x2 - x1))), max(1, int(round(y2 - y1)))
 
     @Slot()
     def findSimilar(self) -> None:

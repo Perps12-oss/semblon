@@ -340,6 +340,7 @@ ApplicationWindow {
 
             Image {
                 id: photo
+                objectName: "focusPhoto"
                 anchors.fill: parent
                 anchors.margins: 48
                 visible: shell.focusKind !== "video"
@@ -370,6 +371,41 @@ ApplicationWindow {
                     )
                 }
 
+                function insidePainted(px, py) {
+                    var origin = contentOrigin()
+                    var pw = photo.paintedWidth
+                    var ph = photo.paintedHeight
+                    return pw > 1 && ph > 1
+                            && px >= origin.x && py >= origin.y
+                            && px < origin.x + pw && py < origin.y + ph
+                }
+
+                function resolvePoint(px, py) {
+                    hasRect = false
+                    if (!insidePainted(px, py)) {
+                        shell.clearDrawnQuery()
+                        return false
+                    }
+                    var origin = contentOrigin()
+                    var pw = photo.paintedWidth
+                    var ph = photo.paintedHeight
+                    var spec = shell.pointAt(
+                        Math.max(0, Math.min(0.999999, (px - origin.x) / pw)),
+                        Math.max(0, Math.min(0.999999, (py - origin.y) / ph))
+                    )
+                    if (!spec)
+                        return false
+                    var parts = spec.split(",")
+                    if (parts.length !== 4)
+                        return false
+                    rx = origin.x + parseFloat(parts[0]) * pw
+                    ry = origin.y + parseFloat(parts[1]) * ph
+                    rw = Math.max(1, parseFloat(parts[2]) * pw)
+                    rh = Math.max(1, parseFloat(parts[3]) * ph)
+                    hasRect = true
+                    return true
+                }
+
                 onPressed: function(mouse) {
                     shell.clearDrawnQuery()
                     x0 = mouse.x
@@ -392,9 +428,13 @@ ApplicationWindow {
                     var origin = contentOrigin()
                     var pw = photo.paintedWidth
                     var ph = photo.paintedHeight
-                    if (pw <= 1 || ph <= 1 || rw < 4 || rh < 4) {
+                    if (pw <= 1 || ph <= 1) {
                         hasRect = false
                         shell.clearDrawnQuery()
+                        return
+                    }
+                    if (rw < 4 || rh < 4) {
+                        resolvePoint(mouse.x, mouse.y)
                         return
                     }
                     var nx = (rx - origin.x) / pw
@@ -412,6 +452,7 @@ ApplicationWindow {
             }
 
             Rectangle {
+                objectName: "regionMark"
                 visible: regionDrag.hasRect && shell.focusKind !== "video"
                 x: photo.x + regionDrag.rx
                 y: photo.y + regionDrag.ry
