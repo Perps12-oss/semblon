@@ -319,11 +319,14 @@ class ShellBridge(QObject):
         return self._jobs.media_path(media_id)
 
     def _start_ingest(self, folder: Path) -> None:
+        from semblon.home_ui import resolve_home_observers
+
         try:
             self._jobs.submit_ingest(
                 folder,
                 on_done=lambda _result: self.ingestFinished.emit(),
                 open_review=False,
+                observers=resolve_home_observers(),
             )
         except JobBusy:
             return

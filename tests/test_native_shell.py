@@ -346,6 +346,11 @@ def test_bridge_archive_media_ask_similar_and_ingest_use_application(tmp_path, m
     while "kwargs" not in seen and time.monotonic() < deadline:
         time.sleep(0.01)
     assert seen["kwargs"]["open_review"] is False
+    from semblon.home_ui import resolve_home_observers
+
+    assert seen["kwargs"]["observers"] == resolve_home_observers()
+    assert "face" in seen["kwargs"]["observers"].split(",")
+    assert "color" in seen["kwargs"]["observers"].split(",")
     host = (
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "host.py"
     ).read_text(encoding="utf-8")
@@ -468,4 +473,131 @@ def test_drawn_region_strip_replaces_and_clears(tmp_path, monkeypatch):
     assert bridge.focusId == ""
     assert bridge.similarState == "idle"
     engine.deleteLater()
+
+
+def _wait_idle(jobs, timeout=90.0):
+    import time
+
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    deadline = time.monotonic() + timeout
+    while jobs.busy and time.monotonic() < deadline:
+        if app is not None:
+            app.processEvents()
+        time.sleep(0.05)
+    if app is not None:
+        app.processEvents()
+    assert not jobs.busy
+
+
+def _appearance_rows(store):
+    from semblon.observers import APPEARANCE_PACK
+    from semblon.store import connect
+
+    conn = connect(store)
+    try:
+        return conn.execute(
+            """SELECT o.media_id, e.pack_id
+               FROM embeddings e
+               JOIN observation_items i ON i.item_id = e.item_id
+               JOIN observations o ON o.observation_id = i.observation_id
+               WHERE e.modality='appearance' AND e.pack_id=?""",
+            (APPEARANCE_PACK,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def test_shell_add_folder_indexes_appearance_and_draw_finds_it(tmp_path, monkeypatch):
+    """Fresh native Add Folder writes appearance/rgb8@1. Draw searches that space."""
+    pytest.importorskip("PySide6")
+    cv2 = pytest.importorskip("cv2")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    import numpy as np
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+    from semblon.observers import APPEARANCE_PACK
+
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    red = np.zeros((80, 120, 3), np.uint8)
+    red[:, :] = (20, 20, 220)
+    red_b = red.copy()
+    red_b[0, 0] = (20, 20, 221)
+    blue = np.zeros((80, 120, 3), np.uint8)
+    blue[:, :] = (220, 20, 20)
+    assert cv2.imwrite(str(folder / "red-a.png"), red)
+    assert cv2.imwrite(str(folder / "red-b.png"), red_b)
+    assert cv2.imwrite(str(folder / "blue.png"), blue)
+    (folder / "broken.jpg").write_bytes(b"not-a-jpeg")
+    (folder / "notes.txt").write_text("not media", encoding="utf-8")
+
+    store = tmp_path / "fresh.sqlite"
+    assert not store.exists()
+    assert not (tmp_path / ".semblon-index.npz").exists()
+    qapp = QApplication.instance() or QApplication([])
+    del qapp
+    jobs = Application(store)
+    finished = []
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+    bridge.ingestFinished.connect(lambda: finished.append(True))
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    bridge._start_ingest(empty)
+    _wait_idle(jobs)
+    assert _appearance_rows(store) == []
+
+    bridge._start_ingest(folder)
+    _wait_idle(jobs, timeout=120)
+    assert finished
+    rows = _appearance_rows(store)
+    assert len(rows) >= 2
+    assert all(row[1] == APPEARANCE_PACK for row in rows)
+    assert not (tmp_path / ".semblon-index.npz").exists()
+
+    from semblon.store import connect
+
+    conn = connect(store)
+    try:
+        observations = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+        red_id = conn.execute(
+            "SELECT media_id FROM media WHERE path LIKE '%red-a.png'"
+        ).fetchone()[0]
+        other_red = conn.execute(
+            "SELECT media_id FROM media WHERE path LIKE '%red-b.png'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert observations >= 2
+    indexed = {row[0] for row in rows}
+    assert red_id in indexed and other_red in indexed
+
+    bridge.openFocus(red_id)
+    bridge.setRegion(0.1, 0.1, 0.5, 0.5)
+    bridge.findSimilar()
+    assert bridge.similarState == "ready"
+    found = {bridge.similarId(i) for i in range(bridge.similarCount)}
+    assert other_red in found
+    bridge.openFocus(other_red)
+    assert bridge.focusId == other_red
+
+    before = len(_appearance_rows(store))
+    bridge._start_ingest(folder)
+    _wait_idle(jobs, timeout=120)
+    assert len(_appearance_rows(store)) == before
+
+    bridge.openFocus(red_id)
+    bridge.setRegion(0, 0, 0, 0)
+    bridge.findSimilar()
+    assert bridge.similarState in {"empty", "unavailable"}
+    assert bridge.similarCount == 0
+    bridge.pauseJob()
+    bridge.cancelJob()
+    assert not jobs.busy
+
 
