@@ -10,7 +10,7 @@ from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtWidgets import QFileDialog
 
 from semblon.application import Application, JobBusy
-from semblon.native_shell.model import ArchiveModel, SimilarStripModel
+from semblon.native_shell.model import ArchiveModel, PeopleModel, SimilarStripModel
 
 
 def reduced_motion() -> bool:
@@ -38,6 +38,7 @@ class ShellBridge(QObject):
     ingestFinished = Signal()
     resultChanged = Signal()
     similarChanged = Signal()
+    peopleChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -57,6 +58,11 @@ class ShellBridge(QObject):
         self._similar_state = "idle"
         self._similar_note = ""
         self._point_source = ""
+        self._people = PeopleModel()
+        self._people_open = False
+        self._people_note = ""
+        self._selected_subject = ""
+        self._evidence_id = ""
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
@@ -204,8 +210,105 @@ class ShellBridge(QObject):
         self._clear_query()
         self.focusChanged.emit()
 
+    @property
+    def people_model(self) -> PeopleModel:
+        return self._people
+
+    @Property(bool, notify=peopleChanged)
+    def peopleOpen(self) -> bool:
+        return self._people_open
+
+    @Property(str, notify=peopleChanged)
+    def peopleNote(self) -> str:
+        return self._people_note
+
+    @Property(str, notify=peopleChanged)
+    def selectedSubject(self) -> str:
+        return self._selected_subject
+
+    @Property(str, notify=peopleChanged)
+    def evidenceId(self) -> str:
+        return self._evidence_id
+
+    @Property(bool, notify=peopleChanged)
+    def peopleEmpty(self) -> bool:
+        return self._people.rowCount() == 0
+
+    @Slot()
+    def openPeople(self) -> None:
+        self._refresh_people()
+        self._people_open = True
+        self.peopleChanged.emit()
+
+    @Slot()
+    def closePeople(self) -> None:
+        self._people_open = False
+        self._selected_subject = ""
+        self._evidence_id = ""
+        self.peopleChanged.emit()
+
+    @Slot(str)
+    def selectGroup(self, subject: str) -> None:
+        row = self._people.row(subject)
+        self._selected_subject = subject if row else ""
+        self._evidence_id = str(row["mediaId"]) if row else ""
+        if not row:
+            self._people_note = "That group is no longer here."
+        self.peopleChanged.emit()
+
+    @Slot(str)
+    def openEvidence(self, media_id: str) -> None:
+        if not media_id:
+            self._people_note = "No photo for this group."
+            self.peopleChanged.emit()
+            return
+        self.openFocus(media_id)
+
+    def _refresh_people(self) -> None:
+        rows = []
+        try:
+            board = self._jobs.board()
+        except Exception as exc:  # noqa: BLE001 — empty desk, not a traceback
+            self._people.set_rows([])
+            self._people_note = "No groups yet." if "unknown run" in str(exc).lower() else "Groups could not be read."
+            return
+        for item in board.get("items") or []:
+            members = item.get("members") or []
+            media_id = ""
+            face_id = ""
+            if members:
+                media_id = str(members[0].get("media_id") or "")
+                face_id = str(members[0].get("face_id") or "")
+            names = item.get("person_names") or []
+            subject = str(item.get("cluster_id") or item.get("face_id") or "")
+            if not subject:
+                continue
+            rows.append(
+                {
+                    "subject": subject,
+                    "title": names[0] if names else "Unnamed",
+                    "count": int(item.get("face_count") or 0),
+                    "named": bool(item.get("named")),
+                    "mediaId": media_id,
+                    "faceId": face_id,
+                }
+            )
+        self._people.set_rows(rows)
+        if self._selected_subject and self._people.row(self._selected_subject) is None:
+            self._selected_subject = ""
+            self._evidence_id = ""
+            self._people_note = "That group is no longer here."
+
     @Slot()
     def escape(self) -> None:
+        if self._session.focus_id and self._people_open:
+            self._session.escape()
+            self._clear_query()
+            self.focusChanged.emit()
+            return
+        if self._people_open:
+            self.closePeople()
+            return
         self._session.escape()
         self._clear_query()
         self.focusChanged.emit()
@@ -395,34 +498,42 @@ class ShellBridge(QObject):
         run_id = latest_run_id(self._jobs.store)
         if not run_id:
             return "No reviewed run yet."
+        if not (text or "").strip() and kind in {"name", "note"}:
+            return self._after_decision("A name or note is required.")
         try:
             if kind == "name":
                 from semblon.review import name_cluster
                 rec = name_cluster(self._jobs.store, run_id, subject, text)
-                return f"Named {rec.get('display_name')}. A cluster is not a person."
+                return self._after_decision(f"Named {rec.get('display_name')}. A cluster is not a person.")
             if kind == "ignore":
                 from semblon.review import ignore_subject
                 ignore_subject(self._jobs.store, run_id, cluster_id=subject)
-                return "Left unknown."
+                return self._after_decision("Left unknown.")
             if kind == "note":
                 from semblon.review import note_subject
                 note_subject(self._jobs.store, run_id, text, cluster_id=subject)
-                return "Note kept."
+                return self._after_decision("Note kept.")
             if kind == "merge":
                 from semblon.review import merge_clusters
                 other = text.strip()
                 merge_clusters(self._jobs.store, run_id, [subject, other])
-                return "Merged the groups. Still not a person."
+                return self._after_decision("Merged the groups. Still not a person.")
             if kind == "split":
                 from semblon.review import split_cluster
                 face_id = text.strip()
                 split_cluster(self._jobs.store, run_id, subject, [face_id])
-                return "Split the group."
+                return self._after_decision("Split the group.")
         except ReviewError as exc:
-            return str(exc)
+            return self._after_decision(str(exc))
         except Exception as exc:  # noqa: BLE001 — show the decision failure
-            return str(exc)
-        return "That decision is not available."
+            return self._after_decision(str(exc))
+        return self._after_decision("That decision is not available.")
+
+    def _after_decision(self, note: str) -> str:
+        self._people_note = note
+        self._refresh_people()
+        self.peopleChanged.emit()
+        return note
 
     @Slot(result=str)
     def peopleSummary(self) -> str:

@@ -114,3 +114,63 @@ class SimilarStripModel(QAbstractListModel):
         if row < 0 or row >= len(self._rows):
             return ""
         return self._rows[row][0]
+
+
+_GROUP_ID = Qt.ItemDataRole.UserRole + 1
+_GROUP_TITLE = Qt.ItemDataRole.UserRole + 2
+_GROUP_COUNT = Qt.ItemDataRole.UserRole + 3
+_GROUP_NAMED = Qt.ItemDataRole.UserRole + 4
+_GROUP_MEDIA = Qt.ItemDataRole.UserRole + 5
+_GROUP_FACE = Qt.ItemDataRole.UserRole + 6
+
+
+class PeopleModel(QAbstractListModel):
+    """Unnamed and named groups from the existing review board. Not a second archive."""
+
+    def __init__(self):
+        super().__init__()
+        self._rows: list[dict] = []
+
+    def rowCount(self, parent=QModelIndex()) -> int:  # noqa: N802
+        if parent.isValid():
+            return 0
+        return len(self._rows)
+
+    def roleNames(self):  # noqa: N802
+        return {
+            _GROUP_ID: b"subject",
+            _GROUP_TITLE: b"title",
+            _GROUP_COUNT: b"faceCount",
+            _GROUP_NAMED: b"named",
+            _GROUP_MEDIA: b"mediaId",
+            _GROUP_FACE: b"faceId",
+        }
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or index.row() >= len(self._rows):
+            return None
+        row = self._rows[index.row()]
+        if role in (Qt.ItemDataRole.DisplayRole, _GROUP_TITLE):
+            return row["title"]
+        if role == _GROUP_ID:
+            return row["subject"]
+        if role == _GROUP_COUNT:
+            return row["count"]
+        if role == _GROUP_NAMED:
+            return row["named"]
+        if role == _GROUP_MEDIA:
+            return row["mediaId"]
+        if role == _GROUP_FACE:
+            return row["faceId"]
+        return None
+
+    def set_rows(self, rows: list[dict]) -> None:
+        self.beginResetModel()
+        self._rows = list(rows)
+        self.endResetModel()
+
+    def row(self, subject: str) -> dict | None:
+        for item in self._rows:
+            if item["subject"] == subject:
+                return item
+        return None

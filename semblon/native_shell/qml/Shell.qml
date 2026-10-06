@@ -76,6 +76,20 @@ ApplicationWindow {
                 font.pixelSize: 13
                 font.letterSpacing: 0.4
             }
+            Text {
+                objectName: "peopleButton"
+                text: "People"
+                color: peopleArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                MouseArea {
+                    id: peopleArea
+                    anchors.fill: parent
+                    anchors.margins: -6
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: shell.openPeople()
+                }
+            }
         }
 
         Rectangle {
@@ -208,6 +222,78 @@ ApplicationWindow {
     Item {
         id: stage
         anchors.fill: parent
+
+        Rectangle {
+            objectName: "peopleDesk"
+            anchors.fill: parent
+            visible: shell.peopleOpen && shell.focusId === ""
+            color: "#10161C"
+            Column {
+                anchors.fill: parent
+                anchors.margins: 28
+                spacing: 12
+                Text {
+                    text: "People"
+                    color: "#E7EEF5"
+                    font.pixelSize: 22
+                }
+                Text {
+                    objectName: "peopleEmpty"
+                    visible: shell.peopleEmpty
+                    text: "No groups yet."
+                    color: "#8AA0B2"
+                }
+                ListView {
+                    objectName: "peopleList"
+                    width: 280
+                    height: 220
+                    model: peopleModel
+                    delegate: Text {
+                        text: title + " · " + faceCount
+                        color: shell.selectedSubject === subject ? "#5EEAD4" : "#E7EEF5"
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: shell.selectGroup(subject)
+                        }
+                    }
+                }
+                Text {
+                    objectName: "peopleEvidence"
+                    visible: shell.evidenceId !== ""
+                    text: "Evidence"
+                    color: "#8AA0B2"
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: shell.openEvidence(shell.evidenceId)
+                    }
+                }
+                TextField {
+                    id: decisionText
+                    objectName: "decisionText"
+                    width: 240
+                    placeholderText: "Name or note"
+                }
+                Row {
+                    spacing: 12
+                    Text { text: "Name"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: shell.decide("name", shell.selectedSubject, decisionText.text) } }
+                    Text { text: "Merge"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: shell.decide("merge", shell.selectedSubject, decisionText.text) } }
+                    Text { text: "Split"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: shell.decide("split", shell.selectedSubject, decisionText.text) } }
+                    Text { text: "Ignore"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: shell.decide("ignore", shell.selectedSubject, "") } }
+                    Text { text: "Note"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: shell.decide("note", shell.selectedSubject, decisionText.text) } }
+                }
+                Text {
+                    objectName: "peopleNote"
+                    text: shell.peopleNote
+                    color: "#8AA0B2"
+                }
+                Text {
+                    objectName: "peopleBack"
+                    text: "Back"
+                    color: "#8AA0B2"
+                    MouseArea { anchors.fill: parent; onClicked: shell.closePeople() }
+                }
+            }
+        }
 
         GridView {
             id: grid
