@@ -239,10 +239,16 @@ def test_shell_ask_and_similar_use_application_media_id(tmp_path, monkeypatch):
     assert "Nothing was searched" in bridge.resultText
     bridge.findSimilar()
     assert found == []
+    assert bridge.similarCount == 0
     bridge.setRegion(0.25, 0.5, 0.5, 0.25)
     bridge.findSimilar()
     assert found == [("m1", 10, 10, 20, 5)]
+    assert bridge.similarState == "empty"
+    assert bridge.similarCount == 0
+    assert "m1" not in bridge.resultText
     assert root.findChild(QObject, "askPhoto") is not None
+    assert root.findChild(QObject, "findSimilar") is None
+    assert root.findChild(QObject, "similarStrip") is not None
     assert root.findChild(QObject, "resultText") is not None
     engine.deleteLater()
 
@@ -331,7 +337,8 @@ def test_bridge_archive_media_ask_similar_and_ingest_use_application(tmp_path, m
     assert "searched" in bridge.resultText.lower() or "Nothing" in bridge.resultText
     bridge.setRegion(0.1, 0.1, 0.4, 0.4)
     bridge.findSimilar()
-    assert bridge.resultText
+    assert bridge.similarState in {"empty", "unavailable", "ready"}
+    assert "m1" not in bridge.similarNote
     import time
 
     bridge._start_ingest(tmp_path)
@@ -345,4 +352,120 @@ def test_bridge_archive_media_ask_similar_and_ingest_use_application(tmp_path, m
     assert "ArchiveSession(" not in host
     assert "Application(" in host
     assert "sqlite" not in host.lower()
+
+
+def test_focus_qml_draws_into_strip_without_a_similar_button():
+    """Product door is the drag release. No Qt import, so this is not an EGL test."""
+    qml = (
+        Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml" / "Shell.qml"
+    ).read_text(encoding="utf-8")
+    assert "shell.findSimilar()" in qml
+    assert 'text: "Similar"' not in qml
+    assert 'objectName: "findSimilar"' not in qml
+    assert 'objectName: "similarStrip"' in qml
+    assert "shell.thumbFor(mediaId)" in qml
+    assert "shell.openFocus(mediaId)" in qml
+    assert "shell.clearDrawnQuery()" in qml
+    assert "image://archive/t/" not in qml.split("similarStrip", 1)[-1].split("similarThumb", 1)[0]
+    host = (
+        Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "host.py"
+    ).read_text(encoding="utf-8")
+    assert 'setContextProperty("similarModel"' in host
+
+
+def test_drawn_region_strip_replaces_and_clears(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell
+    from semblon.store import connect, init_db
+
+    calls = []
+
+    def fake_similar(self, media_id, x, y, w, h, **kwargs):
+        calls.append((media_id, x, y, w, h))
+        if len(calls) == 1:
+            return {
+                "region": {},
+                "similar": {
+                    "status": "SUCCESS",
+                    "items": [
+                        {"media_id": "b", "score": 0.9, "provider": "hidden", "item_id": "i1"},
+                        {"media_id": "c", "score": 0.4, "kind": "object"},
+                    ],
+                },
+                "persons": 0,
+            }
+        return {"region": {}, "similar": {"status": "NO_RESULT", "items": []}, "persons": 0}
+
+    monkeypatch.setattr(Application, "remember_and_find_region", fake_similar)
+    photo = tmp_path / "a.png"
+    other = tmp_path / "b.png"
+    photo.write_bytes(b"not-decoded")
+    other.write_bytes(b"not-decoded")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    try:
+        init_db(conn)
+        conn.executemany(
+            "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+            [
+                ("a", "folder", str(photo), "ha", 40, 20, 3, 1),
+                ("b", "folder", str(other), "hb", 40, 20, 2, 1),
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    bridge = engine._semblon_bridge
+    assert root.findChild(QObject, "findSimilar") is None
+    bridge.openFocus("a")
+    bridge.clearDrawnQuery()
+    assert calls == []
+    assert bridge.similarState == "idle"
+    bridge.setRegion(0, 0, 0, 0)
+    bridge.findSimilar()
+    assert calls == []
+    assert bridge.similarCount == 0
+    bridge.setRegion(0.25, 0.5, 0.5, 0.25)
+    bridge.findSimilar()
+    app.processEvents()
+    assert calls == [("a", 10, 10, 20, 5)]
+    assert bridge.similarState == "ready"
+    assert bridge.similarCount == 2
+    assert bridge.similarId(0) == "b"
+    assert bridge.similarId(1) == "c"
+    assert bridge.thumbFor("b") == "image://archive/t/b"
+    assert "hidden" not in bridge.similarNote
+    assert "i1" not in bridge.resultText
+    strip = root.findChild(QObject, "similarStrip")
+    assert strip is not None and strip.property("visible") is True
+    assert float(strip.property("width")) >= 72
+    bridge.openFocus("b")
+    assert bridge.focusId == "b"
+    assert bridge.similarState == "idle"
+    assert bridge.similarCount == 0
+    bridge.setRegion(0.1, 0.1, 0.2, 0.2)
+    bridge.findSimilar()
+    assert bridge.similarState == "empty"
+    assert bridge.similarCount == 0
+    assert bridge.similarNote == "No similar images found yet."
+    bridge.setRegion(0.1, 0.1, 0.2, 0.2)
+    bridge.findSimilar()
+    bridge.focusNext()
+    assert bridge.similarState == "idle"
+    bridge.setRegion(0.1, 0.1, 0.2, 0.2)
+    bridge.findSimilar()
+    bridge.escape()
+    assert bridge.focusId == ""
+    assert bridge.similarState == "idle"
+    engine.deleteLater()
 

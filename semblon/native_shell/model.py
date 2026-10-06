@@ -18,6 +18,10 @@ _KIND = Qt.ItemDataRole.UserRole + 2
 _DAY = Qt.ItemDataRole.UserRole + 3
 _NAME = Qt.ItemDataRole.UserRole + 4
 
+_SIMILAR_ID = Qt.ItemDataRole.UserRole + 1
+_SIMILAR_SCORE = Qt.ItemDataRole.UserRole + 2
+_STRIP_CAP = 8
+
 
 class ArchiveModel(QAbstractListModel):
     def __init__(self, app: Application):
@@ -74,3 +78,39 @@ class ArchiveModel(QAbstractListModel):
         if local < 0 or local >= len(self._cache):
             return None
         return self._cache[local]
+
+
+class SimilarStripModel(QAbstractListModel):
+    """Contextual similar-memory strip. media id plus score. Not an archive."""
+
+    def __init__(self):
+        super().__init__()
+        self._rows: list[tuple[str, float]] = []
+
+    def rowCount(self, parent=QModelIndex()) -> int:  # noqa: N802
+        if parent.isValid():
+            return 0
+        return len(self._rows)
+
+    def roleNames(self):  # noqa: N802
+        return {_SIMILAR_ID: b"mediaId", _SIMILAR_SCORE: b"score"}
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or index.row() >= len(self._rows):
+            return None
+        media_id, score = self._rows[index.row()]
+        if role in (Qt.ItemDataRole.DisplayRole, _SIMILAR_ID):
+            return media_id
+        if role == _SIMILAR_SCORE:
+            return score
+        return None
+
+    def set_rows(self, rows: list[tuple[str, float]]) -> None:
+        self.beginResetModel()
+        self._rows = list(rows[:_STRIP_CAP])
+        self.endResetModel()
+
+    def media_id(self, row: int) -> str:
+        if row < 0 or row >= len(self._rows):
+            return ""
+        return self._rows[row][0]

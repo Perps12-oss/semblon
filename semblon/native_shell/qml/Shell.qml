@@ -352,6 +352,7 @@ ApplicationWindow {
 
             MouseArea {
                 id: regionDrag
+                objectName: "regionDrag"
                 anchors.fill: photo
                 enabled: shell.focusKind !== "video" && photo.paintedWidth > 0
                 property real rx: 0
@@ -370,6 +371,7 @@ ApplicationWindow {
                 }
 
                 onPressed: function(mouse) {
+                    shell.clearDrawnQuery()
                     x0 = mouse.x
                     y0 = mouse.y
                     rx = mouse.x
@@ -392,6 +394,7 @@ ApplicationWindow {
                     var ph = photo.paintedHeight
                     if (pw <= 1 || ph <= 1 || rw < 4 || rh < 4) {
                         hasRect = false
+                        shell.clearDrawnQuery()
                         return
                     }
                     var nx = (rx - origin.x) / pw
@@ -404,6 +407,7 @@ ApplicationWindow {
                         Math.max(0, Math.min(1, nw)),
                         Math.max(0, Math.min(1, nh))
                     )
+                    shell.findSimilar()
                 }
             }
 
@@ -467,6 +471,7 @@ ApplicationWindow {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.margins: 22
+                anchors.bottomMargin: similarStrip.visible ? 108 : 22
                 text: shell.focusName
                 color: "#8AA0B2"
                 font.family: "Segoe UI"
@@ -504,29 +509,6 @@ ApplicationWindow {
                         onClicked: shell.askPhoto()
                     }
                 }
-                Rectangle {
-                    width: parent.width
-                    height: 32
-                    radius: 6
-                    color: similarArea.containsMouse ? "#12343A" : "#1C2430"
-                    border.color: "#3D4C5C"
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Similar"
-                        color: "#E7EEF5"
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: similarArea
-                        objectName: "findSimilar"
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: shell.findSimilar()
-                    }
-                }
                 Text {
                     objectName: "resultText"
                     width: parent.width
@@ -535,6 +517,73 @@ ApplicationWindow {
                     font.family: "Segoe UI"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
+                }
+            }
+
+            Text {
+                objectName: "similarNote"
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 28
+                visible: shell.similarState === "empty" || shell.similarState === "unavailable"
+                text: shell.similarNote
+                color: "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+            }
+
+            Flickable {
+                id: similarStrip
+                objectName: "similarStrip"
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 22
+                width: Math.min(Math.max(shell.similarCount * 80 - 8, 0), parent.width - 96)
+                height: shell.similarState === "ready" && shell.similarCount > 0 ? 76 : 0
+                contentWidth: stripRow.width
+                contentHeight: 76
+                flickableDirection: Flickable.HorizontalFlick
+                boundsBehavior: Flickable.StopAtBounds
+                clip: true
+                visible: height > 0
+
+                Row {
+                    id: stripRow
+                    spacing: 8
+                    Repeater {
+                        model: similarModel
+                        delegate: Item {
+                            width: 72
+                            height: 72
+                            objectName: "similarThumb"
+
+                            Rectangle {
+                                anchors.fill: parent
+                                color: "#1C2430"
+                                radius: 2
+                                border.width: thumbArea.containsMouse ? 1 : 0
+                                border.color: "#2DD4BF"
+
+                                Image {
+                                    anchors.fill: parent
+                                    anchors.margins: 1
+                                    source: shell.thumbFor(mediaId)
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    cache: true
+                                }
+
+                                MouseArea {
+                                    id: thumbArea
+                                    objectName: "similarThumbHit"
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: shell.openFocus(mediaId)
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
