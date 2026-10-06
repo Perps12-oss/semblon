@@ -67,7 +67,7 @@ Stall watchdog (`semblon/watchdog.py`) is **wired on Home** status (`stalled` �
 
 This amendment does **not** erase frozen v1 or the 2026-09-19 amendment. It records the closed shell.
 
-The production UI is the PySide6 archive (`semblon shell`) → `Application`. Identity contract is unchanged. `semblon home` and `review-ui` are temporary legacy clients, not a second product. `review.html` is retired. No production Review page replaces it. Baseline: `docs/ARCHITECTURE.md`. What is still open (Find, Field + Focus, polish, eventual Tk retirement) is `docs/COMPLETION-MATRIX.md`.
+The production UI is the PySide6 archive (`semblon shell`) → `Application`. Identity contract is unchanged. `semblon home` and `review-ui` are temporary legacy clients, not a second product. `review.html` is retired. No production Review page replaces it. Baseline: `docs/ARCHITECTURE.md`. What is still open (polish, eventual Tk retirement, Windows product pass) is `docs/COMPLETION-MATRIX.md`. Find is not a V1 capability.
 
 ## Full-stack acceleration (2026-09-19)
 
