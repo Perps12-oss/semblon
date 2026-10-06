@@ -122,6 +122,8 @@ _GROUP_COUNT = Qt.ItemDataRole.UserRole + 3
 _GROUP_NAMED = Qt.ItemDataRole.UserRole + 4
 _GROUP_MEDIA = Qt.ItemDataRole.UserRole + 5
 _GROUP_FACE = Qt.ItemDataRole.UserRole + 6
+_GROUP_NOTE = Qt.ItemDataRole.UserRole + 7
+_GROUP_SUMMARY = Qt.ItemDataRole.UserRole + 8
 
 
 class PeopleModel(QAbstractListModel):
@@ -144,6 +146,8 @@ class PeopleModel(QAbstractListModel):
             _GROUP_NAMED: b"named",
             _GROUP_MEDIA: b"mediaId",
             _GROUP_FACE: b"faceId",
+            _GROUP_NOTE: b"hasNote",
+            _GROUP_SUMMARY: b"summary",
         }
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
@@ -162,6 +166,10 @@ class PeopleModel(QAbstractListModel):
             return row["mediaId"]
         if role == _GROUP_FACE:
             return row["faceId"]
+        if role == _GROUP_NOTE:
+            return bool(row.get("hasNote"))
+        if role == _GROUP_SUMMARY:
+            return row.get("summary") or ""
         return None
 
     def set_rows(self, rows: list[dict]) -> None:
@@ -174,3 +182,77 @@ class PeopleModel(QAbstractListModel):
             if item["subject"] == subject:
                 return item
         return None
+
+
+_FACE_ID = Qt.ItemDataRole.UserRole + 1
+_FACE_MEDIA = Qt.ItemDataRole.UserRole + 2
+_FACE_LABEL = Qt.ItemDataRole.UserRole + 3
+_FACE_SELECTED = Qt.ItemDataRole.UserRole + 4
+
+
+class EvidenceModel(QAbstractListModel):
+    """Faces in the open group. Labels are human. Identifiers stay off the screen."""
+
+    def __init__(self):
+        super().__init__()
+        self._rows: list[dict] = []
+
+    def rowCount(self, parent=QModelIndex()) -> int:  # noqa: N802
+        if parent.isValid():
+            return 0
+        return len(self._rows)
+
+    def roleNames(self):  # noqa: N802
+        return {
+            _FACE_ID: b"faceId",
+            _FACE_MEDIA: b"mediaId",
+            _FACE_LABEL: b"label",
+            _FACE_SELECTED: b"selected",
+        }
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or index.row() >= len(self._rows):
+            return None
+        row = self._rows[index.row()]
+        if role in (Qt.ItemDataRole.DisplayRole, _FACE_LABEL):
+            return row["label"]
+        if role == _FACE_ID:
+            return row["faceId"]
+        if role == _FACE_MEDIA:
+            return row["mediaId"]
+        if role == _FACE_SELECTED:
+            return bool(row.get("selected"))
+        return None
+
+    def set_rows(self, rows: list[dict]) -> None:
+        self.beginResetModel()
+        self._rows = [
+            {
+                "faceId": str(item.get("faceId") or ""),
+                "mediaId": str(item.get("mediaId") or ""),
+                "label": str(item.get("label") or "Face"),
+                "selected": False,
+            }
+            for item in rows
+            if item.get("faceId")
+        ]
+        self.endResetModel()
+
+    def toggle(self, face_id: str) -> bool:
+        for index, row in enumerate(self._rows):
+            if row["faceId"] != face_id:
+                continue
+            row["selected"] = not row["selected"]
+            self.dataChanged.emit(self.index(index, 0), self.index(index, 0))
+            return bool(row["selected"])
+        return False
+
+    def selected_ids(self) -> list[str]:
+        return [row["faceId"] for row in self._rows if row.get("selected")]
+
+    def clear_selection(self) -> None:
+        if not self._rows:
+            return
+        for row in self._rows:
+            row["selected"] = False
+        self.dataChanged.emit(self.index(0, 0), self.index(len(self._rows) - 1, 0))

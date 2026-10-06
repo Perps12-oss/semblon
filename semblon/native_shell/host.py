@@ -34,6 +34,7 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     engine.rootContext().setContextProperty("archiveModel", model)
     engine.rootContext().setContextProperty("similarModel", bridge.similar_model)
     engine.rootContext().setContextProperty("peopleModel", bridge.people_model)
+    engine.rootContext().setContextProperty("evidenceModel", bridge.evidence_model)
     engine.load(QUrl.fromLocalFile(str(QML)))
     if not engine.rootObjects():
         raise RuntimeError(f"archive shell failed to load {QML}")
@@ -42,5 +43,6 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     engine._semblon_model = model  # type: ignore[attr-defined]
     engine._semblon_similar = bridge.similar_model  # type: ignore[attr-defined]
     engine._semblon_people = bridge.people_model  # type: ignore[attr-defined]
+    engine._semblon_evidence = bridge.evidence_model  # type: ignore[attr-defined]
     engine._semblon_session = jobs.archive  # type: ignore[attr-defined]
     return qapp, engine

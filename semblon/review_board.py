@@ -71,12 +71,13 @@ def resolve_run_id(store: Path, run_id: str | None) -> str:
 def _basename(path: str) -> str:
     return Path(path or "").name or (path or "")
 
-def _decision_sets(decisions) -> tuple[set[str], set[str], set[str], set[str]]:
-    """ignored_faces, ignored_clusters, noted_faces, noted_clusters."""
+def _decision_sets(decisions) -> tuple[set[str], set[str], set[str], set[str], dict[str, str]]:
+    """ignored_faces, ignored_clusters, noted_faces, noted_clusters, latest note text by cluster."""
     ignored_faces: set[str] = set()
     ignored_clusters: set[str] = set()
     noted_faces: set[str] = set()
     noted_clusters: set[str] = set()
+    note_text: dict[str, str] = {}
     for d in decisions:
         try:
             pol = json.loads(d["policy_json"] or "{}")
@@ -93,11 +94,14 @@ def _decision_sets(decisions) -> tuple[set[str], set[str], set[str], set[str]]:
             elif cid:
                 ignored_clusters.add(cid)
         if kind == "note":
+            text = str(pol.get("text") or "").strip()
             if fid:
                 noted_faces.add(fid)
             if cid:
                 noted_clusters.add(cid)
-    return ignored_faces, ignored_clusters, noted_faces, noted_clusters
+                if text:
+                    note_text[cid] = text
+    return ignored_faces, ignored_clusters, noted_faces, noted_clusters, note_text
 
 def _track_items(
     store: Path,
@@ -195,7 +199,7 @@ def load_board(
            WHERE status='active' ORDER BY display_name"""
     ).fetchall()
 
-    ignored_faces, ignored_clusters, noted_faces, noted_clusters = _decision_sets(decisions)
+    ignored_faces, ignored_clusters, noted_faces, noted_clusters, note_text = _decision_sets(decisions)
 
     by_cluster: dict[str, list[dict]] = {}
     unassigned: list[dict] = []
@@ -247,6 +251,7 @@ def load_board(
                 "named": bool(person_names),
                 "members": members,
                 "has_note": c["cluster_id"] in noted_clusters,
+                "note_text": note_text.get(c["cluster_id"], ""),
             }
         )
 

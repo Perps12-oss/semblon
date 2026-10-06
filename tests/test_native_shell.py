@@ -745,10 +745,10 @@ def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monke
     assert bridge.focusId == ""
     assert bridge.peopleOpen is True
     assert bridge.decide("name", "c1", "") == "A name or note is required."
-    assert bridge.decide("name", "c1", "Ada") == "Named Ada. A cluster is not a person."
+    assert bridge.decide("name", "c1", "Ada").startswith("Named Ada.")
     assert bridge.decide("merge", "c1", "c2").startswith("Merged")
-    assert bridge.decide("split", "c1", "f1").startswith("Split")
-    assert bridge.decide("ignore", "c1", "") == "Left unknown."
+    assert bridge.decide("split", "c1", "f1").startswith("Moved the selected face")
+    assert bridge.decide("ignore", "c1", "").startswith("Left unknown.")
     assert bridge.decide("note", "c1", "keep") == "Note kept."
     assert calls == ["name", "merge", "split", "ignore", "note"]
     bridge.closePeople()
@@ -871,6 +871,94 @@ def test_point_on_fresh_image_refines_without_inventing_a_miss(tmp_path, monkeyp
     monkeypatch.setattr(bridge, "_refine_bbox", lambda media_id, px, py: None)
     assert bridge.pointAt(0.2, 0.2) == ""
     assert bridge.similarCount == 0
+    engine.deleteLater()
+
+
+def test_people_split_and_merge_use_selection_not_typed_ids(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell
+    from semblon.store import connect, init_db
+
+    seen = {}
+
+    def fake_board(self, run_id=None):
+        return {
+            "items": [
+                {
+                    "cluster_id": "c1",
+                    "face_count": 2,
+                    "named": False,
+                    "person_names": [],
+                    "note_text": "met at the pier",
+                    "has_note": True,
+                    "members": [
+                        {"media_id": "m1", "face_id": "f1"},
+                        {"media_id": "m1", "face_id": "f2"},
+                    ],
+                },
+                {
+                    "cluster_id": "c2",
+                    "face_count": 1,
+                    "named": True,
+                    "person_names": ["Ada"],
+                    "members": [{"media_id": "m2", "face_id": "f9"}],
+                },
+            ]
+        }
+
+    def capture_split(store, run_id, cluster_id, face_ids):
+        seen["split"] = (cluster_id, list(face_ids))
+        return {}
+
+    def capture_merge(store, run_id, cluster_ids):
+        seen["merge"] = list(cluster_ids)
+        return {}
+
+    monkeypatch.setattr(Application, "board", fake_board)
+    monkeypatch.setattr("semblon.review.split_cluster", capture_split)
+    monkeypatch.setattr("semblon.review.merge_clusters", capture_merge)
+    monkeypatch.setattr("semblon.process.latest_run_id", lambda store, **kwargs: "run-1")
+    photo = tmp_path / "a.png"
+    photo.write_bytes(b"not-decoded")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(photo), "h", 40, 20, 3, 1),
+    )
+    conn.commit()
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    bridge = engine._semblon_bridge
+    bridge.openPeople()
+    app.processEvents()
+    assert root.findChild(QObject, "evidenceWall") is not None
+    assert root.findChild(QObject, "addFolder") is not None
+    assert root.findChild(QObject, "splitFace") is not None
+    bridge.selectGroup("c1")
+    assert bridge.evidenceCount == 2
+    assert bridge.savedNote == "met at the pier"
+    assert bridge.evidence_model.data(bridge.evidence_model.index(1, 0), 0) == "Face 2 in this photo"
+    assert bridge.splitSelected() == "Select the face to move out."
+    bridge.toggleFace("f2")
+    assert bridge.selectedFaceCount == 1
+    assert bridge.splitSelected().startswith("Moved the selected face")
+    assert seen["split"] == ("c1", ["f2"])
+    bridge.selectGroup("c1")
+    bridge.armMerge()
+    assert bridge.mergeArmed is True
+    bridge.selectGroup("c2")
+    assert bridge.mergeTargetTitle == "Ada"
+    assert bridge.mergeSelected().startswith("Merged")
+    assert seen["merge"] == ["c1", "c2"]
     engine.deleteLater()
 
 
