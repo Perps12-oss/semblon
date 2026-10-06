@@ -179,7 +179,7 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     app.processEvents()
     assert bridge.focusKind == "video"
     assert bridge.focusUrl == ""
-    assert root.findChild(QObject, "videoMissing").property("visible") is True
+    assert root.findChild(QObject, "videoMissing").property("visible") is False
     engine.deleteLater()
 
 
@@ -346,6 +346,11 @@ def test_bridge_archive_media_ask_similar_and_ingest_use_application(tmp_path, m
     while "kwargs" not in seen and time.monotonic() < deadline:
         time.sleep(0.01)
     assert seen["kwargs"]["open_review"] is False
+    from semblon.home_ui import resolve_home_observers
+
+    assert seen["kwargs"]["observers"] == resolve_home_observers()
+    assert "face" in seen["kwargs"]["observers"].split(",")
+    assert "color" in seen["kwargs"]["observers"].split(",")
     host = (
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "host.py"
     ).read_text(encoding="utf-8")
@@ -360,6 +365,8 @@ def test_focus_qml_draws_into_strip_without_a_similar_button():
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml" / "Shell.qml"
     ).read_text(encoding="utf-8")
     assert "shell.findSimilar()" in qml
+    assert "shell.resumeJob()" in qml
+    assert 'objectName: "resumeJob"' in qml
     assert 'text: "Similar"' not in qml
     assert 'objectName: "findSimilar"' not in qml
     assert 'objectName: "similarStrip"' in qml
@@ -468,4 +475,405 @@ def test_drawn_region_strip_replaces_and_clears(tmp_path, monkeypatch):
     assert bridge.focusId == ""
     assert bridge.similarState == "idle"
     engine.deleteLater()
+
+
+def _wait_idle(jobs, timeout=90.0):
+    import time
+
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    deadline = time.monotonic() + timeout
+    while jobs.busy and time.monotonic() < deadline:
+        if app is not None:
+            app.processEvents()
+        time.sleep(0.05)
+    if app is not None:
+        app.processEvents()
+    assert not jobs.busy
+
+
+def _appearance_rows(store):
+    from semblon.observers import APPEARANCE_PACK
+    from semblon.store import connect
+
+    conn = connect(store)
+    try:
+        return conn.execute(
+            """SELECT o.media_id, e.pack_id
+               FROM embeddings e
+               JOIN observation_items i ON i.item_id = e.item_id
+               JOIN observations o ON o.observation_id = i.observation_id
+               WHERE e.modality='appearance' AND e.pack_id=?""",
+            (APPEARANCE_PACK,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def test_shell_add_folder_indexes_appearance_and_draw_finds_it(tmp_path, monkeypatch):
+    """Fresh native Add Folder writes appearance/rgb8@1. Draw searches that space."""
+    pytest.importorskip("PySide6")
+    cv2 = pytest.importorskip("cv2")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    import numpy as np
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+    from semblon.observers import APPEARANCE_PACK
+
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    red = np.zeros((80, 120, 3), np.uint8)
+    red[:, :] = (20, 20, 220)
+    red_b = red.copy()
+    red_b[0, 0] = (20, 20, 221)
+    blue = np.zeros((80, 120, 3), np.uint8)
+    blue[:, :] = (220, 20, 20)
+    assert cv2.imwrite(str(folder / "red-a.png"), red)
+    assert cv2.imwrite(str(folder / "red-b.png"), red_b)
+    assert cv2.imwrite(str(folder / "blue.png"), blue)
+    (folder / "broken.jpg").write_bytes(b"not-a-jpeg")
+    (folder / "notes.txt").write_text("not media", encoding="utf-8")
+
+    store = tmp_path / "fresh.sqlite"
+    assert not store.exists()
+    assert not (tmp_path / ".semblon-index.npz").exists()
+    qapp = QApplication.instance() or QApplication([])
+    del qapp
+    jobs = Application(store)
+    finished = []
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+    bridge.ingestFinished.connect(lambda: finished.append(True))
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    bridge._start_ingest(empty)
+    _wait_idle(jobs)
+    assert _appearance_rows(store) == []
+
+    bridge._start_ingest(folder)
+    _wait_idle(jobs, timeout=120)
+    assert finished
+    rows = _appearance_rows(store)
+    assert len(rows) >= 2
+    assert all(row[1] == APPEARANCE_PACK for row in rows)
+    assert not (tmp_path / ".semblon-index.npz").exists()
+
+    from semblon.store import connect
+
+    conn = connect(store)
+    try:
+        observations = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+        red_id = conn.execute(
+            "SELECT media_id FROM media WHERE path LIKE '%red-a.png'"
+        ).fetchone()[0]
+        other_red = conn.execute(
+            "SELECT media_id FROM media WHERE path LIKE '%red-b.png'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert observations >= 2
+    indexed = {row[0] for row in rows}
+    assert red_id in indexed and other_red in indexed
+
+    bridge.openFocus(red_id)
+    bridge.setRegion(0.1, 0.1, 0.5, 0.5)
+    bridge.findSimilar()
+    assert bridge.similarState == "ready"
+    found = {bridge.similarId(i) for i in range(bridge.similarCount)}
+    assert other_red in found
+    bridge.openFocus(other_red)
+    assert bridge.focusId == other_red
+
+    before = len(_appearance_rows(store))
+    bridge._start_ingest(folder)
+    _wait_idle(jobs, timeout=120)
+    assert len(_appearance_rows(store)) == before
+
+    bridge.openFocus(red_id)
+    bridge.setRegion(0, 0, 0, 0)
+    bridge.findSimilar()
+    assert bridge.similarState in {"empty", "unavailable"}
+    assert bridge.similarCount == 0
+    bridge.pauseJob()
+    bridge.cancelJob()
+    assert not jobs.busy
+
+
+def test_shell_resume_unpauses_and_resubmits_cancelled_folder(tmp_path, monkeypatch):
+    """Resume uses the existing job door. No second engine."""
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    import threading
+    import time
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+
+    started = threading.Event()
+    release = threading.Event()
+    seen = []
+
+    def fake_process(folder, **kwargs):
+        seen.append(dict(kwargs))
+        started.set()
+        while not release.is_set():
+            if kwargs.get("cancel") and kwargs["cancel"]():
+                from semblon.process import ProcessCancelled
+                raise ProcessCancelled("cancelled", run_id="r")
+            time.sleep(0.02)
+        return {"run_id": "r", "out": None}
+
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
+    qapp = QApplication.instance() or QApplication([])
+    jobs = Application(tmp_path / "s.sqlite")
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    bridge._start_ingest(folder)
+    assert started.wait(2)
+    bridge.pauseJob()
+    assert jobs.paused
+    assert bridge.jobState == "paused"
+    bridge.resumeJob()
+    assert not jobs.paused
+    assert bridge.jobState == "running"
+    bridge.cancelJob()
+    deadline = time.monotonic() + 3
+    while jobs.busy and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(0.02)
+    qapp.processEvents()
+    assert not jobs.busy
+    assert bridge.canResume
+    seen.clear()
+    started.clear()
+    release.set()
+    bridge.resumeJob()
+    assert started.wait(2)
+    assert seen[-1]["resume"] is True
+    assert seen[-1]["open_review"] is False
+    release.set()
+    deadline = time.monotonic() + 3
+    while jobs.busy and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert not jobs.busy
+
+
+def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell
+    from semblon.store import connect, init_db
+
+    calls = []
+
+    def fake_board(self, run_id=None):
+        return {
+            "items": [
+                {
+                    "cluster_id": "c1",
+                    "face_count": 2,
+                    "named": False,
+                    "person_names": [],
+                    "members": [{"media_id": "m1", "face_id": "f1"}],
+                },
+                {
+                    "cluster_id": "c2",
+                    "face_count": 1,
+                    "named": True,
+                    "person_names": ["Ada"],
+                    "members": [{"media_id": "m2", "face_id": "f2"}],
+                },
+            ]
+        }
+
+    def record(name):
+        def _inner(*args, **kwargs):
+            calls.append(name)
+            return {"display_name": "Ada"}
+        return _inner
+
+    monkeypatch.setattr(Application, "board", fake_board)
+    monkeypatch.setattr("semblon.review.name_cluster", record("name"))
+    monkeypatch.setattr("semblon.review.merge_clusters", record("merge"))
+    monkeypatch.setattr("semblon.review.split_cluster", record("split"))
+    monkeypatch.setattr("semblon.review.ignore_subject", record("ignore"))
+    monkeypatch.setattr("semblon.review.note_subject", record("note"))
+    monkeypatch.setattr("semblon.process.latest_run_id", lambda store, **kwargs: "run-1")
+
+    photo = tmp_path / "a.png"
+    photo.write_bytes(b"not-decoded")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(photo), "h", 40, 20, 3, 1),
+    )
+    conn.commit()
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    bridge = engine._semblon_bridge
+    assert root.findChild(QObject, "peopleButton") is not None
+    assert root.findChild(QObject, "commandField").property("visible") is False
+    bridge.openPeople()
+    app.processEvents()
+    desk = root.findChild(QObject, "peopleDesk")
+    assert desk.property("visible") is True
+    assert bridge.peopleEmpty is False
+    assert bridge.people_model.rowCount() == 2
+    bridge.selectGroup("missing")
+    assert bridge.peopleNote == "That group is no longer here."
+    bridge.selectGroup("c1")
+    assert bridge.evidenceId == "m1"
+    bridge.openEvidence("m1")
+    assert bridge.focusId == "m1"
+    bridge.escape()
+    app.processEvents()
+    assert bridge.focusId == ""
+    assert bridge.peopleOpen is True
+    assert bridge.decide("name", "c1", "") == "A name or note is required."
+    assert bridge.decide("name", "c1", "Ada") == "Named Ada. A cluster is not a person."
+    assert bridge.decide("merge", "c1", "c2").startswith("Merged")
+    assert bridge.decide("split", "c1", "f1").startswith("Split")
+    assert bridge.decide("ignore", "c1", "") == "Left unknown."
+    assert bridge.decide("note", "c1", "keep") == "Note kept."
+    assert calls == ["name", "merge", "split", "ignore", "note"]
+    bridge.closePeople()
+    assert bridge.peopleOpen is False
+    qml = Path(__file__).resolve().parents[1].joinpath("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
+    assert "review.html" not in qml
+    assert 'text: "Play"' not in qml
+    engine.deleteLater()
+
+
+def test_decide_reaches_real_review_writer(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+    from semblon.store import connect, init_db
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id, embedding_dim,
+           embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        ("run-1", "2026-10-06T00:00:00Z", "test", "pack", 512, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("semblon.process.latest_run_id", lambda store, **kwargs: "run-1")
+    app = QApplication.instance() or QApplication([])
+    del app
+    jobs = Application(store)
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+    note = bridge.decide("name", "missing-cluster", "Ada")
+    assert "cluster" in note.lower() or "unknown" in note.lower()
+    assert "traceback" not in note.lower()
+    assert "sqlite" not in note.lower()
+
+
+def test_point_uses_stored_region_then_existing_similar_door(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell
+    from semblon.store import connect, init_db
+
+    found = []
+
+    def fake_similar(self, media_id, x, y, w, h, **kwargs):
+        found.append((media_id, x, y, w, h))
+        return {"region": {}, "similar": {"status": "SUCCESS", "items": [{"media_id": "m2", "score": 0.8}]}, "persons": 0}
+
+    monkeypatch.setattr(Application, "remember_and_find_region", fake_similar)
+    photo = tmp_path / "a.png"
+    photo.write_bytes(b"not-decoded")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute("INSERT INTO media VALUES (?,?,?,?,?,?,?,?)", ("m1", "folder", str(photo), "h", 100, 80, 3, 1))
+    conn.execute("INSERT INTO media VALUES (?,?,?,?,?,?,?,?)", ("m2", "folder", str(photo), "i", 100, 80, 4, 1))
+    conn.commit()
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    bridge.openFocus("m1")
+    monkeypatch.setattr(bridge, "_stored_visual_bbox", lambda media_id, px, py: (10, 20, 30, 40))
+    spec = bridge.pointAt(0.5, 0.5)
+    assert spec == "0.1,0.25,0.3,0.5"
+    assert found == [("m1", 10, 20, 30, 40)]
+    assert bridge.similarCount == 1
+    assert bridge.similarId(0) == "m2"
+    bridge.openFocus(bridge.similarId(0))
+    assert bridge.focusId == "m2"
+    assert bridge.similarCount == 0
+    bridge.escape()
+    assert bridge.focusId == ""
+    assert bridge.pointAt(-0.1, 0.2) == ""
+    assert found == [("m1", 10, 20, 30, 40)]
+    engine.deleteLater()
+
+
+def test_point_on_fresh_image_refines_without_inventing_a_miss(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell
+    from semblon.store import connect, init_db
+
+    found = []
+    monkeypatch.setattr(
+        Application,
+        "remember_and_find_region",
+        lambda self, media_id, x, y, w, h, **kwargs: found.append((x, y, w, h)) or {"similar": {"status": "UNAVAILABLE", "reason": "pack"}},
+    )
+    photo = tmp_path / "a.png"
+    photo.write_bytes(b"not-decoded")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute("INSERT INTO media VALUES (?,?,?,?,?,?,?,?)", ("m1", "folder", str(photo), "h", 50, 40, 3, 1))
+    conn.commit()
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    bridge.openFocus("m1")
+    monkeypatch.setattr(bridge, "_stored_visual_bbox", lambda media_id, px, py: None)
+    monkeypatch.setattr(bridge, "_refine_bbox", lambda media_id, px, py: (5, 6, 10, 12))
+    assert bridge.pointAt(0.2, 0.2) == "0.1,0.15,0.2,0.3"
+    assert found == [(5, 6, 10, 12)]
+    assert bridge.similarState == "unavailable"
+    monkeypatch.setattr(bridge, "_refine_bbox", lambda media_id, px, py: None)
+    assert bridge.pointAt(0.2, 0.2) == ""
+    assert bridge.similarCount == 0
+    engine.deleteLater()
+
+
+
+
 

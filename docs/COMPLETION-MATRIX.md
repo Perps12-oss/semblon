@@ -30,9 +30,9 @@ These are product and engineering gaps. They are not permission to reopen the sh
 
 | ITEM | STATE | NOTES |
 |---|---|---|
-| Field + Focus experience | **OPEN** | Archive-first product surface on the PySide6 shell |
-| Find | **OPEN** | Not implemented. Do not add it by inventing a second query path |
-| People / Decision / Appearance / Time as lenses | **OPEN** | Same session. Not new applications |
+| Field + Focus experience | **LANDED on branch** | Native shell at `43eafe5`. Matrix date remains 2026-10-05; this row was stale. |
+| Find | **OUT OF V1** | Not a second query path. Lens remains `Application.query_media`. Region Similar remains `Application.remember_and_find_region`. |
+| People / Decision / Appearance / Time as lenses | **LANDED on branch** | Same session. Time is the mtime lens. People writes only through `review.py`. |
 | Remaining production UX and polish | **OPEN** | Windows product, not another prototype |
 | Eventual Tk retirement | **OPEN** | `semblon home` and Tk review-ui are legacy clients only |
 | Whole-machine stress testing | **OPEN** | Owner Windows. Not a second architecture |

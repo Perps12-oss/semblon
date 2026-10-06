@@ -9,6 +9,7 @@ dependencies = [
   "onnxruntime",
   "opencv-python-headless",
   "numpy",
+  "pillow",
 ]
 
 [project.optional-dependencies]
