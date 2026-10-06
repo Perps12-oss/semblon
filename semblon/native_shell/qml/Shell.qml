@@ -473,6 +473,14 @@ ApplicationWindow {
                     )
                 }
 
+                function insidePainted(px, py) {
+                    var origin = contentOrigin()
+                    return photo.paintedWidth > 1 && photo.paintedHeight > 1
+                            && px >= origin.x && py >= origin.y
+                            && px < origin.x + photo.paintedWidth
+                            && py < origin.y + photo.paintedHeight
+                }
+
                 onPressed: function(mouse) {
                     shell.clearDrawnQuery()
                     x0 = mouse.x
@@ -501,6 +509,11 @@ ApplicationWindow {
                         return
                     }
                     if (rw < 4 || rh < 4) {
+                        if (!insidePainted(mouse.x, mouse.y)) {
+                            hasRect = false
+                            shell.clearDrawnQuery()
+                            return
+                        }
                         var spec = shell.pointAt(
                             Math.max(0, Math.min(0.999999, (mouse.x - origin.x) / pw)),
                             Math.max(0, Math.min(0.999999, (mouse.y - origin.y) / ph))

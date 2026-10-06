@@ -34,6 +34,38 @@ def _seed(path: Path):
     return dark, light
 
 
+def test_crop_follows_display_orientation_and_plain_files(tmp_path):
+    cv2 = __import__("cv2")
+    from PIL import Image, ImageOps
+
+    from semblon.region_search import crop_bgr
+
+    plain = tmp_path / "plain.png"
+    raw = np.zeros((20, 40, 3), dtype=np.uint8)
+    raw[:, :20] = (0, 0, 255)
+    raw[:, 20:] = (255, 0, 0)
+    cv2.imwrite(str(plain), raw)
+    plain_crop = crop_bgr(plain, 0, 0, 10, 10)
+    assert plain_crop.shape == (10, 10, 3)
+    assert int(plain_crop[0, 0, 2]) > 200
+
+    rotated = tmp_path / "rotated.jpg"
+    rgb = raw[:, :, ::-1]
+    image = Image.fromarray(rgb, mode="RGB")
+    exif = image.getexif()
+    exif[274] = 6
+    image.save(rotated, exif=exif.tobytes())
+    opened = Image.open(rotated)
+    transposed = ImageOps.exif_transpose(opened)
+    assert transposed.size == (20, 40)
+    displayed = np.asarray(transposed.convert("RGB"))[:, :, ::-1]
+    crop = crop_bgr(rotated, 0, 0, 8, 8)
+    assert crop.shape == displayed[0:8, 0:8].shape
+    assert np.array_equal(crop, displayed[0:8, 0:8])
+    assert opened.size == (40, 20)
+    assert displayed.shape[:2] == (40, 20)
+
+
 def test_query_time_search_does_not_write_embeddings(tmp_path):
     store = tmp_path / "s.sqlite"
     dark, light = _seed(store)

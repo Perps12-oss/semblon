@@ -791,5 +791,89 @@ def test_decide_reaches_real_review_writer(tmp_path, monkeypatch):
     assert "sqlite" not in note.lower()
 
 
+def test_point_uses_stored_region_then_existing_similar_door(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell
+    from semblon.store import connect, init_db
+
+    found = []
+
+    def fake_similar(self, media_id, x, y, w, h, **kwargs):
+        found.append((media_id, x, y, w, h))
+        return {"region": {}, "similar": {"status": "SUCCESS", "items": [{"media_id": "m2", "score": 0.8}]}, "persons": 0}
+
+    monkeypatch.setattr(Application, "remember_and_find_region", fake_similar)
+    photo = tmp_path / "a.png"
+    photo.write_bytes(b"not-decoded")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute("INSERT INTO media VALUES (?,?,?,?,?,?,?,?)", ("m1", "folder", str(photo), "h", 100, 80, 3, 1))
+    conn.execute("INSERT INTO media VALUES (?,?,?,?,?,?,?,?)", ("m2", "folder", str(photo), "i", 100, 80, 4, 1))
+    conn.commit()
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    bridge.openFocus("m1")
+    monkeypatch.setattr(bridge, "_stored_visual_bbox", lambda media_id, px, py: (10, 20, 30, 40))
+    spec = bridge.pointAt(0.5, 0.5)
+    assert spec == "0.1,0.25,0.3,0.5"
+    assert found == [("m1", 10, 20, 30, 40)]
+    assert bridge.similarCount == 1
+    assert bridge.similarId(0) == "m2"
+    bridge.openFocus(bridge.similarId(0))
+    assert bridge.focusId == "m2"
+    assert bridge.similarCount == 0
+    bridge.escape()
+    assert bridge.focusId == ""
+    assert bridge.pointAt(-0.1, 0.2) == ""
+    assert found == [("m1", 10, 20, 30, 40)]
+    engine.deleteLater()
+
+
+def test_point_on_fresh_image_refines_without_inventing_a_miss(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell
+    from semblon.store import connect, init_db
+
+    found = []
+    monkeypatch.setattr(
+        Application,
+        "remember_and_find_region",
+        lambda self, media_id, x, y, w, h, **kwargs: found.append((x, y, w, h)) or {"similar": {"status": "UNAVAILABLE", "reason": "pack"}},
+    )
+    photo = tmp_path / "a.png"
+    photo.write_bytes(b"not-decoded")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute("INSERT INTO media VALUES (?,?,?,?,?,?,?,?)", ("m1", "folder", str(photo), "h", 50, 40, 3, 1))
+    conn.commit()
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    bridge.openFocus("m1")
+    monkeypatch.setattr(bridge, "_stored_visual_bbox", lambda media_id, px, py: None)
+    monkeypatch.setattr(bridge, "_refine_bbox", lambda media_id, px, py: (5, 6, 10, 12))
+    assert bridge.pointAt(0.2, 0.2) == "0.1,0.15,0.2,0.3"
+    assert found == [(5, 6, 10, 12)]
+    assert bridge.similarState == "unavailable"
+    monkeypatch.setattr(bridge, "_refine_bbox", lambda media_id, px, py: None)
+    assert bridge.pointAt(0.2, 0.2) == ""
+    assert bridge.similarCount == 0
+    engine.deleteLater()
+
+
+
 
 
