@@ -365,6 +365,8 @@ def test_focus_qml_draws_into_strip_without_a_similar_button():
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml" / "Shell.qml"
     ).read_text(encoding="utf-8")
     assert "shell.findSimilar()" in qml
+    assert "shell.resumeJob()" in qml
+    assert 'objectName: "resumeJob"' in qml
     assert 'text: "Similar"' not in qml
     assert 'objectName: "findSimilar"' not in qml
     assert 'objectName: "similarStrip"' in qml
@@ -599,5 +601,68 @@ def test_shell_add_folder_indexes_appearance_and_draw_finds_it(tmp_path, monkeyp
     bridge.pauseJob()
     bridge.cancelJob()
     assert not jobs.busy
+
+
+def test_shell_resume_unpauses_and_resubmits_cancelled_folder(tmp_path, monkeypatch):
+    """Resume uses the existing job door. No second engine."""
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    import threading
+    import time
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+
+    started = threading.Event()
+    release = threading.Event()
+    seen = []
+
+    def fake_process(folder, **kwargs):
+        seen.append(dict(kwargs))
+        started.set()
+        while not release.is_set():
+            if kwargs.get("cancel") and kwargs["cancel"]():
+                from semblon.process import ProcessCancelled
+                raise ProcessCancelled("cancelled", run_id="r")
+            time.sleep(0.02)
+        return {"run_id": "r", "out": None}
+
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
+    qapp = QApplication.instance() or QApplication([])
+    jobs = Application(tmp_path / "s.sqlite")
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    bridge._start_ingest(folder)
+    assert started.wait(2)
+    bridge.pauseJob()
+    assert jobs.paused
+    assert bridge.jobState == "paused"
+    bridge.resumeJob()
+    assert not jobs.paused
+    assert bridge.jobState == "running"
+    bridge.cancelJob()
+    deadline = time.monotonic() + 3
+    while jobs.busy and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(0.02)
+    qapp.processEvents()
+    assert not jobs.busy
+    assert bridge.canResume
+    seen.clear()
+    started.clear()
+    release.set()
+    bridge.resumeJob()
+    assert started.wait(2)
+    assert seen[-1]["resume"] is True
+    assert seen[-1]["open_review"] is False
+    release.set()
+    deadline = time.monotonic() + 3
+    while jobs.busy and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert not jobs.busy
+
 
 

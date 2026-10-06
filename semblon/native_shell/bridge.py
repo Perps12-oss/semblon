@@ -46,6 +46,9 @@ class ShellBridge(QObject):
         self._model = model
         self._job_active = False
         self._job_state = "idle"
+        self._last_folder: Path | None = None
+        self._resume_ready = False
+        self._cancel_requested = False
         self._empty = self._jobs.archive_count() == 0
         self._reduced = reduced_motion()
         self._result_text = ""
@@ -99,6 +102,14 @@ class ShellBridge(QObject):
     @Property(bool, notify=jobChanged)
     def jobActive(self) -> bool:
         return self._job_active
+
+    @Property(str, notify=jobChanged)
+    def jobState(self) -> str:
+        return self._job_state
+
+    @Property(bool, notify=jobChanged)
+    def canResume(self) -> bool:
+        return self._resume_ready and self._last_folder is not None and not self._job_active
 
     @Property(str, notify=jobChanged)
     def jobLabel(self) -> str:
@@ -311,22 +322,38 @@ class ShellBridge(QObject):
         self._poll_job()
 
     @Slot()
+    def resumeJob(self) -> None:
+        """Same job door. Paused work unpauses. A cancelled folder resubmits with resume."""
+        if self._jobs.paused:
+            self._jobs.unpause_job()
+            self._poll_job()
+            return
+        if self._jobs.busy or self._last_folder is None or not self._resume_ready:
+            return
+        self._start_ingest(self._last_folder, resume=True)
+
+    @Slot()
     def cancelJob(self) -> None:
+        self._cancel_requested = True
         self._jobs.cancel_job()
         self._poll_job()
 
     def path_for(self, media_id: str) -> str | None:
         return self._jobs.media_path(media_id)
 
-    def _start_ingest(self, folder: Path) -> None:
+    def _start_ingest(self, folder: Path, *, resume: bool = False) -> None:
         from semblon.home_ui import resolve_home_observers
 
+        self._last_folder = Path(folder)
+        self._resume_ready = False
+        self._cancel_requested = False
         try:
             self._jobs.submit_ingest(
-                folder,
+                self._last_folder,
                 on_done=lambda _result: self.ingestFinished.emit(),
                 open_review=False,
                 observers=resolve_home_observers(),
+                resume=resume,
             )
         except JobBusy:
             return
@@ -341,6 +368,9 @@ class ShellBridge(QObject):
         state = self._session.job_state()
         if active != self._job_active or state != self._job_state:
             was = self._job_active
+            if was and not active:
+                self._resume_ready = bool(self._cancel_requested and self._last_folder is not None)
+                self._cancel_requested = False
             self._job_active = active
             self._job_state = state
             self.jobChanged.emit()

@@ -150,7 +150,8 @@ ApplicationWindow {
             }
             Text {
                 objectName: "pauseJob"
-                text: "Pause"
+                text: shell.jobState === "paused" ? "Resume" : "Pause"
+                visible: shell.jobActive
                 color: pauseArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
                 font.family: "Segoe UI"
                 font.pixelSize: 13
@@ -161,7 +162,24 @@ ApplicationWindow {
                     anchors.margins: -6
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: shell.pauseJob()
+                    onClicked: shell.jobState === "paused" ? shell.resumeJob() : shell.pauseJob()
+                }
+            }
+            Text {
+                objectName: "resumeJob"
+                text: "Resume"
+                visible: shell.canResume && !shell.jobActive
+                color: resumeArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                anchors.verticalCenter: parent.verticalCenter
+                MouseArea {
+                    id: resumeArea
+                    anchors.fill: parent
+                    anchors.margins: -6
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: shell.resumeJob()
                 }
             }
             Text {
