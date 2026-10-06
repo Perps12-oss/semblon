@@ -29,7 +29,7 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     model = ArchiveModel(jobs)
     bridge = ShellBridge(model, jobs)
     engine = QQmlApplicationEngine()
-    engine.addImageProvider("archive", ArchiveImageProvider(bridge.path_for))
+    engine.addImageProvider("archive", ArchiveImageProvider(bridge.path_for, bridge.face_box))
     engine.rootContext().setContextProperty("shell", bridge)
     engine.rootContext().setContextProperty("archiveModel", model)
     engine.rootContext().setContextProperty("similarModel", bridge.similar_model)

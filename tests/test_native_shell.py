@@ -897,8 +897,8 @@ def test_people_split_and_merge_use_selection_not_typed_ids(tmp_path, monkeypatc
                     "note_text": "met at the pier",
                     "has_note": True,
                     "members": [
-                        {"media_id": "m1", "face_id": "f1"},
-                        {"media_id": "m1", "face_id": "f2"},
+                        {"media_id": "m1", "face_id": "f1", "path": str(photo), "bbox": (4, 4, 20, 20)},
+                        {"media_id": "m1", "face_id": "f2", "path": str(photo), "bbox": (24, 4, 36, 18)},
                     ],
                 },
                 {
@@ -945,6 +945,8 @@ def test_people_split_and_merge_use_selection_not_typed_ids(tmp_path, monkeypatc
     assert root.findChild(QObject, "splitFace") is not None
     bridge.selectGroup("c1")
     assert bridge.evidenceCount == 2
+    assert bridge.faceThumb("f2").startswith("image://archive/c/")
+    assert bridge.face_box("f2")[1] == (24, 4, 36, 18)
     assert bridge.savedNote == "met at the pier"
     assert bridge.evidence_model.data(bridge.evidence_model.index(1, 0), 0) == "Face 2 in this photo"
     assert bridge.splitSelected() == "Select the face to move out."
@@ -960,6 +962,38 @@ def test_people_split_and_merge_use_selection_not_typed_ids(tmp_path, monkeypatc
     assert bridge.mergeSelected().startswith("Merged")
     assert seen["merge"] == ["c1", "c2"]
     engine.deleteLater()
+
+
+def test_face_crop_matches_the_selected_box_and_display_orientation(tmp_path):
+    pytest.importorskip("PySide6")
+    cv2 = pytest.importorskip("cv2")
+    import numpy as np
+    from PIL import Image
+
+    from semblon.native_shell.images import face_crop_qimage
+
+    raw = np.zeros((80, 120, 3), np.uint8)
+    raw[:, :40] = (20, 20, 220)
+    raw[:, 80:] = (220, 20, 20)
+    plain = tmp_path / "plain.png"
+    assert cv2.imwrite(str(plain), raw)
+    left = face_crop_qimage(str(plain), (5, 10, 25, 40))
+    right = face_crop_qimage(str(plain), (90, 10, 110, 40))
+    assert not left.isNull() and not right.isNull()
+    assert left.pixelColor(left.width() // 2, left.height() // 2).red() > 180
+    assert right.pixelColor(right.width() // 2, right.height() // 2).blue() > 180
+
+    turned = tmp_path / "turned.jpg"
+    image = Image.fromarray(raw[:, :, ::-1])
+    exif = Image.Exif()
+    exif[274] = 6
+    image.save(turned, format="JPEG", exif=exif.tobytes())
+    plain_crop = face_crop_qimage(str(plain), (5, 10, 25, 50))
+    crop = face_crop_qimage(str(turned), (5, 10, 25, 50))
+    assert not crop.isNull()
+    assert crop.width() == plain_crop.height()
+    assert crop.height() == plain_crop.width()
+    assert crop.pixelColor(crop.width() // 2, crop.height() // 2).red() > 180
 
 
 

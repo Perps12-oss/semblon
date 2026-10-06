@@ -68,6 +68,7 @@ class ShellBridge(QObject):
         self._merge_armed = False
         self._saved_note = ""
         self._status_line = ""
+        self._face_boxes: dict[str, tuple] = {}
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
@@ -363,8 +364,10 @@ class ShellBridge(QObject):
             board = self._jobs.board()
         except Exception as exc:  # noqa: BLE001 — empty desk, not a traceback
             self._people.set_rows([])
+            self._face_boxes = {}
             self._people_note = "No groups yet." if "unknown run" in str(exc).lower() else "Groups could not be read."
             return
+        boxes: dict[str, tuple] = {}
         for item in board.get("items") or []:
             members = item.get("members") or []
             media_id = ""
@@ -391,6 +394,12 @@ class ShellBridge(QObject):
                 else:
                     label = f"Face {index}"
                 evidence.append({"faceId": fid, "mediaId": mid, "label": label})
+                box = member.get("bbox")
+                path = str(member.get("path") or "")
+                if not path and mid:
+                    path = self._jobs.media_path(mid) or ""
+                if path and box and len(box) >= 4:
+                    boxes[fid] = (path, tuple(box[:4]))
             names = item.get("person_names") or []
             subject = str(item.get("cluster_id") or item.get("face_id") or "")
             if not subject:
@@ -414,6 +423,7 @@ class ShellBridge(QObject):
                     "evidence": evidence,
                 }
             )
+        self._face_boxes = boxes
         self._people.set_rows(rows)
         if self._selected_subject and self._people.row(self._selected_subject) is None:
             self._selected_subject = ""
@@ -733,6 +743,15 @@ class ShellBridge(QObject):
 
     def path_for(self, media_id: str) -> str | None:
         return self._jobs.media_path(media_id)
+
+    def face_box(self, face_id: str) -> tuple | None:
+        return self._face_boxes.get(face_id)
+
+    @Slot(str, result=str)
+    def faceThumb(self, face_id: str) -> str:
+        if face_id and face_id in self._face_boxes:
+            return f"image://archive/c/{face_id}"
+        return ""
 
     def _start_ingest(self, folder: Path, *, resume: bool = False) -> None:
         from semblon.home_ui import resolve_home_observers

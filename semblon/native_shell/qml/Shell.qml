@@ -371,7 +371,9 @@ ApplicationWindow {
                                     anchors.right: parent.right
                                     anchors.margins: 6
                                     height: 108
-                                    source: mediaId !== "" ? ("image://archive/t/" + mediaId) : ""
+                                    source: shell.faceThumb(faceId) !== ""
+                                            ? shell.faceThumb(faceId)
+                                            : (mediaId !== "" ? ("image://archive/t/" + mediaId) : "")
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
                                 }
