@@ -179,7 +179,7 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     app.processEvents()
     assert bridge.focusKind == "video"
     assert bridge.focusUrl == ""
-    assert root.findChild(QObject, "videoMissing").property("visible") is True
+    assert root.findChild(QObject, "videoMissing").property("visible") is False
     engine.deleteLater()
 
 

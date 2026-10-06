@@ -82,6 +82,7 @@ ApplicationWindow {
             id: command
             width: 320
             height: 36
+            visible: false
             radius: 8
             color: "#1C2430"
             border.color: commandField.activeFocus ? "#2DD4BF" : "#243140"
@@ -166,23 +167,6 @@ ApplicationWindow {
                 }
             }
             Text {
-                objectName: "resumeJob"
-                text: "Resume"
-                visible: shell.canResume && !shell.jobActive
-                color: resumeArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                anchors.verticalCenter: parent.verticalCenter
-                MouseArea {
-                    id: resumeArea
-                    anchors.fill: parent
-                    anchors.margins: -6
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: shell.resumeJob()
-                }
-            }
-            Text {
                 objectName: "cancelJob"
                 text: "Cancel"
                 color: cancelArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
@@ -197,6 +181,26 @@ ApplicationWindow {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: shell.cancelJob()
                 }
+            }
+        }
+
+        Text {
+            objectName: "resumeJob"
+            text: "Resume"
+            visible: shell.canResume && !shell.jobActive
+            anchors.right: parent.right
+            anchors.rightMargin: 28
+            anchors.verticalCenter: parent.verticalCenter
+            color: resumeArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+            font.family: "Segoe UI"
+            font.pixelSize: 13
+            MouseArea {
+                id: resumeArea
+                anchors.fill: parent
+                anchors.margins: -6
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: shell.resumeJob()
             }
         }
     }
@@ -244,13 +248,8 @@ ApplicationWindow {
                     }
 
                     Text {
-                        visible: kind === "video"
-                        anchors.centerIn: parent
-                        text: "Play"
-                        color: "#E7EEF5"
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                        font.letterSpacing: 1.2
+                        visible: false
+                        text: ""
                     }
 
                     Rectangle {
@@ -410,9 +409,30 @@ ApplicationWindow {
                     var origin = contentOrigin()
                     var pw = photo.paintedWidth
                     var ph = photo.paintedHeight
-                    if (pw <= 1 || ph <= 1 || rw < 4 || rh < 4) {
+                    if (pw <= 1 || ph <= 1) {
                         hasRect = false
                         shell.clearDrawnQuery()
+                        return
+                    }
+                    if (rw < 4 || rh < 4) {
+                        var spec = shell.pointAt(
+                            Math.max(0, Math.min(0.999999, (mouse.x - origin.x) / pw)),
+                            Math.max(0, Math.min(0.999999, (mouse.y - origin.y) / ph))
+                        )
+                        if (!spec) {
+                            hasRect = false
+                            return
+                        }
+                        var parts = spec.split(",")
+                        if (parts.length !== 4) {
+                            hasRect = false
+                            return
+                        }
+                        rx = origin.x + parseFloat(parts[0]) * pw
+                        ry = origin.y + parseFloat(parts[1]) * ph
+                        rw = Math.max(1, parseFloat(parts[2]) * pw)
+                        rh = Math.max(1, parseFloat(parts[3]) * ph)
+                        hasRect = true
                         return
                     }
                     var nx = (rx - origin.x) / pw
@@ -444,7 +464,7 @@ ApplicationWindow {
                 id: videoOut
                 anchors.fill: parent
                 anchors.margins: 48
-                visible: shell.focusKind === "video" && shell.focusUrl !== ""
+                visible: false
             }
 
             MediaPlayer {
@@ -452,16 +472,13 @@ ApplicationWindow {
                 videoOutput: videoOut
                 audioOutput: AudioOutput {}
                 onMediaStatusChanged: {
-                    if (mediaStatus === MediaPlayer.LoadedMedia && shell.focusKind === "video")
-                        play()
                 }
             }
 
             Text {
                 objectName: "videoMissing"
-                visible: shell.focusKind === "video" && shell.focusUrl === ""
-                anchors.centerIn: parent
-                text: "This video is not available"
+                visible: false
+                text: ""
                 color: "#8AA0B2"
                 font.family: "Segoe UI"
                 font.pixelSize: 15

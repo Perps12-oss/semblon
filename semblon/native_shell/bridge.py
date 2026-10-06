@@ -56,6 +56,7 @@ class ShellBridge(QObject):
         self._similar = SimilarStripModel()
         self._similar_state = "idle"
         self._similar_note = ""
+        self._point_source = ""
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
@@ -244,7 +245,7 @@ class ShellBridge(QObject):
             self._set_result(f"Semblon could not finish looking.\n{exc}")
             return
         lines = rec.get("lines") or [rec.get("reason") or "Nothing was searched."]
-        self._set_result("\n".join(str(line) for line in lines))
+        self._set_result(_ask_lines(lines))
 
     @Slot(float, float, float, float)
     def setRegion(self, nx: float, ny: float, nw: float, nh: float) -> None:
@@ -294,6 +295,148 @@ class ShellBridge(QObject):
         if not media_id:
             return ""
         return f"image://archive/t/{media_id}"
+
+    @Slot(float, float, result=str)
+    def pointAt(self, nx: float, ny: float) -> str:
+        """Settled Focus point. Stored region, else refine_from_point, then findSimilar."""
+        self._point_source = ""
+        media_id = self._session.focus_id
+        if not media_id:
+            self._clear_query()
+            return ""
+        item = self._jobs.media(media_id)
+        if item is None:
+            self._clear_query()
+            return ""
+        width = int(item.width or 0)
+        height = int(item.height or 0)
+        if width <= 0 or height <= 0:
+            self._clear_query()
+            return ""
+        nx = float(nx)
+        ny = float(ny)
+        if nx < 0.0 or ny < 0.0 or nx >= 1.0 or ny >= 1.0:
+            self._clear_query()
+            return ""
+        px = max(0, min(width - 1, int(nx * width)))
+        py = max(0, min(height - 1, int(ny * height)))
+        bbox = self._bbox_at_point(media_id, px, py)
+        if bbox is None:
+            self._clear_query()
+            return ""
+        x, y, w, h = bbox
+        self.setRegion(x / width, y / height, w / width, h / height)
+        self.findSimilar()
+        return f"{x / width},{y / height},{w / width},{h / height}"
+
+    def _bbox_at_point(self, media_id: str, px: int, py: int) -> tuple[int, int, int, int] | None:
+        stored = self._stored_visual_bbox(media_id, px, py)
+        if stored is not None:
+            self._point_source = "stored"
+            return stored
+        refined = self._refine_bbox(media_id, px, py)
+        if refined is None:
+            return None
+        self._point_source = "refine"
+        return refined
+
+    def _stored_visual_bbox(self, media_id: str, px: int, py: int) -> tuple[int, int, int, int] | None:
+        from semblon.process import latest_run_id
+        from semblon.visual.masks import point_in_rows
+        from semblon.visual.model import PAINT_ORDER
+        from semblon.visual.persist import load_hover_rows
+
+        run_id = latest_run_id(self._jobs.store)
+        if not run_id:
+            return None
+        rows = load_hover_rows(self._jobs.store, media_id=media_id, run_id=run_id)
+        rank = {kind: index for index, kind in enumerate(PAINT_ORDER)}
+        hit = None
+        for item in sorted(rows, key=lambda row: rank.get(row.get("kind") or "unknown", 0)):
+            if point_in_rows(item.get("rows") or {}, px, py):
+                hit = item
+        if hit is None:
+            return None
+        bbox = hit.get("bbox") or []
+        if len(bbox) < 4 or bbox[0] is None:
+            return None
+        x1, y1, x2, y2 = (float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return int(x1), int(y1), max(1, int(round(x2 - x1))), max(1, int(round(y2 - y1)))
+
+    def _refine_bbox(self, media_id: str, px: int, py: int) -> tuple[int, int, int, int] | None:
+        from semblon.selection import load_media_bgr
+        from semblon.semantic_visual import LocalSemanticVisualProvider
+
+        image = load_media_bgr(self._jobs.store, media_id)
+        if image is None:
+            return None
+        try:
+            raw = LocalSemanticVisualProvider().refine_from_point(image, px, py)
+        except Exception:
+            return None
+        if not raw or not raw.get("bbox"):
+            return None
+        box = raw["bbox"]
+        if len(box) < 4:
+            return None
+        x1, y1, x2, y2 = (float(box[0]), float(box[1]), float(box[2]), float(box[3]))
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return int(x1), int(y1), max(1, int(round(x2 - x1))), max(1, int(round(y2 - y1)))
+
+    @Slot(str, str, str, result=str)
+    def decide(self, kind: str, subject: str, text: str) -> str:
+        """Human decision only. Writes through review.py. Does not assign a person by score."""
+        from semblon.process import latest_run_id
+        from semblon.review import ReviewError
+
+        run_id = latest_run_id(self._jobs.store)
+        if not run_id:
+            return "No reviewed run yet."
+        try:
+            if kind == "name":
+                from semblon.review import name_cluster
+                rec = name_cluster(self._jobs.store, run_id, subject, text)
+                return f"Named {rec.get('display_name')}. A cluster is not a person."
+            if kind == "ignore":
+                from semblon.review import ignore_subject
+                ignore_subject(self._jobs.store, run_id, cluster_id=subject)
+                return "Left unknown."
+            if kind == "note":
+                from semblon.review import note_subject
+                note_subject(self._jobs.store, run_id, text, cluster_id=subject)
+                return "Note kept."
+            if kind == "merge":
+                from semblon.review import merge_clusters
+                other = text.strip()
+                merge_clusters(self._jobs.store, run_id, [subject, other])
+                return "Merged the groups. Still not a person."
+            if kind == "split":
+                from semblon.review import split_cluster
+                face_id = text.strip()
+                split_cluster(self._jobs.store, run_id, subject, [face_id])
+                return "Split the group."
+        except ReviewError as exc:
+            return str(exc)
+        except Exception as exc:  # noqa: BLE001 — show the decision failure
+            return str(exc)
+        return "That decision is not available."
+
+    @Slot(result=str)
+    def peopleSummary(self) -> str:
+        try:
+            board = self._jobs.board()
+        except Exception as exc:  # noqa: BLE001
+            return str(exc)
+        lines = []
+        for item in board.get("items") or []:
+            if item.get("named"):
+                continue
+            label = item.get("cluster_id") or item.get("face_id") or "group"
+            lines.append(f"{label} · {item.get('face_count') or 0}")
+        return "\n".join(lines) or "No unnamed groups."
 
     @Slot()
     def findSimilar(self) -> None:
@@ -384,6 +527,19 @@ class ShellBridge(QObject):
         if empty != self._empty:
             self._empty = empty
             self.emptyChanged.emit()
+
+
+def _ask_lines(lines) -> str:
+    kept = []
+    for line in lines:
+        text = str(line).strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if "traceback" in lowered or "sqlite" in lowered:
+            continue
+        kept.append(text)
+    return "\n".join(kept) or "Nothing was searched."
 
 
 def _strip_from(rec: dict) -> tuple[str, str, list[tuple[str, float]]]:

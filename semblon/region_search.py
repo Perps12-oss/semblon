@@ -33,6 +33,7 @@ def crop_bgr(image_path: Path, x: int, y: int, w: int, h: int):
     image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
     if image is None:
         raise RegionError(f"could not read {image_path}")
+    image = _apply_display_orientation(image_path, image)
     height, width = image.shape[:2]
     x1 = max(0, int(x))
     y1 = max(0, int(y))
@@ -41,6 +42,24 @@ def crop_bgr(image_path: Path, x: int, y: int, w: int, h: int):
     if x2 <= x1 or y2 <= y1:
         raise RegionError("region has no pixels")
     return image[y1:y2, x1:x2].copy()
+
+
+def _apply_display_orientation(image_path: Path, image):
+    """Match QImageReader auto-transform so a drawn box is the pixels the user saw."""
+    try:
+        from PIL import Image, ImageOps
+        import numpy as np
+    except Exception:
+        return image
+    try:
+        with Image.open(image_path) as raw:
+            oriented = ImageOps.exif_transpose(raw)
+            if oriented.size == raw.size and oriented.tobytes() == raw.tobytes():
+                return image
+            rgb = np.asarray(oriented.convert("RGB"))
+    except Exception:
+        return image
+    return rgb[:, :, ::-1].copy()
 
 
 def appearance_vector(crop) -> bytes:
