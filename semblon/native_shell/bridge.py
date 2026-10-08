@@ -63,6 +63,8 @@ class ShellBridge(QObject):
         self._people_note = ""
         self._selected_subject = ""
         self._evidence_id = ""
+        self._merge_target_subject = ""
+        self._split_faces: list[str] = []
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
@@ -219,6 +221,63 @@ class ShellBridge(QObject):
         return self._people_open
 
     @Property(str, notify=peopleChanged)
+    def selectedTitle(self) -> str:
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return ""
+        return str(row.get("title") or "")
+
+    @Property(int, notify=peopleChanged)
+    def selectedCount(self) -> int:
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return 0
+        return len(row.get("members") or [])
+
+    @Property("QVariantList", notify=peopleChanged)
+    def selectedMembers(self):
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return []
+        return list(row.get("members") or [])
+
+    @Property(str, notify=peopleChanged)
+    def mergeTargetSubject(self) -> str:
+        return self._merge_target_subject
+
+    @Property(str, notify=peopleChanged)
+    def mergeTargetTitle(self) -> str:
+        row = self._people.row(self._merge_target_subject)
+        if not row:
+            return ""
+        return str(row.get("title") or "")
+
+    @Property("QVariantList", notify=peopleChanged)
+    def mergeCandidates(self):
+        rows = []
+        for item in self._people._rows:
+            if item["subject"] == self._selected_subject:
+                continue
+            rows.append(dict(item))
+        return rows
+
+    @Property(int, notify=peopleChanged)
+    def splitSelectionCount(self) -> int:
+        return len(self._split_faces)
+
+    @Property(bool, notify=peopleChanged)
+    def canSplitSelected(self) -> bool:
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return False
+        total = len(row.get("members") or [])
+        return 0 < len(self._split_faces) < total
+
+    @Property(bool, notify=peopleChanged)
+    def canMergeSelected(self) -> bool:
+        return bool(self._selected_subject and self._merge_target_subject and self._selected_subject != self._merge_target_subject)
+
+    @Property(str, notify=peopleChanged)
     def peopleNote(self) -> str:
         return self._people_note
 
@@ -245,6 +304,8 @@ class ShellBridge(QObject):
         self._people_open = False
         self._selected_subject = ""
         self._evidence_id = ""
+        self._merge_target_subject = ""
+        self._split_faces = []
         self.peopleChanged.emit()
 
     @Slot(str)
@@ -254,6 +315,40 @@ class ShellBridge(QObject):
         self._evidence_id = str(row["mediaId"]) if row else ""
         if not row:
             self._people_note = "That group is no longer here."
+        self._merge_target_subject = ""
+        self._split_faces = []
+        self.peopleChanged.emit()
+
+    @Slot(str)
+    def selectMergeTarget(self, subject: str) -> None:
+        if subject and subject != self._selected_subject and self._people.row(subject) is not None:
+            self._merge_target_subject = subject
+        else:
+            self._merge_target_subject = ""
+        self.peopleChanged.emit()
+
+    @Slot(str)
+    def toggleSplitFace(self, face_id: str) -> None:
+        fid = str(face_id or "").strip()
+        if not fid:
+            return
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return
+        member_ids = {str(member.get("face_id") or "") for member in row.get("members") or []}
+        if fid not in member_ids:
+            return
+        if fid in self._split_faces:
+            self._split_faces = [face for face in self._split_faces if face != fid]
+        else:
+            self._split_faces = [*self._split_faces, fid]
+        self.peopleChanged.emit()
+
+    @Slot()
+    def clearSplitSelection(self) -> None:
+        if not self._split_faces:
+            return
+        self._split_faces = []
         self.peopleChanged.emit()
 
     @Slot(str)
@@ -263,6 +358,25 @@ class ShellBridge(QObject):
             self.peopleChanged.emit()
             return
         self.openFocus(media_id)
+
+    def face_crop_spec(self, face_id: str) -> dict | None:
+        fid = str(face_id or "").strip()
+        if not fid:
+            return None
+        try:
+            board = self._jobs.board()
+        except Exception:
+            return None
+        for item in board.get("items") or []:
+            for member in item.get("members") or []:
+                if str(member.get("face_id") or "") == fid:
+                    bbox = member.get("bbox") or ()
+                    return {
+                        "path": member.get("path") or "",
+                        "bbox": bbox,
+                        "media_id": member.get("media_id") or "",
+                    }
+        return None
 
     def _refresh_people(self) -> None:
         rows = []
@@ -274,6 +388,10 @@ class ShellBridge(QObject):
             return
         for item in board.get("items") or []:
             members = item.get("members") or []
+            if item.get("kind") == "track":
+                continue
+            if members and all(str(member.get("source_type") or "") == "video" for member in members):
+                continue
             media_id = ""
             face_id = ""
             if members:
@@ -291,6 +409,7 @@ class ShellBridge(QObject):
                     "named": bool(item.get("named")),
                     "mediaId": media_id,
                     "faceId": face_id,
+                    "members": list(members),
                 }
             )
         self._people.set_rows(rows)
@@ -298,6 +417,8 @@ class ShellBridge(QObject):
             self._selected_subject = ""
             self._evidence_id = ""
             self._people_note = "That group is no longer here."
+            self._merge_target_subject = ""
+            self._split_faces = []
 
     @Slot()
     def escape(self) -> None:
@@ -520,8 +641,8 @@ class ShellBridge(QObject):
                 return self._after_decision("Merged the groups. Still not a person.")
             if kind == "split":
                 from semblon.review import split_cluster
-                face_id = text.strip()
-                split_cluster(self._jobs.store, run_id, subject, [face_id])
+                face_ids = [part.strip() for part in text.split(",") if part.strip()]
+                split_cluster(self._jobs.store, run_id, subject, face_ids)
                 return self._after_decision("Split the group.")
         except ReviewError as exc:
             return self._after_decision(str(exc))
@@ -529,8 +650,42 @@ class ShellBridge(QObject):
             return self._after_decision(str(exc))
         return self._after_decision("That decision is not available.")
 
+    @Slot(result=str)
+    def mergeSelectedGroup(self) -> str:
+        if not self._selected_subject:
+            return self._after_decision("Select a group first.")
+        if not self._merge_target_subject or self._merge_target_subject == self._selected_subject:
+            return self._after_decision("Select another group to merge with.")
+        return self.decide("merge", self._selected_subject, self._merge_target_subject)
+
+    @Slot(result=str)
+    def splitSelectedFaces(self) -> str:
+        if not self._selected_subject:
+            return self._after_decision("Select a group first.")
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return self._after_decision("That group is no longer here.")
+        members = row.get("members") or []
+        if not self._split_faces:
+            return self._after_decision("Select one or more faces to split.")
+        if len(self._split_faces) >= len(members):
+            return self._after_decision("Leave at least one face in the group.")
+        return self.decide("split", self._selected_subject, ",".join(self._split_faces))
+
+    @Slot(str, result=str)
+    def faceThumb(self, face_id: str) -> str:
+        if not face_id:
+            return ""
+        return f"image://face/{face_id}"
+
+    @Slot(str, result=bool)
+    def isSplitFaceSelected(self, face_id: str) -> bool:
+        return str(face_id or "") in self._split_faces
+
     def _after_decision(self, note: str) -> str:
         self._people_note = note
+        self._merge_target_subject = ""
+        self._split_faces = []
         self._refresh_people()
         self.peopleChanged.emit()
         return note
@@ -596,7 +751,7 @@ class ShellBridge(QObject):
         return self._jobs.media_path(media_id)
 
     def _start_ingest(self, folder: Path, *, resume: bool = False) -> None:
-        from semblon.home_ui import resolve_home_observers
+        from semblon.observers import resolve_product_observers
 
         self._last_folder = Path(folder)
         self._resume_ready = False
@@ -606,7 +761,7 @@ class ShellBridge(QObject):
                 self._last_folder,
                 on_done=lambda _result: self.ingestFinished.emit(),
                 open_review=False,
-                observers=resolve_home_observers(),
+                observers=resolve_product_observers(),
                 resume=resume,
             )
         except JobBusy:
