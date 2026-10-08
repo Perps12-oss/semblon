@@ -373,6 +373,11 @@ def test_focus_qml_draws_into_strip_without_a_similar_button():
     assert "shell.thumbFor(mediaId)" in qml
     assert "shell.openFocus(mediaId)" in qml
     assert "shell.clearDrawnQuery()" in qml
+    assert 'objectName: "primaryModeButton"' in qml
+    assert 'objectName: "advancedModeButton"' in qml
+    assert 'objectName: "runStatus"' in qml
+    assert 'objectName: "clearSplitSelection"' in qml
+    assert "shellApi.setAtmosphere(" in qml
     assert "image://archive/t/" not in qml.split("similarStrip", 1)[-1].split("similarThumb", 1)[0]
     host = (
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "host.py"
@@ -1007,6 +1012,55 @@ def test_bridge_mode_and_atmosphere_persist(tmp_path, monkeypatch):
     bridge2 = ShellBridge(ArchiveModel(jobs), jobs)
     assert bridge2.mode == "advanced"
     assert bridge2.atmosphereId == "tokyo_synth"
+
+
+def test_bridge_submit_command_primary_vs_advanced(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+
+    def fake_board(self, run_id=None):
+        return {
+            "items": [
+                {
+                    "cluster_id": "c1",
+                    "face_count": 2,
+                    "named": True,
+                    "person_names": ["Ada"],
+                    "members": [{"media_id": "m1", "face_id": "f1"}],
+                },
+                {
+                    "cluster_id": "c2",
+                    "face_count": 1,
+                    "named": False,
+                    "person_names": [],
+                    "members": [{"media_id": "m2", "face_id": "f2"}],
+                },
+            ]
+        }
+
+    monkeypatch.setattr(Application, "board", fake_board)
+
+    store = tmp_path / "prefs.sqlite"
+    jobs = Application(store)
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+
+    bridge.submitCommand("ada")
+    assert bridge.resultText == "Found: Ada."
+
+    bridge.submitCommand("status")
+    assert bridge.resultText == "No people matched that search."
+
+    bridge.setMode("advanced")
+    bridge.submitCommand("status")
+    assert "mode=advanced" in bridge.resultText
+    assert "focus_id=" in bridge.resultText
+
+    bridge.submitCommand("people")
+    assert "c2" in bridge.resultText
 
 
 def test_point_uses_stored_region_then_existing_similar_door(tmp_path, monkeypatch):

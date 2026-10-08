@@ -112,6 +112,35 @@ class ShellBridge(QObject):
     def primaryMode(self) -> bool:
         return self._mode == PRIMARY
 
+    @Property(bool, notify=lensChanged)
+    def advancedMode(self) -> bool:
+        return self._mode == ADVANCED
+
+    @Property(str, notify=lensChanged)
+    def modeLabel(self) -> str:
+        return "Primary" if self._mode == PRIMARY else "Advanced"
+
+    @Property(str, notify=lensChanged)
+    def modeHint(self) -> str:
+        if self._mode == PRIMARY:
+            return "Simple product language"
+        return "Diagnostics and technical detail"
+
+    @Property(str, notify=lensChanged)
+    def diagnosticsText(self) -> str:
+        if self._mode != ADVANCED:
+            return ""
+        focus = self._session.focus_id or "(none)"
+        return "\n".join(
+            [
+                f"mode={self._mode}",
+                f"focus_id={focus}",
+                f"job_state={self._job_state}",
+                f"similar_state={self._similar_state}",
+                f"selected_subject={self._selected_subject or '(none)'}",
+            ]
+        )
+
     @Property(str, notify=lensChanged)
     def atmosphereId(self) -> str:
         return self._atmosphere_id
@@ -499,8 +528,39 @@ class ShellBridge(QObject):
 
     @Slot(str)
     def submitCommand(self, text: str) -> None:
-        """Command field hook. No lens is created until a real capability is wired."""
-        del text
+        query = str(text or "").strip()
+        if not query:
+            self._set_result("Nothing was searched.")
+            return
+        lowered = query.lower()
+        if lowered in {"people", "groups"}:
+            self._set_result(self.peopleSummary())
+            return
+        if self._mode == PRIMARY:
+            self._set_result(self._search_people(query))
+            return
+        if lowered in {"status", "diag", "diagnostics"}:
+            self._set_result(self.diagnosticsText)
+            return
+        self._set_result(f"Unknown command: {query}")
+
+    def _search_people(self, query: str) -> str:
+        """Primary-safe text search over named groups only."""
+        try:
+            board = self._jobs.board()
+        except Exception:  # noqa: BLE001
+            return "People groups are unavailable right now."
+        q = query.strip().lower()
+        if not q:
+            return "Nothing was searched."
+        names: list[str] = []
+        for item in board.get("items") or []:
+            for name in item.get("person_names") or []:
+                value = str(name or "").strip()
+                if value and q in value.lower():
+                    names.append(value)
+        deduped = sorted(set(names), key=str.lower)
+        return summarize_people_results(deduped, len(deduped), self._mode)
 
     @Slot(str)
     def setMode(self, mode: str) -> None:
