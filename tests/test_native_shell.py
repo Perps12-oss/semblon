@@ -931,9 +931,56 @@ def test_decide_reaches_real_review_writer(tmp_path, monkeypatch):
     jobs = Application(store)
     bridge = ShellBridge(ArchiveModel(jobs), jobs)
     note = bridge.decide("name", "missing-cluster", "Ada")
-    assert "cluster" in note.lower() or "unknown" in note.lower()
+    assert note == "Semblon couldn't save that decision."
     assert "traceback" not in note.lower()
     assert "sqlite" not in note.lower()
+
+
+def test_primary_presentation_fails_closed_and_advanced_preserves_detail():
+    from semblon.native_shell.presentation import present_message
+
+    fallback = "FALLBACK"
+    technical = "sqlite error\ntraceback here\ncluster_id=c1"
+    assert present_message("primary", technical, fallback=fallback) == fallback
+    assert present_message("advanced", technical, fallback=fallback) == technical
+
+    assert present_message("primary", "backend timeout while syncing cache", fallback=fallback) == fallback
+    assert present_message("advanced", "backend timeout while syncing cache", fallback=fallback) == "backend timeout while syncing cache"
+
+    assert present_message("primary", "internal provider failure", fallback=fallback) == fallback
+    assert present_message("primary", "hello from an unknown backend", fallback=fallback) == fallback
+
+    mixed = "Saved your note.\ninternal provider failure"
+    assert present_message("primary", mixed, fallback=fallback) == fallback
+
+    assert present_message("primary", "", fallback=fallback) == fallback
+    assert present_message("advanced", "", fallback=fallback) == fallback
+
+
+def test_primary_presentation_unknown_text_invariant():
+    from semblon.native_shell.presentation import present_message
+
+    fallback = "FALLBACK"
+    for unknown in [
+        "backend timeout while syncing cache",
+        "internal provider failure",
+        "unexpected database state",
+        "foo bar baz",
+    ]:
+        assert present_message("primary", unknown, fallback=fallback) == fallback
+
+
+def test_decision_success_outputs_remain_safe_and_stable():
+    from semblon.native_shell.presentation import decision_success
+
+    assert decision_success("name", "Ada") == "Saved name: Ada."
+    assert decision_success("name", "") == "Saved name for this group."
+    assert decision_success("ignore") == "Left this group unknown."
+    assert decision_success("note") == "Saved your note."
+    assert decision_success("merge") == "Merged the selected groups."
+    assert decision_success("split") == "Split the selected faces into a new group."
+    assert decision_success("rule_out") == "Marked this as not the same person."
+    assert decision_success("other") == "Saved your decision."
 
 
 def test_bridge_mode_and_atmosphere_persist(tmp_path, monkeypatch):

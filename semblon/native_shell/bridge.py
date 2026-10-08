@@ -230,7 +230,8 @@ class ShellBridge(QObject):
 
     def _clear_query(self) -> None:
         self._region_norm = None
-        self._set_result("")
+        self._result_text = ""
+        self.resultChanged.emit()
         self._clear_similar()
 
     @Slot(str)
@@ -822,10 +823,12 @@ class ShellBridge(QObject):
         try:
             rec = self._jobs.remember_and_find_region(media_id, x, y, w, h)
         except Exception:  # noqa: BLE001 — honest failure, no invented matches
-            self._set_result("")
+            self._result_text = ""
+            self.resultChanged.emit()
             self._publish_similar("unavailable", "Similar search could not run.", [])
             return
-        self._set_result("")
+        self._result_text = ""
+        self.resultChanged.emit()
         self._publish_similar(*_strip_from(rec))
 
     @Slot()

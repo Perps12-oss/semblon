@@ -12,17 +12,38 @@ PRIMARY = "primary"
 ADVANCED = "advanced"
 MODES = (PRIMARY, ADVANCED)
 
-_TECH_TOKENS = (
-    "traceback",
-    "sqlite",
-    "cluster_id",
-    "person_id",
-    "run_id",
-    "pack_id",
-    "embedding",
-    "model_state",
-    "provider_state",
-    "error_id",
+_SAFE_PRIMARY_EXACT = {
+    "Nothing was searched.",
+    "Similar search could not run.",
+    "Semblon couldn't complete that step.",
+    "Saved name for this group.",
+    "Left this group unknown.",
+    "Saved your note.",
+    "Merged the selected groups.",
+    "Split the selected faces into a new group.",
+    "Marked this as not the same person.",
+    "Saved your decision.",
+    "No reviewed run yet.",
+    "A name or note is required.",
+    "People groups are unavailable right now.",
+    "No unnamed groups.",
+    "No people matched that search.",
+    "Open a photo first.",
+    "Draw a region on the photo first.",
+    "No similar images found yet.",
+    "Similar search needs photos that have already been looked at.",
+    "That decision is not available.",
+    "Select a group first.",
+    "Select another group to merge with.",
+    "That group is no longer here.",
+    "Select one or more faces to split.",
+    "Leave at least one face in the group.",
+}
+
+_SAFE_PRIMARY_PATTERNS = (
+    re.compile(r"^Saved name: [^\n]+\.$"),
+    re.compile(r"^Found: [^\n]+\.$"),
+    re.compile(r"^Found \d+ matches\. Top results: [^\n]+\.$"),
 )
 
 _WORD_REPLACEMENTS = (
@@ -36,18 +57,23 @@ def normalize_mode(raw: str | None) -> str:
     return text if text in MODES else PRIMARY
 
 
-def _drop_technical_lines(text: str) -> str:
-    kept: list[str] = []
-    for line in str(text or "").splitlines():
-        lowered = line.lower()
-        if any(token in lowered for token in _TECH_TOKENS):
+def is_primary_safe_message(text: str) -> bool:
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    if not lines:
+        return False
+    for line in lines:
+        if line in _SAFE_PRIMARY_EXACT:
             continue
-        kept.append(line)
-    return "\n".join(kept).strip()
+        if any(pattern.match(line) for pattern in _SAFE_PRIMARY_PATTERNS):
+            continue
+        return False
+    return True
 
 
 def sanitize_primary(text: str, *, fallback: str = "Semblon couldn't complete that step.") -> str:
-    cleaned = _drop_technical_lines(text)
+    cleaned = "\n".join(line.strip() for line in str(text or "").splitlines() if line.strip())
+    if not is_primary_safe_message(cleaned):
+        return fallback
     for pattern, replacement in _WORD_REPLACEMENTS:
         cleaned = pattern.sub(replacement, cleaned)
     cleaned = cleaned.strip()
