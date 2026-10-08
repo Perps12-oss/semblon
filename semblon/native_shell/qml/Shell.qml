@@ -33,6 +33,15 @@ ApplicationWindow {
     readonly property bool similarReady: similarStateSafe === "ready"
     readonly property string similarNoteSafe: shellReady ? shellApi.similarNote : ""
     readonly property int similarCountSafe: shellReady ? shellApi.similarCount : 0
+    readonly property var selectedMembersSafe: shellReady ? shellApi.selectedMembers : []
+    readonly property var mergeCandidatesSafe: shellReady ? shellApi.mergeCandidates : []
+    readonly property string selectedTitleSafe: shellReady ? shellApi.selectedTitle : ""
+    readonly property int selectedCountSafe: shellReady ? shellApi.selectedCount : 0
+    readonly property string mergeTargetTitleSafe: shellReady ? shellApi.mergeTargetTitle : ""
+    readonly property string mergeTargetSubjectSafe: shellReady ? shellApi.mergeTargetSubject : ""
+    readonly property int splitSelectionCountSafe: shellReady ? shellApi.splitSelectionCount : 0
+    readonly property bool canMergeSelectedSafe: shellReady && shellApi.canMergeSelected
+    readonly property bool canSplitSelectedSafe: shellReady && shellApi.canSplitSelected
     readonly property int motion: shellReady && shellApi.reducedMotion ? 0 : 180
 
     Shortcut {
@@ -255,69 +264,400 @@ ApplicationWindow {
             anchors.fill: parent
             visible: peopleVisible && !focusActive
             color: "#10161C"
-            Column {
+            ScrollView {
                 anchors.fill: parent
                 anchors.margins: 28
-                spacing: 12
-                Text {
-                    text: "People"
-                    color: "#E7EEF5"
-                    font.pixelSize: 22
-                }
-                Text {
-                    objectName: "peopleEmpty"
-                    visible: shellReady && shell.peopleEmpty
-                    text: "No groups yet."
-                    color: "#8AA0B2"
-                }
-                ListView {
-                    objectName: "peopleList"
-                    width: 280
-                    height: 220
-                    model: peopleModel
-                    delegate: Text {
-                        text: title + " · " + faceCount
-                        color: (shellReady && shell.selectedSubject === subject) ? "#5EEAD4" : "#E7EEF5"
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: if (shellReady) shellApi.selectGroup(subject)
+                clip: true
+
+                Column {
+                    width: stage.width - 56
+                    spacing: 16
+
+                    Text {
+                        text: "People"
+                        color: "#E7EEF5"
+                        font.pixelSize: 22
+                        font.family: "Segoe UI Variable"
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        objectName: "peopleEmpty"
+                        visible: shellReady && shell.peopleEmpty
+                        text: "No groups yet."
+                        color: "#8AA0B2"
+                    }
+
+                    Row {
+                        width: parent.width
+                        spacing: 18
+
+                        Rectangle {
+                            width: 320
+                            height: 620
+                            radius: 10
+                            color: "#141C25"
+                            border.color: "#243140"
+                            border.width: 1
+
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 12
+
+                                Text {
+                                    text: "Groups"
+                                    color: "#E7EEF5"
+                                    font.pixelSize: 16
+                                    font.family: "Segoe UI"
+                                }
+
+                                ListView {
+                                    objectName: "peopleList"
+                                    width: parent.width
+                                    height: parent.height - 42
+                                    model: peopleModel
+                                    clip: true
+                                    spacing: 8
+                                    delegate: Rectangle {
+                                        width: ListView.view.width
+                                        height: 54
+                                        radius: 8
+                                        color: (shellReady && shell.selectedSubject === subject) ? "#17333A" : "#1A222D"
+                                        border.color: (shellReady && shell.selectedSubject === subject) ? "#2DD4BF" : "#243140"
+                                        border.width: 1
+
+                                        Column {
+                                            anchors.fill: parent
+                                            anchors.margins: 10
+                                            spacing: 2
+
+                                            Text {
+                                                text: title
+                                                color: "#E7EEF5"
+                                                font.pixelSize: 14
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                text: faceCount + (faceCount === 1 ? " face" : " faces")
+                                                color: "#8AA0B2"
+                                                font.pixelSize: 12
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.selectGroup(subject)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            width: stage.width - 56 - 338
+                            height: 620
+                            radius: 10
+                            color: "#141C25"
+                            border.color: "#243140"
+                            border.width: 1
+
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 18
+                                spacing: 12
+
+                                Row {
+                                    width: parent.width
+                                    spacing: 10
+
+                                    Column {
+                                        width: parent.width - 90
+                                        spacing: 2
+
+                                        Text {
+                                            text: selectedTitleSafe !== "" ? selectedTitleSafe : "Select a group"
+                                            color: "#E7EEF5"
+                                            font.pixelSize: 20
+                                            font.family: "Segoe UI Variable"
+                                            font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                              text: shellReady && shell.selectedSubject !== ""
+                                                  ? (selectedCountSafe + (selectedCountSafe === 1 ? " face" : " faces"))
+                                                  : "Choose a group to review evidence, merge, name, note, or split faces."
+                                            color: "#8AA0B2"
+                                            font.pixelSize: 13
+                                            wrapMode: Text.WordWrap
+                                        }
+                                    }
+
+                                    Text {
+                                        objectName: "peopleEvidence"
+                                        visible: shellReady && shell.evidenceId !== ""
+                                        text: "Open evidence"
+                                        color: evidenceArea.containsMouse ? "#E7EEF5" : "#5EEAD4"
+                                        font.pixelSize: 14
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        MouseArea {
+                                            id: evidenceArea
+                                            anchors.fill: parent
+                                            anchors.margins: -6
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.openEvidence(shellApi.evidenceId)
+                                        }
+                                    }
+                                }
+
+                                TextField {
+                                    id: decisionText
+                                    objectName: "decisionText"
+                                    width: parent.width
+                                    placeholderText: "Name or note"
+                                    color: "#E7EEF5"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 14
+                                    background: Rectangle {
+                                        radius: 8
+                                        color: "#1A222D"
+                                        border.color: decisionText.activeFocus ? "#2DD4BF" : "#243140"
+                                        border.width: 1
+                                    }
+                                }
+
+                                Row {
+                                    width: parent.width
+                                    spacing: 16
+
+                                    Text {
+                                        text: "Name"
+                                        color: decisionText.text.trim().length > 0 ? "#5EEAD4" : "#6E8294"
+                                        font.pixelSize: 14
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.decide("name", shellApi.selectedSubject, decisionText.text)
+                                        }
+                                    }
+                                    Text {
+                                        text: "Note"
+                                        color: decisionText.text.trim().length > 0 ? "#5EEAD4" : "#6E8294"
+                                        font.pixelSize: 14
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.decide("note", shellApi.selectedSubject, decisionText.text)
+                                        }
+                                    }
+                                    Text {
+                                        text: "Ignore"
+                                        color: "#5EEAD4"
+                                        font.pixelSize: 14
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.decide("ignore", shellApi.selectedSubject, "")
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    text: shellReady ? shell.peopleNote : ""
+                                    color: "#8AA0B2"
+                                    font.pixelSize: 13
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                Rectangle {
+                                    width: parent.width
+                                    height: 86
+                                    radius: 8
+                                    color: "#10161C"
+                                    border.color: "#243140"
+                                    border.width: 1
+
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.margins: 12
+                                        spacing: 8
+
+                                        Text {
+                                            text: "Merge with another group"
+                                            color: "#E7EEF5"
+                                            font.pixelSize: 14
+                                        }
+                                        Flow {
+                                            width: parent.width
+                                            spacing: 8
+                                            objectName: "mergeTargetFlow"
+                                            Repeater {
+                                                model: mergeCandidatesSafe
+                                                delegate: Rectangle {
+                                                    width: Math.min(180, titleText.implicitWidth + 28)
+                                                    height: 30
+                                                    radius: 15
+                                                    color: shellReady && mergeTargetSubjectSafe === subject ? "#17333A" : "#1A222D"
+                                                    border.color: shellReady && mergeTargetSubjectSafe === subject ? "#2DD4BF" : "#243140"
+                                                    border.width: 1
+
+                                                    Text {
+                                                        id: titleText
+                                                        anchors.centerIn: parent
+                                                        text: title + " · " + faceCount
+                                                        color: "#E7EEF5"
+                                                        font.pixelSize: 12
+                                                    }
+
+                                                    MouseArea {
+                                                        anchors.fill: parent
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: if (shellReady) shellApi.selectMergeTarget(subject)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Row {
+                                    width: parent.width
+                                    spacing: 14
+
+                                    Text {
+                                        text: "Merge"
+                                        color: canMergeSelectedSafe ? "#5EEAD4" : "#6E8294"
+                                        font.pixelSize: 14
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.mergeSelectedGroup()
+                                        }
+                                    }
+
+                                    Text {
+                                        text: splitSelectionCountSafe > 0 ? (splitSelectionCountSafe === 1 ? "1 face selected" : splitSelectionCountSafe + " faces selected") : "Select faces below to split them out"
+                                        color: "#8AA0B2"
+                                        font.pixelSize: 13
+                                    }
+
+                                    Text {
+                                        text: "Split selected"
+                                        color: canSplitSelectedSafe ? "#5EEAD4" : "#6E8294"
+                                        font.pixelSize: 14
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.splitSelectedFaces()
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: parent.width
+                                    height: 280
+                                    radius: 8
+                                    color: "#10161C"
+                                    border.color: "#243140"
+                                    border.width: 1
+
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.margins: 12
+                                        spacing: 10
+
+                                        Text {
+                                            text: "Select faces to split"
+                                            color: "#E7EEF5"
+                                            font.pixelSize: 14
+                                        }
+                                        Text {
+                                            text: "Click one or more faces, then split only those faces out of the group."
+                                            color: "#8AA0B2"
+                                            font.pixelSize: 12
+                                            wrapMode: Text.WordWrap
+                                        }
+                                        GridView {
+                                            objectName: "splitFaceGrid"
+                                            width: parent.width
+                                            height: 208
+                                            clip: true
+                                            cellWidth: 94
+                                            cellHeight: 118
+                                            model: selectedMembersSafe
+                                            delegate: Rectangle {
+                                                width: 84
+                                                height: 110
+                                                radius: 8
+                                                color: shellReady && shell.isSplitFaceSelected(face_id) ? "#17333A" : "#1A222D"
+                                                border.color: shellReady && shell.isSplitFaceSelected(face_id) ? "#2DD4BF" : "#243140"
+                                                border.width: 1
+
+                                                Column {
+                                                    anchors.fill: parent
+                                                    anchors.margins: 6
+                                                    spacing: 4
+
+                                                    Rectangle {
+                                                        width: parent.width
+                                                        height: 76
+                                                        radius: 6
+                                                        color: "#10161C"
+                                                        border.color: "#243140"
+                                                        border.width: 1
+
+                                                        Image {
+                                                            anchors.fill: parent
+                                                            anchors.margins: 1
+                                                            source: shellReady ? shell.faceThumb(face_id) : ""
+                                                            fillMode: Image.PreserveAspectCrop
+                                                            asynchronous: true
+                                                            cache: true
+                                                        }
+                                                    }
+
+                                                    Text {
+                                                        width: parent.width
+                                                        text: "Face " + (index + 1)
+                                                        color: "#E7EEF5"
+                                                        font.pixelSize: 11
+                                                        horizontalAlignment: Text.AlignHCenter
+                                                        elide: Text.ElideRight
+                                                    }
+                                                }
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: if (shellReady) shellApi.toggleSplitFace(face_id)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    objectName: "peopleBack"
+                                    text: "Back"
+                                    color: backPeopleArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                                    font.pixelSize: 14
+                                    MouseArea {
+                                        id: backPeopleArea
+                                        anchors.fill: parent
+                                        anchors.margins: -8
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: if (shellReady) shellApi.closePeople()
+                                    }
+                                }
+                            }
                         }
                     }
-                }
-                Text {
-                    objectName: "peopleEvidence"
-                    visible: shellReady && shell.evidenceId !== ""
-                    text: "Evidence"
-                    color: "#8AA0B2"
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: if (shellReady) shellApi.openEvidence(shellApi.evidenceId)
-                    }
-                }
-                TextField {
-                    id: decisionText
-                    objectName: "decisionText"
-                    width: 240
-                    placeholderText: "Name or note"
-                }
-                Row {
-                    spacing: 12
-                    Text { text: "Name"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.decide("name", shellApi.selectedSubject, decisionText.text) } }
-                    Text { text: "Merge"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.decide("merge", shellApi.selectedSubject, decisionText.text) } }
-                    Text { text: "Split"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.decide("split", shellApi.selectedSubject, decisionText.text) } }
-                    Text { text: "Ignore"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.decide("ignore", shellApi.selectedSubject, "") } }
-                    Text { text: "Note"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.decide("note", shellApi.selectedSubject, decisionText.text) } }
-                }
-                Text {
-                    objectName: "peopleNote"
-                    text: shellReady ? shell.peopleNote : ""
-                    color: "#8AA0B2"
-                }
-                Text {
-                    objectName: "peopleBack"
-                    text: "Back"
-                    color: "#8AA0B2"
-                    MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.closePeople() }
                 }
             }
         }

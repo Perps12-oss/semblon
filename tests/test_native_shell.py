@@ -156,7 +156,7 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     app.processEvents()
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
-    assert bridge.count == 3
+    assert bridge.count == 2
     assert root.findChild(QObject, "emptyState").property("visible") is False
     assert root.findChild(QObject, "fieldGrid").property("visible") is True
     assert root.findChild(QObject, "lensLine").property("text") == "Time"
@@ -177,9 +177,9 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     assert root.findChild(QObject, "lensLine").property("text") == "Time"
     bridge.openFocus("clip")
     app.processEvents()
-    assert bridge.focusKind == "video"
+    assert bridge.focusId == ""
+    assert bridge.focusKind == ""
     assert bridge.focusUrl == ""
-    assert root.findChild(QObject, "videoMissing").property("visible") is False
     engine.deleteLater()
 
 
@@ -346,9 +346,9 @@ def test_bridge_archive_media_ask_similar_and_ingest_use_application(tmp_path, m
     while "kwargs" not in seen and time.monotonic() < deadline:
         time.sleep(0.01)
     assert seen["kwargs"]["open_review"] is False
-    from semblon.home_ui import resolve_home_observers
+    from semblon.observers import resolve_product_observers
 
-    assert seen["kwargs"]["observers"] == resolve_home_observers()
+    assert seen["kwargs"]["observers"] == resolve_product_observers()
     assert "face" in seen["kwargs"]["observers"].split(",")
     assert "color" in seen["kwargs"]["observers"].split(",")
     host = (
@@ -756,6 +756,151 @@ def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monke
     qml = Path(__file__).resolve().parents[1].joinpath("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
     assert "review.html" not in qml
     assert 'text: "Play"' not in qml
+    engine.deleteLater()
+
+
+def test_people_split_uses_visual_face_selection_and_merge_target(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell
+    from semblon.store import connect, init_db
+
+    calls = []
+
+    def fake_board(self, run_id=None):
+        return {
+            "items": [
+                {
+                    "cluster_id": "c1",
+                    "face_count": 3,
+                    "named": False,
+                    "person_names": [],
+                    "members": [
+                        {"media_id": "m1", "face_id": "f1", "path": "/tmp/a.png", "bbox": (1, 2, 30, 30)},
+                        {"media_id": "m1", "face_id": "f2", "path": "/tmp/a.png", "bbox": (40, 2, 30, 30)},
+                        {"media_id": "m2", "face_id": "f3", "path": "/tmp/b.png", "bbox": (10, 8, 24, 24)},
+                    ],
+                },
+                {
+                    "cluster_id": "c2",
+                    "face_count": 1,
+                    "named": True,
+                    "person_names": ["Bea"],
+                    "members": [{"media_id": "m3", "face_id": "g1", "path": "/tmp/c.png", "bbox": (3, 3, 16, 16)}],
+                },
+            ]
+        }
+
+    def record(name):
+        def _inner(*args, **kwargs):
+            calls.append((name, args, kwargs))
+            return {"display_name": "Ada"}
+
+        return _inner
+
+    monkeypatch.setattr(Application, "board", fake_board)
+    monkeypatch.setattr("semblon.review.merge_clusters", record("merge"))
+    monkeypatch.setattr("semblon.review.split_cluster", record("split"))
+    monkeypatch.setattr("semblon.process.latest_run_id", lambda store, **kwargs: "run-1")
+
+    photo = tmp_path / "a.png"
+    photo.write_bytes(b"not-decoded")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(photo), "h", 40, 20, 3, 1),
+    )
+    conn.commit()
+    conn.close()
+
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    bridge = engine._semblon_bridge
+    assert root.findChild(QObject, "splitFaceGrid") is not None
+    assert root.findChild(QObject, "mergeTargetFlow") is not None
+    bridge.openPeople()
+    bridge.selectGroup("c1")
+    assert bridge.selectedTitle == "Unnamed"
+    assert bridge.selectedCount == 3
+    assert len(bridge.selectedMembers) == 3
+    assert bridge.faceThumb("f1") == "image://face/f1"
+    bridge.toggleSplitFace("f1")
+    bridge.toggleSplitFace("f2")
+    assert bridge.isSplitFaceSelected("f1")
+    assert bridge.isSplitFaceSelected("f2")
+    assert bridge.canSplitSelected is True
+    assert bridge.splitSelectedFaces().startswith("Split")
+    bridge.selectGroup("c1")
+    bridge.selectMergeTarget("c2")
+    assert bridge.mergeTargetTitle == "Bea"
+    assert bridge.canMergeSelected is True
+    assert bridge.mergeSelectedGroup().startswith("Merged")
+    assert [name for name, _args, _kwargs in calls] == ["split", "merge"]
+    engine.deleteLater()
+
+
+def test_people_desk_hides_video_only_tracks_from_qt_shell(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell
+    from semblon.store import connect, init_db
+
+    def fake_board(self, run_id=None):
+        return {
+            "items": [
+                {
+                    "kind": "track",
+                    "track_id": "t1",
+                    "face_count": 2,
+                    "named": False,
+                    "person_names": [],
+                    "members": [
+                        {"media_id": "mv1", "face_id": "fv1", "source_type": "video", "path": "/tmp/a.mp4", "bbox": (0, 0, 10, 10)},
+                        {"media_id": "mv1", "face_id": "fv2", "source_type": "video", "path": "/tmp/a.mp4", "bbox": (12, 0, 10, 10)},
+                    ],
+                },
+                {
+                    "kind": "cluster",
+                    "cluster_id": "c1",
+                    "face_count": 1,
+                    "named": False,
+                    "person_names": [],
+                    "members": [{"media_id": "m1", "face_id": "f1", "source_type": "folder", "path": "/tmp/a.png", "bbox": (1, 2, 20, 20)}],
+                },
+            ]
+        }
+
+    monkeypatch.setattr(Application, "board", fake_board)
+
+    photo = tmp_path / "a.png"
+    photo.write_bytes(b"not-decoded")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(photo), "h", 40, 20, 3, 1),
+    )
+    conn.commit()
+    conn.close()
+
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    bridge.openPeople()
+    assert bridge.people_model.rowCount() == 1
+    assert bridge.people_model.row("c1") is not None
+    assert bridge.people_model.row("t1") is None
     engine.deleteLater()
 
 

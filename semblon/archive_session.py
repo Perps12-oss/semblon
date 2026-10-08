@@ -122,7 +122,9 @@ class ArchiveSession:
             return 0
         conn = connect(self.store)
         try:
-            row = conn.execute("SELECT COUNT(*) FROM media").fetchone()
+            row = conn.execute(
+                "SELECT COUNT(*) FROM media WHERE source_type='folder'"
+            ).fetchone()
             return int(row[0] if row else 0)
         except sqlite3.Error:
             return 0
@@ -141,6 +143,7 @@ class ArchiveSession:
                 """
                 SELECT media_id, path, source_type, mtime_ns, width, height
                 FROM media
+                WHERE source_type='folder'
                 ORDER BY (mtime_ns IS NULL), mtime_ns DESC, media_id
                 LIMIT ? OFFSET ?
                 """,
@@ -176,14 +179,18 @@ class ArchiveSession:
         item = self.media(media_id)
         if item is None or not self.store.is_file():
             return None
+        if item.source_type != "folder":
+            return None
         conn = connect(self.store)
         try:
             if item.mtime_ns is None:
                 row = conn.execute(
                     """
                     SELECT COUNT(*) FROM media
-                    WHERE mtime_ns IS NOT NULL
+                    WHERE source_type='folder' AND (
+                       mtime_ns IS NOT NULL
                        OR (mtime_ns IS NULL AND media_id < ?)
+                    )
                     """,
                     (item.media_id,),
                 ).fetchone()
@@ -191,7 +198,7 @@ class ArchiveSession:
                 row = conn.execute(
                     """
                     SELECT COUNT(*) FROM media
-                    WHERE mtime_ns IS NOT NULL
+                    WHERE source_type='folder' AND mtime_ns IS NOT NULL
                       AND (mtime_ns > ? OR (mtime_ns = ? AND media_id < ?))
                     """,
                     (item.mtime_ns, item.mtime_ns, item.media_id),
@@ -203,7 +210,8 @@ class ArchiveSession:
         return int(row[0] if row else 0)
 
     def open_focus(self, media_id: str) -> None:
-        if self.media(media_id) is None:
+        item = self.media(media_id)
+        if item is None or item.source_type != "folder":
             return
         self._set_focus(media_id)
 
