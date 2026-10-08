@@ -745,11 +745,11 @@ def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monke
     assert bridge.focusId == ""
     assert bridge.peopleOpen is True
     assert bridge.decide("name", "c1", "") == "A name or note is required."
-    assert bridge.decide("name", "c1", "Ada") == "Named Ada. A cluster is not a person."
+    assert bridge.decide("name", "c1", "Ada") == "Saved name: Ada."
     assert bridge.decide("merge", "c1", "c2").startswith("Merged")
     assert bridge.decide("split", "c1", "f1").startswith("Split")
-    assert bridge.decide("ignore", "c1", "") == "Left unknown."
-    assert bridge.decide("note", "c1", "keep") == "Note kept."
+    assert bridge.decide("ignore", "c1", "") == "Left this group unknown."
+    assert bridge.decide("note", "c1", "keep") == "Saved your note."
     assert calls == ["name", "merge", "split", "ignore", "note"]
     bridge.closePeople()
     assert bridge.peopleOpen is False
@@ -934,6 +934,32 @@ def test_decide_reaches_real_review_writer(tmp_path, monkeypatch):
     assert "cluster" in note.lower() or "unknown" in note.lower()
     assert "traceback" not in note.lower()
     assert "sqlite" not in note.lower()
+
+
+def test_bridge_mode_and_atmosphere_persist(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+    from semblon.ui_prefs import load_prefs
+
+    store = tmp_path / "prefs.sqlite"
+    jobs = Application(store)
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+
+    assert bridge.mode == "primary"
+    bridge.toggleMode()
+    assert bridge.mode == "advanced"
+    bridge.setAtmosphere("tokyo_synth")
+    prefs = load_prefs(store)
+    assert prefs.get("shell_mode") == "advanced"
+    assert prefs.get("theme") == "tokyo_synth"
+
+    bridge2 = ShellBridge(ArchiveModel(jobs), jobs)
+    assert bridge2.mode == "advanced"
+    assert bridge2.atmosphereId == "tokyo_synth"
 
 
 def test_point_uses_stored_region_then_existing_similar_door(tmp_path, monkeypatch):
