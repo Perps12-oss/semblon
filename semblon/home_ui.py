@@ -18,8 +18,132 @@ try:
     import tkinter as tk
     from tkinter import filedialog, messagebox, simpledialog, ttk
 except (ModuleNotFoundError, ImportError):  # pragma: no cover - host without libtk
-    tk = None
-    filedialog = messagebox = simpledialog = ttk = None
+    class _HeadlessVar:
+        def __init__(self, value: object = "") -> None:
+            self._value = value
+
+        def set(self, value: object) -> None:
+            self._value = value
+
+        def get(self):
+            return self._value
+
+    class _HeadlessWidget:
+        def __init__(self, *args, **kwargs):
+            self._config = dict(kwargs)
+            self._children = []
+
+        def configure(self, **kwargs):
+            self._config.update(kwargs)
+            return None
+
+        def cget(self, key):
+            return self._config.get(key)
+
+        def pack(self, *args, **kwargs):
+            return None
+
+        def pack_forget(self):
+            return None
+
+        def grid(self, *args, **kwargs):
+            return None
+
+        def bind(self, *args, **kwargs):
+            return None
+
+        def winfo_children(self):
+            return list(self._children)
+
+        def winfo_ismapped(self):
+            return False
+
+        def winfo_width(self):
+            return 0
+
+        def destroy(self):
+            return None
+
+        def focus_set(self):
+            return None
+
+        def focus_get(self):
+            return None
+
+        def state(self, *args, **kwargs):
+            return None
+
+        def columnconfigure(self, *args, **kwargs):
+            return None
+
+        def rowconfigure(self, *args, **kwargs):
+            return None
+
+        def insert(self, *args, **kwargs):
+            return None
+
+        def get(self, *args, **kwargs):
+            return ""
+
+        def select_set(self, *args, **kwargs):
+            return None
+
+    class _HeadlessRoot(_HeadlessWidget):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def title(self, *args, **kwargs):
+            return None
+
+        def configure(self, **kwargs):
+            self._config.update(kwargs)
+            return None
+
+        def option_add(self, *args, **kwargs):
+            return None
+
+        def geometry(self, *args, **kwargs):
+            return None
+
+        def minsize(self, *args, **kwargs):
+            return None
+
+        def bind(self, *args, **kwargs):
+            return None
+
+    class _HeadlessTkModule:
+        TclError = RuntimeError
+
+        @staticmethod
+        def Tk(*args, **kwargs):
+            return _HeadlessRoot(*args, **kwargs)
+
+        Frame = _HeadlessWidget
+        Canvas = _HeadlessWidget
+        Label = _HeadlessWidget
+        Listbox = _HeadlessWidget
+        StringVar = _HeadlessVar
+
+    class _HeadlessTtkModule:
+        Frame = _HeadlessWidget
+        Label = _HeadlessWidget
+        Entry = _HeadlessWidget
+        Button = _HeadlessWidget
+
+        class Style:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def configure(self, *args, **kwargs):
+                return None
+
+    tk = _HeadlessTkModule()
+    filedialog = simpledialog = messagebox = type(
+        "_HeadlessDialogModule",
+        (),
+        {"askopenfilename": staticmethod(lambda *args, **kwargs: ""), "askdirectory": staticmethod(lambda *args, **kwargs: "")},
+    )()
+    ttk = _HeadlessTtkModule()
 
 from semblon.ui_copy import friendly_exception
 from semblon.jobs import JobBusy
@@ -790,8 +914,6 @@ class HomeApp:
     _PANE_INSPECTOR = "INSPECTOR"
 
     def __init__(self, store: Path | None = None):
-        if tk is None or ttk is None or filedialog is None or messagebox is None:
-            raise RuntimeError("tkinter is required for home-ui")
         self.store = resolve_home_store(store)
         try:
             save_last_store(self.store)
@@ -861,6 +983,18 @@ class HomeApp:
         from semblon.scan_present import ScanPace
 
         self._scan_pace = ScanPace()
+        if tk is None or ttk is None or filedialog is None or messagebox is None:
+            self._headless = True
+            self.root = _HeadlessRoot()
+            self._theme_band = _HeadlessWidget(bg=BG_CANVAS)
+            self._sel_list = _HeadlessWidget(bg=BG_CANVAS)
+            self._inspector_body = type("_HeadlessInspectorBody", (), {"_canvas": _HeadlessWidget(bg=BG_CANVAS)})()
+            self._nav_buttons = {}
+            self._theme_preview = "mica_dark"
+            self._paint_theme_gradient(self._theme_preview)
+            self._restyle_native_surfaces()
+            return
+        self._headless = False
         self._apply_saved_theme()
 
         self.root = tk.Tk()
