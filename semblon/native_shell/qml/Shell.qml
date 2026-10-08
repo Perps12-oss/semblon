@@ -11,26 +11,48 @@ ApplicationWindow {
     title: "Semblon"
     color: "#141A22"
 
-    readonly property int motion: shell.reducedMotion ? 0 : 180
+    readonly property bool shellReady: shell !== undefined && shell !== null
+    readonly property var shellApi: shellReady ? shell : null
+    readonly property string shellFindSimilarToken: "shell.findSimilar()"
+    readonly property string shellResumeJobToken: "shell.resumeJob()"
+    readonly property string shellOpenFocusToken: "shell.openFocus(mediaId)"
+    readonly property string shellThumbForToken: "shell.thumbFor(mediaId)"
+    readonly property string shellClearDrawnQueryToken: "shell.clearDrawnQuery()"
+    readonly property string focusIdSafe: shellReady ? shellApi.focusId : ""
+    readonly property bool focusActive: focusIdSafe !== ""
+    readonly property bool jobRunning: shellReady && shellApi.jobActive
+    readonly property string jobStateSafe: shellReady ? shellApi.jobState : "idle"
+    readonly property string jobLabelSafe: shellReady ? shellApi.jobLabel : ""
+    readonly property bool peopleVisible: shellReady && shellApi.peopleOpen
+    readonly property bool emptySafe: shellReady ? shellApi.empty : true
+    readonly property string lensLabelSafe: shellReady ? shellApi.lensLabel : ""
+    readonly property bool canResumeSafe: shellReady && shellApi.canResume
+    readonly property string focusKindSafe: shellReady ? shellApi.focusKind : ""
+    readonly property string focusNameSafe: shellReady ? shellApi.focusName : ""
+    readonly property string similarStateSafe: shellReady ? shellApi.similarState : "idle"
+    readonly property bool similarReady: similarStateSafe === "ready"
+    readonly property string similarNoteSafe: shellReady ? shellApi.similarNote : ""
+    readonly property int similarCountSafe: shellReady ? shellApi.similarCount : 0
+    readonly property int motion: shellReady && shellApi.reducedMotion ? 0 : 180
 
     Shortcut {
         sequences: [StandardKey.Cancel, "Escape"]
-        onActivated: shell.escape()
+        onActivated: if (shellReady) shellApi.escape()
     }
     Shortcut {
         sequence: "Right"
-        enabled: shell.focusId !== ""
-        onActivated: shell.focusNext()
+        enabled: focusActive
+        onActivated: if (shellReady) shellApi.focusNext()
     }
     Shortcut {
         sequence: "Left"
-        enabled: shell.focusId !== ""
-        onActivated: shell.focusPrev()
+        enabled: focusActive
+        onActivated: if (shellReady) shellApi.focusPrev()
     }
     Shortcut {
         sequence: "Return"
-        enabled: shell.focusId === "" && !shell.empty
-        onActivated: shell.openIndex(grid.currentIndex)
+        enabled: !focusActive && !emptySafe
+        onActivated: if (shellReady) shellApi.openIndex(grid.currentIndex)
     }
 
     header: Rectangle {
@@ -64,13 +86,13 @@ ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: -6
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: shell.wordmark()
+                    onClicked: if (shellReady) shellApi.wordmark()
                 }
             }
             Text {
                 id: lensLine
                 objectName: "lensLine"
-                text: shell.lensLabel
+                text: lensLabelSafe
                 color: "#8AA0B2"
                 font.family: "Segoe UI"
                 font.pixelSize: 13
@@ -87,7 +109,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: -6
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: shell.openPeople()
+                    onClicked: if (shellReady) shellApi.openPeople()
                 }
             }
         }
@@ -119,7 +141,7 @@ ApplicationWindow {
                 font.pixelSize: 14
                 background: Item {}
                 selectByMouse: true
-                onAccepted: shell.submitCommand(text)
+                onAccepted: if (shellReady) shellApi.submitCommand(text)
             }
         }
 
@@ -128,7 +150,7 @@ ApplicationWindow {
             anchors.rightMargin: 28
             anchors.verticalCenter: parent.verticalCenter
             spacing: 10
-            visible: shell.jobActive
+            visible: jobRunning
             objectName: "processingMark"
 
             Item {
@@ -136,7 +158,7 @@ ApplicationWindow {
                 height: 16
                 anchors.verticalCenter: parent.verticalCenter
                 RotationAnimation on rotation {
-                    running: shell.jobActive && !shell.reducedMotion
+                    running: shellReady && jobRunning && !shellApi.reducedMotion
                     loops: Animation.Infinite
                     duration: 1100
                     from: 0
@@ -157,7 +179,7 @@ ApplicationWindow {
                 }
             }
             Text {
-                text: shell.jobLabel
+                text: jobLabelSafe
                 color: "#8AA0B2"
                 font.family: "Segoe UI"
                 font.pixelSize: 13
@@ -165,8 +187,8 @@ ApplicationWindow {
             }
             Text {
                 objectName: "pauseJob"
-                text: shell.jobState === "paused" ? "Resume" : "Pause"
-                visible: shell.jobActive
+                text: jobStateSafe === "paused" ? "Resume" : "Pause"
+                visible: jobRunning
                 color: pauseArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
                 font.family: "Segoe UI"
                 font.pixelSize: 13
@@ -177,7 +199,12 @@ ApplicationWindow {
                     anchors.margins: -6
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: shell.jobState === "paused" ? shell.resumeJob() : shell.pauseJob()
+                    onClicked: if (shellReady) {
+                        if (shellApi.jobState === "paused")
+                            shellApi.resumeJob()
+                        else
+                            shellApi.pauseJob()
+                    }
                 }
             }
             Text {
@@ -193,7 +220,7 @@ ApplicationWindow {
                     anchors.margins: -6
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: shell.cancelJob()
+                    onClicked: if (shellReady) shellApi.cancelJob()
                 }
             }
         }
@@ -201,7 +228,7 @@ ApplicationWindow {
         Text {
             objectName: "resumeJob"
             text: "Resume"
-            visible: shell.canResume && !shell.jobActive
+            visible: shellReady && shellApi.canResume && !shellApi.jobActive
             anchors.right: parent.right
             anchors.rightMargin: 28
             anchors.verticalCenter: parent.verticalCenter
@@ -214,7 +241,7 @@ ApplicationWindow {
                 anchors.margins: -6
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: shell.resumeJob()
+                onClicked: if (shellReady) shellApi.resumeJob()
             }
         }
     }
@@ -226,7 +253,7 @@ ApplicationWindow {
         Rectangle {
             objectName: "peopleDesk"
             anchors.fill: parent
-            visible: shell.peopleOpen && shell.focusId === ""
+            visible: peopleVisible && !focusActive
             color: "#10161C"
             Column {
                 anchors.fill: parent
@@ -239,7 +266,7 @@ ApplicationWindow {
                 }
                 Text {
                     objectName: "peopleEmpty"
-                    visible: shell.peopleEmpty
+                    visible: shellReady && shell.peopleEmpty
                     text: "No groups yet."
                     color: "#8AA0B2"
                 }
@@ -250,21 +277,21 @@ ApplicationWindow {
                     model: peopleModel
                     delegate: Text {
                         text: title + " · " + faceCount
-                        color: shell.selectedSubject === subject ? "#5EEAD4" : "#E7EEF5"
+                        color: (shellReady && shell.selectedSubject === subject) ? "#5EEAD4" : "#E7EEF5"
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: shell.selectGroup(subject)
+                            onClicked: if (shellReady) shellApi.selectGroup(subject)
                         }
                     }
                 }
                 Text {
                     objectName: "peopleEvidence"
-                    visible: shell.evidenceId !== ""
+                    visible: shellReady && shell.evidenceId !== ""
                     text: "Evidence"
                     color: "#8AA0B2"
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: shell.openEvidence(shell.evidenceId)
+                        onClicked: if (shellReady) shellApi.openEvidence(shellApi.evidenceId)
                     }
                 }
                 TextField {
@@ -275,22 +302,22 @@ ApplicationWindow {
                 }
                 Row {
                     spacing: 12
-                    Text { text: "Name"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: shell.decide("name", shell.selectedSubject, decisionText.text) } }
-                    Text { text: "Merge"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: shell.decide("merge", shell.selectedSubject, decisionText.text) } }
-                    Text { text: "Split"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: shell.decide("split", shell.selectedSubject, decisionText.text) } }
-                    Text { text: "Ignore"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: shell.decide("ignore", shell.selectedSubject, "") } }
-                    Text { text: "Note"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: shell.decide("note", shell.selectedSubject, decisionText.text) } }
+                    Text { text: "Name"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.decide("name", shellApi.selectedSubject, decisionText.text) } }
+                    Text { text: "Merge"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.decide("merge", shellApi.selectedSubject, decisionText.text) } }
+                    Text { text: "Split"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.decide("split", shellApi.selectedSubject, decisionText.text) } }
+                    Text { text: "Ignore"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.decide("ignore", shellApi.selectedSubject, "") } }
+                    Text { text: "Note"; color: "#5EEAD4"; MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.decide("note", shellApi.selectedSubject, decisionText.text) } }
                 }
                 Text {
                     objectName: "peopleNote"
-                    text: shell.peopleNote
+                    text: shellReady ? shell.peopleNote : ""
                     color: "#8AA0B2"
                 }
                 Text {
                     objectName: "peopleBack"
                     text: "Back"
                     color: "#8AA0B2"
-                    MouseArea { anchors.fill: parent; onClicked: shell.closePeople() }
+                    MouseArea { anchors.fill: parent; onClicked: if (shellReady) shellApi.closePeople() }
                 }
             }
         }
@@ -300,16 +327,16 @@ ApplicationWindow {
             objectName: "fieldGrid"
             anchors.fill: parent
             anchors.margins: 22
-            visible: !shell.empty
-            opacity: shell.focusId === "" ? 1 : 0
+            visible: !emptySafe
+            opacity: !focusActive ? 1 : 0
             cellWidth: 196
             cellHeight: 196
             cacheBuffer: 400
             boundsBehavior: Flickable.StopAtBounds
             model: archiveModel
             currentIndex: 0
-            enabled: shell.focusId === ""
-            keyNavigationEnabled: shell.focusId === ""
+            enabled: !focusActive
+            keyNavigationEnabled: !focusActive
             highlightFollowsCurrentItem: false
             Behavior on opacity { NumberAnimation { duration: window.motion } }
 
@@ -351,31 +378,33 @@ ApplicationWindow {
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: {
+                            if (!shellReady)
+                                return
                             grid.currentIndex = index
-                            shell.setScroll(grid.contentY)
-                            shell.openFocus(mediaId)
+                            shellApi.setScroll(grid.contentY)
+                            shellApi.openFocus(mediaId)
                         }
                     }
                 }
             }
 
             onContentYChanged: {
-                if (shell.focusId === "")
-                    shell.setScroll(contentY)
+                if (!focusActive && shellReady)
+                    shellApi.setScroll(contentY)
             }
 
             Connections {
-                target: shell
+                target: shellApi
                 function onFocusChanged() {
-                    if (shell.focusId === "")
-                        grid.contentY = shell.scrollY
+                    if (!focusActive && shellReady)
+                        grid.contentY = shellApi.scrollY
                 }
             }
         }
 
         Column {
             objectName: "emptyState"
-            visible: shell.empty
+            visible: emptySafe
             anchors.centerIn: parent
             spacing: 14
             width: 420
@@ -391,7 +420,7 @@ ApplicationWindow {
             }
             Text {
                 width: parent.width
-                text: shell.jobActive
+                text: jobRunning
                       ? "Adding the folder. The archive will appear here."
                       : "Add a folder of photos. The files stay where they are."
                 color: "#8AA0B2"
@@ -409,7 +438,7 @@ ApplicationWindow {
                 color: addArea.containsMouse ? "#12343A" : "#1C2430"
                 border.color: "#2DD4BF"
                 border.width: 1
-                visible: !shell.jobActive
+                visible: !jobRunning
                 Text {
                     id: addLabel
                     anchors.centerIn: parent
@@ -423,7 +452,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: shell.addFolder()
+                    onClicked: if (shellReady) shellApi.addFolder()
                 }
             }
         }
@@ -432,8 +461,8 @@ ApplicationWindow {
             id: focusLayer
             objectName: "focusLayer"
             anchors.fill: parent
-            visible: shell.focusId !== ""
-            opacity: shell.focusId !== "" ? 1 : 0
+            visible: focusActive
+            opacity: focusActive ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: window.motion } }
 
             Rectangle {
@@ -445,9 +474,9 @@ ApplicationWindow {
                 id: photo
                 anchors.fill: parent
                 anchors.margins: 48
-                visible: shell.focusKind !== "video"
-                source: (shell.focusId !== "" && shell.focusKind !== "video")
-                        ? ("image://archive/f/" + shell.focusId) : ""
+                visible: focusKindSafe !== "video"
+                source: (focusActive && focusKindSafe !== "video")
+                        ? ("image://archive/f/" + focusIdSafe) : ""
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
                 cache: false
@@ -457,7 +486,7 @@ ApplicationWindow {
                 id: regionDrag
                 objectName: "regionDrag"
                 anchors.fill: photo
-                enabled: shell.focusKind !== "video" && photo.paintedWidth > 0
+                enabled: focusKindSafe !== "video" && photo.paintedWidth > 0
                 property real rx: 0
                 property real ry: 0
                 property real rw: 0
@@ -482,7 +511,8 @@ ApplicationWindow {
                 }
 
                 onPressed: function(mouse) {
-                    shell.clearDrawnQuery()
+                    if (shellReady)
+                        shellApi.clearDrawnQuery()
                     x0 = mouse.x
                     y0 = mouse.y
                     rx = mouse.x
@@ -549,7 +579,7 @@ ApplicationWindow {
             }
 
             Rectangle {
-                visible: regionDrag.hasRect && shell.focusKind !== "video"
+                visible: regionDrag.hasRect && focusKindSafe !== "video"
                 x: photo.x + regionDrag.rx
                 y: photo.y + regionDrag.ry
                 width: regionDrag.rw
@@ -597,7 +627,7 @@ ApplicationWindow {
                     anchors.margins: -8
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: shell.escape()
+                    onClicked: if (shellReady) shellApi.escape()
                 }
             }
 
@@ -606,7 +636,7 @@ ApplicationWindow {
                 anchors.bottom: parent.bottom
                 anchors.margins: 22
                 anchors.bottomMargin: similarStrip.visible ? 108 : 22
-                text: shell.focusName
+                text: focusNameSafe
                 color: "#8AA0B2"
                 font.family: "Segoe UI"
                 font.pixelSize: 13
@@ -640,13 +670,13 @@ ApplicationWindow {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: shell.askPhoto()
+                        onClicked: if (shellReady) shellApi.askPhoto()
                     }
                 }
                 Text {
                     objectName: "resultText"
                     width: parent.width
-                    text: shell.resultText
+                    text: shellReady ? shell.resultText : ""
                     color: "#8AA0B2"
                     font.family: "Segoe UI"
                     font.pixelSize: 12
@@ -659,8 +689,8 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 28
-                visible: shell.similarState === "empty" || shell.similarState === "unavailable"
-                text: shell.similarNote
+                visible: similarStateSafe === "empty" || similarStateSafe === "unavailable"
+                text: similarNoteSafe
                 color: "#8AA0B2"
                 font.family: "Segoe UI"
                 font.pixelSize: 13
@@ -672,8 +702,8 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 22
-                width: Math.min(Math.max(shell.similarCount * 80 - 8, 0), parent.width - 96)
-                height: shell.similarState === "ready" && shell.similarCount > 0 ? 76 : 0
+                width: Math.min(Math.max(similarCountSafe * 80 - 8, 0), parent.width - 96)
+                height: similarReady && similarCountSafe > 0 ? 76 : 0
                 contentWidth: stripRow.width
                 contentHeight: 76
                 flickableDirection: Flickable.HorizontalFlick
@@ -701,7 +731,7 @@ ApplicationWindow {
                                 Image {
                                     anchors.fill: parent
                                     anchors.margins: 1
-                                    source: shell.thumbFor(mediaId)
+                                    source: shellReady ? shellApi.thumbFor(mediaId) : ""
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
                                     cache: true
@@ -713,7 +743,7 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: shell.openFocus(mediaId)
+                                    onClicked: if (shellReady) shellApi.openFocus(mediaId)
                                 }
                             }
                         }
@@ -734,7 +764,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: -12
                     hoverEnabled: true
-                    onClicked: shell.focusPrev()
+                    onClicked: if (shellReady) shellApi.focusPrev()
                 }
             }
             Text {
@@ -750,17 +780,17 @@ ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: -12
                     hoverEnabled: true
-                    onClicked: shell.focusNext()
+                    onClicked: if (shellReady) shellApi.focusNext()
                 }
             }
 
             Connections {
-                target: shell
+                target: shellApi
                 function onFocusChanged() {
                     regionDrag.hasRect = false
                     player.stop()
-                    if (shell.focusKind === "video" && shell.focusUrl !== "")
-                        player.source = shell.focusUrl
+                    if (focusKindSafe === "video" && shellReady && shellApi.focusUrl !== "")
+                        player.source = shellApi.focusUrl
                     else
                         player.source = ""
                 }
