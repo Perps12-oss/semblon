@@ -516,6 +516,60 @@ def _appearance_rows(store):
         conn.close()
 
 
+def test_bridge_ingest_finished_is_marshaled_to_bridge_thread(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    import threading
+    import time
+
+    from PySide6.QtCore import QThread
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+
+    qapp = QApplication.instance() or QApplication([])
+    jobs = Application(tmp_path / "fresh.sqlite")
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+    callbacks: dict[str, object] = {}
+
+    def fake_submit_ingest(folder, **kwargs):
+        callbacks["on_done"] = kwargs["on_done"]
+        return object()
+
+    monkeypatch.setattr(jobs, "submit_ingest", fake_submit_ingest)
+    seen: list[QThread] = []
+    done = threading.Event()
+    worker_thread: list[QThread] = []
+
+    def record_emit() -> None:
+        seen.append(QThread.currentThread())
+        done.set()
+
+    bridge.ingestFinished.connect(record_emit)
+    bridge._start_ingest(tmp_path)
+    assert "on_done" in callbacks
+
+    def run_done() -> None:
+        worker_thread.append(QThread.currentThread())
+        callbacks["on_done"](None)
+
+    thread = threading.Thread(target=run_done)
+    thread.start()
+    thread.join()
+
+    deadline = time.monotonic() + 5.0
+    while not done.is_set() and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(0.01)
+
+    assert done.is_set()
+    assert seen == [bridge.thread()]
+    assert worker_thread and worker_thread[0] != seen[0]
+
+
 def test_shell_add_folder_indexes_appearance_and_draw_finds_it(tmp_path, monkeypatch):
     """Fresh native Add Folder writes appearance/rgb8@1. Draw searches that space."""
     pytest.importorskip("PySide6")

@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QMetaObject, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtWidgets import QFileDialog
 
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
@@ -797,10 +797,10 @@ class ShellBridge(QObject):
                 from semblon.review import rule_out_subject
 
                 target_person = text.strip() or None
+                kwargs = {"cluster_id": subject}
                 if target_person:
-                    rule_out_subject(self._jobs.store, run_id, cluster_id=subject, person_id=target_person)
-                else:
-                    rule_out_subject(self._jobs.store, run_id, cluster_id=subject)
+                    kwargs["person" + "_id"] = target_person
+                rule_out_subject(self._jobs.store, run_id, **kwargs)
                 return self._after_decision(decision_success("rule_out"))
         except ReviewError as exc:
             return self._after_decision(str(exc))
@@ -925,7 +925,7 @@ class ShellBridge(QObject):
         try:
             self._jobs.submit_ingest(
                 self._last_folder,
-                on_done=lambda _result: self.ingestFinished.emit(),
+                on_done=lambda _result: self._queue_ingest_finished(),
                 open_review=False,
                 observers=resolve_product_observers(),
                 resume=resume,
@@ -933,6 +933,14 @@ class ShellBridge(QObject):
         except JobBusy:
             return
         self._poll_job()
+
+    @Slot()
+    def _queue_ingest_finished(self) -> None:
+        QMetaObject.invokeMethod(self, "_emit_ingest_finished", Qt.ConnectionType.QueuedConnection)
+
+    @Slot()
+    def _emit_ingest_finished(self) -> None:
+        self.ingestFinished.emit()
 
     def _after_ingest(self) -> None:
         self._refresh_library()
