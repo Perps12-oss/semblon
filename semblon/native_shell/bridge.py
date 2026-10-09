@@ -11,7 +11,20 @@ from PySide6.QtWidgets import QFileDialog
 
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
+from semblon.native_shell.adapter import AdapterError, ArchiveAdapter, Result
+from semblon.native_shell.events import (
+    IDENTITY_CHANGED,
+    JOB_CANCELLED,
+    JOB_COMPLETED,
+    JOB_FAILED,
+    JOB_PAUSED,
+    JOB_PROGRESS,
+    JOB_STARTED,
+    LIBRARY_CHANGED,
+    ShellEvents,
+)
 from semblon.native_shell.model import ArchiveModel, PeopleModel, SimilarStripModel
+from semblon.native_shell.tokens import cell_size, tokens_for
 from semblon.native_shell.presentation import (
     ADVANCED,
     PRIMARY,
@@ -20,7 +33,7 @@ from semblon.native_shell.presentation import (
     present_message,
     summarize_people_results,
 )
-from semblon.ui_prefs import load_prefs, save_theme_mode, update_prefs
+from semblon.ui_prefs import load_prefer_gpu, load_prefs, save_theme_mode, update_prefs
 
 
 KEY_SHELL_MODE = "shell_mode"
@@ -52,6 +65,7 @@ class ShellBridge(QObject):
     resultChanged = Signal()
     similarChanged = Signal()
     peopleChanged = Signal()
+    surfaceChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -80,6 +94,18 @@ class ShellBridge(QObject):
         self._split_faces: list[str] = []
         self._mode = self._load_shell_mode()
         self._atmosphere_id = self._load_atmosphere_id()
+        self._adapter = ArchiveAdapter(jobs)
+        self._events = ShellEvents()
+        self._buckets: list[dict] = []
+        self._facet = "memory"
+        self._settings_open = False
+        self._surface_state = "empty" if self._empty else "ready"
+        self._notice = ""
+        self._progress_label = ""
+        self._last_job_failed = False
+        self._terminal_status = ""
+        self._review_text = ""
+        self._unresolved_text = ""
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
@@ -131,6 +157,8 @@ class ShellBridge(QObject):
         if self._mode != ADVANCED:
             return ""
         focus = self._session.focus_id or "(none)"
+        last = self._events.last()
+        event_name = last["name"] if last else "(none)"
         return "\n".join(
             [
                 f"mode={self._mode}",
@@ -138,6 +166,9 @@ class ShellBridge(QObject):
                 f"job_state={self._job_state}",
                 f"similar_state={self._similar_state}",
                 f"selected_subject={self._selected_subject or '(none)'}",
+                f"facet={self._facet}",
+                f"surface={self._surface_state}",
+                f"last_event={event_name}",
             ]
         )
 
@@ -205,17 +236,79 @@ class ShellBridge(QObject):
 
     @Property(str, notify=jobChanged)
     def jobLabel(self) -> str:
+        if self._last_job_failed and not self._job_active:
+            return "Last add failed"
         if not self._job_active:
             return ""
         if self._job_state == "paused":
             return "Paused"
         if self._job_state == "cancelling":
             return "Cancelling"
-        return "Processing"
+        return self._progress_label or "Processing"
 
     @Property(bool, constant=True)
     def reducedMotion(self) -> bool:
         return self._reduced
+
+    @Property(str, notify=surfaceChanged)
+    def surfaceState(self) -> str:
+        return self._surface_state
+
+    @Property(str, notify=surfaceChanged)
+    def noticeText(self) -> str:
+        return self._notice
+
+    @Property(str, notify=surfaceChanged)
+    def facet(self) -> str:
+        return self._facet
+
+    @Property(bool, notify=surfaceChanged)
+    def settingsOpen(self) -> bool:
+        return self._settings_open
+
+    @Property("QVariantList", notify=surfaceChanged)
+    def buckets(self):
+        return list(self._buckets)
+
+    @Property(int, notify=surfaceChanged)
+    def cellSize(self) -> int:
+        return cell_size(self._adapter.density().data.get("density"))
+
+    @Property(str, notify=lensChanged)
+    def bg0(self) -> str:
+        return tokens_for(self._atmosphere_id)["bg0"]
+
+    @Property(str, notify=lensChanged)
+    def bg1(self) -> str:
+        return tokens_for(self._atmosphere_id)["bg1"]
+
+    @Property(str, notify=lensChanged)
+    def accent(self) -> str:
+        return tokens_for(self._atmosphere_id)["accent"]
+
+    @Property(str, notify=lensChanged)
+    def text1(self) -> str:
+        return tokens_for(self._atmosphere_id)["text1"]
+
+    @Property(str, notify=lensChanged)
+    def text2(self) -> str:
+        return tokens_for(self._atmosphere_id)["text2"]
+
+    @Property(str, notify=lensChanged)
+    def reviewColor(self) -> str:
+        return tokens_for(self._atmosphere_id)["review"]
+
+    @Property(str, notify=peopleChanged)
+    def reviewCountText(self) -> str:
+        return self._review_text
+
+    @Property(str, notify=peopleChanged)
+    def unresolvedText(self) -> str:
+        return self._unresolved_text
+
+    @Property(str, notify=surfaceChanged)
+    def searchModeLabel(self) -> str:
+        return self._adapter.search_mode().message
 
     @Property(int, notify=libraryChanged)
     def count(self) -> int:
@@ -497,6 +590,8 @@ class ShellBridge(QObject):
                 }
             )
         self._people.set_rows(rows)
+        self._review_text = self._adapter.review_counts().message
+        self._unresolved_text = self._adapter.unresolved(include_rejected=self._mode == ADVANCED).message
         if self._selected_subject and self._people.row(self._selected_subject) is None:
             self._selected_subject = ""
             self._evidence_id = ""
@@ -536,13 +631,17 @@ class ShellBridge(QObject):
         if lowered in {"people", "groups"}:
             self._set_result(self.peopleSummary())
             return
+        mode = str(self._adapter.search_mode().data.get("mode") or "people")
+        if mode == "text":
+            self._apply_result(self._safe_call(lambda: self._adapter.search("text", query)))
+            return
         if self._mode == PRIMARY:
             self._set_result(self._search_people(query))
             return
         if lowered in {"status", "diag", "diagnostics"}:
             self._set_result(self.diagnosticsText)
             return
-        self._set_result(f"Unknown command: {query}")
+        self._set_result(self._search_people(query))
 
     def _search_people(self, query: str) -> str:
         """Primary-safe text search over named groups only."""
@@ -841,6 +940,8 @@ class ShellBridge(QObject):
         return str(face_id or "") in self._split_faces
 
     def _after_decision(self, note: str) -> str:
+        if str(note).startswith(("Saved", "Merged", "Split", "Left this", "Marked this")):
+            self._events.record(IDENTITY_CHANGED, {})
         self._people_note = present_message(self._mode, note, fallback="Semblon couldn't save that decision.")
         self._merge_target_subject = ""
         self._split_faces = []
@@ -867,6 +968,150 @@ class ShellBridge(QObject):
         if self._mode == ADVANCED:
             return "\n".join(lines) or "No unnamed groups."
         return summarize_people_results(names, len(names), self._mode)
+
+    def _safe_call(self, fn) -> Result:
+        try:
+            return fn()
+        except AdapterError as exc:
+            state = exc.state if exc.state in {"error", "unavailable"} else "error"
+            return Result(state, exc.message)
+
+    def _apply_result(self, result: Result) -> None:
+        self._notice = result.message
+        self._surface_state = result.state if result.state in {
+            "empty",
+            "loading",
+            "error",
+            "unavailable",
+            "ready",
+        } else "error"
+        self._set_result(result.message)
+        self.surfaceChanged.emit()
+
+    @Slot(str)
+    def setFacet(self, name: str) -> None:
+        mapping = {
+            "memory": "memory",
+            "days": "timeline",
+            "timeline": "timeline",
+            "folders": "folders",
+            "folder": "folders",
+            "moments": "moments",
+        }
+        facet = mapping.get(str(name or "").strip().lower())
+        if facet is None:
+            return
+        if facet == "moments" and self._mode != ADVANCED:
+            self._facet = "memory"
+            self._apply_result(Result("unavailable", "Moments: open Advanced to see named moments."))
+            return
+        self._facet = facet
+        if facet == "memory":
+            self._buckets = []
+            self._model.set_media_ids(None)
+            self._apply_result(self._adapter.archive_summary())
+            return
+        result = self._safe_call(lambda: self._adapter.browse(facet))
+        self._buckets = list(result.data.get("buckets") or [])
+        self._model.set_media_ids(None)
+        self._apply_result(result)
+
+    @Slot(str)
+    def selectBucket(self, key: str) -> None:
+        wanted = str(key or "")
+        for row in self._buckets:
+            if str(row.get("key") or "") == wanted:
+                self._model.set_media_ids(list(row.get("media_ids") or []))
+                label = str(row.get("label") or "group")
+                self._apply_result(Result("ready", f"Showing {label}."))
+                return
+
+    @Slot(str)
+    def setSearchMode(self, mode: str) -> None:
+        self._apply_result(self._safe_call(lambda: self._adapter.set_search_mode(mode)))
+
+    @Slot(str)
+    def setLibraryFilter(self, filter_key: str) -> None:
+        self._apply_result(self._safe_call(lambda: self._adapter.set_library_filter(filter_key)))
+
+    @Slot()
+    def cycleDensity(self) -> None:
+        order = ("cozy", "comfortable", "compact")
+        current = str(self._adapter.density().data.get("density") or "cozy")
+        nxt = order[(order.index(current) + 1) % len(order)] if current in order else "cozy"
+        self._apply_result(self._adapter.set_density(nxt))
+
+    @Slot(str)
+    def setGpuPreference(self, value: str) -> None:
+        key = str(value or "").strip().lower()
+        if key in {"auto", "default", ""}:
+            choice = None
+        elif key in {"on", "gpu", "true", "1"}:
+            choice = True
+        elif key in {"off", "cpu", "false", "0"}:
+            choice = False
+        else:
+            self._apply_result(Result("error", "GPU: choose on, off, or auto."))
+            return
+        self._apply_result(self._adapter.set_gpu(choice))
+
+    @Slot()
+    def libraryHealth(self) -> None:
+        self._apply_result(self._safe_call(self._adapter.library_health))
+
+    @Slot()
+    def scanDuplicates(self) -> None:
+        self._apply_result(self._safe_call(self._adapter.duplicates))
+
+    @Slot()
+    def showActivity(self) -> None:
+        self._apply_result(self._safe_call(self._adapter.activity))
+
+    @Slot()
+    def showCapabilities(self) -> None:
+        self._apply_result(self._safe_call(self._adapter.capabilities))
+
+    @Slot()
+    def resetDefaults(self) -> None:
+        result = self._safe_call(self._adapter.reset_defaults)
+        self._atmosphere_id = self._load_atmosphere_id()
+        self._apply_result(result)
+        self.lensChanged.emit()
+
+    @Slot()
+    def toggleSettings(self) -> None:
+        self._settings_open = not self._settings_open
+        self.surfaceChanged.emit()
+
+    @Slot(str, result=str)
+    def inspectPack(self, path: str) -> str:
+        result = self._safe_call(lambda: self._adapter.inspect_pack(path))
+        self._apply_result(result)
+        return self._notice
+
+    @Slot(str, str, result=str)
+    def installModelFile(self, source: str, dest: str) -> str:
+        result = self._safe_call(lambda: self._adapter.install_model_file(source, dest))
+        self._apply_result(result)
+        return self._notice
+
+    @Slot()
+    def findSimilarWhole(self) -> None:
+        media_id = self._session.focus_id
+        if not media_id:
+            self._publish_similar("unavailable", "Open a photo first.", [])
+            return
+        result = self._safe_call(lambda: self._adapter.similar_media(media_id))
+        rows = [
+            (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
+            for item in (result.data.get("items") or [])
+            if item.get("media_id")
+        ]
+        state = result.state if result.state in {"ready", "empty", "unavailable"} else "unavailable"
+        note = result.message if result.message else "Similar search could not run."
+        self._result_text = ""
+        self.resultChanged.emit()
+        self._publish_similar(state, note, rows)
 
     @Slot()
     def findSimilar(self) -> None:
@@ -922,17 +1167,62 @@ class ShellBridge(QObject):
         self._last_folder = Path(folder)
         self._resume_ready = False
         self._cancel_requested = False
+        self._last_job_failed = False
+        self._terminal_status = ""
+        self._events.record(JOB_STARTED, {"resume": bool(resume)})
+        prefer = load_prefer_gpu(self._prefs_store())
         try:
             self._jobs.submit_ingest(
                 self._last_folder,
-                on_done=lambda _result: self._queue_ingest_finished(),
+                on_event=self._on_worker_progress,
+                on_done=self._on_worker_done,
                 open_review=False,
                 observers=resolve_product_observers(),
                 resume=resume,
+                prefer_gpu=prefer,
             )
         except JobBusy:
             return
+        self._surface_state = "loading"
+        self.surfaceChanged.emit()
         self._poll_job()
+
+    def _on_worker_progress(self, ev) -> None:
+        current = getattr(ev, "current", None)
+        total = getattr(ev, "total", None)
+        self._events.record(
+            JOB_PROGRESS,
+            {
+                "stage": str(getattr(ev, "stage", "") or ""),
+                "kind": str(getattr(ev, "kind", "") or ""),
+                "current": current,
+                "total": total,
+            },
+        )
+        QMetaObject.invokeMethod(self, "_flush_progress", Qt.ConnectionType.QueuedConnection)
+
+    def _on_worker_done(self, result) -> None:
+        status = str(getattr(result, "status", "") or "")
+        self._terminal_status = status or "completed"
+        name = {
+            "completed": JOB_COMPLETED,
+            "cancelled": JOB_CANCELLED,
+            "failed": JOB_FAILED,
+        }.get(status, JOB_COMPLETED)
+        self._events.record(name, {"status": status or "completed"})
+        self._queue_ingest_finished()
+
+    @Slot()
+    def _flush_progress(self) -> None:
+        last = self._events.last(JOB_PROGRESS)
+        payload = (last or {}).get("payload") or {}
+        current = payload.get("current")
+        total = payload.get("total")
+        if isinstance(current, int) and isinstance(total, int) and total > 0:
+            self._progress_label = f"Processing {current}/{total}"
+        elif payload.get("stage"):
+            self._progress_label = "Processing"
+        self.jobChanged.emit()
 
     @Slot()
     def _queue_ingest_finished(self) -> None:
@@ -949,11 +1239,17 @@ class ShellBridge(QObject):
     def _poll_job(self) -> None:
         active = self._session.job_active()
         state = self._session.job_state()
+        if state == "paused" and self._job_state != "paused":
+            self._events.record(JOB_PAUSED, {})
         if active != self._job_active or state != self._job_state:
             was = self._job_active
             if was and not active:
                 self._resume_ready = bool(self._cancel_requested and self._last_folder is not None)
                 self._cancel_requested = False
+                self._last_job_failed = self._terminal_status == "failed"
+                if self._surface_state == "loading":
+                    self._surface_state = "empty" if self._jobs.archive_count() == 0 else "ready"
+                    self.surfaceChanged.emit()
             self._job_active = active
             self._job_state = state
             self.jobChanged.emit()
@@ -962,6 +1258,7 @@ class ShellBridge(QObject):
 
     def _refresh_library(self) -> None:
         self._model.reload()
+        self._events.record(LIBRARY_CHANGED, {"count": int(self._jobs.archive_count())})
         empty = self._jobs.archive_count() == 0
         self.libraryChanged.emit()
         if empty != self._empty:

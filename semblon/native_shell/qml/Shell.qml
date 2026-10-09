@@ -9,7 +9,7 @@ ApplicationWindow {
     height: 900
     visible: true
     title: "Semblon"
-    color: "#141A22"
+    color: tokenBg
 
     readonly property bool shellReady: shell !== undefined && shell !== null
     readonly property var shellApi: shellReady ? shell : null
@@ -47,6 +47,13 @@ ApplicationWindow {
     readonly property bool canMergeSelectedSafe: shellReady && shellApi.canMergeSelected
     readonly property bool canSplitSelectedSafe: shellReady && shellApi.canSplitSelected
     readonly property int motion: shellReady && shellApi.reducedMotion ? 0 : 180
+    readonly property color tokenBg: shellReady ? shellApi.bg0 : "#0b0c0e"
+    readonly property color tokenBg1: shellReady ? shellApi.bg1 : "#131417"
+    readonly property color tokenAccent: shellReady ? shellApi.accent : "#4f8cff"
+    readonly property color tokenText: shellReady ? shellApi.text1 : "#f2f3f5"
+    readonly property color tokenMuted: shellReady ? shellApi.text2 : "#a8adb7"
+    readonly property color tokenReview: shellReady ? shellApi.reviewColor : "#a15cf5"
+    font.family: "Segoe UI"
 
     Shortcut {
         sequences: [StandardKey.Cancel, "Escape"]
@@ -67,9 +74,44 @@ ApplicationWindow {
         enabled: !focusActive && !emptySafe
         onActivated: if (shellReady) shellApi.openIndex(grid.currentIndex)
     }
+    Shortcut {
+        sequence: "Ctrl+F"
+        onActivated: {
+            if (!shellReady)
+                return
+            if (primaryModeSafe)
+                searchField.forceActiveFocus()
+            else
+                commandField.forceActiveFocus()
+        }
+    }
+    Shortcut {
+        sequence: "Ctrl+,"
+        onActivated: if (shellReady) shellApi.toggleSettings()
+    }
+    Shortcut {
+        sequence: "S"
+        enabled: focusActive && !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.findSimilarWhole()
+    }
+    Shortcut {
+        sequence: "Ctrl+1"
+        enabled: !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.setLibraryFilter("all")
+    }
+    Shortcut {
+        sequence: "Ctrl+2"
+        enabled: !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.setFacet("days")
+    }
+    Shortcut {
+        sequence: "Ctrl+3"
+        enabled: !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.setFacet("folders")
+    }
 
     header: Rectangle {
-        color: "#141A22"
+        color: tokenBg1
         height: 72
         width: window.width
 
@@ -186,6 +228,22 @@ ApplicationWindow {
                 }
 
                 Text {
+                    objectName: "settingsButton"
+                    text: "Settings"
+                    color: settingsArea.containsMouse ? tokenText : tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                    MouseArea {
+                        id: settingsArea
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady) shellApi.toggleSettings()
+                    }
+                }
+
+                Text {
                     text: "Add folder"
                     color: addFolderArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
                     font.family: "Segoe UI"
@@ -225,6 +283,37 @@ ApplicationWindow {
                 placeholderText: primaryModeSafe ? "Search people" : "Command: people, status"
                 placeholderTextColor: "#6E8294"
                 color: "#E7EEF5"
+                font.family: "Segoe UI"
+                font.pixelSize: 14
+                background: Item {}
+                selectByMouse: true
+                onAccepted: if (shellReady) shellApi.submitCommand(text)
+            }
+        }
+
+        Rectangle {
+            id: searchBox
+            width: 320
+            height: 36
+            visible: primaryModeSafe
+            radius: 8
+            color: tokenBg1
+            border.color: searchField.activeFocus ? tokenAccent : "#2a2d33"
+            border.width: 1
+            anchors.left: brand.right
+            anchors.leftMargin: 36
+            anchors.verticalCenter: parent.verticalCenter
+
+            TextField {
+                id: searchField
+                objectName: "searchField"
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                verticalAlignment: TextInput.AlignVCenter
+                placeholderText: "Search memory"
+                placeholderTextColor: "#6b7280"
+                color: tokenText
                 font.family: "Segoe UI"
                 font.pixelSize: 14
                 background: Item {}
@@ -377,6 +466,172 @@ ApplicationWindow {
         id: stage
         anchors.fill: parent
 
+        Row {
+            id: facetBar
+            objectName: "facetBar"
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.leftMargin: 28
+            anchors.topMargin: 8
+            spacing: 14
+            visible: !peopleVisible && !focusActive
+            z: 2
+
+            Repeater {
+                model: advancedModeSafe
+                      ? ["Memory", "Days", "Folders", "Moments"]
+                      : ["Memory", "Days", "Folders"]
+                delegate: Text {
+                    text: modelData
+                    color: facetArea.containsMouse ? tokenText : tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                    MouseArea {
+                        id: facetArea
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady) shellApi.setFacet(modelData)
+                    }
+                }
+            }
+        }
+
+        Text {
+            objectName: "surfaceState"
+            anchors.left: facetBar.left
+            anchors.top: facetBar.bottom
+            anchors.topMargin: 4
+            visible: shellReady && (shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
+            text: shellReady ? (shellApi.noticeText || shellApi.surfaceState) : ""
+            color: shellReady && shellApi.surfaceState === "error" ? "#e5484d" : tokenMuted
+            font.family: "Segoe UI"
+            font.pixelSize: 13
+            z: 2
+        }
+
+        Row {
+            id: bucketRow
+            objectName: "bucketRow"
+            anchors.left: facetBar.left
+            anchors.top: facetBar.bottom
+            anchors.topMargin: 18
+            spacing: 10
+            visible: !peopleVisible && !focusActive && shellReady && shellApi.buckets.length > 0
+            z: 2
+
+            Repeater {
+                model: shellReady ? shellApi.buckets : []
+                delegate: Text {
+                    text: modelData.label + " (" + modelData.count + ")"
+                    color: bucketHit.containsMouse ? tokenText : tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                    MouseArea {
+                        id: bucketHit
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady) shellApi.selectBucket(modelData.key)
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            objectName: "settingsSheet"
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 16
+            width: 280
+            height: settingsColumn.implicitHeight + 28
+            radius: 10
+            visible: shellReady && shellApi.settingsOpen && !focusActive
+            color: tokenBg1
+            border.color: "#2a2d33"
+            border.width: 1
+            z: 3
+
+            Column {
+                id: settingsColumn
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 14
+                spacing: 8
+
+                Text {
+                    text: "Settings"
+                    color: tokenText
+                    font.pixelSize: 16
+                    font.family: "Segoe UI"
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? shellApi.searchModeLabel : ""
+                    color: tokenMuted
+                    font.pixelSize: 12
+                    font.family: "Segoe UI"
+                }
+                Repeater {
+                    model: {
+                        var rows = [
+                            { label: "Density", call: "cycleDensity" },
+                            { label: "Library health", call: "libraryHealth" },
+                            { label: "Activity", call: "showActivity" },
+                            { label: "Search people", call: "modePeople" },
+                            { label: "Search text", call: "modeText" },
+                            { label: "Reset defaults", call: "resetDefaults" }
+                        ]
+                        if (advancedModeSafe) {
+                            rows.push({ label: "Duplicates", call: "scanDuplicates" })
+                            rows.push({ label: "Capabilities", call: "showCapabilities" })
+                            rows.push({ label: "GPU auto", call: "gpuAuto" })
+                            rows.push({ label: "GPU off", call: "gpuOff" })
+                        }
+                        return rows
+                    }
+                    delegate: Rectangle {
+                        width: parent.width
+                        height: 28
+                        radius: 6
+                        color: settingHit.containsMouse ? "#24272c" : "#1b1d21"
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData.label
+                            color: tokenText
+                            font.pixelSize: 12
+                            font.family: "Segoe UI"
+                        }
+                        MouseArea {
+                            id: settingHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (!shellReady)
+                                    return
+                                var call = modelData.call
+                                if (call === "cycleDensity") shellApi.cycleDensity()
+                                else if (call === "libraryHealth") shellApi.libraryHealth()
+                                else if (call === "scanDuplicates") shellApi.scanDuplicates()
+                                else if (call === "showActivity") shellApi.showActivity()
+                                else if (call === "showCapabilities") shellApi.showCapabilities()
+                                else if (call === "gpuAuto") shellApi.setGpuPreference("auto")
+                                else if (call === "gpuOff") shellApi.setGpuPreference("off")
+                                else if (call === "modePeople") shellApi.setSearchMode("people")
+                                else if (call === "modeText") shellApi.setSearchMode("text")
+                                else if (call === "resetDefaults") shellApi.resetDefaults()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Rectangle {
             objectName: "peopleDesk"
             anchors.fill: parent
@@ -397,6 +652,26 @@ ApplicationWindow {
                         font.pixelSize: 22
                         font.family: "Segoe UI Variable"
                         font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        objectName: "reviewCounts"
+                        width: parent.width
+                        text: shellReady ? shellApi.reviewCountText : ""
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
+                        objectName: "unresolvedLine"
+                        width: parent.width
+                        text: shellReady ? shellApi.unresolvedText : ""
+                        color: tokenReview
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
                     }
 
                     Text {
@@ -441,8 +716,12 @@ ApplicationWindow {
                                         width: ListView.view.width
                                         height: 54
                                         radius: 8
-                                        color: (shellReady && shell.selectedSubject === subject) ? "#17333A" : "#1A222D"
-                                        border.color: (shellReady && shell.selectedSubject === subject) ? "#2DD4BF" : "#243140"
+                                        color: named
+                                                ? ((shellReady && shell.selectedSubject === subject) ? "#17333A" : "#1A222D")
+                                                : "#241c2e"
+                                        border.color: named
+                                                ? ((shellReady && shell.selectedSubject === subject) ? "#2DD4BF" : "#243140")
+                                                : tokenReview
                                         border.width: 1
 
                                         Column {
@@ -807,10 +1086,11 @@ ApplicationWindow {
             objectName: "fieldGrid"
             anchors.fill: parent
             anchors.margins: 22
+            anchors.topMargin: 52
             visible: !emptySafe
             opacity: !focusActive ? 1 : 0
-            cellWidth: 196
-            cellHeight: 196
+            cellWidth: shellReady ? shellApi.cellSize : 160
+            cellHeight: shellReady ? shellApi.cellSize : 160
             cacheBuffer: 400
             boundsBehavior: Flickable.StopAtBounds
             model: archiveModel
@@ -1124,11 +1404,36 @@ ApplicationWindow {
 
             Column {
                 objectName: "focusInspector"
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 22
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: 22
+                anchors.bottomMargin: similarStrip.visible ? 108 : 22
                 spacing: 8
                 width: 220
+
+                Rectangle {
+                    width: parent.width
+                    height: 32
+                    radius: 6
+                    color: similarHit.containsMouse ? "#1b1d21" : "#24272c"
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Similar"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: similarHit
+                        objectName: "similarAction"
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady) shellApi.findSimilarWhole()
+                    }
+                }
 
                 Rectangle {
                     width: parent.width

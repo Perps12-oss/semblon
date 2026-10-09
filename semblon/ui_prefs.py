@@ -55,7 +55,7 @@ KEY_PREFER_GPU = "prefer_gpu"
 KEY_WINDOW_GEOMETRY = "window_geometry"
 KEY_LAST_STORE = "last_store"
 
-GRID_DENSITIES = ("comfortable", "compact")
+GRID_DENSITIES = ("comfortable", "cozy", "compact")
 SEARCH_MODES = ("people", "text", "whole", "region")
 LIBRARY_FILTERS = ("all", "photos", "videos")
 
