@@ -20,6 +20,17 @@ from semblon.native_shell.presentation import (
     present_message,
     summarize_people_results,
 )
+from semblon.native_shell.editorial import (
+    SAVED_VIEWS_NOTE,
+    SIMILAR_NOTE,
+    SPATIAL_NOTE,
+    VIDEO_NOTE,
+    YEAR_NOTE,
+    folder_rows,
+    month_heading,
+    source_counts,
+    year_rows,
+)
 from semblon.ui_prefs import load_prefs, save_theme_mode, update_prefs
 
 
@@ -52,6 +63,7 @@ class ShellBridge(QObject):
     resultChanged = Signal()
     similarChanged = Signal()
     peopleChanged = Signal()
+    chromeChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -80,12 +92,24 @@ class ShellBridge(QObject):
         self._split_faces: list[str] = []
         self._mode = self._load_shell_mode()
         self._atmosphere_id = self._load_atmosphere_id()
+        self._nav = "time"
+        self._centre = "contact"
+        self._tools_open = False
+        self._selected_media = ""
+        self._search_note = ""
+        self._photo_count = 0
+        self._video_count = 0
+        self._years: list[dict] = []
+        self._folders: list[dict] = []
+        self._review: list[dict] = []
+        self._unnamed_count = 0
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
         self._timer.timeout.connect(self._poll_job)
         self._timer.start()
         model.reload()
+        self._reload_chrome()
 
     def _prefs_store(self) -> Path:
         return self._jobs.store
@@ -158,6 +182,290 @@ class ShellBridge(QObject):
     @Property(str, notify=lensChanged)
     def lensLabel(self) -> str:
         return self._session.lens.label
+
+    @Property(str, notify=chromeChanged)
+    def archiveNav(self) -> str:
+        return self._nav
+
+    @Property(str, notify=chromeChanged)
+    def centreView(self) -> str:
+        return self._centre
+
+    @Property(bool, notify=chromeChanged)
+    def toolsOpen(self) -> bool:
+        return self._tools_open
+
+    @Property(bool, notify=lensChanged)
+    def lightPalette(self) -> bool:
+        return self._atmosphere_id == "light"
+
+    @Property(str, notify=chromeChanged)
+    def selectedMediaId(self) -> str:
+        return self._selected_media
+
+    @Property(str, notify=chromeChanged)
+    def searchNote(self) -> str:
+        return self._search_note
+
+    @Property(int, notify=chromeChanged)
+    def photoCount(self) -> int:
+        return self._photo_count
+
+    @Property(int, notify=chromeChanged)
+    def videoCount(self) -> int:
+        return self._video_count
+
+    @Property(int, notify=chromeChanged)
+    def unnamedCount(self) -> int:
+        return self._unnamed_count
+
+    @Property("QVariantList", notify=chromeChanged)
+    def yearRows(self):
+        return list(self._years)
+
+    @Property("QVariantList", notify=chromeChanged)
+    def folderRows(self):
+        return list(self._folders)
+
+    @Property("QVariantList", notify=chromeChanged)
+    def reviewRows(self):
+        return list(self._review)
+
+    @Property(str, notify=chromeChanged)
+    def savedViewsNote(self) -> str:
+        return SAVED_VIEWS_NOTE
+
+    @Property(str, notify=chromeChanged)
+    def spatialNote(self) -> str:
+        return SPATIAL_NOTE
+
+    @Property(str, notify=chromeChanged)
+    def similarLensNote(self) -> str:
+        return SIMILAR_NOTE
+
+    @Property(str, notify=chromeChanged)
+    def videoNote(self) -> str:
+        return VIDEO_NOTE
+
+    @Property(str, notify=chromeChanged)
+    def yearNote(self) -> str:
+        return YEAR_NOTE
+
+    @Property(str, notify=chromeChanged)
+    def collectionTitle(self) -> str:
+        if self._nav == "folders":
+            return "Folders"
+        if self._nav == "similar":
+            return "Similar"
+        if self._nav == "unresolved":
+            return "Unresolved"
+        if self._nav == "videos":
+            return "Videos"
+        rows = self._jobs.archive_window(0, 1)
+        if not rows:
+            return "Time"
+        heading = month_heading(rows[0].day)
+        return heading or "Time"
+
+    @Property(int, notify=chromeChanged)
+    def collectionCount(self) -> int:
+        if self._nav == "folders":
+            return len(self._folders)
+        if self._nav == "unresolved":
+            return self._unnamed_count
+        if self._nav == "videos":
+            return self._video_count
+        if self._nav == "similar":
+            return 0
+        return self._jobs.archive_count()
+
+    @Property(str, notify=chromeChanged)
+    def collectionNote(self) -> str:
+        if self._nav == "folders":
+            return "Folders already in the archive. Choosing one does not move files."
+        if self._nav == "similar":
+            return SIMILAR_NOTE
+        if self._nav == "unresolved":
+            return "Suggested groups. Nothing here is a confirmed person."
+        if self._nav == "videos":
+            return VIDEO_NOTE
+        return "Ordered by stored file time. Files stay where they are."
+
+    @Property(str, notify=chromeChanged)
+    def selectedName(self) -> str:
+        item = self._jobs.media(self._selected_media)
+        return item.name if item else ""
+
+    @Property(str, notify=chromeChanged)
+    def selectedDay(self) -> str:
+        item = self._jobs.media(self._selected_media)
+        if item is None:
+            return ""
+        return item.day or "No stored time"
+
+    @Property(str, notify=chromeChanged)
+    def selectedKind(self) -> str:
+        item = self._jobs.media(self._selected_media)
+        if item is None:
+            return ""
+        return "Video" if item.source_type == "video" else "Photo"
+
+    @Property(str, notify=chromeChanged)
+    def selectedIdentity(self) -> str:
+        return self._identity_line(self._selected_media)
+
+    @Property(str, notify=chromeChanged)
+    def selectedPlace(self) -> str:
+        return "No location is stored"
+
+    def _identity_line(self, media_id: str) -> str:
+        if not media_id:
+            return "Unknown"
+        try:
+            board = self._jobs.board()
+        except Exception:  # noqa: BLE001
+            return "Unknown"
+        names: list[str] = []
+        suggested = False
+        for item in board.get("items") or []:
+            members = item.get("members") or []
+            if not any(str(member.get("media_id") or "") == media_id for member in members):
+                continue
+            if item.get("named"):
+                for name in item.get("person_names") or []:
+                    text = str(name or "").strip()
+                    if text:
+                        names.append(text)
+            else:
+                suggested = True
+        if names:
+            return "Named: " + names[0]
+        if suggested:
+            return "Unknown. A suggestion exists and is not confirmed."
+        return "Unknown"
+
+    def _reload_chrome(self) -> None:
+        counts = source_counts(self._jobs.store)
+        self._photo_count = int(counts.get("folder") or 0)
+        self._video_count = int(counts.get("video") or 0)
+        self._years = year_rows(self._jobs.store)
+        self._folders = folder_rows(self._jobs.store)
+        self._review = []
+        self._unnamed_count = 0
+        try:
+            board = self._jobs.board()
+        except Exception:  # noqa: BLE001
+            board = {}
+        for item in board.get("items") or []:
+            if item.get("named") or item.get("kind") == "track":
+                continue
+            members = item.get("members") or []
+            if members and all(str(member.get("source_type") or "") == "video" for member in members):
+                continue
+            subject = str(item.get("cluster_id") or item.get("face_id") or "")
+            if not subject:
+                continue
+            media_id = str(members[0].get("media_id") or "") if members else ""
+            count = int(item.get("face_count") or 0)
+            title = str(subject)
+            self._review.append(
+                {
+                    "subject": subject,
+                    "title": title,
+                    "detail": f"Suggested · {count} observations",
+                    "mediaId": media_id,
+                }
+            )
+        self._unnamed_count = len(self._review)
+        if self._selected_media and self._jobs.media(self._selected_media) is None:
+            self._selected_media = ""
+        self.chromeChanged.emit()
+
+    @Slot(str)
+    def setNav(self, nav: str) -> None:
+        chosen = str(nav or "").strip().lower()
+        if chosen not in {"time", "folders", "similar", "unresolved", "videos"}:
+            return
+        self._nav = chosen
+        if chosen != "time":
+            self._centre = "contact"
+        self.chromeChanged.emit()
+
+    @Slot(str)
+    def setCentre(self, view: str) -> None:
+        chosen = str(view or "").strip().lower()
+        if chosen not in {"contact", "spatial"}:
+            return
+        self._centre = chosen
+        if chosen == "spatial":
+            self._nav = "time"
+        self.chromeChanged.emit()
+
+    @Slot()
+    def resetView(self) -> None:
+        """Contact sheet, Time, tools closed, selection on the first photo."""
+        self._nav = "time"
+        self._centre = "contact"
+        self._tools_open = False
+        self._search_note = ""
+        if self._people_open:
+            self.closePeople()
+        rows = self._jobs.archive_window(0, 1)
+        self._selected_media = rows[0].media_id if rows else ""
+        if self._session.focus_id:
+            self._session.clear_focus()
+            self._clear_query()
+            self.focusChanged.emit()
+        self.chromeChanged.emit()
+
+    @Slot()
+    def toggleTools(self) -> None:
+        self._tools_open = not self._tools_open
+        self.chromeChanged.emit()
+
+    @Slot()
+    def closeTools(self) -> None:
+        if not self._tools_open:
+            return
+        self._tools_open = False
+        self.chromeChanged.emit()
+
+    @Slot(str)
+    def selectMedia(self, media_id: str) -> None:
+        item = self._jobs.media(str(media_id or ""))
+        self._selected_media = item.media_id if item else ""
+        self.chromeChanged.emit()
+
+    @Slot(str)
+    def openReview(self, subject: str) -> None:
+        """Open the existing review desk. Does not confirm a person."""
+        self._refresh_people()
+        self._people_open = True
+        self.selectGroup(str(subject or ""))
+        self.peopleChanged.emit()
+
+    @Slot(str)
+    def searchNamed(self, text: str) -> None:
+        query = str(text or "").strip()
+        if not query:
+            self._search_note = "Nothing was searched."
+        else:
+            self._search_note = self._search_people(query)
+        self._set_result(self._search_note)
+        self.chromeChanged.emit()
+
+    @Slot()
+    def prepareSimilar(self) -> None:
+        """Inspector door. Does not run a search and does not invent matches."""
+        if not self._selected_media and not self._session.focus_id:
+            self._search_note = "Select a photo first. Nothing was searched."
+            self.chromeChanged.emit()
+            return
+        media_id = self._session.focus_id or self._selected_media
+        if media_id and not self._session.focus_id:
+            self.openFocus(media_id)
+        self._search_note = "Draw a region on the photo. Similar search has not run."
+        self.chromeChanged.emit()
 
     @Property(str, notify=focusChanged)
     def focusId(self) -> str:
@@ -266,8 +574,11 @@ class ShellBridge(QObject):
     @Slot(str)
     def openFocus(self, media_id: str) -> None:
         self._session.open_focus(media_id)
+        if self._session.focus_id:
+            self._selected_media = self._session.focus_id
         self._clear_query()
         self.focusChanged.emit()
+        self.chromeChanged.emit()
 
     @Slot(int)
     def openIndex(self, index: int) -> None:
@@ -275,8 +586,11 @@ class ShellBridge(QObject):
         if not rows:
             return
         self._session.open_focus(rows[0].media_id)
+        if self._session.focus_id:
+            self._selected_media = self._session.focus_id
         self._clear_query()
         self.focusChanged.emit()
+        self.chromeChanged.emit()
 
     @Slot(float)
     def setScroll(self, y: float) -> None:
@@ -287,14 +601,20 @@ class ShellBridge(QObject):
     @Slot()
     def focusNext(self) -> None:
         self._session.move_focus(1)
+        if self._session.focus_id:
+            self._selected_media = self._session.focus_id
         self._clear_query()
         self.focusChanged.emit()
+        self.chromeChanged.emit()
 
     @Slot()
     def focusPrev(self) -> None:
         self._session.move_focus(-1)
+        if self._session.focus_id:
+            self._selected_media = self._session.focus_id
         self._clear_query()
         self.focusChanged.emit()
+        self.chromeChanged.emit()
 
     @property
     def people_model(self) -> PeopleModel:
@@ -513,6 +833,20 @@ class ShellBridge(QObject):
             return
         if self._people_open:
             self.closePeople()
+            return
+        if self._session.focus_id:
+            self._session.escape()
+            self._clear_query()
+            self.focusChanged.emit()
+            self.lensChanged.emit()
+            return
+        if self._tools_open:
+            self.closeTools()
+            return
+        if self._centre == "spatial" or self._nav != "time":
+            self._centre = "contact"
+            self._nav = "time"
+            self.chromeChanged.emit()
             return
         self._session.escape()
         self._clear_query()
@@ -845,6 +1179,7 @@ class ShellBridge(QObject):
         self._merge_target_subject = ""
         self._split_faces = []
         self._refresh_people()
+        self._reload_chrome()
         self.peopleChanged.emit()
         return self._people_note
 
@@ -963,6 +1298,7 @@ class ShellBridge(QObject):
     def _refresh_library(self) -> None:
         self._model.reload()
         empty = self._jobs.archive_count() == 0
+        self._reload_chrome()
         self.libraryChanged.emit()
         if empty != self._empty:
             self._empty = empty
