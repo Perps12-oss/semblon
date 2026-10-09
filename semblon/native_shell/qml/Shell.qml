@@ -13,6 +13,10 @@ ApplicationWindow {
 
     readonly property bool shellReady: shell !== undefined && shell !== null
     readonly property var shellApi: shellReady ? shell : null
+    readonly property string modeSafe: shellReady ? shellApi.mode : "primary"
+    readonly property bool primaryModeSafe: shellReady ? shellApi.primaryMode : true
+    readonly property bool advancedModeSafe: shellReady ? shellApi.advancedMode : false
+    readonly property string atmosphereIdSafe: shellReady ? shellApi.atmosphereId : "mica_dark"
     readonly property string shellFindSimilarToken: "shell.findSimilar()"
     readonly property string shellResumeJobToken: "shell.resumeJob()"
     readonly property string shellOpenFocusToken: "shell.openFocus(mediaId)"
@@ -82,7 +86,7 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.leftMargin: 28
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 2
+            spacing: 6
 
             Text {
                 id: wordmark
@@ -107,18 +111,93 @@ ApplicationWindow {
                 font.pixelSize: 13
                 font.letterSpacing: 0.4
             }
-            Text {
-                objectName: "peopleButton"
-                text: "People"
-                color: peopleArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                MouseArea {
-                    id: peopleArea
-                    anchors.fill: parent
-                    anchors.margins: -6
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.openPeople()
+            Row {
+                spacing: 8
+
+                Rectangle {
+                    objectName: "primaryModeButton"
+                    width: 74
+                    height: 24
+                    radius: 12
+                    color: primaryModeSafe ? "#17333A" : "#1C2430"
+                    border.color: primaryModeSafe ? "#2DD4BF" : "#243140"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Primary"
+                        color: primaryModeSafe ? "#5EEAD4" : "#8AA0B2"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady) shellApi.setMode("primary")
+                    }
+                }
+
+                Rectangle {
+                    objectName: "advancedModeButton"
+                    width: 84
+                    height: 24
+                    radius: 12
+                    color: advancedModeSafe ? "#17333A" : "#1C2430"
+                    border.color: advancedModeSafe ? "#2DD4BF" : "#243140"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Advanced"
+                        color: advancedModeSafe ? "#5EEAD4" : "#8AA0B2"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady) shellApi.setMode("advanced")
+                    }
+                }
+            }
+
+            Row {
+                spacing: 16
+
+                Text {
+                    objectName: "peopleButton"
+                    text: "People"
+                    color: peopleArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                    MouseArea {
+                        id: peopleArea
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady) shellApi.openPeople()
+                    }
+                }
+
+                Text {
+                    text: "Add folder"
+                    color: addFolderArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                    MouseArea {
+                        id: addFolderArea
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady && !jobRunning) shellApi.addFolder()
+                    }
                 }
             }
         }
@@ -127,7 +206,7 @@ ApplicationWindow {
             id: command
             width: 320
             height: 36
-            visible: false
+            visible: advancedModeSafe
             radius: 8
             color: "#1C2430"
             border.color: commandField.activeFocus ? "#2DD4BF" : "#243140"
@@ -143,7 +222,7 @@ ApplicationWindow {
                 anchors.leftMargin: 12
                 anchors.rightMargin: 12
                 verticalAlignment: TextInput.AlignVCenter
-                placeholderText: "Find"
+                placeholderText: primaryModeSafe ? "Search people" : "Command: people, status"
                 placeholderTextColor: "#6E8294"
                 color: "#E7EEF5"
                 font.family: "Segoe UI"
@@ -251,6 +330,45 @@ ApplicationWindow {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: if (shellReady) shellApi.resumeJob()
+            }
+        }
+
+        ComboBox {
+            id: atmospherePicker
+            objectName: "atmospherePicker"
+            anchors.right: parent.right
+            anchors.rightMargin: 102
+            anchors.verticalCenter: parent.verticalCenter
+            width: 160
+            model: shellReady ? shellApi.atmosphereChoices : []
+            textRole: "label"
+            displayText: (currentIndex >= 0 && model.length > currentIndex) ? model[currentIndex].label : "Atmosphere"
+
+            onActivated: if (shellReady && currentIndex >= 0 && model.length > currentIndex) {
+                shellApi.setAtmosphere(model[currentIndex].id)
+            }
+
+            Component.onCompleted: {
+                if (!shellReady)
+                    return
+                for (var i = 0; i < model.length; i++) {
+                    if (model[i].id === atmosphereIdSafe) {
+                        currentIndex = i
+                        break
+                    }
+                }
+            }
+
+            Connections {
+                target: shellApi
+                function onLensChanged() {
+                    for (var i = 0; i < atmospherePicker.model.length; i++) {
+                        if (atmospherePicker.model[i].id === atmosphereIdSafe) {
+                            atmospherePicker.currentIndex = i
+                            return
+                        }
+                    }
+                }
             }
         }
     }
@@ -463,6 +581,16 @@ ApplicationWindow {
                                             onClicked: if (shellReady) shellApi.decide("ignore", shellApi.selectedSubject, "")
                                         }
                                     }
+                                    Text {
+                                        text: primaryModeSafe ? "Not this person" : "Rule out"
+                                        color: "#5EEAD4"
+                                        font.pixelSize: 14
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.decide("rule_out", shellApi.selectedSubject, decisionText.text)
+                                        }
+                                    }
                                 }
 
                                 Text {
@@ -536,6 +664,18 @@ ApplicationWindow {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: if (shellReady) shellApi.mergeSelectedGroup()
+                                        }
+                                    }
+
+                                    Text {
+                                        objectName: "clearSplitSelection"
+                                        text: "Clear selection"
+                                        color: splitSelectionCountSafe > 0 ? "#5EEAD4" : "#6E8294"
+                                        font.pixelSize: 14
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.clearSplitSelection()
                                         }
                                     }
 
@@ -993,6 +1133,7 @@ ApplicationWindow {
                 Rectangle {
                     width: parent.width
                     height: 32
+                    visible: primaryModeSafe
                     radius: 6
                     color: askArea.containsMouse ? "#12343A" : "#1C2430"
                     border.color: "#2DD4BF"
@@ -1011,6 +1152,52 @@ ApplicationWindow {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: if (shellReady) shellApi.askPhoto()
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 32
+                    visible: advancedModeSafe
+                    radius: 6
+                    color: statusArea.containsMouse ? "#12343A" : "#1C2430"
+                    border.color: "#2DD4BF"
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Run diagnostics status"
+                        color: "#5EEAD4"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: statusArea
+                        objectName: "runStatus"
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady) shellApi.submitCommand("status")
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width
+                    visible: advancedModeSafe
+                    color: "#10161C"
+                    border.color: "#243140"
+                    border.width: 1
+                    radius: 8
+                    implicitHeight: diagnosticsText.implicitHeight + 14
+
+                    Text {
+                        id: diagnosticsText
+                        anchors.fill: parent
+                        anchors.margins: 7
+                        text: shellReady ? shellApi.diagnosticsText : ""
+                        color: "#8AA0B2"
+                        font.family: "Consolas"
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
                     }
                 }
                 Text {

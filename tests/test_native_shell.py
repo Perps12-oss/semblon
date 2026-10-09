@@ -373,6 +373,11 @@ def test_focus_qml_draws_into_strip_without_a_similar_button():
     assert "shell.thumbFor(mediaId)" in qml
     assert "shell.openFocus(mediaId)" in qml
     assert "shell.clearDrawnQuery()" in qml
+    assert 'objectName: "primaryModeButton"' in qml
+    assert 'objectName: "advancedModeButton"' in qml
+    assert 'objectName: "runStatus"' in qml
+    assert 'objectName: "clearSplitSelection"' in qml
+    assert "shellApi.setAtmosphere(" in qml
     assert "image://archive/t/" not in qml.split("similarStrip", 1)[-1].split("similarThumb", 1)[0]
     host = (
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "host.py"
@@ -509,6 +514,60 @@ def _appearance_rows(store):
         ).fetchall()
     finally:
         conn.close()
+
+
+def test_bridge_ingest_finished_is_marshaled_to_bridge_thread(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    import threading
+    import time
+
+    from PySide6.QtCore import QThread
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+
+    qapp = QApplication.instance() or QApplication([])
+    jobs = Application(tmp_path / "fresh.sqlite")
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+    callbacks: dict[str, object] = {}
+
+    def fake_submit_ingest(folder, **kwargs):
+        callbacks["on_done"] = kwargs["on_done"]
+        return object()
+
+    monkeypatch.setattr(jobs, "submit_ingest", fake_submit_ingest)
+    seen: list[QThread] = []
+    done = threading.Event()
+    worker_thread: list[QThread] = []
+
+    def record_emit() -> None:
+        seen.append(QThread.currentThread())
+        done.set()
+
+    bridge.ingestFinished.connect(record_emit)
+    bridge._start_ingest(tmp_path)
+    assert "on_done" in callbacks
+
+    def run_done() -> None:
+        worker_thread.append(QThread.currentThread())
+        callbacks["on_done"](None)
+
+    thread = threading.Thread(target=run_done)
+    thread.start()
+    thread.join()
+
+    deadline = time.monotonic() + 5.0
+    while not done.is_set() and time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(0.01)
+
+    assert done.is_set()
+    assert seen == [bridge.thread()]
+    assert worker_thread and worker_thread[0] != seen[0]
 
 
 def test_shell_add_folder_indexes_appearance_and_draw_finds_it(tmp_path, monkeypatch):
@@ -745,11 +804,11 @@ def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monke
     assert bridge.focusId == ""
     assert bridge.peopleOpen is True
     assert bridge.decide("name", "c1", "") == "A name or note is required."
-    assert bridge.decide("name", "c1", "Ada") == "Named Ada. A cluster is not a person."
+    assert bridge.decide("name", "c1", "Ada") == "Saved name: Ada."
     assert bridge.decide("merge", "c1", "c2").startswith("Merged")
     assert bridge.decide("split", "c1", "f1").startswith("Split")
-    assert bridge.decide("ignore", "c1", "") == "Left unknown."
-    assert bridge.decide("note", "c1", "keep") == "Note kept."
+    assert bridge.decide("ignore", "c1", "") == "Left this group unknown."
+    assert bridge.decide("note", "c1", "keep") == "Saved your note."
     assert calls == ["name", "merge", "split", "ignore", "note"]
     bridge.closePeople()
     assert bridge.peopleOpen is False
@@ -931,9 +990,131 @@ def test_decide_reaches_real_review_writer(tmp_path, monkeypatch):
     jobs = Application(store)
     bridge = ShellBridge(ArchiveModel(jobs), jobs)
     note = bridge.decide("name", "missing-cluster", "Ada")
-    assert "cluster" in note.lower() or "unknown" in note.lower()
+    assert note == "Semblon couldn't save that decision."
     assert "traceback" not in note.lower()
     assert "sqlite" not in note.lower()
+
+
+def test_primary_presentation_fails_closed_and_advanced_preserves_detail():
+    from semblon.native_shell.presentation import present_message
+
+    fallback = "FALLBACK"
+    technical = "sqlite error\ntraceback here\ncluster_id=c1"
+    assert present_message("primary", technical, fallback=fallback) == fallback
+    assert present_message("advanced", technical, fallback=fallback) == technical
+
+    assert present_message("primary", "backend timeout while syncing cache", fallback=fallback) == fallback
+    assert present_message("advanced", "backend timeout while syncing cache", fallback=fallback) == "backend timeout while syncing cache"
+
+    assert present_message("primary", "internal provider failure", fallback=fallback) == fallback
+    assert present_message("primary", "hello from an unknown backend", fallback=fallback) == fallback
+
+    mixed = "Saved your note.\ninternal provider failure"
+    assert present_message("primary", mixed, fallback=fallback) == fallback
+
+    assert present_message("primary", "", fallback=fallback) == fallback
+    assert present_message("advanced", "", fallback=fallback) == fallback
+
+
+def test_primary_presentation_unknown_text_invariant():
+    from semblon.native_shell.presentation import present_message
+
+    fallback = "FALLBACK"
+    for unknown in [
+        "backend timeout while syncing cache",
+        "internal provider failure",
+        "unexpected database state",
+        "foo bar baz",
+    ]:
+        assert present_message("primary", unknown, fallback=fallback) == fallback
+
+
+def test_decision_success_outputs_remain_safe_and_stable():
+    from semblon.native_shell.presentation import decision_success
+
+    assert decision_success("name", "Ada") == "Saved name: Ada."
+    assert decision_success("name", "") == "Saved name for this group."
+    assert decision_success("ignore") == "Left this group unknown."
+    assert decision_success("note") == "Saved your note."
+    assert decision_success("merge") == "Merged the selected groups."
+    assert decision_success("split") == "Split the selected faces into a new group."
+    assert decision_success("rule_out") == "Marked this as not the same person."
+    assert decision_success("other") == "Saved your decision."
+
+
+def test_bridge_mode_and_atmosphere_persist(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+    from semblon.ui_prefs import load_prefs
+
+    store = tmp_path / "prefs.sqlite"
+    jobs = Application(store)
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+
+    assert bridge.mode == "primary"
+    bridge.toggleMode()
+    assert bridge.mode == "advanced"
+    bridge.setAtmosphere("tokyo_synth")
+    prefs = load_prefs(store)
+    assert prefs.get("shell_mode") == "advanced"
+    assert prefs.get("theme") == "tokyo_synth"
+
+    bridge2 = ShellBridge(ArchiveModel(jobs), jobs)
+    assert bridge2.mode == "advanced"
+    assert bridge2.atmosphereId == "tokyo_synth"
+
+
+def test_bridge_submit_command_primary_vs_advanced(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+
+    def fake_board(self, run_id=None):
+        return {
+            "items": [
+                {
+                    "cluster_id": "c1",
+                    "face_count": 2,
+                    "named": True,
+                    "person_names": ["Ada"],
+                    "members": [{"media_id": "m1", "face_id": "f1"}],
+                },
+                {
+                    "cluster_id": "c2",
+                    "face_count": 1,
+                    "named": False,
+                    "person_names": [],
+                    "members": [{"media_id": "m2", "face_id": "f2"}],
+                },
+            ]
+        }
+
+    monkeypatch.setattr(Application, "board", fake_board)
+
+    store = tmp_path / "prefs.sqlite"
+    jobs = Application(store)
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+
+    bridge.submitCommand("ada")
+    assert bridge.resultText == "Found: Ada."
+
+    bridge.submitCommand("status")
+    assert bridge.resultText == "No people matched that search."
+
+    bridge.setMode("advanced")
+    bridge.submitCommand("status")
+    assert "mode=advanced" in bridge.resultText
+    assert "focus_id=" in bridge.resultText
+
+    bridge.submitCommand("people")
+    assert "c2" in bridge.resultText
 
 
 def test_point_uses_stored_region_then_existing_similar_door(tmp_path, monkeypatch):

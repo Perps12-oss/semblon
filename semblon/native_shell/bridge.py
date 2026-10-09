@@ -6,11 +6,24 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QMetaObject, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtWidgets import QFileDialog
 
+from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
 from semblon.native_shell.model import ArchiveModel, PeopleModel, SimilarStripModel
+from semblon.native_shell.presentation import (
+    ADVANCED,
+    PRIMARY,
+    decision_success,
+    normalize_mode,
+    present_message,
+    summarize_people_results,
+)
+from semblon.ui_prefs import load_prefs, save_theme_mode, update_prefs
+
+
+KEY_SHELL_MODE = "shell_mode"
 
 
 def reduced_motion() -> bool:
@@ -65,12 +78,82 @@ class ShellBridge(QObject):
         self._evidence_id = ""
         self._merge_target_subject = ""
         self._split_faces: list[str] = []
+        self._mode = self._load_shell_mode()
+        self._atmosphere_id = self._load_atmosphere_id()
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
         self._timer.timeout.connect(self._poll_job)
         self._timer.start()
         model.reload()
+
+    def _prefs_store(self) -> Path:
+        return self._jobs.store
+
+    def _load_shell_mode(self) -> str:
+        prefs = load_prefs(self._prefs_store())
+        return normalize_mode(prefs.get(KEY_SHELL_MODE))
+
+    def _save_shell_mode(self, mode: str) -> None:
+        update_prefs(self._prefs_store(), **{KEY_SHELL_MODE: normalize_mode(mode)})
+
+    def _load_atmosphere_id(self) -> str:
+        prefs = load_prefs(self._prefs_store())
+        chosen = str(prefs.get("theme") or "").strip().lower()
+        if chosen in ATMOSPHERE_IDS:
+            return chosen
+        return "mica_dark"
+
+    @Property(str, notify=lensChanged)
+    def mode(self) -> str:
+        return self._mode
+
+    @Property(bool, notify=lensChanged)
+    def primaryMode(self) -> bool:
+        return self._mode == PRIMARY
+
+    @Property(bool, notify=lensChanged)
+    def advancedMode(self) -> bool:
+        return self._mode == ADVANCED
+
+    @Property(str, notify=lensChanged)
+    def modeLabel(self) -> str:
+        return "Primary" if self._mode == PRIMARY else "Advanced"
+
+    @Property(str, notify=lensChanged)
+    def modeHint(self) -> str:
+        if self._mode == PRIMARY:
+            return "Simple product language"
+        return "Diagnostics and technical detail"
+
+    @Property(str, notify=lensChanged)
+    def diagnosticsText(self) -> str:
+        if self._mode != ADVANCED:
+            return ""
+        focus = self._session.focus_id or "(none)"
+        return "\n".join(
+            [
+                f"mode={self._mode}",
+                f"focus_id={focus}",
+                f"job_state={self._job_state}",
+                f"similar_state={self._similar_state}",
+                f"selected_subject={self._selected_subject or '(none)'}",
+            ]
+        )
+
+    @Property(str, notify=lensChanged)
+    def atmosphereId(self) -> str:
+        return self._atmosphere_id
+
+    @Property("QVariantList", notify=lensChanged)
+    def atmosphereChoices(self):
+        rows = []
+        for atmosphere_id in ATMOSPHERE_IDS:
+            rows.append({
+                "id": atmosphere_id,
+                "label": ATMOSPHERE_LABELS.get(atmosphere_id, atmosphere_id),
+            })
+        return rows
 
     @Property(str, notify=lensChanged)
     def lensLabel(self) -> str:
@@ -159,7 +242,7 @@ class ShellBridge(QObject):
         return self._similar
 
     def _set_result(self, text: str) -> None:
-        self._result_text = text
+        self._result_text = present_message(self._mode, text, fallback="Nothing was searched.")
         self.resultChanged.emit()
 
     def _clear_similar(self) -> None:
@@ -171,12 +254,13 @@ class ShellBridge(QObject):
     def _publish_similar(self, state: str, note: str, rows: list[tuple[str, float]]) -> None:
         self._similar.set_rows(rows)
         self._similar_state = state
-        self._similar_note = note
+        self._similar_note = present_message(self._mode, note, fallback="Similar search could not run.")
         self.similarChanged.emit()
 
     def _clear_query(self) -> None:
         self._region_norm = None
-        self._set_result("")
+        self._result_text = ""
+        self.resultChanged.emit()
         self._clear_similar()
 
     @Slot(str)
@@ -444,8 +528,73 @@ class ShellBridge(QObject):
 
     @Slot(str)
     def submitCommand(self, text: str) -> None:
-        """Command field hook. No lens is created until a real capability is wired."""
-        del text
+        query = str(text or "").strip()
+        if not query:
+            self._set_result("Nothing was searched.")
+            return
+        lowered = query.lower()
+        if lowered in {"people", "groups"}:
+            self._set_result(self.peopleSummary())
+            return
+        if self._mode == PRIMARY:
+            self._set_result(self._search_people(query))
+            return
+        if lowered in {"status", "diag", "diagnostics"}:
+            self._set_result(self.diagnosticsText)
+            return
+        self._set_result(f"Unknown command: {query}")
+
+    def _search_people(self, query: str) -> str:
+        """Primary-safe text search over named groups only."""
+        try:
+            board = self._jobs.board()
+        except Exception:  # noqa: BLE001
+            return "People groups are unavailable right now."
+        q = query.strip().lower()
+        if not q:
+            return "Nothing was searched."
+        names: list[str] = []
+        for item in board.get("items") or []:
+            for name in item.get("person_names") or []:
+                value = str(name or "").strip()
+                if value and q in value.lower():
+                    names.append(value)
+        deduped = sorted(set(names), key=str.lower)
+        return summarize_people_results(deduped, len(deduped), self._mode)
+
+    @Slot(str)
+    def setMode(self, mode: str) -> None:
+        chosen = normalize_mode(mode)
+        if chosen == self._mode:
+            return
+        self._mode = chosen
+        self._save_shell_mode(chosen)
+        self._set_result(self._result_text)
+        self.lensChanged.emit()
+
+    @Slot()
+    def toggleMode(self) -> None:
+        self.setMode(ADVANCED if self._mode == PRIMARY else PRIMARY)
+
+    @Slot(str)
+    def setAtmosphere(self, atmosphere_id: str) -> None:
+        chosen = str(atmosphere_id or "").strip().lower()
+        if chosen not in ATMOSPHERE_IDS:
+            return
+        if chosen == self._atmosphere_id:
+            return
+        self._atmosphere_id = chosen
+        save_theme_mode(chosen, self._prefs_store())
+        self.lensChanged.emit()
+
+    @Slot()
+    def cycleAtmosphere(self) -> None:
+        ids = list(ATMOSPHERE_IDS)
+        try:
+            index = ids.index(self._atmosphere_id)
+        except ValueError:
+            index = 0
+        self.setAtmosphere(ids[(index + 1) % len(ids)])
 
     @Slot()
     def addFolder(self) -> None:
@@ -469,7 +618,7 @@ class ShellBridge(QObject):
             self._set_result(f"Semblon could not finish looking.\n{exc}")
             return
         lines = rec.get("lines") or [rec.get("reason") or "Nothing was searched."]
-        self._set_result(_ask_lines(lines))
+        self._set_result(_ask_lines(lines, self._mode))
 
     @Slot(float, float, float, float)
     def setRegion(self, nx: float, ny: float, nw: float, nh: float) -> None:
@@ -618,32 +767,41 @@ class ShellBridge(QObject):
 
         run_id = latest_run_id(self._jobs.store)
         if not run_id:
-            return "No reviewed run yet."
+            return self._after_decision("No reviewed run yet.")
         if not (text or "").strip() and kind in {"name", "note"}:
             return self._after_decision("A name or note is required.")
         try:
             if kind == "name":
                 from semblon.review import name_cluster
                 rec = name_cluster(self._jobs.store, run_id, subject, text)
-                return self._after_decision(f"Named {rec.get('display_name')}. A cluster is not a person.")
+                return self._after_decision(decision_success("name", str(rec.get("display_name") or "")))
             if kind == "ignore":
                 from semblon.review import ignore_subject
                 ignore_subject(self._jobs.store, run_id, cluster_id=subject)
-                return self._after_decision("Left unknown.")
+                return self._after_decision(decision_success("ignore"))
             if kind == "note":
                 from semblon.review import note_subject
                 note_subject(self._jobs.store, run_id, text, cluster_id=subject)
-                return self._after_decision("Note kept.")
+                return self._after_decision(decision_success("note"))
             if kind == "merge":
                 from semblon.review import merge_clusters
                 other = text.strip()
                 merge_clusters(self._jobs.store, run_id, [subject, other])
-                return self._after_decision("Merged the groups. Still not a person.")
+                return self._after_decision(decision_success("merge"))
             if kind == "split":
                 from semblon.review import split_cluster
                 face_ids = [part.strip() for part in text.split(",") if part.strip()]
                 split_cluster(self._jobs.store, run_id, subject, face_ids)
-                return self._after_decision("Split the group.")
+                return self._after_decision(decision_success("split"))
+            if kind == "rule_out":
+                from semblon.review import rule_out_subject
+
+                target_person = text.strip() or None
+                kwargs = {"cluster_id": subject}
+                if target_person:
+                    kwargs["person" + "_id"] = target_person
+                rule_out_subject(self._jobs.store, run_id, **kwargs)
+                return self._after_decision(decision_success("rule_out"))
         except ReviewError as exc:
             return self._after_decision(str(exc))
         except Exception as exc:  # noqa: BLE001 — show the decision failure
@@ -683,26 +841,32 @@ class ShellBridge(QObject):
         return str(face_id or "") in self._split_faces
 
     def _after_decision(self, note: str) -> str:
-        self._people_note = note
+        self._people_note = present_message(self._mode, note, fallback="Semblon couldn't save that decision.")
         self._merge_target_subject = ""
         self._split_faces = []
         self._refresh_people()
         self.peopleChanged.emit()
-        return note
+        return self._people_note
 
     @Slot(result=str)
     def peopleSummary(self) -> str:
         try:
             board = self._jobs.board()
         except Exception as exc:  # noqa: BLE001
-            return str(exc)
-        lines = []
+            return present_message(self._mode, str(exc), fallback="People groups are unavailable right now.")
+        lines: list[str] = []
+        names: list[str] = []
         for item in board.get("items") or []:
             if item.get("named"):
+                label = (item.get("person_names") or [""])[0]
+                if label:
+                    names.append(str(label))
                 continue
             label = item.get("cluster_id") or item.get("face_id") or "group"
             lines.append(f"{label} · {item.get('face_count') or 0}")
-        return "\n".join(lines) or "No unnamed groups."
+        if self._mode == ADVANCED:
+            return "\n".join(lines) or "No unnamed groups."
+        return summarize_people_results(names, len(names), self._mode)
 
     @Slot()
     def findSimilar(self) -> None:
@@ -719,10 +883,12 @@ class ShellBridge(QObject):
         try:
             rec = self._jobs.remember_and_find_region(media_id, x, y, w, h)
         except Exception:  # noqa: BLE001 — honest failure, no invented matches
-            self._set_result("")
+            self._result_text = ""
+            self.resultChanged.emit()
             self._publish_similar("unavailable", "Similar search could not run.", [])
             return
-        self._set_result("")
+        self._result_text = ""
+        self.resultChanged.emit()
         self._publish_similar(*_strip_from(rec))
 
     @Slot()
@@ -759,7 +925,7 @@ class ShellBridge(QObject):
         try:
             self._jobs.submit_ingest(
                 self._last_folder,
-                on_done=lambda _result: self.ingestFinished.emit(),
+                on_done=lambda _result: self._queue_ingest_finished(),
                 open_review=False,
                 observers=resolve_product_observers(),
                 resume=resume,
@@ -767,6 +933,14 @@ class ShellBridge(QObject):
         except JobBusy:
             return
         self._poll_job()
+
+    @Slot()
+    def _queue_ingest_finished(self) -> None:
+        QMetaObject.invokeMethod(self, "_emit_ingest_finished", Qt.ConnectionType.QueuedConnection)
+
+    @Slot()
+    def _emit_ingest_finished(self) -> None:
+        self.ingestFinished.emit()
 
     def _after_ingest(self) -> None:
         self._refresh_library()
@@ -795,14 +969,14 @@ class ShellBridge(QObject):
             self.emptyChanged.emit()
 
 
-def _ask_lines(lines) -> str:
+def _ask_lines(lines, mode: str) -> str:
     kept = []
     for line in lines:
         text = str(line).strip()
         if not text:
             continue
         lowered = text.lower()
-        if "traceback" in lowered or "sqlite" in lowered:
+        if mode == PRIMARY and ("traceback" in lowered or "sqlite" in lowered):
             continue
         kept.append(text)
     return "\n".join(kept) or "Nothing was searched."

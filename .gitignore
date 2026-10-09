@@ -17,3 +17,7 @@ _r4_locked_snapshot/
 s1-90-review*.html
 review.html
 semblon/observatory/
+
+# Pytest temporary artifacts
+.pytest-tmp/
+.pytest_tmp/
