@@ -105,7 +105,7 @@ Columns: backend, adapter, UI, data flow, dependency, branch, Windows, verdict.
 
 - Branch: `grok/frontend-blueprint-v3`
 - Remote: not pushed
-- Commit hash: recorded after the local commit (see the verification log update in git log)
+- Build commit: `f4db056` (local only)
 
 ## Verification log
 
