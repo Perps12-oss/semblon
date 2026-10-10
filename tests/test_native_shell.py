@@ -1,4 +1,4 @@
-"""Native archive shell — Application client. Optional PySide6."""
+﻿"""Native archive shell â€” Application client. Optional PySide6."""
 
 from __future__ import annotations
 
@@ -103,7 +103,7 @@ def test_shell_qml_shows_time_and_empty_archive(tmp_path, monkeypatch):
     from PySide6.QtCore import QObject
     from PySide6.QtWidgets import QApplication
 
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
 
     app = QApplication.instance() or QApplication([])
     _app, engine = build_shell(tmp_path / "empty.sqlite", app=app)
@@ -114,7 +114,7 @@ def test_shell_qml_shows_time_and_empty_archive(tmp_path, monkeypatch):
     assert lens is not None and lens.property("text") == "Time"
     assert empty is not None and empty.property("visible") is True
     assert field is not None and field.property("visible") is False
-    engine.deleteLater()
+    shutdown_shell(engine)
 
 
 def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
@@ -125,7 +125,7 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     from PySide6.QtGui import QImage
     from PySide6.QtWidgets import QApplication
 
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
     from semblon.store import connect, init_db
 
     photo = tmp_path / "new.png"
@@ -180,7 +180,7 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     assert bridge.focusId == ""
     assert bridge.focusKind == ""
     assert bridge.focusUrl == ""
-    engine.deleteLater()
+    shutdown_shell(engine)
 
 
 def test_shell_ask_and_similar_use_application_media_id(tmp_path, monkeypatch):
@@ -191,7 +191,7 @@ def test_shell_ask_and_similar_use_application_media_id(tmp_path, monkeypatch):
     from PySide6.QtWidgets import QApplication
 
     from semblon.application import Application
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
     from semblon.store import connect, init_db
 
     asked = []
@@ -250,7 +250,7 @@ def test_shell_ask_and_similar_use_application_media_id(tmp_path, monkeypatch):
     assert root.findChild(QObject, "findSimilar") is None
     assert root.findChild(QObject, "similarStrip") is not None
     assert root.findChild(QObject, "resultText") is not None
-    engine.deleteLater()
+    shutdown_shell(engine)
 
 
 def test_run_native_shell_exits_when_pyside_missing(tmp_path, monkeypatch):
@@ -395,7 +395,7 @@ def test_drawn_region_strip_replaces_and_clears(tmp_path, monkeypatch):
     from PySide6.QtWidgets import QApplication
 
     from semblon.application import Application
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
     from semblon.store import connect, init_db
 
     calls = []
@@ -481,7 +481,7 @@ def test_drawn_region_strip_replaces_and_clears(tmp_path, monkeypatch):
     bridge.escape()
     assert bridge.focusId == ""
     assert bridge.similarState == "idle"
-    engine.deleteLater()
+    shutdown_shell(engine)
 
 
 def _wait_idle(jobs, timeout=90.0):
@@ -748,7 +748,7 @@ def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monke
     from PySide6.QtWidgets import QApplication
 
     from semblon.application import Application
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
     from semblon.store import connect, init_db
 
     calls = []
@@ -832,7 +832,7 @@ def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monke
     qml = Path(__file__).resolve().parents[1].joinpath("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
     assert "review.html" not in qml
     assert 'text: "Play"' not in qml
-    engine.deleteLater()
+    shutdown_shell(engine)
 
 
 def test_people_split_uses_visual_face_selection_and_merge_target(tmp_path, monkeypatch):
@@ -842,7 +842,7 @@ def test_people_split_uses_visual_face_selection_and_merge_target(tmp_path, monk
     from PySide6.QtWidgets import QApplication
 
     from semblon.application import Application
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
     from semblon.store import connect, init_db
 
     calls = []
@@ -919,7 +919,7 @@ def test_people_split_uses_visual_face_selection_and_merge_target(tmp_path, monk
     assert bridge.canMergeSelected is True
     assert bridge.mergeSelectedGroup().startswith("Merged")
     assert [name for name, _args, _kwargs in calls] == ["split", "merge"]
-    engine.deleteLater()
+    shutdown_shell(engine)
 
 
 def test_people_desk_hides_video_only_tracks_from_qt_shell(tmp_path, monkeypatch):
@@ -928,7 +928,7 @@ def test_people_desk_hides_video_only_tracks_from_qt_shell(tmp_path, monkeypatch
     from PySide6.QtWidgets import QApplication
 
     from semblon.application import Application
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
     from semblon.store import connect, init_db
 
     def fake_board(self, run_id=None):
@@ -977,7 +977,7 @@ def test_people_desk_hides_video_only_tracks_from_qt_shell(tmp_path, monkeypatch
     assert bridge.people_model.rowCount() == 1
     assert bridge.people_model.row("c1") is not None
     assert bridge.people_model.row("t1") is None
-    engine.deleteLater()
+    shutdown_shell(engine)
 
 
 def test_decide_reaches_real_review_writer(tmp_path, monkeypatch):
@@ -1140,7 +1140,7 @@ def test_point_uses_stored_region_then_existing_similar_door(tmp_path, monkeypat
     from PySide6.QtWidgets import QApplication
 
     from semblon.application import Application
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
     from semblon.store import connect, init_db
 
     found = []
@@ -1176,7 +1176,7 @@ def test_point_uses_stored_region_then_existing_similar_door(tmp_path, monkeypat
     assert bridge.focusId == ""
     assert bridge.pointAt(-0.1, 0.2) == ""
     assert found == [("m1", 10, 20, 30, 40)]
-    engine.deleteLater()
+    shutdown_shell(engine)
 
 
 def test_point_on_fresh_image_refines_without_inventing_a_miss(tmp_path, monkeypatch):
@@ -1185,7 +1185,7 @@ def test_point_on_fresh_image_refines_without_inventing_a_miss(tmp_path, monkeyp
     from PySide6.QtWidgets import QApplication
 
     from semblon.application import Application
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
     from semblon.store import connect, init_db
 
     found = []
@@ -1214,9 +1214,42 @@ def test_point_on_fresh_image_refines_without_inventing_a_miss(tmp_path, monkeyp
     monkeypatch.setattr(bridge, "_refine_bbox", lambda media_id, px, py: None)
     assert bridge.pointAt(0.2, 0.2) == ""
     assert bridge.similarCount == 0
-    engine.deleteLater()
+    shutdown_shell(engine)
 
 
 
 
 
+
+
+def test_bridge_exposes_read_only_editorial_counts(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+    from semblon.store import connect, init_db
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.executemany(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        [
+            ("p1", "folder", str(tmp_path / "2017" / "a.jpg"), "h1", 10, 10, 1_503_000_000_000_000_000, 1),
+            ("v1", "video", str(tmp_path / "2017" / "c.mp4"), "h3", 10, 10, 1_503_100_000_000_000_000, 1),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    _app = QApplication.instance() or QApplication([])
+    bridge = ShellBridge(ArchiveModel(Application(store)), Application(store))
+    try:
+        assert bridge.photoCount == 1
+        assert bridge.videoCount == 1
+        assert bridge.yearRows[0]["label"] == "2017"
+        assert "no relationship" in bridge.spatialNote.lower()
+    finally:
+        bridge.shutdown()

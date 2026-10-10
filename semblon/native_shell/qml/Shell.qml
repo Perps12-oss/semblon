@@ -599,10 +599,11 @@ ApplicationWindow {
                 spacing: 18
 
                 Column {
-                    width: 96
+                    width: 150
                     spacing: 2
                     Text { text: "Library"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
                     Text { text: shellReady ? shellApi.count + " items" : "0 items"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                    Text { objectName: "mediaKinds"; text: shellReady ? shellApi.photoCount + " photos · " + shellApi.videoCount + " videos" : ""; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
                 }
 
                 Column {
@@ -627,7 +628,7 @@ ApplicationWindow {
             anchors.top: librarySnapshot.visible ? librarySnapshot.bottom : quickActionRail.bottom
             anchors.topMargin: 4
             visible: shellReady && (shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
-            text: shellReady ? (shellApi.noticeText || shellApi.surfaceState) : ""
+            text: shellReady ? (shellApi.noticeText || (shellApi.surfaceState === "loading" ? "Working…" : "Something went wrong. Try again.")) : ""
             color: shellReady && shellApi.surfaceState === "error" ? "#e5484d" : tokenMuted
             font.family: "Segoe UI"
             font.pixelSize: 13
@@ -1400,6 +1401,18 @@ ApplicationWindow {
                 horizontalAlignment: Text.AlignHCenter
             }
 
+            Text {
+                objectName: "emptyStatus"
+                width: parent.width
+                visible: jobLabelSafe !== "" || canResumeSafe
+                text: jobLabelSafe === "Last add failed" ? "The last add didn't finish. Try again or choose another folder."
+                      : (canResumeSafe ? "The last add was stopped. Resume it or choose another folder." : jobLabelSafe)
+                color: "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                horizontalAlignment: Text.AlignHCenter
+            }
+
             Grid {
                 columns: 4
                 columnSpacing: 12
@@ -1500,6 +1513,32 @@ ApplicationWindow {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: if (shellReady) shellApi.addFolder()
+                }
+            }
+            Rectangle {
+                objectName: "emptyResume"
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: resumeEmptyLabel.implicitWidth + 36
+                height: 40
+                radius: 8
+                color: resumeEmptyArea.containsMouse ? "#12343A" : "#1C2430"
+                border.color: "#243140"
+                border.width: 1
+                visible: canResumeSafe && !jobRunning
+                Text {
+                    id: resumeEmptyLabel
+                    anchors.centerIn: parent
+                    text: jobLabelSafe === "Last add failed" ? "Try again" : "Resume"
+                    color: "#E7EEF5"
+                    font.family: "Segoe UI"
+                    font.pixelSize: 14
+                }
+                MouseArea {
+                    id: resumeEmptyArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady) shellApi.resumeJob()
                 }
             }
         }
@@ -1773,6 +1812,7 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    objectName: "diagnosticsPanel"
                     width: parent.width
                     visible: advancedModeSafe
                     color: "#10161C"

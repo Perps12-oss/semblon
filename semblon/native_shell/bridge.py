@@ -33,6 +33,15 @@ from semblon.native_shell.presentation import (
     present_message,
     summarize_people_results,
 )
+from semblon.native_shell.editorial import (
+    SAVED_VIEWS_NOTE,
+    SPATIAL_NOTE,
+    VIDEO_NOTE,
+    YEAR_NOTE,
+    folder_rows,
+    source_counts,
+    year_rows,
+)
 from semblon.ui_prefs import load_prefer_gpu, load_prefs, save_theme_mode, update_prefs
 
 
@@ -66,6 +75,7 @@ class ShellBridge(QObject):
     similarChanged = Signal()
     peopleChanged = Signal()
     surfaceChanged = Signal()
+    editorialChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -108,6 +118,10 @@ class ShellBridge(QObject):
         self._last_job_failed = False
         self._terminal_status = ""
         self._review_text = ""
+        self._photo_count = 0
+        self._video_count = 0
+        self._years: list[dict] = []
+        self._folders: list[dict] = []
         self._unresolved_text = ""
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
@@ -115,6 +129,7 @@ class ShellBridge(QObject):
         self._timer.timeout.connect(self._poll_job)
         self._timer.start()
         model.reload()
+        self._reload_editorial()
 
     def shutdown(self) -> None:
         timer = getattr(self, "_timer", None)
@@ -252,7 +267,7 @@ class ShellBridge(QObject):
 
     @Property(bool, notify=jobChanged)
     def canResume(self) -> bool:
-        return self._resume_ready and self._last_folder is not None and not self._job_active
+        return self._resume_ready and self._last_folder is not None and not self._jobs.busy
 
     @Property(str, notify=jobChanged)
     def jobLabel(self) -> str:
@@ -277,6 +292,47 @@ class ShellBridge(QObject):
     @Property(str, notify=surfaceChanged)
     def noticeText(self) -> str:
         return self._notice
+
+    @Property(int, notify=editorialChanged)
+    def photoCount(self) -> int:
+        return self._photo_count
+
+    @Property(int, notify=editorialChanged)
+    def videoCount(self) -> int:
+        return self._video_count
+
+    @Property("QVariantList", notify=editorialChanged)
+    def yearRows(self):
+        return list(self._years)
+
+    @Property("QVariantList", notify=editorialChanged)
+    def folderRows(self):
+        return list(self._folders)
+
+    @Property(str, notify=editorialChanged)
+    def savedViewsNote(self) -> str:
+        return SAVED_VIEWS_NOTE
+
+    @Property(str, notify=editorialChanged)
+    def spatialNote(self) -> str:
+        return SPATIAL_NOTE
+
+    @Property(str, notify=editorialChanged)
+    def videoNote(self) -> str:
+        return VIDEO_NOTE
+
+    @Property(str, notify=editorialChanged)
+    def yearNote(self) -> str:
+        return YEAR_NOTE
+
+    def _reload_editorial(self) -> None:
+        store = self._jobs.store
+        counts = source_counts(store)
+        self._photo_count = int(counts.get("folder") or 0)
+        self._video_count = int(counts.get("video") or 0)
+        self._years = year_rows(store)
+        self._folders = folder_rows(store)
+        self.editorialChanged.emit()
 
     @Property(str, notify=surfaceChanged)
     def facet(self) -> str:
@@ -714,6 +770,13 @@ class ShellBridge(QObject):
             return
         self._mode = chosen
         self._save_shell_mode(chosen)
+        if chosen == PRIMARY:
+            self._notice = present_message(chosen, self._notice, fallback="")
+            self._similar_note = present_message(chosen, self._similar_note, fallback="") if self._similar_note else ""
+            self._people_note = present_message(chosen, self._people_note, fallback="") if self._people_note else ""
+            self.surfaceChanged.emit()
+            self.similarChanged.emit()
+            self.peopleChanged.emit()
         self._set_result(self._result_text)
         self.lensChanged.emit()
 
@@ -1021,9 +1084,11 @@ class ShellBridge(QObject):
         except AdapterError as exc:
             state = exc.state if exc.state in {"error", "unavailable"} else "error"
             return Result(state, exc.message)
+        except Exception as exc:  # noqa: BLE001 - a slot must never raise into Qt
+            return Result("error", str(exc) or "Semblon couldn't complete that step.")
 
     def _apply_result(self, result: Result) -> None:
-        self._notice = result.message
+        self._notice = present_message(self._mode, result.message, fallback="Semblon couldn't complete that step.")
         self._surface_state = result.state if result.state in {
             "empty",
             "loading",
@@ -1326,6 +1391,8 @@ class ShellBridge(QObject):
     def _on_worker_done(self, result) -> None:
         status = str(getattr(result, "status", "") or "")
         self._terminal_status = status or "completed"
+        if status in {"cancelled", "failed"} and self._last_folder is not None:
+            self._resume_ready = True
         name = {
             "completed": JOB_COMPLETED,
             "cancelled": JOB_CANCELLED,
@@ -1357,6 +1424,7 @@ class ShellBridge(QObject):
     def _after_ingest(self) -> None:
         self._refresh_library()
         self._poll_job()
+        self.jobChanged.emit()
 
     def _poll_job(self) -> None:
         active = self._session.job_active()
@@ -1366,7 +1434,7 @@ class ShellBridge(QObject):
         if active != self._job_active or state != self._job_state:
             was = self._job_active
             if was and not active:
-                self._resume_ready = bool(self._cancel_requested and self._last_folder is not None)
+                self._resume_ready = self._resume_ready or bool(self._cancel_requested and self._last_folder is not None)
                 self._cancel_requested = False
                 self._last_job_failed = self._terminal_status == "failed"
                 if self._surface_state == "loading":
@@ -1382,6 +1450,12 @@ class ShellBridge(QObject):
         self._model.reload()
         self._events.record(LIBRARY_CHANGED, {"count": int(self._jobs.archive_count())})
         empty = self._jobs.archive_count() == 0
+        self._reload_editorial()
+        focus_id = self._session.focus_id
+        if focus_id and self._jobs.media(focus_id) is None:
+            self._session.clear_focus()
+            self._clear_query()
+            self.focusChanged.emit()
         self.libraryChanged.emit()
         if empty != self._empty:
             self._empty = empty
