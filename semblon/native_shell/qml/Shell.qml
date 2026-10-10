@@ -1298,11 +1298,122 @@ ApplicationWindow {
             }
         }
 
+        Rectangle {
+            id: archiveSidebar
+            objectName: "archiveSidebar"
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.topMargin: 52
+            anchors.rightMargin: 12
+            anchors.bottomMargin: 12
+            width: 190
+            radius: 10
+            color: tokenBg1
+            border.color: tokenBorder
+            border.width: 1
+            visible: !emptySafe && !peopleVisible && !focusActive
+            z: 2
+
+            Flickable {
+                anchors.fill: parent
+                anchors.margins: 12
+                contentHeight: sidebarColumn.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Column {
+                    id: sidebarColumn
+                    width: parent.width
+                    spacing: 6
+
+                    Text {
+                        objectName: "sidebarAll"
+                        text: shellReady && shellApi.scopeLabel !== "" ? "Show everything" : "Everything"
+                        color: shellReady && shellApi.scopeLabel === "" ? tokenText : tokenAccent
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -3
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.clearScope()
+                        }
+                    }
+
+                    Text {
+                        objectName: "sidebarSimilar"
+                        text: "Similar"
+                        color: similarNavArea.containsMouse ? tokenText : tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        MouseArea {
+                            id: similarNavArea
+                            anchors.fill: parent
+                            anchors.margins: -3
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.findSimilarWhole()
+                        }
+                    }
+
+                    Item { width: 1; height: 6 }
+                    Text { text: "Years"; color: tokenFaint; font.family: "Segoe UI"; font.pixelSize: 11; font.letterSpacing: 0.6 }
+
+                    Repeater {
+                        model: shellReady ? shellApi.yearRows : []
+                        delegate: Text {
+                            property bool active: shellReady && shellApi.scopeKind === "year" && shellApi.scopeLabel === modelData.label
+                            Component.onCompleted: objectName = "sidebarYear_" + modelData.label
+                            width: sidebarColumn.width
+                            text: modelData.label + "  " + modelData.count
+                            color: active ? tokenAccent : (yearArea.containsMouse ? tokenText : tokenMuted)
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            MouseArea {
+                                id: yearArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.selectYear(modelData.label)
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: 6 }
+                    Text { text: "Folders"; color: tokenFaint; font.family: "Segoe UI"; font.pixelSize: 11; font.letterSpacing: 0.6 }
+
+                    Repeater {
+                        model: shellReady ? shellApi.folderRows : []
+                        delegate: Text {
+                            property bool active: shellReady && shellApi.scopeKind === "folder" && shellApi.scopeLabel === modelData.label
+                            Component.onCompleted: objectName = "sidebarFolder_" + modelData.label
+                            width: sidebarColumn.width
+                            text: modelData.label + "  " + modelData.count
+                            color: active ? tokenAccent : (folderArea.containsMouse ? tokenText : tokenMuted)
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            MouseArea {
+                                id: folderArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.selectFolder(modelData.label)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         GridView {
             id: grid
             objectName: "fieldGrid"
             anchors.fill: parent
             anchors.margins: 22
+            anchors.rightMargin: archiveSidebar.visible ? 214 : 22
             anchors.topMargin: 52
             visible: !emptySafe
             opacity: !focusActive ? 1 : 0

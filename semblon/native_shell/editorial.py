@@ -71,6 +71,20 @@ def folder_rows(store: Path) -> list[dict]:
     return rows
 
 
+def scope_ids(store: Path) -> dict[str, dict[str, list[str]]]:
+    """Media ids behind each year and folder row, kept out of the QML-facing rows."""
+    years: dict[str, list[str]] = {}
+    for bucket in timeline_buckets(store):
+        label = str(bucket.get("label") or "")
+        year = label[:4] if len(label) >= 4 and label[:4].isdigit() else "Unknown"
+        years.setdefault(year, []).extend(str(i) for i in bucket.get("media_ids") or [])
+    folders = {
+        str(bucket.get("label") or ""): [str(i) for i in bucket.get("media_ids") or []]
+        for bucket in folder_buckets(store)
+    }
+    return {"year": years, "folder": folders}
+
+
 def month_heading(day: str) -> str:
     text = str(day or "").strip()
     if len(text) < 10:

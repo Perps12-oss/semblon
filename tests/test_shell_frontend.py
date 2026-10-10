@@ -132,6 +132,54 @@ def test_qml_has_no_hardcoded_chrome_colors():
     assert len(literals) == 12
 
 
+def test_sidebar_scopes_library_by_year_and_folder_and_clears(shell, tmp_path):
+    store = tmp_path / "lib.sqlite"
+    _seed(store, tmp_path)
+    bridge = shell(store)
+    assert bridge.count == 4
+    assert [row["label"] for row in bridge.yearRows] == ["2017"]
+    labels = {row["label"]: row["count"] for row in bridge.folderRows}
+    assert labels == {"2017": 2, "2018": 2}
+
+    bridge.selectFolder("2018")
+    assert bridge.scopeKind == "folder" and bridge.scopeLabel == "2018"
+    assert bridge._model.rowCount() == 2
+    assert bridge.noticeText == "Showing 2018."
+
+    bridge.selectYear("2017")
+    assert bridge.scopeKind == "year"
+    assert bridge._model.rowCount() == 4
+
+    bridge.selectFolder("no-such-folder")
+    assert bridge.scopeLabel == "2017"
+    assert bridge._model.rowCount() == 4
+
+    bridge.selectFolder("2017")
+    assert bridge._model.rowCount() == 2
+    bridge.clearScope()
+    assert bridge.scopeLabel == "" and bridge._model.rowCount() == 4
+    assert bridge.noticeText == "Showing everything."
+
+
+def test_sidebar_notices_stay_product_safe_in_primary(shell, tmp_path):
+    store = tmp_path / "lib.sqlite"
+    _seed(store, tmp_path)
+    bridge = shell(store)
+    bridge.selectFolder("2018")
+    assert bridge.noticeText == "Showing 2018."
+    bridge.clearScope()
+    assert "sqlite" not in bridge.noticeText.lower()
+
+
+def test_sidebar_renders_rows_and_hides_with_focus_or_empty(qml_shell, tmp_path):
+    from PySide6.QtCore import QObject
+
+    app, _engine, root, bridge = qml_shell
+    sidebar = root.findChild(QObject, "archiveSidebar")
+    assert sidebar is not None
+    assert sidebar.property("visible") is False  # empty library
+
+
 def test_every_atmosphere_is_selectable_and_clean_install_is_dark(shell):
     from semblon.atmosphere import ATMOSPHERE_IDS
 
