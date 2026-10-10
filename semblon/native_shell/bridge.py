@@ -39,6 +39,7 @@ from semblon.native_shell.editorial import (
     VIDEO_NOTE,
     YEAR_NOTE,
     folder_rows,
+    scope_ids,
     source_counts,
     year_rows,
 )
@@ -122,7 +123,9 @@ class ShellBridge(QObject):
         self._video_count = 0
         self._years: list[dict] = []
         self._folders: list[dict] = []
-        self._unresolved_text = ""
+        self._scope_ids: dict[str, dict[str, list[str]]] = {"year": {}, "folder": {}}
+        self._scope_kind = ""
+        self._scope_label = ""
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
@@ -332,7 +335,52 @@ class ShellBridge(QObject):
         self._video_count = int(counts.get("video") or 0)
         self._years = year_rows(store)
         self._folders = folder_rows(store)
+        self._scope_ids = scope_ids(store)
+        if self._scope_kind and self._scope_label not in self._scope_ids.get(self._scope_kind, {}):
+            self._scope_kind = ""
+            self._scope_label = ""
+            self._model.set_media_ids(None)
+        elif self._scope_kind:
+            self._model.set_media_ids(list(self._scope_ids[self._scope_kind][self._scope_label]))
         self.editorialChanged.emit()
+
+    @Property(str, notify=editorialChanged)
+    def scopeLabel(self) -> str:
+        return self._scope_label
+
+    @Property(str, notify=editorialChanged)
+    def scopeKind(self) -> str:
+        return self._scope_kind
+
+    def _select_scope(self, kind: str, label: str) -> None:
+        ids = self._scope_ids.get(kind, {}).get(str(label or ""))
+        if ids is None:
+            return
+        self._scope_kind = kind
+        self._scope_label = str(label)
+        self._facet = "memory"
+        self._buckets = []
+        self._model.set_media_ids(list(ids))
+        self.editorialChanged.emit()
+        self._apply_result(Result("ready", f"Showing {label}."))
+
+    @Slot(str)
+    def selectYear(self, label: str) -> None:
+        self._select_scope("year", label)
+
+    @Slot(str)
+    def selectFolder(self, label: str) -> None:
+        self._select_scope("folder", label)
+
+    @Slot()
+    def clearScope(self) -> None:
+        if not self._scope_kind:
+            return
+        self._scope_kind = ""
+        self._scope_label = ""
+        self._model.set_media_ids(None)
+        self.editorialChanged.emit()
+        self._apply_result(Result("ready", "Showing everything."))
 
     @Property(str, notify=surfaceChanged)
     def facet(self) -> str:
@@ -399,6 +447,34 @@ class ShellBridge(QObject):
     @Property(str, notify=lensChanged)
     def reviewColor(self) -> str:
         return tokens_for(self._atmosphere_id)["review"]
+
+    @Property(bool, notify=lensChanged)
+    def lightPalette(self) -> bool:
+        return self._atmosphere_id == "light"
+
+    @Property(str, notify=lensChanged)
+    def bg2(self) -> str:
+        return tokens_for(self._atmosphere_id)["bg2"]
+
+    @Property(str, notify=lensChanged)
+    def bg3(self) -> str:
+        return tokens_for(self._atmosphere_id)["bg3"]
+
+    @Property(str, notify=lensChanged)
+    def border1(self) -> str:
+        return tokens_for(self._atmosphere_id)["border1"]
+
+    @Property(str, notify=lensChanged)
+    def text3(self) -> str:
+        return tokens_for(self._atmosphere_id)["text3"]
+
+    @Property(str, notify=lensChanged)
+    def accentDim(self) -> str:
+        return tokens_for(self._atmosphere_id)["accentDim"]
+
+    @Property(str, notify=lensChanged)
+    def dangerColor(self) -> str:
+        return tokens_for(self._atmosphere_id)["danger"]
 
     @Property(str, notify=peopleChanged)
     def reviewCountText(self) -> str:

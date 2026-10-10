@@ -53,6 +53,12 @@ ApplicationWindow {
     readonly property color tokenText: shellReady ? shellApi.text1 : "#f2f3f5"
     readonly property color tokenMuted: shellReady ? shellApi.text2 : "#a8adb7"
     readonly property color tokenReview: shellReady ? shellApi.reviewColor : "#a15cf5"
+    readonly property color tokenBg2: shellReady ? shellApi.bg2 : "#1b1d21"
+    readonly property color tokenBg3: shellReady ? shellApi.bg3 : "#24272c"
+    readonly property color tokenBorder: shellReady ? shellApi.border1 : "#2a2d33"
+    readonly property color tokenFaint: shellReady ? shellApi.text3 : "#6b7280"
+    readonly property color tokenAccentDim: shellReady ? shellApi.accentDim : "#2b4d8f"
+    readonly property color tokenDanger: shellReady ? shellApi.dangerColor : "#e5484d"
     readonly property var primarySettingCalls: ["cycleDensity", "libraryHealth", "showActivity", "modePeople", "modeText", "rescan", "resetDefaults"]
     readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Rescan", "Reset defaults"]
     readonly property var advancedSettingCalls: ["scanDuplicates", "showCapabilities", "gpuAuto", "gpuOff", "namedItems", "knowledgePack", "installModel"]
@@ -144,7 +150,7 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             height: 1
-            color: "#243140"
+            color: tokenBorder
         }
 
         Column {
@@ -157,7 +163,7 @@ ApplicationWindow {
             Text {
                 id: wordmark
                 text: "Semblon"
-                color: "#E7EEF5"
+                color: tokenText
                 font.family: "Segoe UI Variable"
                 font.pixelSize: 20
                 font.weight: Font.DemiBold
@@ -172,7 +178,7 @@ ApplicationWindow {
                 id: lensLine
                 objectName: "lensLine"
                 text: lensLabelSafe
-                color: "#8AA0B2"
+                color: tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
                 font.letterSpacing: 0.4
@@ -185,14 +191,14 @@ ApplicationWindow {
                     width: 74
                     height: 24
                     radius: 12
-                    color: primaryModeSafe ? "#17333A" : "#1C2430"
-                    border.color: primaryModeSafe ? "#2DD4BF" : "#243140"
+                    color: primaryModeSafe ? tokenAccentDim : tokenBg2
+                    border.color: primaryModeSafe ? tokenAccent : tokenBorder
                     border.width: 1
 
                     Text {
                         anchors.centerIn: parent
                         text: "Primary"
-                        color: primaryModeSafe ? "#5EEAD4" : "#8AA0B2"
+                        color: primaryModeSafe ? tokenText : tokenMuted
                         font.family: "Segoe UI"
                         font.pixelSize: 12
                     }
@@ -211,14 +217,14 @@ ApplicationWindow {
                     width: 84
                     height: 24
                     radius: 12
-                    color: advancedModeSafe ? "#17333A" : "#1C2430"
-                    border.color: advancedModeSafe ? "#2DD4BF" : "#243140"
+                    color: advancedModeSafe ? tokenAccentDim : tokenBg2
+                    border.color: advancedModeSafe ? tokenAccent : tokenBorder
                     border.width: 1
 
                     Text {
                         anchors.centerIn: parent
                         text: "Advanced"
-                        color: advancedModeSafe ? "#5EEAD4" : "#8AA0B2"
+                        color: advancedModeSafe ? tokenText : tokenMuted
                         font.family: "Segoe UI"
                         font.pixelSize: 12
                     }
@@ -241,8 +247,8 @@ ApplicationWindow {
             height: 36
             visible: advancedModeSafe
             radius: 8
-            color: "#1C2430"
-            border.color: commandField.activeFocus ? "#2DD4BF" : "#243140"
+            color: tokenBg2
+            border.color: commandField.activeFocus ? tokenAccent : tokenBorder
             border.width: 1
             anchors.left: brand.right
             anchors.leftMargin: 36
@@ -256,8 +262,8 @@ ApplicationWindow {
                 anchors.rightMargin: 12
                 verticalAlignment: TextInput.AlignVCenter
                 placeholderText: primaryModeSafe ? "Search people" : "Command: people, status"
-                placeholderTextColor: "#6E8294"
-                color: "#E7EEF5"
+                placeholderTextColor: tokenFaint
+                color: tokenText
                 font.family: "Segoe UI"
                 font.pixelSize: 14
                 background: Item {}
@@ -273,7 +279,7 @@ ApplicationWindow {
             visible: primaryModeSafe
             radius: 8
             color: tokenBg1
-            border.color: searchField.activeFocus ? tokenAccent : "#2a2d33"
+            border.color: searchField.activeFocus ? tokenAccent : tokenBorder
             border.width: 1
             anchors.left: brand.right
             anchors.leftMargin: 36
@@ -287,7 +293,7 @@ ApplicationWindow {
                 anchors.rightMargin: 12
                 verticalAlignment: TextInput.AlignVCenter
                 placeholderText: "Search memory"
-                placeholderTextColor: "#6b7280"
+                placeholderTextColor: tokenFaint
                 color: tokenText
                 font.family: "Segoe UI"
                 font.pixelSize: 14
@@ -307,7 +313,7 @@ ApplicationWindow {
             Text {
                 objectName: "peopleButton"
                 text: "People"
-                color: peopleArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                color: peopleArea.containsMouse ? tokenText : tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
                 MouseArea {
@@ -337,7 +343,7 @@ ApplicationWindow {
 
             Text {
                 text: "Add folder"
-                color: addFolderArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                color: addFolderArea.containsMouse ? tokenText : tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
                 MouseArea {
@@ -375,7 +381,7 @@ ApplicationWindow {
                     onPaint: {
                         var ctx = getContext("2d")
                         ctx.reset()
-                        ctx.strokeStyle = "#2DD4BF"
+                        ctx.strokeStyle = tokenAccent
                         ctx.lineWidth = 1.5
                         ctx.beginPath()
                         ctx.arc(width / 2, height / 2, 6, 0, Math.PI * 1.35)
@@ -386,7 +392,7 @@ ApplicationWindow {
             }
             Text {
                 text: jobLabelSafe
-                color: "#8AA0B2"
+                color: tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
                 anchors.verticalCenter: parent.verticalCenter
@@ -395,7 +401,7 @@ ApplicationWindow {
                 objectName: "pauseJob"
                 text: jobStateSafe === "paused" ? "Resume" : "Pause"
                 visible: jobRunning
-                color: pauseArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                color: pauseArea.containsMouse ? tokenText : tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
                 anchors.verticalCenter: parent.verticalCenter
@@ -416,7 +422,7 @@ ApplicationWindow {
             Text {
                 objectName: "cancelJob"
                 text: "Cancel"
-                color: cancelArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                color: cancelArea.containsMouse ? tokenText : tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
                 anchors.verticalCenter: parent.verticalCenter
@@ -438,7 +444,7 @@ ApplicationWindow {
             anchors.right: atmospherePicker.left
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            color: resumeArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+            color: resumeArea.containsMouse ? tokenText : tokenMuted
             font.family: "Segoe UI"
             font.pixelSize: 13
             MouseArea {
@@ -548,15 +554,15 @@ ApplicationWindow {
                     width: actionText.implicitWidth + 18
                     height: 28
                     radius: 14
-                    color: actionArea.containsMouse ? "#1B2B38" : "#141C25"
-                    border.color: "#2a3340"
+                    color: actionArea.containsMouse ? tokenBg3 : tokenBg2
+                    border.color: tokenBorder
                     border.width: 1
 
                     Text {
                         id: actionText
                         anchors.centerIn: parent
                         text: modelData.label
-                        color: "#E7EEF5"
+                        color: tokenText
                         font.family: "Segoe UI"
                         font.pixelSize: 12
                     }
@@ -587,8 +593,8 @@ ApplicationWindow {
             width: 390
             height: 56
             radius: 10
-            color: "#121B22"
-            border.color: "#243140"
+            color: tokenBg1
+            border.color: tokenBorder
             border.width: 1
             visible: primaryModeSafe && !emptySafe && !peopleVisible && !focusActive
             z: 2
@@ -601,23 +607,23 @@ ApplicationWindow {
                 Column {
                     width: 150
                     spacing: 2
-                    Text { text: "Library"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
-                    Text { text: shellReady ? shellApi.count + " items" : "0 items"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                    Text { objectName: "mediaKinds"; text: shellReady ? shellApi.photoCount + " photos · " + shellApi.videoCount + " videos" : ""; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
+                    Text { text: "Library"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
+                    Text { text: shellReady ? shellApi.count + " items" : "0 items"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                    Text { objectName: "mediaKinds"; text: shellReady ? shellApi.photoCount + " photos · " + shellApi.videoCount + " videos" : ""; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
                 }
 
                 Column {
                     width: 96
                     spacing: 2
-                    Text { text: "Review"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
-                    Text { text: shellReady ? shellApi.reviewCountText : "0 groups"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 12; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
+                    Text { text: "Review"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
+                    Text { text: shellReady ? shellApi.reviewCountText : "0 groups"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 12; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
                 }
 
                 Column {
                     width: 124
                     spacing: 2
-                    Text { text: "Ready"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
-                    Text { text: "Browse and search"; color: "#5EEAD4"; font.family: "Segoe UI"; font.pixelSize: 12 }
+                    Text { text: "Ready"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
+                    Text { text: "Browse and search"; color: tokenAccent; font.family: "Segoe UI"; font.pixelSize: 12 }
                 }
             }
         }
@@ -629,7 +635,7 @@ ApplicationWindow {
             anchors.topMargin: 4
             visible: shellReady && (shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
             text: shellReady ? (shellApi.noticeText || (shellApi.surfaceState === "loading" ? "Working…" : "Something went wrong. Try again.")) : ""
-            color: shellReady && shellApi.surfaceState === "error" ? "#e5484d" : tokenMuted
+            color: shellReady && shellApi.surfaceState === "error" ? tokenDanger : tokenMuted
             font.family: "Segoe UI"
             font.pixelSize: 13
             z: 2
@@ -674,7 +680,7 @@ ApplicationWindow {
             radius: 10
             visible: shellReady && shellApi.settingsOpen && !focusActive
             color: tokenBg1
-            border.color: "#2a2d33"
+            border.color: tokenBorder
             border.width: 1
             z: 3
 
@@ -708,7 +714,7 @@ ApplicationWindow {
                         width: parent.width
                         height: 28
                         radius: 6
-                        color: settingHit.containsMouse ? "#24272c" : "#1b1d21"
+                        color: settingHit.containsMouse ? tokenBg3 : tokenBg2
                         Text {
                             anchors.centerIn: parent
                             text: primarySettingLabels[index]
@@ -733,7 +739,7 @@ ApplicationWindow {
                         width: parent.width
                         height: 28
                         radius: 6
-                        color: settingHitAdvanced.containsMouse ? "#24272c" : "#1b1d21"
+                        color: settingHitAdvanced.containsMouse ? tokenBg3 : tokenBg2
                         Text {
                             anchors.centerIn: parent
                             text: advancedSettingLabels[index]
@@ -764,7 +770,7 @@ ApplicationWindow {
             radius: 10
             visible: shellReady && shellApi.namedItemsOpen && !focusActive
             color: tokenBg1
-            border.color: "#2a2d33"
+            border.color: tokenBorder
             border.width: 1
             z: 4
 
@@ -818,7 +824,7 @@ ApplicationWindow {
                     width: parent.width
                     height: 28
                     radius: 6
-                    color: "#1b1d21"
+                    color: tokenBg2
                     Text {
                         anchors.centerIn: parent
                         text: "Save item name"
@@ -847,7 +853,7 @@ ApplicationWindow {
             objectName: "peopleDesk"
             anchors.fill: parent
             visible: peopleVisible && !focusActive
-            color: "#10161C"
+            color: tokenBg
             ScrollView {
                 anchors.fill: parent
                 anchors.margins: 28
@@ -859,7 +865,7 @@ ApplicationWindow {
 
                     Text {
                         text: "People"
-                        color: "#E7EEF5"
+                        color: tokenText
                         font.pixelSize: 22
                         font.family: "Segoe UI Variable"
                         font.weight: Font.DemiBold
@@ -889,7 +895,7 @@ ApplicationWindow {
                         objectName: "peopleEmpty"
                         visible: shellReady && shell.peopleEmpty
                         text: "No groups yet."
-                        color: "#8AA0B2"
+                        color: tokenMuted
                     }
 
                     Row {
@@ -900,8 +906,8 @@ ApplicationWindow {
                             width: 320
                             height: 620
                             radius: 10
-                            color: "#141C25"
-                            border.color: "#243140"
+                            color: tokenBg1
+                            border.color: tokenBorder
                             border.width: 1
 
                             Column {
@@ -911,7 +917,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: "Groups"
-                                    color: "#E7EEF5"
+                                    color: tokenText
                                     font.pixelSize: 16
                                     font.family: "Segoe UI"
                                 }
@@ -928,10 +934,10 @@ ApplicationWindow {
                                         height: 54
                                         radius: 8
                                         color: named
-                                                ? ((shellReady && shell.selectedSubject === subject) ? "#17333A" : "#1A222D")
-                                                : "#241c2e"
+                                                ? ((shellReady && shell.selectedSubject === subject) ? tokenAccentDim : tokenBg2)
+                                                : tokenBg3
                                         border.color: named
-                                                ? ((shellReady && shell.selectedSubject === subject) ? "#2DD4BF" : "#243140")
+                                                ? ((shellReady && shell.selectedSubject === subject) ? tokenAccent : tokenBorder)
                                                 : tokenReview
                                         border.width: 1
 
@@ -942,13 +948,13 @@ ApplicationWindow {
 
                                             Text {
                                                 text: title
-                                                color: "#E7EEF5"
+                                                color: tokenText
                                                 font.pixelSize: 14
                                                 elide: Text.ElideRight
                                             }
                                             Text {
                                                 text: faceCount + (faceCount === 1 ? " face" : " faces")
-                                                color: "#8AA0B2"
+                                                color: tokenMuted
                                                 font.pixelSize: 12
                                             }
                                         }
@@ -968,8 +974,8 @@ ApplicationWindow {
                             width: stage.width - 56 - 338
                             height: 620
                             radius: 10
-                            color: "#141C25"
-                            border.color: "#243140"
+                            color: tokenBg1
+                            border.color: tokenBorder
                             border.width: 1
 
                             Column {
@@ -987,7 +993,7 @@ ApplicationWindow {
 
                                         Text {
                                             text: selectedTitleSafe !== "" ? selectedTitleSafe : "Select a group"
-                                            color: "#E7EEF5"
+                                                                                        color: tokenText
                                             font.pixelSize: 20
                                             font.family: "Segoe UI Variable"
                                             font.weight: Font.DemiBold
@@ -997,7 +1003,7 @@ ApplicationWindow {
                                               text: shellReady && shell.selectedSubject !== ""
                                                   ? (selectedCountSafe + (selectedCountSafe === 1 ? " face" : " faces"))
                                                   : "Choose a group to review evidence, merge, name, note, or split faces."
-                                            color: "#8AA0B2"
+                                            color: tokenMuted
                                             font.pixelSize: 13
                                             wrapMode: Text.WordWrap
                                         }
@@ -1007,7 +1013,7 @@ ApplicationWindow {
                                         objectName: "peopleEvidence"
                                         visible: shellReady && shell.evidenceId !== ""
                                         text: "Open evidence"
-                                        color: evidenceArea.containsMouse ? "#E7EEF5" : "#5EEAD4"
+                                        color: evidenceArea.containsMouse ? tokenText : tokenAccent
                                         font.pixelSize: 14
                                         anchors.verticalCenter: parent.verticalCenter
                                         MouseArea {
@@ -1026,13 +1032,13 @@ ApplicationWindow {
                                     objectName: "decisionText"
                                     width: parent.width
                                     placeholderText: "Name or note"
-                                    color: "#E7EEF5"
+                                    color: tokenText
                                     font.family: "Segoe UI"
                                     font.pixelSize: 14
                                     background: Rectangle {
                                         radius: 8
-                                        color: "#1A222D"
-                                        border.color: decisionText.activeFocus ? "#2DD4BF" : "#243140"
+                                        color: tokenBg2
+                                        border.color: decisionText.activeFocus ? tokenAccent : tokenBorder
                                         border.width: 1
                                     }
                                 }
@@ -1043,7 +1049,7 @@ ApplicationWindow {
 
                                     Text {
                                         text: "Name"
-                                        color: decisionText.text.trim().length > 0 ? "#5EEAD4" : "#6E8294"
+                                        color: decisionText.text.trim().length > 0 ? tokenAccent : tokenFaint
                                         font.pixelSize: 14
                                         MouseArea {
                                             anchors.fill: parent
@@ -1053,7 +1059,7 @@ ApplicationWindow {
                                     }
                                     Text {
                                         text: "Note"
-                                        color: decisionText.text.trim().length > 0 ? "#5EEAD4" : "#6E8294"
+                                        color: decisionText.text.trim().length > 0 ? tokenAccent : tokenFaint
                                         font.pixelSize: 14
                                         MouseArea {
                                             anchors.fill: parent
@@ -1063,7 +1069,7 @@ ApplicationWindow {
                                     }
                                     Text {
                                         text: "Ignore"
-                                        color: "#5EEAD4"
+                                        color: tokenAccent
                                         font.pixelSize: 14
                                         MouseArea {
                                             anchors.fill: parent
@@ -1073,7 +1079,7 @@ ApplicationWindow {
                                     }
                                     Text {
                                         text: primaryModeSafe ? "Not this person" : "Rule out"
-                                        color: "#5EEAD4"
+                                                                                color: tokenAccent
                                         font.pixelSize: 14
                                         MouseArea {
                                             anchors.fill: parent
@@ -1085,7 +1091,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: shellReady ? shell.peopleNote : ""
-                                    color: "#8AA0B2"
+                                    color: tokenMuted
                                     font.pixelSize: 13
                                     wrapMode: Text.WordWrap
                                 }
@@ -1094,8 +1100,8 @@ ApplicationWindow {
                                     width: parent.width
                                     height: 86
                                     radius: 8
-                                    color: "#10161C"
-                                    border.color: "#243140"
+                                    color: tokenBg
+                                    border.color: tokenBorder
                                     border.width: 1
 
                                     Column {
@@ -1105,7 +1111,7 @@ ApplicationWindow {
 
                                         Text {
                                             text: "Merge with another group"
-                                            color: "#E7EEF5"
+                                            color: tokenText
                                             font.pixelSize: 14
                                         }
                                         Flow {
@@ -1118,15 +1124,15 @@ ApplicationWindow {
                                                     width: Math.min(180, titleText.implicitWidth + 28)
                                                     height: 30
                                                     radius: 15
-                                                    color: shellReady && mergeTargetSubjectSafe === subject ? "#17333A" : "#1A222D"
-                                                    border.color: shellReady && mergeTargetSubjectSafe === subject ? "#2DD4BF" : "#243140"
+                                                    color: shellReady && mergeTargetSubjectSafe === subject ? tokenAccentDim : tokenBg2
+                                                    border.color: shellReady && mergeTargetSubjectSafe === subject ? tokenAccent : tokenBorder
                                                     border.width: 1
 
                                                     Text {
                                                         id: titleText
                                                         anchors.centerIn: parent
                                                         text: title + " · " + faceCount
-                                                        color: "#E7EEF5"
+                                                        color: tokenText
                                                         font.pixelSize: 12
                                                     }
 
@@ -1148,7 +1154,7 @@ ApplicationWindow {
 
                                     Text {
                                         text: "Merge"
-                                        color: canMergeSelectedSafe ? "#5EEAD4" : "#6E8294"
+                                        color: canMergeSelectedSafe ? tokenAccent : tokenFaint
                                         font.pixelSize: 14
                                         MouseArea {
                                             anchors.fill: parent
@@ -1160,7 +1166,7 @@ ApplicationWindow {
                                     Text {
                                         objectName: "clearSplitSelection"
                                         text: "Clear selection"
-                                        color: splitSelectionCountSafe > 0 ? "#5EEAD4" : "#6E8294"
+                                        color: splitSelectionCountSafe > 0 ? tokenAccent : tokenFaint
                                         font.pixelSize: 14
                                         MouseArea {
                                             anchors.fill: parent
@@ -1171,13 +1177,13 @@ ApplicationWindow {
 
                                     Text {
                                         text: splitSelectionCountSafe > 0 ? (splitSelectionCountSafe === 1 ? "1 face selected" : splitSelectionCountSafe + " faces selected") : "Select faces below to split them out"
-                                        color: "#8AA0B2"
+                                                                                color: tokenMuted
                                         font.pixelSize: 13
                                     }
 
                                     Text {
                                         text: "Split selected"
-                                        color: canSplitSelectedSafe ? "#5EEAD4" : "#6E8294"
+                                        color: canSplitSelectedSafe ? tokenAccent : tokenFaint
                                         font.pixelSize: 14
                                         MouseArea {
                                             anchors.fill: parent
@@ -1191,8 +1197,8 @@ ApplicationWindow {
                                     width: parent.width
                                     height: 280
                                     radius: 8
-                                    color: "#10161C"
-                                    border.color: "#243140"
+                                    color: tokenBg
+                                    border.color: tokenBorder
                                     border.width: 1
 
                                     Column {
@@ -1202,12 +1208,12 @@ ApplicationWindow {
 
                                         Text {
                                             text: "Select faces to split"
-                                            color: "#E7EEF5"
+                                            color: tokenText
                                             font.pixelSize: 14
                                         }
                                         Text {
                                             text: "Click one or more faces, then split only those faces out of the group."
-                                            color: "#8AA0B2"
+                                                                                        color: tokenMuted
                                             font.pixelSize: 12
                                             wrapMode: Text.WordWrap
                                         }
@@ -1223,8 +1229,8 @@ ApplicationWindow {
                                                 width: 84
                                                 height: 110
                                                 radius: 8
-                                                color: shellReady && shell.isSplitFaceSelected(face_id) ? "#17333A" : "#1A222D"
-                                                border.color: shellReady && shell.isSplitFaceSelected(face_id) ? "#2DD4BF" : "#243140"
+                                                color: shellReady && shell.isSplitFaceSelected(face_id) ? tokenAccentDim : tokenBg2
+                                                border.color: shellReady && shell.isSplitFaceSelected(face_id) ? tokenAccent : tokenBorder
                                                 border.width: 1
 
                                                 Column {
@@ -1236,8 +1242,8 @@ ApplicationWindow {
                                                         width: parent.width
                                                         height: 76
                                                         radius: 6
-                                                        color: "#10161C"
-                                                        border.color: "#243140"
+                                                        color: tokenBg
+                                                        border.color: tokenBorder
                                                         border.width: 1
 
                                                         Image {
@@ -1253,7 +1259,7 @@ ApplicationWindow {
                                                     Text {
                                                         width: parent.width
                                                         text: "Face " + (index + 1)
-                                                        color: "#E7EEF5"
+                                                        color: tokenText
                                                         font.pixelSize: 11
                                                         horizontalAlignment: Text.AlignHCenter
                                                         elide: Text.ElideRight
@@ -1274,7 +1280,7 @@ ApplicationWindow {
                                 Text {
                                     objectName: "peopleBack"
                                     text: "Back"
-                                    color: backPeopleArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                                    color: backPeopleArea.containsMouse ? tokenText : tokenMuted
                                     font.pixelSize: 14
                                     MouseArea {
                                         id: backPeopleArea
@@ -1292,11 +1298,122 @@ ApplicationWindow {
             }
         }
 
+        Rectangle {
+            id: archiveSidebar
+            objectName: "archiveSidebar"
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.topMargin: 52
+            anchors.rightMargin: 12
+            anchors.bottomMargin: 12
+            width: 190
+            radius: 10
+            color: tokenBg1
+            border.color: tokenBorder
+            border.width: 1
+            visible: !emptySafe && !peopleVisible && !focusActive
+            z: 2
+
+            Flickable {
+                anchors.fill: parent
+                anchors.margins: 12
+                contentHeight: sidebarColumn.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Column {
+                    id: sidebarColumn
+                    width: parent.width
+                    spacing: 6
+
+                    Text {
+                        objectName: "sidebarAll"
+                        text: shellReady && shellApi.scopeLabel !== "" ? "Show everything" : "Everything"
+                        color: shellReady && shellApi.scopeLabel === "" ? tokenText : tokenAccent
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -3
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.clearScope()
+                        }
+                    }
+
+                    Text {
+                        objectName: "sidebarSimilar"
+                        text: "Similar"
+                        color: similarNavArea.containsMouse ? tokenText : tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        MouseArea {
+                            id: similarNavArea
+                            anchors.fill: parent
+                            anchors.margins: -3
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.findSimilarWhole()
+                        }
+                    }
+
+                    Item { width: 1; height: 6 }
+                    Text { text: "Years"; color: tokenFaint; font.family: "Segoe UI"; font.pixelSize: 11; font.letterSpacing: 0.6 }
+
+                    Repeater {
+                        model: shellReady ? shellApi.yearRows : []
+                        delegate: Text {
+                            property bool active: shellReady && shellApi.scopeKind === "year" && shellApi.scopeLabel === modelData.label
+                            Component.onCompleted: objectName = "sidebarYear_" + modelData.label
+                            width: sidebarColumn.width
+                            text: modelData.label + "  " + modelData.count
+                            color: active ? tokenAccent : (yearArea.containsMouse ? tokenText : tokenMuted)
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            MouseArea {
+                                id: yearArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.selectYear(modelData.label)
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: 6 }
+                    Text { text: "Folders"; color: tokenFaint; font.family: "Segoe UI"; font.pixelSize: 11; font.letterSpacing: 0.6 }
+
+                    Repeater {
+                        model: shellReady ? shellApi.folderRows : []
+                        delegate: Text {
+                            property bool active: shellReady && shellApi.scopeKind === "folder" && shellApi.scopeLabel === modelData.label
+                            Component.onCompleted: objectName = "sidebarFolder_" + modelData.label
+                            width: sidebarColumn.width
+                            text: modelData.label + "  " + modelData.count
+                            color: active ? tokenAccent : (folderArea.containsMouse ? tokenText : tokenMuted)
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            MouseArea {
+                                id: folderArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.selectFolder(modelData.label)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         GridView {
             id: grid
             objectName: "fieldGrid"
             anchors.fill: parent
             anchors.margins: 22
+            anchors.rightMargin: archiveSidebar.visible ? 214 : 22
             anchors.topMargin: 52
             visible: !emptySafe
             opacity: !focusActive ? 1 : 0
@@ -1318,7 +1435,7 @@ ApplicationWindow {
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 6
-                    color: "#1C2430"
+                    color: tokenBg2
                     radius: 2
 
                     Image {
@@ -1340,7 +1457,7 @@ ApplicationWindow {
                         anchors.fill: parent
                         color: "transparent"
                         border.width: tile.containsMouse || grid.currentIndex === index ? 1 : 0
-                        border.color: grid.currentIndex === index ? "#2DD4BF" : "#3D4C5C"
+                        border.color: grid.currentIndex === index ? tokenAccent : tokenBorder
                         radius: 2
                     }
 
@@ -1383,7 +1500,7 @@ ApplicationWindow {
             Text {
                 width: parent.width
                 text: "Explore your local photo memory"
-                color: "#E7EEF5"
+                color: tokenText
                 font.family: "Segoe UI Variable"
                 font.pixelSize: 30
                 font.weight: Font.DemiBold
@@ -1394,7 +1511,7 @@ ApplicationWindow {
                 text: jobRunning
                       ? "Adding your folder. The library will unlock here as media is indexed."
                       : "Semblon keeps your originals where they are, then helps you browse, review, search, and understand what is in your archive."
-                color: "#8AA0B2"
+                                      color: tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 15
                 wrapMode: Text.WordWrap
@@ -1407,7 +1524,7 @@ ApplicationWindow {
                 visible: jobLabelSafe !== "" || canResumeSafe
                 text: jobLabelSafe === "Last add failed" ? "The last add didn't finish. Try again or choose another folder."
                       : (canResumeSafe ? "The last add was stopped. Resume it or choose another folder." : jobLabelSafe)
-                color: "#8AA0B2"
+                                      color: tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
                 horizontalAlignment: Text.AlignHCenter
@@ -1425,15 +1542,15 @@ ApplicationWindow {
                     width: 180
                     height: 110
                     radius: 10
-                    color: "#141C25"
-                    border.color: "#243140"
+                    color: tokenBg1
+                    border.color: tokenBorder
                     border.width: 1
                     Column {
                         anchors.fill: parent
                         anchors.margins: 14
                         spacing: 8
-                        Text { text: "Archive"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                        Text { text: "Browse your local library"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                        Text { text: "Archive"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                        Text { text: "Browse your local library"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
                     }
                 }
 
@@ -1442,15 +1559,15 @@ ApplicationWindow {
                     width: 180
                     height: 110
                     radius: 10
-                    color: "#141C25"
-                    border.color: "#243140"
+                    color: tokenBg1
+                    border.color: tokenBorder
                     border.width: 1
                     Column {
                         anchors.fill: parent
                         anchors.margins: 14
                         spacing: 8
-                        Text { text: "People"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                        Text { text: "Review groups with human decisions"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                        Text { text: "People"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                        Text { text: "Review groups with human decisions"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
                     }
                 }
 
@@ -1459,15 +1576,15 @@ ApplicationWindow {
                     width: 180
                     height: 110
                     radius: 10
-                    color: "#141C25"
-                    border.color: "#243140"
+                    color: tokenBg1
+                    border.color: tokenBorder
                     border.width: 1
                     Column {
                         anchors.fill: parent
                         anchors.margins: 14
                         spacing: 8
-                        Text { text: "Search"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                        Text { text: "Find faces, people, and media"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                        Text { text: "Search"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                        Text { text: "Find faces, people, and media"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
                     }
                 }
 
@@ -1476,15 +1593,15 @@ ApplicationWindow {
                     width: 180
                     height: 110
                     radius: 10
-                    color: "#141C25"
-                    border.color: "#243140"
+                    color: tokenBg1
+                    border.color: tokenBorder
                     border.width: 1
                     Column {
                         anchors.fill: parent
                         anchors.margins: 14
                         spacing: 8
-                        Text { text: "Ask photo"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                        Text { text: "Read, describe, and inspect visual context"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                        Text { text: "Ask photo"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                        Text { text: "Read, describe, and inspect visual context"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
                     }
                 }
             }
@@ -1495,15 +1612,15 @@ ApplicationWindow {
                 width: addLabel.implicitWidth + 36
                 height: 40
                 radius: 8
-                color: addArea.containsMouse ? "#12343A" : "#1C2430"
-                border.color: "#2DD4BF"
+                color: addArea.containsMouse ? tokenAccentDim : tokenBg2
+                border.color: tokenAccent
                 border.width: 1
                 visible: !jobRunning
                 Text {
                     id: addLabel
                     anchors.centerIn: parent
                     text: "Add a folder"
-                    color: "#5EEAD4"
+                    color: tokenText
                     font.family: "Segoe UI"
                     font.pixelSize: 14
                 }
@@ -1521,15 +1638,15 @@ ApplicationWindow {
                 width: resumeEmptyLabel.implicitWidth + 36
                 height: 40
                 radius: 8
-                color: resumeEmptyArea.containsMouse ? "#12343A" : "#1C2430"
-                border.color: "#243140"
+                color: resumeEmptyArea.containsMouse ? tokenAccentDim : tokenBg2
+                border.color: tokenBorder
                 border.width: 1
                 visible: canResumeSafe && !jobRunning
                 Text {
                     id: resumeEmptyLabel
                     anchors.centerIn: parent
                     text: jobLabelSafe === "Last add failed" ? "Try again" : "Resume"
-                    color: "#E7EEF5"
+                    color: tokenText
                     font.family: "Segoe UI"
                     font.pixelSize: 14
                 }
@@ -1553,7 +1670,7 @@ ApplicationWindow {
 
             Rectangle {
                 anchors.fill: parent
-                color: "#10161C"
+                color: tokenBg
             }
 
             Image {
@@ -1670,8 +1787,8 @@ ApplicationWindow {
                 y: photo.y + regionDrag.ry
                 width: regionDrag.rw
                 height: regionDrag.rh
-                color: "#332DD4BF"
-                border.color: "#2DD4BF"
+                color: tokenAccentDim
+                border.color: tokenAccent
                 border.width: 1
             }
 
@@ -1694,7 +1811,7 @@ ApplicationWindow {
                 objectName: "videoMissing"
                 visible: false
                 text: ""
-                color: "#8AA0B2"
+                color: tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 15
             }
@@ -1704,7 +1821,7 @@ ApplicationWindow {
                 anchors.top: parent.top
                 anchors.margins: 22
                 text: "Back"
-                color: backArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                color: backArea.containsMouse ? tokenText : tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 14
                 MouseArea {
@@ -1723,7 +1840,7 @@ ApplicationWindow {
                 anchors.margins: 22
                 anchors.bottomMargin: similarStrip.visible ? 108 : 22
                 text: focusNameSafe
-                color: "#8AA0B2"
+                color: tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
             }
@@ -1741,7 +1858,7 @@ ApplicationWindow {
                     width: parent.width
                     height: 32
                     radius: 6
-                    color: similarHit.containsMouse ? "#1b1d21" : "#24272c"
+                    color: similarHit.containsMouse ? tokenBg2 : tokenBg3
                     border.color: tokenAccent
                     border.width: 1
                     Text {
@@ -1766,13 +1883,13 @@ ApplicationWindow {
                     height: 32
                     visible: primaryModeSafe
                     radius: 6
-                    color: askArea.containsMouse ? "#12343A" : "#1C2430"
-                    border.color: "#2DD4BF"
+                    color: askArea.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
                         text: "Ask about this photo"
-                        color: "#5EEAD4"
+                        color: tokenText
                         font.family: "Segoe UI"
                         font.pixelSize: 13
                     }
@@ -1791,13 +1908,13 @@ ApplicationWindow {
                     height: 32
                     visible: advancedModeSafe
                     radius: 6
-                    color: statusArea.containsMouse ? "#12343A" : "#1C2430"
-                    border.color: "#2DD4BF"
+                    color: statusArea.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
                         text: "Run diagnostics status"
-                        color: "#5EEAD4"
+                        color: tokenText
                         font.family: "Segoe UI"
                         font.pixelSize: 13
                     }
@@ -1815,8 +1932,8 @@ ApplicationWindow {
                     objectName: "diagnosticsPanel"
                     width: parent.width
                     visible: advancedModeSafe
-                    color: "#10161C"
-                    border.color: "#243140"
+                    color: tokenBg
+                    border.color: tokenBorder
                     border.width: 1
                     radius: 8
                     implicitHeight: diagnosticsText.implicitHeight + 14
@@ -1826,7 +1943,7 @@ ApplicationWindow {
                         anchors.fill: parent
                         anchors.margins: 7
                         text: shellReady ? shellApi.diagnosticsText : ""
-                        color: "#8AA0B2"
+                        color: tokenMuted
                         font.family: "Consolas"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -1836,7 +1953,7 @@ ApplicationWindow {
                     objectName: "resultText"
                     width: parent.width
                     text: shellReady ? shell.resultText : ""
-                    color: "#8AA0B2"
+                    color: tokenMuted
                     font.family: "Segoe UI"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -1850,7 +1967,7 @@ ApplicationWindow {
                 anchors.bottomMargin: 28
                 visible: similarStateSafe === "empty" || similarStateSafe === "unavailable"
                 text: similarNoteSafe
-                color: "#8AA0B2"
+                color: tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
             }
@@ -1882,10 +1999,10 @@ ApplicationWindow {
 
                             Rectangle {
                                 anchors.fill: parent
-                                color: "#1C2430"
+                                color: tokenBg2
                                 radius: 2
                                 border.width: thumbArea.containsMouse ? 1 : 0
-                                border.color: "#2DD4BF"
+                                border.color: tokenAccent
 
                                 Image {
                                     anchors.fill: parent
@@ -1915,7 +2032,7 @@ ApplicationWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: 18
                 text: "‹"
-                color: "#E7EEF5"
+                color: tokenText
                 font.pixelSize: 28
                 opacity: prevArea.containsMouse ? 1 : 0.35
                 MouseArea {
@@ -1931,7 +2048,7 @@ ApplicationWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.rightMargin: 18
                 text: "›"
-                color: "#E7EEF5"
+                color: tokenText
                 font.pixelSize: 28
                 opacity: nextArea.containsMouse ? 1 : 0.35
                 MouseArea {
