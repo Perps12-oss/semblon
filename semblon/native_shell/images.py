@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QRunnable, QSize, QThreadPool, QTimer, Qt
+from PySide6.QtCore import QRunnable, QSize, QThreadPool, Qt
 from PySide6.QtGui import QImage, QImageReader
 from PySide6.QtQuick import QQuickAsyncImageProvider, QQuickImageResponse, QQuickTextureFactory
 
@@ -131,7 +131,7 @@ class ArchiveImageProvider(QQuickAsyncImageProvider):
         if requestedSize is not None and requestedSize.isValid():
             max_side = max(requestedSize.width(), requestedSize.height(), 1)
         response = ArchiveImageResponse(path, max_side)
-        QTimer.singleShot(0, response.start)
+        response.start()
         return response
 
 
@@ -155,5 +155,5 @@ class FaceCropImageProvider(QQuickAsyncImageProvider):
         if requestedSize is not None and requestedSize.isValid():
             max_side = max(requestedSize.width(), requestedSize.height(), 1)
         response = FaceCropImageResponse(path, (x, y, w, h), max_side)
-        QTimer.singleShot(0, response.start)
+        response.start()
         return response

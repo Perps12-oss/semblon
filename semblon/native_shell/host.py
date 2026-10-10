@@ -28,6 +28,7 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     jobs = Application(path)
     model = ArchiveModel(jobs)
     bridge = ShellBridge(model, jobs)
+    bridge.setParent(qapp)
     engine = QQmlApplicationEngine()
     engine.addImageProvider("archive", ArchiveImageProvider(bridge.path_for))
     engine.addImageProvider("face", FaceCropImageProvider(bridge.face_crop_spec))
