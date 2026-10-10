@@ -50,39 +50,68 @@ def source_counts(store: Path) -> dict[str, int]:
     return counts
 
 
-def year_rows(store: Path) -> list[dict]:
-    counts: dict[str, int] = {}
-    for bucket in timeline_buckets(store):
-        label = str(bucket.get("label") or "")
-        year = label[:4] if len(label) >= 4 and label[:4].isdigit() else "Unknown"
-        counts[year] = counts.get(year, 0) + int(bucket.get("count") or 0)
-    return [{"label": year, "count": counts[year]} for year in sorted(counts, reverse=True)]
+MEDIA_KINDS = ("all", "photo", "video")
 
 
-def folder_rows(store: Path) -> list[dict]:
-    rows = []
-    for bucket in folder_buckets(store):
-        rows.append(
-            {
-                "label": str(bucket.get("label") or ""),
-                "count": int(bucket.get("count") or 0),
-            }
-        )
-    return rows
+def video_ids(store: Path) -> set[str]:
+    path = Path(store)
+    if not path.is_file():
+        return set()
+    conn = connect(path)
+    try:
+        rows = conn.execute("SELECT media_id FROM media WHERE source_type = 'video'").fetchall()
+    except sqlite3.Error:
+        return set()
+    finally:
+        conn.close()
+    return {str(row[0]) for row in rows}
 
 
-def scope_ids(store: Path) -> dict[str, dict[str, list[str]]]:
-    """Media ids behind each year and folder row, kept out of the QML-facing rows."""
+def _kind_filter(store: Path, kind: str):
+    """Return a predicate keeping ids of one kind; photos are everything that is not a video."""
+    if kind not in ("photo", "video"):
+        return lambda _mid: True
+    videos = video_ids(store)
+    if kind == "video":
+        return lambda mid: mid in videos
+    return lambda mid: mid not in videos
+
+
+def scope_ids(store: Path, kind: str = "all") -> dict[str, dict[str, list[str]]]:
+    """Media ids behind each year and folder row, kept out of the QML-facing rows.
+
+    ``kind`` is all, photo or video. Groups left empty by the filter are dropped.
+    ``everything`` holds every id of that kind.
+    """
+    keep = _kind_filter(store, kind)
     years: dict[str, list[str]] = {}
+    everything: list[str] = []
     for bucket in timeline_buckets(store):
         label = str(bucket.get("label") or "")
         year = label[:4] if len(label) >= 4 and label[:4].isdigit() else "Unknown"
-        years.setdefault(year, []).extend(str(i) for i in bucket.get("media_ids") or [])
-    folders = {
-        str(bucket.get("label") or ""): [str(i) for i in bucket.get("media_ids") or []]
-        for bucket in folder_buckets(store)
-    }
-    return {"year": years, "folder": folders}
+        ids = [str(i) for i in bucket.get("media_ids") or [] if keep(str(i))]
+        if ids:
+            years.setdefault(year, []).extend(ids)
+            everything.extend(ids)
+    folders: dict[str, list[str]] = {}
+    for bucket in folder_buckets(store):
+        ids = [str(i) for i in bucket.get("media_ids") or [] if keep(str(i))]
+        if ids:
+            folders[str(bucket.get("label") or "")] = ids
+    return {"year": years, "folder": folders, "everything": {"": everything}}
+
+
+def rows_from_scope(ids: dict[str, list[str]], *, newest_first: bool = False) -> list[dict]:
+    labels = sorted(ids, reverse=True) if newest_first else list(ids)
+    return [{"label": label, "count": len(ids[label])} for label in labels]
+
+
+def year_rows(store: Path, kind: str = "all") -> list[dict]:
+    return rows_from_scope(scope_ids(store, kind)["year"], newest_first=True)
+
+
+def folder_rows(store: Path, kind: str = "all") -> list[dict]:
+    return rows_from_scope(scope_ids(store, kind)["folder"])
 
 
 def month_heading(day: str) -> str:

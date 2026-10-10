@@ -1357,6 +1357,33 @@ ApplicationWindow {
                         }
                     }
 
+                    Row {
+                        spacing: 10
+                        Repeater {
+                            model: [
+                                {"key": "all", "label": "All"},
+                                {"key": "photo", "label": "Photos"},
+                                {"key": "video", "label": "Videos"}
+                            ]
+                            delegate: Text {
+                                property bool active: shellReady && shellApi.mediaKind === modelData.key
+                                Component.onCompleted: objectName = "sidebarKind_" + modelData.key
+                                text: modelData.label
+                                color: active ? tokenAccent : (kindArea.containsMouse ? tokenText : tokenMuted)
+                                font.family: "Segoe UI"
+                                font.pixelSize: 12
+                                MouseArea {
+                                    id: kindArea
+                                    anchors.fill: parent
+                                    anchors.margins: -3
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: if (shellReady) shellApi.setMediaKind(modelData.key)
+                                }
+                            }
+                        }
+                    }
+
                     Item { width: 1; height: 6 }
                     Text { text: "Years"; color: tokenFaint; font.family: "Segoe UI"; font.pixelSize: 11; font.letterSpacing: 0.6 }
 

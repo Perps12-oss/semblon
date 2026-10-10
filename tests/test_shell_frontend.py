@@ -161,6 +161,39 @@ def test_sidebar_scopes_library_by_year_and_folder_and_clears(shell, tmp_path):
     assert bridge.noticeText == "Showing everything."
 
 
+def test_sidebar_media_kind_splits_photos_and_videos_in_scope(shell, tmp_path):
+    from semblon.store import connect
+
+    store = tmp_path / "lib.sqlite"
+    _seed(store, tmp_path)
+    conn = connect(store)
+    conn.execute("UPDATE media SET source_type = 'video' WHERE media_id IN ('m0','m1')")
+    conn.commit()
+    conn.close()
+    bridge = shell(store)
+    assert bridge._model.rowCount() == 4
+
+    bridge.setMediaKind("video")
+    assert bridge.mediaKind == "video"
+    assert bridge._model.rowCount() == 2
+    assert {row["label"]: row["count"] for row in bridge.folderRows} == {"2017": 1, "2018": 1}
+    assert bridge.noticeText == "Showing videos."
+
+    bridge.selectFolder("2017")
+    assert bridge._model.rowCount() == 1
+    bridge.setMediaKind("photo")
+    assert bridge.scopeLabel == "2017"
+    assert bridge._model.rowCount() == 1
+    assert {row["label"]: row["count"] for row in bridge.yearRows} == {"2017": 2}
+
+    bridge.clearScope()
+    assert bridge._model.rowCount() == 2
+    bridge.setMediaKind("all")
+    assert bridge._model.rowCount() == 4
+    bridge.setMediaKind("bogus")
+    assert bridge.mediaKind == "all"
+
+
 def test_sidebar_notices_stay_product_safe_in_primary(shell, tmp_path):
     store = tmp_path / "lib.sqlite"
     _seed(store, tmp_path)

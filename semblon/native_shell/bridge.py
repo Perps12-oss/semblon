@@ -38,10 +38,10 @@ from semblon.native_shell.editorial import (
     SPATIAL_NOTE,
     VIDEO_NOTE,
     YEAR_NOTE,
-    folder_rows,
+    MEDIA_KINDS,
+    rows_from_scope,
     scope_ids,
     source_counts,
-    year_rows,
 )
 from semblon.ui_prefs import load_prefer_gpu, load_prefs, save_theme_mode, update_prefs
 
@@ -123,7 +123,8 @@ class ShellBridge(QObject):
         self._video_count = 0
         self._years: list[dict] = []
         self._folders: list[dict] = []
-        self._scope_ids: dict[str, dict[str, list[str]]] = {"year": {}, "folder": {}}
+        self._scope_ids: dict[str, dict[str, list[str]]] = {"year": {}, "folder": {}, "everything": {"": []}}
+        self._media_kind = "all"
         self._scope_kind = ""
         self._scope_label = ""
         self.ingestFinished.connect(self._after_ingest)
@@ -333,16 +334,39 @@ class ShellBridge(QObject):
         counts = source_counts(store)
         self._photo_count = int(counts.get("folder") or 0)
         self._video_count = int(counts.get("video") or 0)
-        self._years = year_rows(store)
-        self._folders = folder_rows(store)
-        self._scope_ids = scope_ids(store)
+        self._scope_ids = scope_ids(store, self._media_kind)
+        self._years = rows_from_scope(self._scope_ids["year"], newest_first=True)
+        self._folders = rows_from_scope(self._scope_ids["folder"])
         if self._scope_kind and self._scope_label not in self._scope_ids.get(self._scope_kind, {}):
             self._scope_kind = ""
             self._scope_label = ""
-            self._model.set_media_ids(None)
-        elif self._scope_kind:
-            self._model.set_media_ids(list(self._scope_ids[self._scope_kind][self._scope_label]))
+        self._apply_scope_view()
         self.editorialChanged.emit()
+
+    def _apply_scope_view(self) -> None:
+        """Point the grid at the current scope, narrowed by the photo/video choice."""
+        if self._scope_kind:
+            self._model.set_media_ids(list(self._scope_ids[self._scope_kind][self._scope_label]))
+        elif self._media_kind != "all" or self._video_count:
+            self._model.set_media_ids(list(self._scope_ids["everything"][""]))
+        else:
+            self._model.set_media_ids(None)
+
+    @Property(str, notify=editorialChanged)
+    def mediaKind(self) -> str:
+        return self._media_kind
+
+    @Slot(str)
+    def setMediaKind(self, kind: str) -> None:
+        kind = str(kind or "").strip().lower()
+        if kind not in MEDIA_KINDS or kind == self._media_kind:
+            return
+        self._media_kind = kind
+        self._facet = "memory"
+        self._buckets = []
+        self._reload_editorial()
+        label = {"all": "everything", "photo": "photos", "video": "videos"}[kind]
+        self._apply_result(Result("ready", f"Showing {label}."))
 
     @Property(str, notify=editorialChanged)
     def scopeLabel(self) -> str:
@@ -378,7 +402,7 @@ class ShellBridge(QObject):
             return
         self._scope_kind = ""
         self._scope_label = ""
-        self._model.set_media_ids(None)
+        self._apply_scope_view()
         self.editorialChanged.emit()
         self._apply_result(Result("ready", "Showing everything."))
 
