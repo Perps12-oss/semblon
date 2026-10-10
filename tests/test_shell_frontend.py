@@ -322,3 +322,90 @@ def test_settings_rail_calls_resolve_to_bridge_slots():
     for name in ("primarySettingCalls", "advancedSettingCalls"):
         declared |= set(re.findall(name + r": \[([^\]]*)\]", source)[0].replace('"', "").replace(" ", "").split(","))
     assert declared <= handled
+
+
+def test_windows_journey_launch_ingest_browse_search_theme_restart_recover(tmp_path, monkeypatch):
+    cv2 = pytest.importorskip("cv2")
+    import sys
+    import time
+    from types import SimpleNamespace
+
+    import numpy as np
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.atmosphere import ATMOSPHERE_IDS
+    from semblon.native_shell.host import build_shell, shutdown_shell
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setitem(sys.modules, "insightface", SimpleNamespace(__version__="0.test"))
+    monkeypatch.setitem(
+        sys.modules,
+        "onnxruntime",
+        SimpleNamespace(__version__="0.test", get_available_providers=lambda: ["CPUExecutionProvider"]),
+    )
+    monkeypatch.setattr("semblon.ingest.load_app", lambda *_a, **_k: object())
+    monkeypatch.setattr("semblon.ingest.embed_bgr", lambda *_a, **_k: [])
+
+    def wait_idle(app, bridge):
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline:
+            app.processEvents()
+            if not bridge._jobs.busy:
+                break
+            time.sleep(0.05)
+        for _ in range(10):
+            app.processEvents()
+            time.sleep(0.02)
+
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    for name, colour in (("a.png", (20, 20, 220)), ("b.png", (220, 20, 20))):
+        image = np.zeros((80, 120, 3), np.uint8)
+        image[:, :] = colour
+        assert cv2.imwrite(str(folder / name), image)
+
+    store = tmp_path / "journey.sqlite"
+    app = QApplication.instance() or QApplication([])
+    _qapp, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    bridge = engine._semblon_bridge
+    try:
+        assert bridge.empty and bridge.primaryMode and bridge.atmosphereId == "mica_dark"
+        assert root.findChild(QObject, "emptyState").property("visible") is True
+
+        bridge._start_ingest(tmp_path / "missing-folder")
+        wait_idle(app, bridge)
+        assert bridge.empty
+        assert "traceback" not in (bridge.noticeText + bridge.resultText).lower()
+
+        bridge._start_ingest(folder)
+        wait_idle(app, bridge)
+        assert not bridge.empty
+        assert bridge.count == 2
+        assert root.findChild(QObject, "emptyState").property("visible") is False
+        assert bridge.photoCount == 2
+
+        bridge.setFacet("folders")
+        assert bridge.buckets
+        bridge.setFacet("memory")
+        assert bridge.count == 2
+        bridge.openIndex(0)
+        assert bridge.focusId
+        bridge.escape()
+        bridge.submitCommand("nobody")
+        assert "sqlite" not in bridge.resultText.lower()
+
+        chosen = next(i for i in ATMOSPHERE_IDS if i != "mica_dark")
+        bridge.setAtmosphere(chosen)
+    finally:
+        shutdown_shell(engine)
+
+    _qapp, engine = build_shell(store, app=app)
+    try:
+        again = engine._semblon_bridge
+        assert again.atmosphereId == chosen
+        assert again.count == 2
+        assert not again.empty
+    finally:
+        shutdown_shell(engine)
