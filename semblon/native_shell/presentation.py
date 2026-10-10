@@ -38,6 +38,9 @@ _SAFE_PRIMARY_EXACT = {
     "That group is no longer here.",
     "Select one or more faces to split.",
     "Leave at least one face in the group.",
+    "No groups yet.",
+    "Groups could not be read.",
+    "No photo for this group.",
 }
 
 _SAFE_PRIMARY_PATTERNS = (

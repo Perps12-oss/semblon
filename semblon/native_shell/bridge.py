@@ -770,6 +770,13 @@ class ShellBridge(QObject):
             return
         self._mode = chosen
         self._save_shell_mode(chosen)
+        if chosen == PRIMARY:
+            self._notice = present_message(chosen, self._notice, fallback="")
+            self._similar_note = present_message(chosen, self._similar_note, fallback="") if self._similar_note else ""
+            self._people_note = present_message(chosen, self._people_note, fallback="") if self._people_note else ""
+            self.surfaceChanged.emit()
+            self.similarChanged.emit()
+            self.peopleChanged.emit()
         self._set_result(self._result_text)
         self.lensChanged.emit()
 
@@ -1079,7 +1086,7 @@ class ShellBridge(QObject):
             return Result(state, exc.message)
 
     def _apply_result(self, result: Result) -> None:
-        self._notice = result.message
+        self._notice = present_message(self._mode, result.message, fallback="Semblon couldn't complete that step.")
         self._surface_state = result.state if result.state in {
             "empty",
             "loading",

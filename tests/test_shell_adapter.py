@@ -1,4 +1,4 @@
-"""Adapter and shell wiring for the blueprint v3 surface. No second archive."""
+﻿"""Adapter and shell wiring for the blueprint v3 surface. No second archive."""
 
 from __future__ import annotations
 
@@ -241,6 +241,7 @@ def test_rescan_forwards_existing_reprocess_flag(tmp_path, monkeypatch):
         time.sleep(0.02)
     assert seen["reprocess"] is True
     assert bridge.noticeText.startswith("Rescan:")
+    bridge.shutdown()
 
 
 def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
@@ -250,7 +251,7 @@ def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
     from PySide6.QtCore import QObject
     from PySide6.QtWidgets import QApplication
 
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
 
     store = _store(tmp_path)
     app = QApplication.instance() or QApplication([])
@@ -283,5 +284,5 @@ def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
     assert "Density is" in bridge.noticeText
     bridge.shutdown()
     root.close()
-    engine.deleteLater()
+    shutdown_shell(engine)
     app.processEvents()

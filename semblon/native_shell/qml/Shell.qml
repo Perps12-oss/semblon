@@ -628,7 +628,7 @@ ApplicationWindow {
             anchors.top: librarySnapshot.visible ? librarySnapshot.bottom : quickActionRail.bottom
             anchors.topMargin: 4
             visible: shellReady && (shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
-            text: shellReady ? (shellApi.noticeText || shellApi.surfaceState) : ""
+            text: shellReady ? (shellApi.noticeText || (shellApi.surfaceState === "loading" ? "Working…" : "Something went wrong. Try again.")) : ""
             color: shellReady && shellApi.surfaceState === "error" ? "#e5484d" : tokenMuted
             font.family: "Segoe UI"
             font.pixelSize: 13
