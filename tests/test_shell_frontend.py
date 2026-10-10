@@ -295,3 +295,30 @@ def test_similar_without_focus_is_honest_and_product_safe(shell):
     bridge.findSimilarWhole()
     assert bridge.similarCount == 0
     assert "sqlite" not in bridge.similarNote.lower()
+
+
+def test_every_qml_action_maps_to_a_real_bridge_slot_or_property():
+    import re
+
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.host import QML
+
+    source = QML.read_text(encoding="utf-8")
+    called = set(re.findall(r"\b(?:shellApi|shell)\.([A-Za-z_]\w*)\(", source))
+    used = set(re.findall(r"\b(?:shellApi|shell)\.([A-Za-z_]\w*)\b(?!\()", source))
+    missing = sorted(name for name in called | used if not hasattr(ShellBridge, name))
+    assert not missing, missing
+
+
+def test_settings_rail_calls_resolve_to_bridge_slots():
+    import re
+
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.host import QML
+
+    source = QML.read_text(encoding="utf-8")
+    handled = set(re.findall(r'call === "(\w+)"', source))
+    declared = set()
+    for name in ("primarySettingCalls", "advancedSettingCalls"):
+        declared |= set(re.findall(name + r": \[([^\]]*)\]", source)[0].replace('"', "").replace(" ", "").split(","))
+    assert declared <= handled
