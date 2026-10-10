@@ -400,6 +400,34 @@ class ShellBridge(QObject):
     def reviewColor(self) -> str:
         return tokens_for(self._atmosphere_id)["review"]
 
+    @Property(bool, notify=lensChanged)
+    def lightPalette(self) -> bool:
+        return self._atmosphere_id == "light"
+
+    @Property(str, notify=lensChanged)
+    def bg2(self) -> str:
+        return tokens_for(self._atmosphere_id)["bg2"]
+
+    @Property(str, notify=lensChanged)
+    def bg3(self) -> str:
+        return tokens_for(self._atmosphere_id)["bg3"]
+
+    @Property(str, notify=lensChanged)
+    def border1(self) -> str:
+        return tokens_for(self._atmosphere_id)["border1"]
+
+    @Property(str, notify=lensChanged)
+    def text3(self) -> str:
+        return tokens_for(self._atmosphere_id)["text3"]
+
+    @Property(str, notify=lensChanged)
+    def accentDim(self) -> str:
+        return tokens_for(self._atmosphere_id)["accentDim"]
+
+    @Property(str, notify=lensChanged)
+    def dangerColor(self) -> str:
+        return tokens_for(self._atmosphere_id)["danger"]
+
     @Property(str, notify=peopleChanged)
     def reviewCountText(self) -> str:
         return self._review_text

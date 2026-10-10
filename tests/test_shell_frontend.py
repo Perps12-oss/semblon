@@ -96,6 +96,42 @@ def test_advanced_diagnostics_are_opt_in_and_marked_active(qml_shell):
     assert "mode=" not in bridge.resultText
 
 
+def test_chrome_tokens_follow_atmosphere_and_light_is_readable(qml_shell):
+    from semblon.atmosphere import ATMOSPHERE_IDS
+    from semblon.native_shell.tokens import tokens_for
+
+    app, _engine, root, bridge = qml_shell
+    assert bridge.lightPalette is False
+    assert root.property("tokenBg2").name() == bridge.bg2
+
+    for atmosphere_id in ATMOSPHERE_IDS:
+        bridge.setAtmosphere(atmosphere_id)
+        app.processEvents()
+        expected = tokens_for(atmosphere_id)
+        assert bridge.lightPalette is (atmosphere_id == "light")
+        assert bridge.bg2 == expected["bg2"]
+        assert bridge.border1 == expected["border1"]
+        assert bridge.text3 == expected["text3"]
+        assert bridge.accentDim == expected["accentDim"]
+        assert bridge.dangerColor == expected["danger"]
+        assert root.property("tokenBorder").name() == expected["border1"]
+        assert root.property("tokenText").name() == expected["text1"]
+
+    bridge.setAtmosphere("light")
+    app.processEvents()
+    assert root.property("tokenText").lightness() < root.property("tokenBg").lightness()
+
+
+def test_qml_has_no_hardcoded_chrome_colors():
+    import re
+    from pathlib import Path
+
+    qml = Path("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
+    literals = re.findall(r'"#[0-9a-fA-F]{6,8}"', qml)
+    # Only the token fallbacks used before the bridge is ready may remain.
+    assert len(literals) == 12
+
+
 def test_every_atmosphere_is_selectable_and_clean_install_is_dark(shell):
     from semblon.atmosphere import ATMOSPHERE_IDS
 
