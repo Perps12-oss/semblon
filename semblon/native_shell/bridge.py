@@ -267,7 +267,7 @@ class ShellBridge(QObject):
 
     @Property(bool, notify=jobChanged)
     def canResume(self) -> bool:
-        return self._resume_ready and self._last_folder is not None and not self._job_active
+        return self._resume_ready and self._last_folder is not None and not self._jobs.busy
 
     @Property(str, notify=jobChanged)
     def jobLabel(self) -> str:
@@ -1382,6 +1382,8 @@ class ShellBridge(QObject):
     def _on_worker_done(self, result) -> None:
         status = str(getattr(result, "status", "") or "")
         self._terminal_status = status or "completed"
+        if status == "cancelled" and self._last_folder is not None:
+            self._resume_ready = True
         name = {
             "completed": JOB_COMPLETED,
             "cancelled": JOB_CANCELLED,
@@ -1422,7 +1424,7 @@ class ShellBridge(QObject):
         if active != self._job_active or state != self._job_state:
             was = self._job_active
             if was and not active:
-                self._resume_ready = bool(self._cancel_requested and self._last_folder is not None)
+                self._resume_ready = self._resume_ready or bool(self._cancel_requested and self._last_folder is not None)
                 self._cancel_requested = False
                 self._last_job_failed = self._terminal_status == "failed"
                 if self._surface_state == "loading":
