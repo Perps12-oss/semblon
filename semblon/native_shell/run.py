@@ -17,7 +17,9 @@ def run_native_shell(store: Path | None = None) -> int:
         raise SystemExit(2) from e
 
     del QApplication
-    from semblon.native_shell.host import build_shell
+    from semblon.native_shell.host import build_shell, shutdown_shell
 
-    app, _engine = build_shell(store)
-    return int(app.exec())
+    app, engine = build_shell(store)
+    code = int(app.exec())
+    shutdown_shell(engine)
+    return code

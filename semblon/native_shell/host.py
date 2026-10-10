@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
@@ -46,3 +46,15 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     engine._semblon_people = bridge.people_model  # type: ignore[attr-defined]
     engine._semblon_session = jobs.archive  # type: ignore[attr-defined]
     return qapp, engine
+
+
+def shutdown_shell(engine: QQmlApplicationEngine) -> None:
+    """Tear the shell down on the GUI thread: stop the timer, then flush deferred deletes."""
+    bridge = getattr(engine, "_semblon_bridge", None)
+    if bridge is not None:
+        bridge.shutdown()
+    for root in engine.rootObjects():
+        root.deleteLater()
+    engine.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QCoreApplication.processEvents()
