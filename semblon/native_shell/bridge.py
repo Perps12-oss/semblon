@@ -33,6 +33,15 @@ from semblon.native_shell.presentation import (
     present_message,
     summarize_people_results,
 )
+from semblon.native_shell.editorial import (
+    SAVED_VIEWS_NOTE,
+    SPATIAL_NOTE,
+    VIDEO_NOTE,
+    YEAR_NOTE,
+    folder_rows,
+    source_counts,
+    year_rows,
+)
 from semblon.ui_prefs import load_prefer_gpu, load_prefs, save_theme_mode, update_prefs
 
 
@@ -66,6 +75,7 @@ class ShellBridge(QObject):
     similarChanged = Signal()
     peopleChanged = Signal()
     surfaceChanged = Signal()
+    editorialChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -108,6 +118,10 @@ class ShellBridge(QObject):
         self._last_job_failed = False
         self._terminal_status = ""
         self._review_text = ""
+        self._photo_count = 0
+        self._video_count = 0
+        self._years: list[dict] = []
+        self._folders: list[dict] = []
         self._unresolved_text = ""
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
@@ -115,6 +129,7 @@ class ShellBridge(QObject):
         self._timer.timeout.connect(self._poll_job)
         self._timer.start()
         model.reload()
+        self._reload_editorial()
 
     def shutdown(self) -> None:
         timer = getattr(self, "_timer", None)
@@ -277,6 +292,47 @@ class ShellBridge(QObject):
     @Property(str, notify=surfaceChanged)
     def noticeText(self) -> str:
         return self._notice
+
+    @Property(int, notify=editorialChanged)
+    def photoCount(self) -> int:
+        return self._photo_count
+
+    @Property(int, notify=editorialChanged)
+    def videoCount(self) -> int:
+        return self._video_count
+
+    @Property("QVariantList", notify=editorialChanged)
+    def yearRows(self):
+        return list(self._years)
+
+    @Property("QVariantList", notify=editorialChanged)
+    def folderRows(self):
+        return list(self._folders)
+
+    @Property(str, notify=editorialChanged)
+    def savedViewsNote(self) -> str:
+        return SAVED_VIEWS_NOTE
+
+    @Property(str, notify=editorialChanged)
+    def spatialNote(self) -> str:
+        return SPATIAL_NOTE
+
+    @Property(str, notify=editorialChanged)
+    def videoNote(self) -> str:
+        return VIDEO_NOTE
+
+    @Property(str, notify=editorialChanged)
+    def yearNote(self) -> str:
+        return YEAR_NOTE
+
+    def _reload_editorial(self) -> None:
+        store = self._jobs.store
+        counts = source_counts(store)
+        self._photo_count = int(counts.get("folder") or 0)
+        self._video_count = int(counts.get("video") or 0)
+        self._years = year_rows(store)
+        self._folders = folder_rows(store)
+        self.editorialChanged.emit()
 
     @Property(str, notify=surfaceChanged)
     def facet(self) -> str:
@@ -1382,6 +1438,7 @@ class ShellBridge(QObject):
         self._model.reload()
         self._events.record(LIBRARY_CHANGED, {"count": int(self._jobs.archive_count())})
         empty = self._jobs.archive_count() == 0
+        self._reload_editorial()
         self.libraryChanged.emit()
         if empty != self._empty:
             self._empty = empty

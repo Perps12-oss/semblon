@@ -1,4 +1,4 @@
-"""Editorial index reads store rows. It does not invent relationships."""
+﻿"""Editorial index reads store rows. It does not invent relationships."""
 
 from semblon.native_shell.editorial import (
     SAVED_VIEWS_NOTE,

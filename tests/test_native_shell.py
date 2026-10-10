@@ -1220,3 +1220,36 @@ def test_point_on_fresh_image_refines_without_inventing_a_miss(tmp_path, monkeyp
 
 
 
+
+
+def test_bridge_exposes_read_only_editorial_counts(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+    from semblon.store import connect, init_db
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.executemany(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        [
+            ("p1", "folder", str(tmp_path / "2017" / "a.jpg"), "h1", 10, 10, 1_503_000_000_000_000_000, 1),
+            ("v1", "video", str(tmp_path / "2017" / "c.mp4"), "h3", 10, 10, 1_503_100_000_000_000_000, 1),
+        ],
+    )
+    conn.commit()
+    conn.close()
+    _app = QApplication.instance() or QApplication([])
+    bridge = ShellBridge(ArchiveModel(Application(store)), Application(store))
+    try:
+        assert bridge.photoCount == 1
+        assert bridge.videoCount == 1
+        assert bridge.yearRows[0]["label"] == "2017"
+        assert "no relationship" in bridge.spatialNote.lower()
+    finally:
+        bridge.shutdown()

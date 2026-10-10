@@ -599,10 +599,11 @@ ApplicationWindow {
                 spacing: 18
 
                 Column {
-                    width: 96
+                    width: 150
                     spacing: 2
                     Text { text: "Library"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
                     Text { text: shellReady ? shellApi.count + " items" : "0 items"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                    Text { objectName: "mediaKinds"; text: shellReady ? shellApi.photoCount + " photos · " + shellApi.videoCount + " videos" : ""; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
                 }
 
                 Column {
