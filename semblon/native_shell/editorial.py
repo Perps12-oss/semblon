@@ -24,10 +24,10 @@ SIMILAR_NOTE = (
     "Nothing was searched. Open a photo and draw a region in Focus to look for similar images."
 )
 VIDEO_NOTE = (
-    "Videos stay in the store. The time contact sheet lists photos only, "
-    "so this does not pretend to filter them in."
+    "Videos stay in the store. Year and folder scopes use the media the library "
+    "already groups; videos are not separated from photos."
 )
-YEAR_NOTE = "Year counts use stored file time. The contact sheet is not filtered by year."
+YEAR_NOTE = "Year counts use stored file time. Choosing a year or folder scopes the library to it."
 
 
 def source_counts(store: Path) -> dict[str, int]:
