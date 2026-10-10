@@ -1391,7 +1391,7 @@ class ShellBridge(QObject):
     def _on_worker_done(self, result) -> None:
         status = str(getattr(result, "status", "") or "")
         self._terminal_status = status or "completed"
-        if status == "cancelled" and self._last_folder is not None:
+        if status in {"cancelled", "failed"} and self._last_folder is not None:
             self._resume_ready = True
         name = {
             "completed": JOB_COMPLETED,
@@ -1424,6 +1424,7 @@ class ShellBridge(QObject):
     def _after_ingest(self) -> None:
         self._refresh_library()
         self._poll_job()
+        self.jobChanged.emit()
 
     def _poll_job(self) -> None:
         active = self._session.job_active()

@@ -198,3 +198,42 @@ def test_moments_facet_is_advanced_only(shell):
     bridge.setMode("advanced")
     bridge.setFacet("moments")
     assert bridge.facet == "moments"
+
+
+def _run_job(app, bridge, folder, monkeypatch, behaviour):
+    import time
+
+    monkeypatch.setattr("semblon.process.process_folder", behaviour)
+    bridge._start_ingest(folder)
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        app.processEvents()
+        if not bridge._jobs.busy and bridge._events.last("job.cancelled") or bridge._events.last("job.failed"):
+            break
+        time.sleep(0.02)
+    for _ in range(5):
+        app.processEvents()
+        time.sleep(0.02)
+
+
+def test_empty_state_guides_first_run_and_recovery(qml_shell, tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject
+
+    from semblon.process import ProcessCancelled
+
+    app, _engine, root, bridge = qml_shell
+    empty = root.findChild(QObject, "emptyState")
+    assert empty.property("visible") is True
+    assert root.findChild(QObject, "emptyResume").property("visible") is False
+    assert root.findChild(QObject, "emptyStatus").property("visible") is False
+
+    folder = tmp_path / "photos"
+    folder.mkdir()
+
+    def cancelled(folder, **kwargs):
+        raise ProcessCancelled("cancelled", run_id="r")
+
+    _run_job(app, bridge, folder, monkeypatch, cancelled)
+    assert bridge.canResume
+    assert root.findChild(QObject, "emptyResume").property("visible") is True
+    assert root.findChild(QObject, "emptyStatus").property("visible") is True

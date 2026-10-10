@@ -1401,6 +1401,18 @@ ApplicationWindow {
                 horizontalAlignment: Text.AlignHCenter
             }
 
+            Text {
+                objectName: "emptyStatus"
+                width: parent.width
+                visible: jobLabelSafe !== "" || canResumeSafe
+                text: jobLabelSafe === "Last add failed" ? "The last add didn't finish. Try again or choose another folder."
+                      : (canResumeSafe ? "The last add was stopped. Resume it or choose another folder." : jobLabelSafe)
+                color: "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                horizontalAlignment: Text.AlignHCenter
+            }
+
             Grid {
                 columns: 4
                 columnSpacing: 12
@@ -1501,6 +1513,32 @@ ApplicationWindow {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: if (shellReady) shellApi.addFolder()
+                }
+            }
+            Rectangle {
+                objectName: "emptyResume"
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: resumeEmptyLabel.implicitWidth + 36
+                height: 40
+                radius: 8
+                color: resumeEmptyArea.containsMouse ? "#12343A" : "#1C2430"
+                border.color: "#243140"
+                border.width: 1
+                visible: canResumeSafe && !jobRunning
+                Text {
+                    id: resumeEmptyLabel
+                    anchors.centerIn: parent
+                    text: jobLabelSafe === "Last add failed" ? "Try again" : "Resume"
+                    color: "#E7EEF5"
+                    font.family: "Segoe UI"
+                    font.pixelSize: 14
+                }
+                MouseArea {
+                    id: resumeEmptyArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady) shellApi.resumeJob()
                 }
             }
         }
