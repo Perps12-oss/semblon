@@ -94,3 +94,40 @@ def test_advanced_diagnostics_are_opt_in_and_marked_active(qml_shell):
     app.processEvents()
     assert panel.property("visible") is False
     assert "mode=" not in bridge.resultText
+
+
+def test_every_atmosphere_is_selectable_and_clean_install_is_dark(shell):
+    from semblon.atmosphere import ATMOSPHERE_IDS
+
+    bridge = shell()
+    assert bridge.atmosphereId == "mica_dark"
+    for atmosphere_id in ATMOSPHERE_IDS:
+        bridge.setAtmosphere(atmosphere_id)
+        assert bridge.atmosphereId == atmosphere_id
+    bridge.setAtmosphere("not-a-theme")
+    assert bridge.atmosphereId == ATMOSPHERE_IDS[-1]
+    assert {row["id"] for row in bridge.atmosphereChoices} == set(ATMOSPHERE_IDS)
+
+
+def test_explicit_theme_and_mode_survive_restart(shell, tmp_path):
+    from semblon.atmosphere import ATMOSPHERE_IDS
+
+    store = tmp_path / "persist.sqlite"
+    chosen = next(i for i in ATMOSPHERE_IDS if i != "mica_dark")
+    first = shell(store)
+    first.setAtmosphere(chosen)
+    first.setMode("advanced")
+    first.shutdown()
+    second = shell(store)
+    assert second.atmosphereId == chosen
+    assert second.advancedMode
+
+
+def test_reset_defaults_returns_to_dark_primary_without_losing_library(shell, tmp_path):
+    from semblon.atmosphere import ATMOSPHERE_IDS
+
+    bridge = shell(tmp_path / "reset.sqlite")
+    bridge.setAtmosphere(next(i for i in ATMOSPHERE_IDS if i != "mica_dark"))
+    bridge.resetDefaults()
+    assert bridge.atmosphereId == "mica_dark"
+    assert bridge.primaryMode
