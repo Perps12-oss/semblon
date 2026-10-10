@@ -265,3 +265,33 @@ def test_focus_navigation_and_stale_detail_after_library_change(shell, tmp_path)
     assert bridge.count == 3
     assert bridge.focusId != first
     assert bridge.focusName != "" or bridge.focusId == ""
+
+
+def test_review_actions_give_safe_feedback_and_keep_selection_stable(shell):
+    from semblon.native_shell.presentation import is_primary_safe_message
+
+    bridge = shell()
+    bridge.openPeople()
+    assert bridge.peopleOpen
+    for call in (bridge.mergeSelectedGroup, bridge.splitSelectedFaces):
+        note = call()
+        assert is_primary_safe_message(note), note
+    bridge.selectGroup("does-not-exist")
+    assert bridge.selectedSubject == ""
+    assert is_primary_safe_message(bridge.peopleNote), bridge.peopleNote
+    bridge.toggleSplitFace("f-missing")
+    assert bridge.splitSelectionCount in (0, 1)
+    bridge.clearSplitSelection()
+    assert bridge.splitSelectionCount == 0
+    bridge.closePeople()
+    assert not bridge.peopleOpen
+
+
+def test_similar_without_focus_is_honest_and_product_safe(shell):
+    bridge = shell()
+    bridge.findSimilar()
+    assert bridge.similarState == "unavailable"
+    assert bridge.similarNote == "Open a photo first."
+    bridge.findSimilarWhole()
+    assert bridge.similarCount == 0
+    assert "sqlite" not in bridge.similarNote.lower()
