@@ -359,15 +359,17 @@ def test_bridge_archive_media_ask_similar_and_ingest_use_application(tmp_path, m
     assert "sqlite" not in host.lower()
 
 
-def test_focus_qml_draws_into_strip_without_a_similar_button():
-    """Product door is the drag release. No Qt import, so this is not an EGL test."""
+def test_focus_qml_keeps_the_strip_and_a_primary_similar_action():
+    """Region drag still fills the strip. Similar is also a primary action."""
     qml = (
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml" / "Shell.qml"
     ).read_text(encoding="utf-8")
     assert "shell.findSimilar()" in qml
+    assert "shellApi.findSimilarWhole()" in qml
     assert "shell.resumeJob()" in qml
     assert 'objectName: "resumeJob"' in qml
-    assert 'text: "Similar"' not in qml
+    assert 'objectName: "similarAction"' in qml
+    assert 'text: "Similar"' in qml
     assert 'objectName: "findSimilar"' not in qml
     assert 'objectName: "similarStrip"' in qml
     assert "shell.thumbFor(mediaId)" in qml
@@ -575,6 +577,9 @@ def test_shell_add_folder_indexes_appearance_and_draw_finds_it(tmp_path, monkeyp
     pytest.importorskip("PySide6")
     cv2 = pytest.importorskip("cv2")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    import sys
+    from types import SimpleNamespace
+
     import numpy as np
     from PySide6.QtWidgets import QApplication
 
@@ -582,6 +587,18 @@ def test_shell_add_folder_indexes_appearance_and_draw_finds_it(tmp_path, monkeyp
     from semblon.native_shell.bridge import ShellBridge
     from semblon.native_shell.model import ArchiveModel
     from semblon.observers import APPEARANCE_PACK
+
+    monkeypatch.setitem(sys.modules, "insightface", SimpleNamespace(__version__="0.test"))
+    monkeypatch.setitem(
+        sys.modules,
+        "onnxruntime",
+        SimpleNamespace(
+            __version__="0.test",
+            get_available_providers=lambda: ["CPUExecutionProvider"],
+        ),
+    )
+    monkeypatch.setattr("semblon.ingest.load_app", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr("semblon.ingest.embed_bgr", lambda *_args, **_kwargs: [])
 
     folder = tmp_path / "photos"
     folder.mkdir()

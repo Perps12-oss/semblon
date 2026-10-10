@@ -30,10 +30,28 @@ class ArchiveModel(QAbstractListModel):
         self._count = 0
         self._cache: list = []
         self._cache_start = -1
+        self._ids: list[str] | None = None
 
     def reload(self) -> None:
         self.beginResetModel()
+        self._ids = None
         self._count = self._app.archive_count()
+        self._cache = []
+        self._cache_start = -1
+        self.endResetModel()
+
+    def set_media_ids(self, media_ids: list[str] | None) -> None:
+        """Limit the Field to an explicit id list from a browse bucket.
+
+        ``None`` restores the archive window. Ids are not a second library.
+        """
+        self.beginResetModel()
+        if media_ids is None:
+            self._ids = None
+            self._count = self._app.archive_count()
+        else:
+            self._ids = [str(item) for item in media_ids if item]
+            self._count = len(self._ids)
         self._cache = []
         self._cache_start = -1
         self.endResetModel()
@@ -70,6 +88,8 @@ class ArchiveModel(QAbstractListModel):
     def _at(self, row: int) -> MediaRef | None:
         if row < 0 or row >= self._count:
             return None
+        if self._ids is not None:
+            return self._app.media(self._ids[row])
         if self._cache_start < 0 or row < self._cache_start or row >= self._cache_start + len(self._cache):
             start = max(0, row - 40)
             self._cache = self._app.archive_window(start, _WINDOW)
