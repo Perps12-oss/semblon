@@ -422,6 +422,8 @@ class ArchiveAdapter:
         )
 
     def inspect_pack(self, path: str) -> Result:
+        import os
+
         from semblon.knowledge import PackError, load_pack
 
         file_path = Path(path)
@@ -433,6 +435,7 @@ class ArchiveAdapter:
             raise AdapterError("pack.INVALID", str(exc)) from exc
         if not pack:
             return Result("unavailable", "Pack: that file is not a pack.", {})
+        os.environ["SEMBLON_LKG_PACK"] = str(file_path.resolve())
         count = len(pack.get("entries") or [])
         return Result("ready", f"Pack: {count} entries in the local file.", {"count": count, "path": str(file_path)})
 
@@ -445,18 +448,31 @@ class ArchiveAdapter:
             raise AdapterError("model.INSTALL", str(exc)) from exc
         return Result("ready", "Model file: installed locally.", {"path": rec.get("path"), "state": rec.get("state")})
 
-    def regions(self) -> Result:
+    def named_items(self) -> Result:
+        """User-drawn regions. These are not people and do not confirm identity."""
         rows = self._app.regions()
-        if not rows:
-            return Result("empty", "Showing no saved regions yet.", {"regions": []})
-        return Result("ready", f"Showing {len(rows)} saved regions.", {"regions": rows})
+        items = []
+        for row in rows:
+            label = str(row.get("named") or "").strip() or "Unnamed item"
+            items.append(
+                {
+                    "item_id": str(row.get("item_id") or ""),
+                    "label": label,
+                    "media_id": str(row.get("media_id") or ""),
+                }
+            )
+        if not items:
+            return Result("empty", "Named items: none saved yet.", {"items": []})
+        return Result("ready", f"Named items: {len(items)} saved.", {"items": items})
 
-    def name_region(self, item_id: str, name: str) -> Result:
+    def name_named_item(self, item_id: str, name: str) -> Result:
         who = str(name or "").strip()
         if not who:
-            raise AdapterError("region.NAME", "A name is required.")
+            raise AdapterError("region.NAME", "Named items: a name is required.")
+        if not str(item_id or "").strip():
+            raise AdapterError("region.NAME", "Named items: choose an item first.")
         try:
-            rec = self._app.name_region(item_id, who)
+            self._app.name_region(item_id, who)
         except Exception as exc:
             raise AdapterError("region.NAME", str(exc)) from exc
-        return Result("ready", f"Saved name: {who}.", {"region": rec})
+        return Result("ready", f"Named items: saved {who}.", {"item_id": item_id, "label": who})

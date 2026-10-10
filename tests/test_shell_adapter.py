@@ -129,6 +129,120 @@ def test_archive_model_filter_does_not_widen_the_window(tmp_path):
     assert calls == []
 
 
+def test_qml_exposes_four_operations_and_hides_places():
+    qml = (
+        Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml" / "Shell.qml"
+    ).read_text(encoding="utf-8")
+    assert '"rescan"' in qml
+    assert '"namedItems"' in qml
+    assert '"knowledgePack"' in qml
+    assert '"installModel"' in qml
+    assert "Named items" in qml
+    assert "Knowledge pack" in qml
+    assert "Install model" in qml
+    assert 'objectName: "namedItemsSheet"' in qml
+    assert 'objectName: "similarAction"' in qml
+    assert 'objectName: "archiveCard"' in qml
+    assert 'objectName: "peopleCard"' in qml
+    assert 'objectName: "searchCard"' in qml
+    assert 'objectName: "lensCard"' in qml
+    assert "Explore your local photo memory" in qml
+    assert "Review groups with human decisions" in qml
+    assert "Find faces, people, and media" in qml
+    assert "Read, describe, and inspect visual context" in qml
+    assert "Places" not in qml
+    assert "Coming soon" not in qml
+    assert "coming soon" not in qml
+    assert 'objectName: "mainSidebar"' not in qml
+
+
+def test_named_items_do_not_create_people(tmp_path):
+    from semblon.user_region import persist_user_region
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        ("r1", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "emulated"),
+    )
+    conn.execute("INSERT INTO media VALUES ('m1','folder','a.jpg','aaa',200,100,0,1)")
+    conn.commit()
+    conn.close()
+    saved = persist_user_region(store, media_id="m1", x=10, y=10, w=40, h=20, run_id="r1")
+    adapter = ArchiveAdapter(Application(store))
+    listed = adapter.named_items()
+    assert listed.state == "ready"
+    assert listed.data["items"][0]["label"] == "Unnamed item"
+    named = adapter.name_named_item(saved["item_id"], "old camera")
+    assert named.message == "Named items: saved old camera."
+    again = adapter.named_items()
+    assert again.data["items"][0]["label"] == "old camera"
+    conn = connect(store)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_pack_and_model_file_stay_local(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    adapter = ArchiveAdapter(Application(store))
+    pack = tmp_path / "pack.json"
+    pack.write_text('{"entries":[{"kind":"landmark","match":{"text":"pier"},"label":"Pier"}]}', encoding="utf-8")
+    monkeypatch.delenv("SEMBLON_LKG_PACK", raising=False)
+    seen = adapter.inspect_pack(str(pack))
+    assert seen.state == "ready"
+    assert os.environ["SEMBLON_LKG_PACK"] == str(pack.resolve())
+    source = tmp_path / "model.bin"
+    source.write_bytes(b"model-bytes")
+    dest = tmp_path / "installed.bin"
+    installed = adapter.install_model_file(str(source), str(dest))
+    assert installed.state == "ready"
+    assert dest.read_bytes() == b"model-bytes"
+    assert store.is_file()
+
+
+def test_rescan_forwards_existing_reprocess_flag(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    import threading
+    import time
+
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+
+    seen = {}
+    started = threading.Event()
+
+    def fake_process(folder, **kwargs):
+        seen["reprocess"] = kwargs.get("reprocess")
+        seen["folder"] = str(folder)
+        started.set()
+        return {"run_id": "r", "out": None}
+
+    monkeypatch.setattr("semblon.process.process_folder", fake_process)
+    app = QApplication.instance() or QApplication([])
+    jobs = Application(tmp_path / "s.sqlite")
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    bridge._last_folder = folder
+    bridge.rescanFolder()
+    assert started.wait(3)
+    deadline = time.monotonic() + 3
+    while jobs.busy and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.02)
+    assert seen["reprocess"] is True
+    assert bridge.noticeText.startswith("Rescan:")
+
+
 def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
     pytest.importorskip("PySide6")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
@@ -167,4 +281,7 @@ def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
     assert bridge.noticeText.startswith("Capabilities:")
     bridge.cycleDensity()
     assert "Density is" in bridge.noticeText
+    bridge.shutdown()
     root.close()
+    engine.deleteLater()
+    app.processEvents()

@@ -99,6 +99,9 @@ class ShellBridge(QObject):
         self._buckets: list[dict] = []
         self._facet = "memory"
         self._settings_open = False
+        self._named_items_open = False
+        self._named_items: list[dict] = []
+        self._named_item_id = ""
         self._surface_state = "empty" if self._empty else "ready"
         self._notice = ""
         self._progress_label = ""
@@ -112,6 +115,23 @@ class ShellBridge(QObject):
         self._timer.timeout.connect(self._poll_job)
         self._timer.start()
         model.reload()
+
+    def shutdown(self) -> None:
+        timer = getattr(self, "_timer", None)
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:  # pragma: no cover - Qt teardown guard
+                pass
+            try:
+                self._timer.timeout.disconnect(self._poll_job)
+            except Exception:  # pragma: no cover - Qt disconnect guard
+                pass
+            try:
+                self._timer.deleteLater()
+            except Exception:  # pragma: no cover - Qt teardown guard
+                pass
+            self._timer = None
 
     def _prefs_store(self) -> Path:
         return self._jobs.store
@@ -265,6 +285,32 @@ class ShellBridge(QObject):
     @Property(bool, notify=surfaceChanged)
     def settingsOpen(self) -> bool:
         return self._settings_open
+
+    @Property(bool, notify=surfaceChanged)
+    def namedItemsOpen(self) -> bool:
+        return self._named_items_open
+
+    @Property("QVariantList", notify=surfaceChanged)
+    def namedItems(self):
+        return list(self._named_items)
+
+    @Property(int, notify=surfaceChanged)
+    def namedItemCount(self) -> int:
+        return len(self._named_items)
+
+    @Slot(int, result=str)
+    def namedItemId(self, index: int) -> str:
+        rows = self._named_items
+        if index < 0 or index >= len(rows):
+            return ""
+        return str(rows[index].get("item_id") or "")
+
+    @Slot(int, result=str)
+    def namedItemLabel(self, index: int) -> str:
+        rows = self._named_items
+        if index < 0 or index >= len(rows):
+            return ""
+        return str(rows[index].get("label") or "")
 
     @Property("QVariantList", notify=surfaceChanged)
     def buckets(self):
@@ -1083,15 +1129,90 @@ class ShellBridge(QObject):
         self._settings_open = not self._settings_open
         self.surfaceChanged.emit()
 
+    @Slot()
+    def openNamedItems(self) -> None:
+        result = self._safe_call(self._adapter.named_items)
+        self._named_items = list(result.data.get("items") or [])
+        self._named_items_open = True
+        if self._named_item_id and not any(item.get("item_id") == self._named_item_id for item in self._named_items):
+            self._named_item_id = ""
+        self._apply_result(result)
+
+    @Slot()
+    def closeNamedItems(self) -> None:
+        self._named_items_open = False
+        self.surfaceChanged.emit()
+
+    @Slot(str)
+    def selectNamedItem(self, item_id: str) -> None:
+        self._named_item_id = str(item_id or "")
+        self.surfaceChanged.emit()
+
+    @Slot(str, result=str)
+    def nameNamedItem(self, name: str) -> str:
+        result = self._safe_call(lambda: self._adapter.name_named_item(self._named_item_id, name))
+        if result.state == "ready":
+            listed = self._safe_call(self._adapter.named_items)
+            self._named_items = list(listed.data.get("items") or [])
+        self._apply_result(result)
+        return self._notice
+
+    @Slot()
+    def rescanFolder(self) -> None:
+        """Re-run the last folder through the existing ingest door with reprocess."""
+        if self._jobs.busy:
+            self._apply_result(Result("unavailable", "Rescan: a folder is already being added."))
+            return
+        if self._last_folder is None or not Path(self._last_folder).is_dir():
+            folder = QFileDialog.getExistingDirectory(None, "Choose a folder to look through again")
+            if not folder:
+                self._apply_result(Result("empty", "Rescan: add a folder first."))
+                return
+            self._apply_result(Result("ready", "Rescan: looking through that folder again."))
+            self._start_ingest(Path(folder), reprocess=True)
+            return
+        self._apply_result(Result("ready", "Rescan: looking through that folder again."))
+        self._start_ingest(self._last_folder, reprocess=True)
+
+    def _local_path(self, raw: str) -> str:
+        text = str(raw or "").strip()
+        if text.lower().startswith("file:"):
+            return QUrl(text).toLocalFile()
+        return text
+
+    @Slot()
+    def chooseKnowledgePack(self) -> None:
+        path, _selected = QFileDialog.getOpenFileName(
+            None, "Choose a knowledge pack", "", "JSON (*.json)"
+        )
+        if not path:
+            self._apply_result(Result("empty", "Pack: choose a local pack file."))
+            return
+        self.inspectPack(path)
+
+    @Slot()
+    def chooseModelInstall(self) -> None:
+        source, _selected = QFileDialog.getOpenFileName(None, "Choose a model file", "", "All files (*.*)")
+        if not source:
+            self._apply_result(Result("empty", "Model file: choose a local file."))
+            return
+        dest, _selected = QFileDialog.getSaveFileName(None, "Where to install the model file", "", "All files (*.*)")
+        if not dest:
+            self._apply_result(Result("empty", "Model file: choose where to install it."))
+            return
+        self.installModelFile(source, dest)
+
     @Slot(str, result=str)
     def inspectPack(self, path: str) -> str:
-        result = self._safe_call(lambda: self._adapter.inspect_pack(path))
+        result = self._safe_call(lambda: self._adapter.inspect_pack(self._local_path(path)))
         self._apply_result(result)
         return self._notice
 
     @Slot(str, str, result=str)
     def installModelFile(self, source: str, dest: str) -> str:
-        result = self._safe_call(lambda: self._adapter.install_model_file(source, dest))
+        result = self._safe_call(
+            lambda: self._adapter.install_model_file(self._local_path(source), self._local_path(dest))
+        )
         self._apply_result(result)
         return self._notice
 
@@ -1161,7 +1282,7 @@ class ShellBridge(QObject):
     def path_for(self, media_id: str) -> str | None:
         return self._jobs.media_path(media_id)
 
-    def _start_ingest(self, folder: Path, *, resume: bool = False) -> None:
+    def _start_ingest(self, folder: Path, *, resume: bool = False, reprocess: bool = False) -> None:
         from semblon.observers import resolve_product_observers
 
         self._last_folder = Path(folder)
@@ -1180,6 +1301,7 @@ class ShellBridge(QObject):
                 observers=resolve_product_observers(),
                 resume=resume,
                 prefer_gpu=prefer,
+                reprocess=bool(reprocess),
             )
         except JobBusy:
             return

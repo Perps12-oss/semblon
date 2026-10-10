@@ -53,7 +53,31 @@ ApplicationWindow {
     readonly property color tokenText: shellReady ? shellApi.text1 : "#f2f3f5"
     readonly property color tokenMuted: shellReady ? shellApi.text2 : "#a8adb7"
     readonly property color tokenReview: shellReady ? shellApi.reviewColor : "#a15cf5"
+    readonly property var primarySettingCalls: ["cycleDensity", "libraryHealth", "showActivity", "modePeople", "modeText", "rescan", "resetDefaults"]
+    readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Rescan", "Reset defaults"]
+    readonly property var advancedSettingCalls: ["scanDuplicates", "showCapabilities", "gpuAuto", "gpuOff", "namedItems", "knowledgePack", "installModel"]
+    readonly property var advancedSettingLabels: ["Duplicates", "Capabilities", "GPU auto", "GPU off", "Named items", "Knowledge pack", "Install model"]
+    readonly property var facetNames: ["Memory", "Days", "Folders", "Moments"]
     font.family: "Segoe UI"
+
+    function handleSetting(call) {
+        if (!shellReady)
+            return
+        if (call === "cycleDensity") shellApi.cycleDensity()
+        else if (call === "libraryHealth") shellApi.libraryHealth()
+        else if (call === "scanDuplicates") shellApi.scanDuplicates()
+        else if (call === "showActivity") shellApi.showActivity()
+        else if (call === "showCapabilities") shellApi.showCapabilities()
+        else if (call === "gpuAuto") shellApi.setGpuPreference("auto")
+        else if (call === "gpuOff") shellApi.setGpuPreference("off")
+        else if (call === "modePeople") shellApi.setSearchMode("people")
+        else if (call === "modeText") shellApi.setSearchMode("text")
+        else if (call === "rescan") shellApi.rescanFolder()
+        else if (call === "namedItems") shellApi.openNamedItems()
+        else if (call === "knowledgePack") shellApi.chooseKnowledgePack()
+        else if (call === "installModel") shellApi.chooseModelInstall()
+        else if (call === "resetDefaults") shellApi.resetDefaults()
+    }
 
     Shortcut {
         sequences: [StandardKey.Cancel, "Escape"]
@@ -209,55 +233,6 @@ ApplicationWindow {
                 }
             }
 
-            Row {
-                spacing: 16
-
-                Text {
-                    objectName: "peopleButton"
-                    text: "People"
-                    color: peopleArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
-                    font.family: "Segoe UI"
-                    font.pixelSize: 13
-                    MouseArea {
-                        id: peopleArea
-                        anchors.fill: parent
-                        anchors.margins: -6
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.openPeople()
-                    }
-                }
-
-                Text {
-                    objectName: "settingsButton"
-                    text: "Settings"
-                    color: settingsArea.containsMouse ? tokenText : tokenMuted
-                    font.family: "Segoe UI"
-                    font.pixelSize: 13
-                    MouseArea {
-                        id: settingsArea
-                        anchors.fill: parent
-                        anchors.margins: -6
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.toggleSettings()
-                    }
-                }
-
-                Text {
-                    text: "Add folder"
-                    color: addFolderArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
-                    font.family: "Segoe UI"
-                    font.pixelSize: 13
-                    MouseArea {
-                        id: addFolderArea
-                        anchors.fill: parent
-                        anchors.margins: -6
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady && !jobRunning) shellApi.addFolder()
-                    }
-                }
-            }
         }
 
         Rectangle {
@@ -323,8 +298,62 @@ ApplicationWindow {
         }
 
         Row {
+            id: headerActions
             anchors.right: parent.right
             anchors.rightMargin: 28
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 16
+
+            Text {
+                objectName: "peopleButton"
+                text: "People"
+                color: peopleArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                MouseArea {
+                    id: peopleArea
+                    anchors.fill: parent
+                    anchors.margins: -6
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady) shellApi.openPeople()
+                }
+            }
+
+            Text {
+                objectName: "settingsButton"
+                text: "Settings"
+                color: settingsArea.containsMouse ? tokenText : tokenMuted
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                MouseArea {
+                    id: settingsArea
+                    anchors.fill: parent
+                    anchors.margins: -6
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady) shellApi.toggleSettings()
+                }
+            }
+
+            Text {
+                text: "Add folder"
+                color: addFolderArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                MouseArea {
+                    id: addFolderArea
+                    anchors.fill: parent
+                    anchors.margins: -6
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady && !jobRunning) shellApi.addFolder()
+                }
+            }
+        }
+
+        Row {
+            anchors.right: headerActions.left
+            anchors.rightMargin: 16
             anchors.verticalCenter: parent.verticalCenter
             spacing: 10
             visible: jobRunning
@@ -406,8 +435,8 @@ ApplicationWindow {
             objectName: "resumeJob"
             text: "Resume"
             visible: shellReady && shellApi.canResume && !shellApi.jobActive
-            anchors.right: parent.right
-            anchors.rightMargin: 28
+            anchors.right: atmospherePicker.left
+            anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             color: resumeArea.containsMouse ? "#E7EEF5" : "#8AA0B2"
             font.family: "Segoe UI"
@@ -425,8 +454,8 @@ ApplicationWindow {
         ComboBox {
             id: atmospherePicker
             objectName: "atmospherePicker"
-            anchors.right: parent.right
-            anchors.rightMargin: 102
+            anchors.right: headerActions.left
+            anchors.rightMargin: 16
             anchors.verticalCenter: parent.verticalCenter
             width: 160
             model: shellReady ? shellApi.atmosphereChoices : []
@@ -478,11 +507,11 @@ ApplicationWindow {
             z: 2
 
             Repeater {
-                model: advancedModeSafe
-                      ? ["Memory", "Days", "Folders", "Moments"]
-                      : ["Memory", "Days", "Folders"]
+                model: advancedModeSafe ? 4 : 3
                 delegate: Text {
-                    text: modelData
+                    property string facetName: facetNames[index]
+                    Component.onCompleted: objectName = "facet_" + facetName
+                    text: facetName
                     color: facetArea.containsMouse ? tokenText : tokenMuted
                     font.family: "Segoe UI"
                     font.pixelSize: 13
@@ -492,8 +521,102 @@ ApplicationWindow {
                         anchors.margins: -4
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.setFacet(modelData)
+                        onClicked: if (shellReady) shellApi.setFacet(facetName)
                     }
+                }
+            }
+        }
+
+        Row {
+            id: quickActionRail
+            objectName: "quickActionRail"
+            anchors.left: facetBar.left
+            anchors.top: facetBar.bottom
+            anchors.topMargin: 12
+            spacing: 10
+            visible: primaryModeSafe && !peopleVisible && !focusActive
+            z: 2
+
+            Repeater {
+                model: [
+                    { label: "Archive", action: "setFacet('memory')" },
+                    { label: "People", action: "openPeople()" },
+                    { label: "Search", action: "setSearchMode('people')" },
+                    { label: "Ask photo", action: "findSimilarWhole()" }
+                ]
+                delegate: Rectangle {
+                    width: actionText.implicitWidth + 18
+                    height: 28
+                    radius: 14
+                    color: actionArea.containsMouse ? "#1B2B38" : "#141C25"
+                    border.color: "#2a3340"
+                    border.width: 1
+
+                    Text {
+                        id: actionText
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: "#E7EEF5"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+
+                    MouseArea {
+                        id: actionArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (!shellReady) return
+                            if (modelData.action === "setFacet('memory')") shellApi.setFacet("memory")
+                            else if (modelData.action === "openPeople()") shellApi.openPeople()
+                            else if (modelData.action === "setSearchMode('people')") shellApi.setSearchMode("people")
+                            else if (modelData.action === "findSimilarWhole()") shellApi.findSimilarWhole()
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            id: librarySnapshot
+            objectName: "librarySnapshot"
+            anchors.left: quickActionRail.left
+            anchors.top: quickActionRail.bottom
+            anchors.topMargin: 8
+            width: 390
+            height: 56
+            radius: 10
+            color: "#121B22"
+            border.color: "#243140"
+            border.width: 1
+            visible: primaryModeSafe && !emptySafe && !peopleVisible && !focusActive
+            z: 2
+
+            Row {
+                anchors.fill: parent
+                anchors.margins: 12
+                spacing: 18
+
+                Column {
+                    width: 96
+                    spacing: 2
+                    Text { text: "Library"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
+                    Text { text: shellReady ? shellApi.count + " items" : "0 items"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                }
+
+                Column {
+                    width: 96
+                    spacing: 2
+                    Text { text: "Review"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
+                    Text { text: shellReady ? shellApi.reviewCountText : "0 groups"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 12; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
+                }
+
+                Column {
+                    width: 124
+                    spacing: 2
+                    Text { text: "Ready"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 11 }
+                    Text { text: "Browse and search"; color: "#5EEAD4"; font.family: "Segoe UI"; font.pixelSize: 12 }
                 }
             }
         }
@@ -501,7 +624,7 @@ ApplicationWindow {
         Text {
             objectName: "surfaceState"
             anchors.left: facetBar.left
-            anchors.top: facetBar.bottom
+            anchors.top: librarySnapshot.visible ? librarySnapshot.bottom : quickActionRail.bottom
             anchors.topMargin: 4
             visible: shellReady && (shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
             text: shellReady ? (shellApi.noticeText || shellApi.surfaceState) : ""
@@ -577,31 +700,17 @@ ApplicationWindow {
                     font.family: "Segoe UI"
                 }
                 Repeater {
-                    model: {
-                        var rows = [
-                            { label: "Density", call: "cycleDensity" },
-                            { label: "Library health", call: "libraryHealth" },
-                            { label: "Activity", call: "showActivity" },
-                            { label: "Search people", call: "modePeople" },
-                            { label: "Search text", call: "modeText" },
-                            { label: "Reset defaults", call: "resetDefaults" }
-                        ]
-                        if (advancedModeSafe) {
-                            rows.push({ label: "Duplicates", call: "scanDuplicates" })
-                            rows.push({ label: "Capabilities", call: "showCapabilities" })
-                            rows.push({ label: "GPU auto", call: "gpuAuto" })
-                            rows.push({ label: "GPU off", call: "gpuOff" })
-                        }
-                        return rows
-                    }
+                    objectName: "primarySettingsRepeater"
+                    model: 7
                     delegate: Rectangle {
+                        Component.onCompleted: objectName = "setting_" + primarySettingCalls[index]
                         width: parent.width
                         height: 28
                         radius: 6
                         color: settingHit.containsMouse ? "#24272c" : "#1b1d21"
                         Text {
                             anchors.centerIn: parent
-                            text: modelData.label
+                            text: primarySettingLabels[index]
                             color: tokenText
                             font.pixelSize: 12
                             font.family: "Segoe UI"
@@ -611,22 +720,123 @@ ApplicationWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (!shellReady)
-                                    return
-                                var call = modelData.call
-                                if (call === "cycleDensity") shellApi.cycleDensity()
-                                else if (call === "libraryHealth") shellApi.libraryHealth()
-                                else if (call === "scanDuplicates") shellApi.scanDuplicates()
-                                else if (call === "showActivity") shellApi.showActivity()
-                                else if (call === "showCapabilities") shellApi.showCapabilities()
-                                else if (call === "gpuAuto") shellApi.setGpuPreference("auto")
-                                else if (call === "gpuOff") shellApi.setGpuPreference("off")
-                                else if (call === "modePeople") shellApi.setSearchMode("people")
-                                else if (call === "modeText") shellApi.setSearchMode("text")
-                                else if (call === "resetDefaults") shellApi.resetDefaults()
-                            }
+                            onClicked: window.handleSetting(primarySettingCalls[index])
                         }
+                    }
+                }
+                Repeater {
+                    model: advancedModeSafe ? 7 : 0
+                    delegate: Rectangle {
+                        property string settingCall: advancedSettingCalls[index]
+                        Component.onCompleted: objectName = "setting_" + settingCall
+                        width: parent.width
+                        height: 28
+                        radius: 6
+                        color: settingHitAdvanced.containsMouse ? "#24272c" : "#1b1d21"
+                        Text {
+                            anchors.centerIn: parent
+                            text: advancedSettingLabels[index]
+                            color: tokenText
+                            font.pixelSize: 12
+                            font.family: "Segoe UI"
+                        }
+                        MouseArea {
+                            id: settingHitAdvanced
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: window.handleSetting(settingCall)
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            objectName: "namedItemsSheet"
+            anchors.left: parent.left
+            anchors.top: facetBar.bottom
+            anchors.leftMargin: 16
+            anchors.topMargin: 12
+            width: 300
+            height: Math.min(420, namedItemsColumn.implicitHeight + 28)
+            radius: 10
+            visible: shellReady && shellApi.namedItemsOpen && !focusActive
+            color: tokenBg1
+            border.color: "#2a2d33"
+            border.width: 1
+            z: 4
+
+            Column {
+                id: namedItemsColumn
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 14
+                spacing: 8
+
+                Text {
+                    text: "Named items"
+                    color: tokenText
+                    font.pixelSize: 16
+                    font.family: "Segoe UI"
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "A saved region. This does not name a person."
+                    color: tokenMuted
+                    font.pixelSize: 12
+                    font.family: "Segoe UI"
+                }
+                Repeater {
+                    model: shellReady ? shellApi.namedItemCount : 0
+                    delegate: Text {
+                        property string itemId: shellReady ? shellApi.namedItemId(index) : ""
+                        Component.onCompleted: objectName = "namedItemRow"
+                        text: shellReady ? shellApi.namedItemLabel(index) : ""
+                        color: tokenText
+                        font.pixelSize: 13
+                        font.family: "Segoe UI"
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: if (shellReady) shellApi.selectNamedItem(itemId)
+                        }
+                    }
+                }
+                TextField {
+                    id: namedItemField
+                    objectName: "namedItemField"
+                    width: parent.width
+                    placeholderText: "Name this item"
+                    color: tokenText
+                    font.pixelSize: 13
+                }
+                Rectangle {
+                    objectName: "nameNamedItem"
+                    width: parent.width
+                    height: 28
+                    radius: 6
+                    color: "#1b1d21"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Save item name"
+                        color: tokenText
+                        font.pixelSize: 12
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: if (shellReady) shellApi.nameNamedItem(namedItemField.text)
+                    }
+                }
+                Text {
+                    text: "Close"
+                    color: tokenMuted
+                    font.pixelSize: 12
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        onClicked: if (shellReady) shellApi.closeNamedItems()
                     }
                 }
             }
@@ -1167,28 +1377,105 @@ ApplicationWindow {
             visible: emptySafe
             anchors.centerIn: parent
             spacing: 14
-            width: 420
+            width: 820
 
             Text {
                 width: parent.width
-                text: "Your archive is empty"
+                text: "Explore your local photo memory"
                 color: "#E7EEF5"
                 font.family: "Segoe UI Variable"
-                font.pixelSize: 28
+                font.pixelSize: 30
                 font.weight: Font.DemiBold
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
                 width: parent.width
                 text: jobRunning
-                      ? "Adding the folder. The archive will appear here."
-                      : "Add a folder of photos. The files stay where they are."
+                      ? "Adding your folder. The library will unlock here as media is indexed."
+                      : "Semblon keeps your originals where they are, then helps you browse, review, search, and understand what is in your archive."
                 color: "#8AA0B2"
                 font.family: "Segoe UI"
                 font.pixelSize: 15
                 wrapMode: Text.WordWrap
                 horizontalAlignment: Text.AlignHCenter
             }
+
+            Grid {
+                columns: 4
+                columnSpacing: 12
+                rowSpacing: 12
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width
+
+                Rectangle {
+                    objectName: "archiveCard"
+                    width: 180
+                    height: 110
+                    radius: 10
+                    color: "#141C25"
+                    border.color: "#243140"
+                    border.width: 1
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 8
+                        Text { text: "Archive"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                        Text { text: "Browse your local library"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                    }
+                }
+
+                Rectangle {
+                    objectName: "peopleCard"
+                    width: 180
+                    height: 110
+                    radius: 10
+                    color: "#141C25"
+                    border.color: "#243140"
+                    border.width: 1
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 8
+                        Text { text: "People"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                        Text { text: "Review groups with human decisions"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                    }
+                }
+
+                Rectangle {
+                    objectName: "searchCard"
+                    width: 180
+                    height: 110
+                    radius: 10
+                    color: "#141C25"
+                    border.color: "#243140"
+                    border.width: 1
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 8
+                        Text { text: "Search"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                        Text { text: "Find faces, people, and media"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                    }
+                }
+
+                Rectangle {
+                    objectName: "lensCard"
+                    width: 180
+                    height: 110
+                    radius: 10
+                    color: "#141C25"
+                    border.color: "#243140"
+                    border.width: 1
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 8
+                        Text { text: "Ask photo"; color: "#E7EEF5"; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                        Text { text: "Read, describe, and inspect visual context"; color: "#8AA0B2"; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                    }
+                }
+            }
+
             Item { width: 1; height: 8 }
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter

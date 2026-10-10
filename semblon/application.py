@@ -126,6 +126,7 @@ class Application:
         observers: str | None = None,
         prefer_gpu: bool | None = None,
         open_review: bool = False,
+        reprocess: bool = False,
     ) -> JobHandle:
         return self.engine.submit_ingest(
             folder,
@@ -135,6 +136,7 @@ class Application:
             observers=observers,
             prefer_gpu=prefer_gpu,
             open_review=open_review,
+            reprocess=reprocess,
         )
 
     def analyse_visual(

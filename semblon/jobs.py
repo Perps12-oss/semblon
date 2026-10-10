@@ -176,12 +176,13 @@ class JobEngine:
         observers: str | None = None,
         prefer_gpu: bool | None = None,
         open_review: bool = False,
+        reprocess: bool = False,
     ) -> JobHandle:
         """Start process_folder on a worker thread. Raises JobBusy if running."""
         handle = self._claim(folder, resume=resume)
         thread = threading.Thread(
             target=self._run_submitted,
-            args=(handle, on_event, on_done, observers, prefer_gpu, open_review),
+            args=(handle, on_event, on_done, observers, prefer_gpu, open_review, bool(reprocess)),
             daemon=True,
             name="semblon-job-ingest",
         )
@@ -438,12 +439,13 @@ class JobEngine:
         observers: str | None = None,
         prefer_gpu: bool | None = None,
         open_review: bool = False,
+        reprocess: bool = False,
     ) -> dict:
         """Run process_folder on this thread. Raises JobBusy if running."""
         handle = self._claim(folder, resume=resume)
         try:
             return self._invoke_process(
-                handle, on_event, observers, prefer_gpu, open_review
+                handle, on_event, observers, prefer_gpu, open_review, bool(reprocess)
             )
         finally:
             self._release(handle)
@@ -490,6 +492,7 @@ class JobEngine:
         observers: str | None,
         prefer_gpu: bool | None,
         open_review: bool,
+        reprocess: bool = False,
     ) -> dict:
         from semblon.process import process_folder
 
@@ -500,6 +503,7 @@ class JobEngine:
             "on_event": on_event,
             "cancel": self._gate,
             "resume": handle.resume,
+            "reprocess": bool(reprocess),
         }
         if observers is not None:
             kwargs["observers"] = observers
@@ -515,13 +519,14 @@ class JobEngine:
         observers: str | None,
         prefer_gpu: bool | None,
         open_review: bool,
+        reprocess: bool = False,
     ) -> None:
         from semblon.process import ProcessCancelled
 
         result = JobResult(status="failed")
         try:
             rec = self._invoke_process(
-                handle, on_event, observers, prefer_gpu, open_review
+                handle, on_event, observers, prefer_gpu, open_review, reprocess
             )
             result = JobResult(status="completed", rec=rec, run_id=rec.get("run_id"))
         except ProcessCancelled as e:
