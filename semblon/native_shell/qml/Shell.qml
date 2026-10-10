@@ -1774,6 +1774,7 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    objectName: "diagnosticsPanel"
                     width: parent.width
                     visible: advancedModeSafe
                     color: "#10161C"

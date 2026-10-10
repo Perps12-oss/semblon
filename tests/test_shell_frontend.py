@@ -56,3 +56,41 @@ def test_advanced_keeps_detail_and_switching_back_scrubs_it(shell):
     assert "sqlite" not in bridge.noticeText
     assert "sqlite" not in bridge.similarNote
     assert bridge.diagnosticsText == ""
+
+
+@pytest.fixture
+def qml_shell(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell, shutdown_shell
+
+    app = QApplication.instance() or QApplication([])
+    _qapp, engine = build_shell(tmp_path / "s.sqlite", app=app)
+    app.processEvents()
+    yield app, engine, engine.rootObjects()[0], engine._semblon_bridge
+    shutdown_shell(engine)
+
+
+def test_advanced_diagnostics_are_opt_in_and_marked_active(qml_shell):
+    from PySide6.QtCore import QObject
+
+    app, _engine, root, bridge = qml_shell
+    panel = root.findChild(QObject, "diagnosticsPanel")
+    assert panel is not None
+    assert panel.property("visible") is False
+    assert bridge.diagnosticsText == ""
+    bridge.submitCommand("status")
+    assert "mode=" not in bridge.resultText
+
+    bridge.setMode("advanced")
+    app.processEvents()
+    assert "mode=advanced" in bridge.diagnosticsText
+    assert root.findChild(QObject, "advancedModeButton").property("visible") is True
+    bridge.submitCommand("status")
+    assert "mode=advanced" in bridge.resultText
+
+    bridge.setMode("primary")
+    app.processEvents()
+    assert panel.property("visible") is False
+    assert "mode=" not in bridge.resultText
