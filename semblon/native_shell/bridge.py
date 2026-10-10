@@ -1451,6 +1451,11 @@ class ShellBridge(QObject):
         self._events.record(LIBRARY_CHANGED, {"count": int(self._jobs.archive_count())})
         empty = self._jobs.archive_count() == 0
         self._reload_editorial()
+        focus_id = self._session.focus_id
+        if focus_id and self._jobs.media(focus_id) is None:
+            self._session.clear_focus()
+            self._clear_query()
+            self.focusChanged.emit()
         self.libraryChanged.emit()
         if empty != self._empty:
             self._empty = empty

@@ -237,3 +237,31 @@ def test_empty_state_guides_first_run_and_recovery(qml_shell, tmp_path, monkeypa
     assert bridge.canResume
     assert root.findChild(QObject, "emptyResume").property("visible") is True
     assert root.findChild(QObject, "emptyStatus").property("visible") is True
+
+
+def test_focus_navigation_and_stale_detail_after_library_change(shell, tmp_path):
+    from semblon.store import connect
+
+    store = tmp_path / "focus.sqlite"
+    _seed(store, tmp_path)
+    bridge = shell(store)
+    bridge.openIndex(0)
+    first = bridge.focusId
+    assert first
+    assert bridge.focusName
+    bridge.focusNext()
+    second = bridge.focusId
+    assert second and second != first
+    bridge.focusPrev()
+    assert bridge.focusId == first
+    assert bridge.path_for("missing") is None
+    assert bridge.path_for(first)
+
+    conn = connect(store)
+    conn.execute("DELETE FROM media WHERE media_id = ?", (first,))
+    conn.commit()
+    conn.close()
+    bridge._refresh_library()
+    assert bridge.count == 3
+    assert bridge.focusId != first
+    assert bridge.focusName != "" or bridge.focusId == ""
