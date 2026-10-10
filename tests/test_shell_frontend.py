@@ -131,3 +131,70 @@ def test_reset_defaults_returns_to_dark_primary_without_losing_library(shell, tm
     bridge.resetDefaults()
     assert bridge.atmosphereId == "mica_dark"
     assert bridge.primaryMode
+
+
+def _seed(store, tmp_path, n=4):
+    from semblon.store import connect, init_db
+
+    conn = connect(store)
+    init_db(conn)
+    rows = []
+    for i in range(n):
+        day = 1_503_000_000_000_000_000 + i * 86_400_000_000_000
+        sub = "2017" if i % 2 == 0 else "2018"
+        rows.append((f"m{i}", "folder", str(tmp_path / sub / f"{i}.jpg"), f"h{i}", 10, 10, day, 1))
+    conn.executemany("INSERT INTO media VALUES (?,?,?,?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+
+
+def test_search_is_safe_in_both_modes(shell, tmp_path):
+    bridge = shell()
+    for mode in ("primary", "advanced"):
+        bridge.setMode(mode)
+        bridge.submitCommand("   ")
+        assert bridge.resultText == "Nothing was searched."
+        bridge.submitCommand("nobody-by-this-name")
+        assert bridge.resultText
+        assert "traceback" not in bridge.resultText.lower()
+    bridge.setMode("primary")
+    bridge.setSearchMode("text")
+    assert bridge.searchModeLabel
+    bridge.submitCommand("beach")
+    assert "sqlite" not in bridge.resultText.lower()
+    assert "traceback" not in bridge.resultText.lower()
+
+
+def test_library_filters_facets_and_settings_keep_state_stable(shell, tmp_path):
+    store = tmp_path / "lib.sqlite"
+    _seed(store, tmp_path)
+    bridge = shell(store)
+    total = bridge.count
+    assert total == 4
+    bridge.setFacet("folders")
+    assert bridge.facet == "folders"
+    assert bridge.buckets
+    bridge.selectBucket(bridge.buckets[0]["key"])
+    assert 0 < bridge.count < total or bridge.count == total
+    bridge.setFacet("memory")
+    assert bridge.count == total
+    bridge.setLibraryFilter("all")
+    assert bridge.count == total
+    bridge.setLibraryFilter("bogus-filter")
+    assert bridge.count == total
+    for _ in range(3):
+        bridge.toggleSettings()
+        bridge.cycleDensity()
+    assert bridge.count == total
+    assert bridge.surfaceState in {"ready", "empty"}
+    assert bridge.photoCount == 4
+
+
+def test_moments_facet_is_advanced_only(shell):
+    bridge = shell()
+    bridge.setFacet("moments")
+    assert bridge.facet == "memory"
+    assert "Advanced" in bridge.noticeText
+    bridge.setMode("advanced")
+    bridge.setFacet("moments")
+    assert bridge.facet == "moments"

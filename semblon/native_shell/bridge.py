@@ -1084,6 +1084,8 @@ class ShellBridge(QObject):
         except AdapterError as exc:
             state = exc.state if exc.state in {"error", "unavailable"} else "error"
             return Result(state, exc.message)
+        except Exception as exc:  # noqa: BLE001 - a slot must never raise into Qt
+            return Result("error", str(exc) or "Semblon couldn't complete that step.")
 
     def _apply_result(self, result: Result) -> None:
         self._notice = present_message(self._mode, result.message, fallback="Semblon couldn't complete that step.")
