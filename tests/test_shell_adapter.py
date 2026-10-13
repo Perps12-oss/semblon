@@ -40,10 +40,10 @@ def test_shell_package_stays_off_identity_engines():
         assert "FaceAnalysis" not in text
 
 
-def test_tokens_match_the_blueprint_dark_contract():
-    assert DARK["bg0"] == "#0b0c0e"
-    assert DARK["accent"] == "#4f8cff"
-    assert DARK["review"] == "#a15cf5"
+def test_tokens_match_the_quiet_studio_contract():
+    assert DARK["bg0"] == "#0f1015"
+    assert DARK["accent"] == "#9eb3d4"
+    assert DARK["review"] == "#8e7aab"
     assert cell_size("comfortable") == 220
     assert cell_size("cozy") == 160
     assert cell_size("compact") == 110
@@ -126,6 +126,7 @@ def test_archive_model_filter_does_not_widen_the_window(tmp_path):
     from PySide6.QtCore import Qt
 
     assert model.data(model.index(0, 0), Qt.ItemDataRole.UserRole + 1) == "m2"
+    assert model.day_at(0) == "1970-01-01"
     assert calls == []
 
 
@@ -142,6 +143,8 @@ def test_qml_exposes_four_operations_and_hides_places():
     assert "Install model" in qml
     assert 'objectName: "namedItemsSheet"' in qml
     assert 'objectName: "similarAction"' in qml
+    assert 'objectName: "dayHeader"' in qml
+    assert 'objectName: "peopleDesk"' in qml
     assert 'objectName: "archiveCard"' in qml
     assert 'objectName: "peopleCard"' in qml
     assert 'objectName: "searchCard"' in qml

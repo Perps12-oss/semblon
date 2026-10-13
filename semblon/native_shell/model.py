@@ -85,6 +85,12 @@ class ArchiveModel(QAbstractListModel):
             return item.day
         return None
 
+    def day_at(self, row: int) -> str:
+        item = self._at(row)
+        if item is None:
+            return ""
+        return item.day
+
     def _at(self, row: int) -> MediaRef | None:
         if row < 0 or row >= self._count:
             return None

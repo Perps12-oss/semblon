@@ -119,6 +119,7 @@ class ShellBridge(QObject):
         self._last_job_failed = False
         self._terminal_status = ""
         self._review_text = ""
+        self._unresolved_text = ""
         self._photo_count = 0
         self._video_count = 0
         self._years: list[dict] = []
@@ -1137,6 +1138,10 @@ class ShellBridge(QObject):
         if len(self._split_faces) >= len(members):
             return self._after_decision("Leave at least one face in the group.")
         return self.decide("split", self._selected_subject, ",".join(self._split_faces))
+
+    @Slot(int, result=str)
+    def dayAt(self, row: int) -> str:
+        return self._model.day_at(int(row))
 
     @Slot(str, result=str)
     def faceThumb(self, face_id: str) -> str:

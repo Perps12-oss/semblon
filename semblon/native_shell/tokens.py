@@ -1,49 +1,50 @@
-"""Blueprint v3 chrome tokens for the PySide6 shell.
+"""Quiet Studio chrome tokens for the PySide6 shell.
 
-Dark values are the blueprint contract. Light values are derived from them
-for the existing ``light`` atmosphere id. Named atmospheres stay persisted
-in appearance.json; this module does not invent a second theme stack.
+Cool near-monochrome values mapped onto the existing token keys. The accent
+is a moonlight edge, not a fill. Light values are the cool paper pair for
+the existing ``light`` atmosphere id. Named atmospheres stay persisted in
+appearance.json; this module does not invent a second theme stack.
 """
 
 from __future__ import annotations
 
 DARK = {
-    "bg0": "#0b0c0e",
-    "bg1": "#131417",
-    "bg2": "#1b1d21",
-    "bg3": "#24272c",
-    "border1": "#2a2d33",
-    "border2": "#3a3e45",
-    "text1": "#f2f3f5",
-    "text2": "#a8adb7",
-    "text3": "#6b7280",
-    "accent": "#4f8cff",
-    "accentDim": "#2b4d8f",
-    "danger": "#e5484d",
-    "warn": "#f5a524",
-    "ok": "#30a46c",
-    "review": "#a15cf5",
-    "advanced": "#5b6bff",
+    "bg0": "#0f1015",
+    "bg1": "#161821",
+    "bg2": "#1d1f29",
+    "bg3": "#262932",
+    "border1": "#2a2e38",
+    "border2": "#3a3f4c",
+    "text1": "#e7eaf0",
+    "text2": "#aeb3bf",
+    "text3": "#80858f",
+    "accent": "#9eb3d4",
+    "accentDim": "#2c3a4e",
+    "danger": "#c47373",
+    "warn": "#c4a36a",
+    "ok": "#7ea291",
+    "review": "#8e7aab",
+    "advanced": "#8ea0c4",
 }
 
-# Derived light. Not a second product palette name.
+# Cool paper. Not a second product palette name.
 LIGHT = {
-    "bg0": "#f4f5f7",
-    "bg1": "#ffffff",
-    "bg2": "#eef0f3",
-    "bg3": "#e4e7ec",
-    "border1": "#d5d9e0",
-    "border2": "#c5cad3",
-    "text1": "#121417",
-    "text2": "#4b5160",
-    "text3": "#6b7280",
-    "accent": "#2f6fe0",
-    "accentDim": "#d6e4ff",
-    "danger": "#c5363b",
-    "warn": "#b7791f",
-    "ok": "#1f7a4d",
-    "review": "#7a3ec4",
-    "advanced": "#3d4ed6",
+    "bg0": "#f4f5f3",
+    "bg1": "#fafaf8",
+    "bg2": "#ebeceb",
+    "bg3": "#dee0dd",
+    "border1": "#d2d4d2",
+    "border2": "#c5c8c5",
+    "text1": "#15171c",
+    "text2": "#3a3d44",
+    "text3": "#797d85",
+    "accent": "#466996",
+    "accentDim": "#d7e3f0",
+    "danger": "#a85a5a",
+    "warn": "#8a6a32",
+    "ok": "#4f6f5e",
+    "review": "#6d5a86",
+    "advanced": "#3d5a7a",
 }
 
 # Blueprint sizes. Cozy is the shell default when the prefs key is absent.

@@ -30,6 +30,7 @@ ApplicationWindow {
     readonly property string shellOpenFocusToken: "shell.openFocus(mediaId)"
     readonly property string shellThumbForToken: "shell.thumbFor(mediaId)"
     readonly property string shellClearDrawnQueryToken: "shell.clearDrawnQuery()"
+    property string stickyDay: ""
     readonly property string focusIdSafe: shellReady ? shellApi.focusId : ""
     readonly property bool focusActive: focusIdSafe !== ""
     readonly property bool jobRunning: shellReady && shellApi.jobActive
@@ -55,18 +56,18 @@ ApplicationWindow {
     readonly property bool canMergeSelectedSafe: shellReady && shellApi.canMergeSelected
     readonly property bool canSplitSelectedSafe: shellReady && shellApi.canSplitSelected
     readonly property int motion: shellReady && shellApi.reducedMotion ? 0 : 180
-    readonly property color tokenBg: shellReady ? shellApi.bg0 : "#0b0c0e"
-    readonly property color tokenBg1: shellReady ? shellApi.bg1 : "#131417"
-    readonly property color tokenAccent: shellReady ? shellApi.accent : "#4f8cff"
-    readonly property color tokenText: shellReady ? shellApi.text1 : "#f2f3f5"
-    readonly property color tokenMuted: shellReady ? shellApi.text2 : "#a8adb7"
-    readonly property color tokenReview: shellReady ? shellApi.reviewColor : "#a15cf5"
-    readonly property color tokenBg2: shellReady ? shellApi.bg2 : "#1b1d21"
-    readonly property color tokenBg3: shellReady ? shellApi.bg3 : "#24272c"
-    readonly property color tokenBorder: shellReady ? shellApi.border1 : "#2a2d33"
-    readonly property color tokenFaint: shellReady ? shellApi.text3 : "#6b7280"
-    readonly property color tokenAccentDim: shellReady ? shellApi.accentDim : "#2b4d8f"
-    readonly property color tokenDanger: shellReady ? shellApi.dangerColor : "#e5484d"
+    readonly property color tokenBg: shellReady ? shellApi.bg0 : "#0f1015"
+    readonly property color tokenBg1: shellReady ? shellApi.bg1 : "#161821"
+    readonly property color tokenAccent: shellReady ? shellApi.accent : "#9eb3d4"
+    readonly property color tokenText: shellReady ? shellApi.text1 : "#e7eaf0"
+    readonly property color tokenMuted: shellReady ? shellApi.text2 : "#aeb3bf"
+    readonly property color tokenReview: shellReady ? shellApi.reviewColor : "#8e7aab"
+    readonly property color tokenBg2: shellReady ? shellApi.bg2 : "#1d1f29"
+    readonly property color tokenBg3: shellReady ? shellApi.bg3 : "#262932"
+    readonly property color tokenBorder: shellReady ? shellApi.border1 : "#2a2e38"
+    readonly property color tokenFaint: shellReady ? shellApi.text3 : "#80858f"
+    readonly property color tokenAccentDim: shellReady ? shellApi.accentDim : "#2c3a4e"
+    readonly property color tokenDanger: shellReady ? shellApi.dangerColor : "#c47373"
     readonly property var primarySettingCalls: ["cycleDensity", "libraryHealth", "showActivity", "modePeople", "modeText", "rescan", "resetDefaults"]
     readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Rescan", "Reset defaults"]
     readonly property var advancedSettingCalls: ["scanDuplicates", "showCapabilities", "gpuAuto", "gpuOff", "namedItems", "knowledgePack", "installModel"]
@@ -98,6 +99,43 @@ ApplicationWindow {
         item.navLabel = navLabel
         item.navIcon = navIcon
         item.navCall = navCall
+    }
+
+    function formatDay(iso) {
+        if (!iso)
+            return "Undated"
+        var parts = String(iso).split("-")
+        if (parts.length !== 3)
+            return String(iso)
+        var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        var month = parseInt(parts[1], 10)
+        var day = parseInt(parts[2], 10)
+        if (!(month >= 1 && month <= 12) || !(day >= 1 && day <= 31))
+            return String(iso)
+        return day + " " + months[month - 1] + " " + parts[0]
+    }
+
+    function refreshStickyDay() {
+        if (!shellReady || emptySafe)
+            return
+        var cols = Math.max(1, Math.floor(grid.width / Math.max(1, grid.cellWidth)))
+        var row = Math.max(0, Math.floor(grid.contentY / Math.max(1, grid.cellHeight)))
+        stickyDay = shellApi.dayAt(row * cols)
+    }
+
+    function facetIsActive(label) {
+        if (!shellReady)
+            return label === "Memory"
+        var facet = shellApi.facet
+        if (label === "Memory")
+            return facet === "memory"
+        if (label === "Days")
+            return facet === "timeline"
+        if (label === "Folders")
+            return facet === "folders"
+        if (label === "Moments")
+            return facet === "moments"
+        return false
     }
 
     Shortcut {
@@ -258,9 +296,21 @@ ApplicationWindow {
                     property string navLabel: ""
                     property string navIcon: ""
                     property string navCall: ""
+                    readonly property bool navActive: {
+                        if (!window.shellReady)
+                            return false
+                        if (navId === "people")
+                            return window.peopleVisible
+                        if (navId === "settings")
+                            return window.shellApi.settingsOpen
+                        if (navId === "library")
+                            return !window.peopleVisible && !window.shellApi.settingsOpen && !window.focusActive
+                        return false
+                    }
                     anchors.fill: parent
-                    radius: 8
-                    color: navArea.containsMouse ? tokenBg3 : "transparent"
+                    radius: 4
+                    color: navActive ? tokenBg2 : (navArea.containsMouse ? tokenBg3 : "transparent")
+                    onNavActiveChanged: navIconCanvas.requestPaint()
                     objectName: navId === "people" ? "peopleButton" :
                                 navId === "settings" ? "settingsButton" : ""
                     onNavIconChanged: navIconCanvas.requestPaint()
@@ -278,7 +328,7 @@ ApplicationWindow {
                             onPaint: {
                                 var ctx = getContext("2d")
                                 ctx.reset()
-                                ctx.strokeStyle = navArea.containsMouse ? tokenText : tokenMuted
+                                ctx.strokeStyle = navActive ? tokenAccent : (navArea.containsMouse ? tokenText : tokenMuted)
                                 ctx.lineWidth = 1.4
                                 ctx.lineCap = "round"
                                 ctx.lineJoin = "round"
@@ -324,7 +374,7 @@ ApplicationWindow {
                         Text {
                             visible: !sidebarCollapsed
                             text: navLabel
-                            color: navArea.containsMouse ? tokenText : tokenMuted
+                            color: navActive ? tokenAccent : (navArea.containsMouse ? tokenText : tokenMuted)
                             font.family: "Segoe UI"
                             font.pixelSize: 13
                             anchors.verticalCenter: parent.verticalCenter
@@ -517,15 +567,15 @@ ApplicationWindow {
                 objectName: "primaryModeButton"
                 width: parent.width
                 height: 28
-                radius: 6
+                radius: 4
                 visible: !sidebarCollapsed
-                color: primaryModeSafe ? tokenAccentDim : "transparent"
+                color: "transparent"
                 border.color: primaryModeSafe ? tokenAccent : tokenBorder
                 border.width: 1
                 Text {
                     anchors.centerIn: parent
                     text: "Primary"
-                    color: primaryModeSafe ? tokenText : tokenMuted
+                    color: primaryModeSafe ? tokenAccent : tokenMuted
                     font.pixelSize: 12
                 }
                 MouseArea {
@@ -538,15 +588,15 @@ ApplicationWindow {
                 objectName: "advancedModeButton"
                 width: parent.width
                 height: 28
-                radius: 6
+                radius: 4
                 visible: !sidebarCollapsed
-                color: advancedModeSafe ? tokenAccentDim : "transparent"
+                color: "transparent"
                 border.color: advancedModeSafe ? tokenAccent : tokenBorder
                 border.width: 1
                 Text {
                     anchors.centerIn: parent
                     text: "Advanced"
-                    color: advancedModeSafe ? tokenText : tokenMuted
+                    color: advancedModeSafe ? tokenAccent : tokenMuted
                     font.pixelSize: 12
                 }
                 MouseArea {
@@ -602,7 +652,7 @@ ApplicationWindow {
                     property string facetName: facetNames[index]
                     Component.onCompleted: objectName = "facet_" + facetName
                     text: facetName
-                    color: facetArea.containsMouse ? tokenText : tokenMuted
+                    color: window.facetIsActive(facetName) ? tokenAccent : (facetArea.containsMouse ? tokenText : tokenMuted)
                     font.family: "Segoe UI"
                     font.pixelSize: 13
                     MouseArea {
@@ -950,9 +1000,9 @@ ApplicationWindow {
                     Text {
                         text: "People"
                         color: tokenText
-                        font.pixelSize: 22
+                        font.pixelSize: 28
                         font.family: "Segoe UI Variable"
-                        font.weight: Font.DemiBold
+                        font.weight: Font.Medium
                     }
 
                     Text {
@@ -1012,34 +1062,58 @@ ApplicationWindow {
                                     height: parent.height - 42
                                     model: peopleModel
                                     clip: true
-                                    spacing: 8
+                                    spacing: 6
                                     delegate: Rectangle {
                                         width: ListView.view.width
-                                        height: 54
-                                        radius: 8
-                                        color: named
-                                                ? ((shellReady && shell.selectedSubject === subject) ? tokenAccentDim : tokenBg2)
-                                                : tokenBg3
-                                        border.color: named
-                                                ? ((shellReady && shell.selectedSubject === subject) ? tokenAccent : tokenBorder)
-                                                : tokenReview
+                                        height: 64
+                                        radius: 4
+                                        color: tokenBg2
+                                        border.color: (shellReady && shell.selectedSubject === subject)
+                                                ? (named ? tokenAccent : tokenReview)
+                                                : (named ? tokenBorder : tokenReview)
                                         border.width: 1
 
-                                        Column {
+                                        Row {
                                             anchors.fill: parent
-                                            anchors.margins: 10
-                                            spacing: 2
+                                            anchors.leftMargin: 8
+                                            anchors.rightMargin: 10
+                                            spacing: 10
 
-                                            Text {
-                                                text: title
-                                                color: tokenText
-                                                font.pixelSize: 14
-                                                elide: Text.ElideRight
+                                            Rectangle {
+                                                width: 40
+                                                height: 40
+                                                radius: 20
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                color: tokenBg
+                                                clip: true
+
+                                                Image {
+                                                    anchors.fill: parent
+                                                    visible: faceId !== ""
+                                                    source: faceId !== "" ? ("image://face/" + faceId) : ""
+                                                    fillMode: Image.PreserveAspectCrop
+                                                    asynchronous: true
+                                                    cache: true
+                                                }
                                             }
-                                            Text {
-                                                text: faceCount + (faceCount === 1 ? " face" : " faces")
-                                                color: tokenMuted
-                                                font.pixelSize: 12
+
+                                            Column {
+                                                width: parent.width - 50
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 2
+
+                                                Text {
+                                                    width: parent.width
+                                                    text: title
+                                                    color: tokenText
+                                                    font.pixelSize: 14
+                                                    elide: Text.ElideRight
+                                                }
+                                                Text {
+                                                    text: faceCount + (faceCount === 1 ? " face" : " faces")
+                                                    color: tokenMuted
+                                                    font.pixelSize: 12
+                                                }
                                             }
                                         }
 
@@ -1519,13 +1593,29 @@ ApplicationWindow {
             }
         }
 
+        Text {
+            id: dayHeader
+            objectName: "dayHeader"
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.leftMargin: 22
+            anchors.topMargin: quickActionRail.visible ? 70 : 28
+            visible: !emptySafe && !focusActive && !peopleVisible && stickyDay !== ""
+            text: formatDay(stickyDay)
+            color: tokenFaint
+            font.family: "Segoe UI"
+            font.pixelSize: 13
+            font.letterSpacing: 0.8
+            z: 3
+        }
+
         GridView {
             id: grid
             objectName: "fieldGrid"
             anchors.fill: parent
-            anchors.margins: 22
-            anchors.rightMargin: archiveSidebar.visible ? 214 : 22
-            anchors.topMargin: 52
+            anchors.margins: 18
+            anchors.rightMargin: archiveSidebar.visible ? 214 : 18
+            anchors.topMargin: quickActionRail.visible ? 96 : 52
             visible: !emptySafe
             opacity: !focusActive ? 1 : 0
             cellWidth: shellReady ? shellApi.cellSize : 160
@@ -1545,7 +1635,7 @@ ApplicationWindow {
 
                 Rectangle {
                     anchors.fill: parent
-                    anchors.margins: 6
+                    anchors.margins: 2
                     color: tokenBg2
                     radius: 2
 
@@ -1590,13 +1680,20 @@ ApplicationWindow {
             onContentYChanged: {
                 if (!focusActive && shellReady)
                     shellApi.setScroll(contentY)
+                window.refreshStickyDay()
             }
+            onWidthChanged: window.refreshStickyDay()
+            Component.onCompleted: window.refreshStickyDay()
 
             Connections {
                 target: shellApi
                 function onFocusChanged() {
                     if (!focusActive && shellReady)
                         grid.contentY = shellApi.scrollY
+                    window.refreshStickyDay()
+                }
+                function onLibraryChanged() {
+                    window.refreshStickyDay()
                 }
             }
         }
@@ -1722,16 +1819,15 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: addLabel.implicitWidth + 36
                 height: 40
-                radius: 8
-                color: addArea.containsMouse ? tokenAccentDim : tokenBg2
-                border.color: tokenAccent
-                border.width: 1
+                radius: 4
+                color: tokenText
+                border.width: 0
                 visible: !jobRunning
                 Text {
                     id: addLabel
                     anchors.centerIn: parent
                     text: "Add a folder"
-                    color: tokenText
+                    color: tokenBg
                     font.family: "Segoe UI"
                     font.pixelSize: 14
                 }
@@ -1788,7 +1884,10 @@ ApplicationWindow {
             Image {
                 id: photo
                 anchors.fill: parent
-                anchors.margins: 48
+                anchors.leftMargin: 28
+                anchors.rightMargin: 28
+                anchors.topMargin: 56
+                anchors.bottomMargin: similarStrip.visible ? 120 : 64
                 visible: focusKindSafe !== "video"
                 source: (focusActive && focusKindSafe !== "video")
                         ? ("image://archive/f/" + focusIdSafe) : ""
@@ -1932,7 +2031,7 @@ ApplicationWindow {
                 anchors.left: parent.left
                 anchors.top: parent.top
                 anchors.margins: 22
-                text: "Back"
+                text: "Close"
                 color: backArea.containsMouse ? tokenText : tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 14
@@ -1969,9 +2068,9 @@ ApplicationWindow {
                 Rectangle {
                     width: parent.width
                     height: 32
-                    radius: 6
-                    color: similarHit.containsMouse ? tokenBg2 : tokenBg3
-                    border.color: tokenAccent
+                    radius: 4
+                    color: similarHit.containsMouse ? tokenBg3 : tokenBg2
+                    border.color: tokenBorder
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
@@ -1994,9 +2093,9 @@ ApplicationWindow {
                     width: parent.width
                     height: 32
                     visible: primaryModeSafe
-                    radius: 6
-                    color: askArea.containsMouse ? tokenAccentDim : tokenBg2
-                    border.color: tokenAccent
+                    radius: 4
+                    color: askArea.containsMouse ? tokenBg3 : tokenBg2
+                    border.color: tokenBorder
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
