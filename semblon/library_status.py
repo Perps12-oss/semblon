@@ -56,7 +56,7 @@ def library_summary(store: Path) -> dict | None:
             conn.execute(
                 """
                 SELECT COUNT(*) FROM clusters c
-                WHERE (c.status IS NULL OR c.status != 'ignored')
+                WHERE (c.status IS NULL OR c.status NOT IN ('ignored', 'merged'))
                   AND NOT EXISTS (
                     SELECT 1 FROM faces f
                     WHERE f.cluster_id = c.cluster_id

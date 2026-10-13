@@ -139,14 +139,10 @@ def test_home_ingest_passes_product_prefer_gpu():
 
     import semblon.home_ui as home_ui
 
-    src = inspect.getsource(home_ui.HomeApp._start_process)
-    # Prefer path may go through _effective_prefer_gpu (Settings override → product default).
-    assert (
-        "resolve_home_prefer_gpu" in src
-        or "product_prefer_gpu" in src
-        or "_effective_prefer_gpu" in src
-    )
-    assert "prefer_gpu=" in src
+    code = home_ui.HomeApp._start_process.__code__
+    assert "_effective_prefer_gpu" in code.co_names
+    # Assigned locally, then passed as the submit_ingest keyword.
+    assert "prefer_gpu" in code.co_varnames
     eff = inspect.getsource(home_ui.HomeApp._effective_prefer_gpu)
     assert "resolve_home_prefer_gpu" in eff
 

@@ -11,7 +11,15 @@ ApplicationWindow {
     title: "Semblon"
     color: tokenBg
 
+    property bool sidebarCollapsed: false
     readonly property bool shellReady: shell !== undefined && shell !== null
+    Text {
+        objectName: "lensLine"
+        visible: false
+        width: 0
+        height: 0
+        text: lensLabelSafe
+    }
     readonly property var shellApi: shellReady ? shell : null
     readonly property string modeSafe: shellReady ? shellApi.mode : "primary"
     readonly property bool primaryModeSafe: shellReady ? shellApi.primaryMode : true
@@ -85,6 +93,13 @@ ApplicationWindow {
         else if (call === "resetDefaults") shellApi.resetDefaults()
     }
 
+    function bindNav(item, navId, navLabel, navIcon, navCall) {
+        item.navId = navId
+        item.navLabel = navLabel
+        item.navIcon = navIcon
+        item.navCall = navCall
+    }
+
     Shortcut {
         sequences: [StandardKey.Cancel, "Escape"]
         onActivated: if (shellReady) shellApi.escape()
@@ -140,366 +155,435 @@ ApplicationWindow {
         onActivated: if (shellReady) shellApi.setFacet("folders")
     }
 
-    header: Rectangle {
+    // Collapsible navigation sidebar. Replaces the former top rail.
+    Rectangle {
+        id: navSidebar
+        objectName: "navSidebar"
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: sidebarCollapsed ? 56 : 228
         color: tokenBg1
-        height: 72
-        width: window.width
+        z: 10
+
+        Behavior on width {
+            NumberAnimation { duration: motion; easing.type: Easing.OutCubic }
+        }
 
         Rectangle {
-            anchors.left: parent.left
             anchors.right: parent.right
+            anchors.top: parent.top
             anchors.bottom: parent.bottom
-            height: 1
+            width: 1
             color: tokenBorder
         }
 
         Column {
-            id: brand
-            anchors.left: parent.left
-            anchors.leftMargin: 28
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 6
+            id: sidebarColumn
+            anchors.fill: parent
+            anchors.margins: sidebarCollapsed ? 8 : 14
+            spacing: 4
 
-            Text {
-                id: wordmark
-                text: "Semblon"
-                color: tokenText
-                font.family: "Segoe UI Variable"
-                font.pixelSize: 20
-                font.weight: Font.DemiBold
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -6
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.wordmark()
-                }
-            }
-            Text {
-                id: lensLine
-                objectName: "lensLine"
-                text: lensLabelSafe
-                color: tokenMuted
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                font.letterSpacing: 0.4
-            }
-            Row {
-                spacing: 8
-
-                Rectangle {
-                    objectName: "primaryModeButton"
-                    width: 74
-                    height: 24
-                    radius: 12
-                    color: primaryModeSafe ? tokenAccentDim : tokenBg2
-                    border.color: primaryModeSafe ? tokenAccent : tokenBorder
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Primary"
-                        color: primaryModeSafe ? tokenText : tokenMuted
-                        font.family: "Segoe UI"
-                        font.pixelSize: 12
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.setMode("primary")
-                    }
-                }
-
-                Rectangle {
-                    objectName: "advancedModeButton"
-                    width: 84
-                    height: 24
-                    radius: 12
-                    color: advancedModeSafe ? tokenAccentDim : tokenBg2
-                    border.color: advancedModeSafe ? tokenAccent : tokenBorder
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Advanced"
-                        color: advancedModeSafe ? tokenText : tokenMuted
-                        font.family: "Segoe UI"
-                        font.pixelSize: 12
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.setMode("advanced")
-                    }
-                }
-            }
-
-        }
-
-        Rectangle {
-            id: command
-            width: 320
-            height: 36
-            visible: advancedModeSafe
-            radius: 8
-            color: tokenBg2
-            border.color: commandField.activeFocus ? tokenAccent : tokenBorder
-            border.width: 1
-            anchors.left: brand.right
-            anchors.leftMargin: 36
-            anchors.verticalCenter: parent.verticalCenter
-
-            TextField {
-                id: commandField
-                objectName: "commandField"
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                verticalAlignment: TextInput.AlignVCenter
-                placeholderText: primaryModeSafe ? "Search people" : "Command: people, status"
-                placeholderTextColor: tokenFaint
-                color: tokenText
-                font.family: "Segoe UI"
-                font.pixelSize: 14
-                background: Item {}
-                selectByMouse: true
-                onAccepted: if (shellReady) shellApi.submitCommand(text)
-            }
-        }
-
-        Rectangle {
-            id: searchBox
-            width: 320
-            height: 36
-            visible: primaryModeSafe
-            radius: 8
-            color: tokenBg1
-            border.color: searchField.activeFocus ? tokenAccent : tokenBorder
-            border.width: 1
-            anchors.left: brand.right
-            anchors.leftMargin: 36
-            anchors.verticalCenter: parent.verticalCenter
-
-            TextField {
-                id: searchField
-                objectName: "searchField"
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                verticalAlignment: TextInput.AlignVCenter
-                placeholderText: "Search memory"
-                placeholderTextColor: tokenFaint
-                color: tokenText
-                font.family: "Segoe UI"
-                font.pixelSize: 14
-                background: Item {}
-                selectByMouse: true
-                onAccepted: if (shellReady) shellApi.submitCommand(text)
-            }
-        }
-
-        Row {
-            id: headerActions
-            anchors.right: parent.right
-            anchors.rightMargin: 28
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 16
-
-            Text {
-                objectName: "peopleButton"
-                text: "People"
-                color: peopleArea.containsMouse ? tokenText : tokenMuted
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                MouseArea {
-                    id: peopleArea
-                    anchors.fill: parent
-                    anchors.margins: -6
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.openPeople()
-                }
-            }
-
-            Text {
-                objectName: "settingsButton"
-                text: "Settings"
-                color: settingsArea.containsMouse ? tokenText : tokenMuted
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                MouseArea {
-                    id: settingsArea
-                    anchors.fill: parent
-                    anchors.margins: -6
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.toggleSettings()
-                }
-            }
-
-            Text {
-                text: "Add folder"
-                color: addFolderArea.containsMouse ? tokenText : tokenMuted
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                MouseArea {
-                    id: addFolderArea
-                    anchors.fill: parent
-                    anchors.margins: -6
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady && !jobRunning) shellApi.addFolder()
-                }
-            }
-        }
-
-        Row {
-            anchors.right: headerActions.left
-            anchors.rightMargin: 16
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 10
-            visible: jobRunning
-            objectName: "processingMark"
-
+            // Brand + collapse
             Item {
-                width: 16
-                height: 16
-                anchors.verticalCenter: parent.verticalCenter
-                RotationAnimation on rotation {
-                    running: shellReady && jobRunning && !shellApi.reducedMotion
-                    loops: Animation.Infinite
-                    duration: 1100
-                    from: 0
-                    to: 360
-                }
-                Canvas {
-                    anchors.fill: parent
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.reset()
-                        ctx.strokeStyle = tokenAccent
-                        ctx.lineWidth = 1.5
-                        ctx.beginPath()
-                        ctx.arc(width / 2, height / 2, 6, 0, Math.PI * 1.35)
-                        ctx.stroke()
-                    }
-                    Component.onCompleted: requestPaint()
-                }
-            }
-            Text {
-                text: jobLabelSafe
-                color: tokenMuted
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                anchors.verticalCenter: parent.verticalCenter
-            }
-            Text {
-                objectName: "pauseJob"
-                text: jobStateSafe === "paused" ? "Resume" : "Pause"
-                visible: jobRunning
-                color: pauseArea.containsMouse ? tokenText : tokenMuted
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                anchors.verticalCenter: parent.verticalCenter
-                MouseArea {
-                    id: pauseArea
-                    anchors.fill: parent
-                    anchors.margins: -6
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) {
-                        if (shellApi.jobState === "paused")
-                            shellApi.resumeJob()
-                        else
-                            shellApi.pauseJob()
-                    }
-                }
-            }
-            Text {
-                objectName: "cancelJob"
-                text: "Cancel"
-                color: cancelArea.containsMouse ? tokenText : tokenMuted
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                anchors.verticalCenter: parent.verticalCenter
-                MouseArea {
-                    id: cancelArea
-                    anchors.fill: parent
-                    anchors.margins: -6
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.cancelJob()
-                }
-            }
-        }
+                width: parent.width
+                height: 36
 
-        Text {
-            objectName: "resumeJob"
-            text: "Resume"
-            visible: shellReady && shellApi.canResume && !shellApi.jobActive
-            anchors.right: atmospherePicker.left
-            anchors.rightMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            color: resumeArea.containsMouse ? tokenText : tokenMuted
-            font.family: "Segoe UI"
-            font.pixelSize: 13
-            MouseArea {
-                id: resumeArea
-                anchors.fill: parent
-                anchors.margins: -6
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: if (shellReady) shellApi.resumeJob()
-            }
-        }
-
-        ComboBox {
-            id: atmospherePicker
-            objectName: "atmospherePicker"
-            anchors.right: headerActions.left
-            anchors.rightMargin: 16
-            anchors.verticalCenter: parent.verticalCenter
-            width: 160
-            model: shellReady ? shellApi.atmosphereChoices : []
-            textRole: "label"
-            displayText: (currentIndex >= 0 && model.length > currentIndex) ? model[currentIndex].label : "Atmosphere"
-
-            onActivated: if (shellReady && currentIndex >= 0 && model.length > currentIndex) {
-                shellApi.setAtmosphere(model[currentIndex].id)
-            }
-
-            Component.onCompleted: {
-                if (!shellReady)
-                    return
-                for (var i = 0; i < model.length; i++) {
-                    if (model[i].id === atmosphereIdSafe) {
-                        currentIndex = i
-                        break
-                    }
+                Text {
+                    visible: !sidebarCollapsed
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Semblon"
+                    color: tokenText
+                    font.family: "Segoe UI Variable"
+                    font.pixelSize: 18
+                    font.weight: Font.DemiBold
                 }
-            }
 
-            Connections {
-                target: shellApi
-                function onLensChanged() {
-                    for (var i = 0; i < atmospherePicker.model.length; i++) {
-                        if (atmospherePicker.model[i].id === atmosphereIdSafe) {
-                            atmospherePicker.currentIndex = i
-                            return
+                Rectangle {
+                    id: collapseBtn
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 28
+                    height: 28
+                    radius: 6
+                    color: collapseArea.containsMouse ? tokenBg3 : "transparent"
+
+                    Canvas {
+                        anchors.centerIn: parent
+                        width: 14
+                        height: 14
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.reset()
+                            ctx.strokeStyle = tokenMuted
+                            ctx.lineWidth = 1.5
+                            ctx.lineCap = "round"
+                            if (sidebarCollapsed) {
+                                ctx.beginPath()
+                                ctx.moveTo(4, 2); ctx.lineTo(10, 7); ctx.lineTo(4, 12)
+                                ctx.stroke()
+                            } else {
+                                ctx.beginPath()
+                                ctx.moveTo(10, 2); ctx.lineTo(4, 7); ctx.lineTo(10, 12)
+                                ctx.stroke()
+                            }
+                        }
+                        Component.onCompleted: requestPaint()
+                        Connections {
+                            target: window
+                            function onSidebarCollapsedChanged() { requestPaint() }
                         }
                     }
+
+                    MouseArea {
+                        id: collapseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: sidebarCollapsed = !sidebarCollapsed
+                    }
+                }
+            }
+
+            Item { width: 1; height: 8 }
+
+            // Nav items. Each row is a Loader child of this column so the
+            // button is a QObject under the window. Repeater delegates are
+            // visual children only, and findChild cannot see them.
+            Component {
+                id: navEntry
+                Rectangle {
+                    property string navId: ""
+                    property string navLabel: ""
+                    property string navIcon: ""
+                    property string navCall: ""
+                    anchors.fill: parent
+                    radius: 8
+                    color: navArea.containsMouse ? tokenBg3 : "transparent"
+                    objectName: navId === "people" ? "peopleButton" :
+                                navId === "settings" ? "settingsButton" : ""
+                    onNavIconChanged: navIconCanvas.requestPaint()
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: sidebarCollapsed ? 6 : 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 12
+
+                        Canvas {
+                            id: navIconCanvas
+                            width: 18
+                            height: 18
+                            onPaint: {
+                                var ctx = getContext("2d")
+                                ctx.reset()
+                                ctx.strokeStyle = navArea.containsMouse ? tokenText : tokenMuted
+                                ctx.lineWidth = 1.4
+                                ctx.lineCap = "round"
+                                ctx.lineJoin = "round"
+                                var ic = navIcon
+                                if (ic === "grid") {
+                                    ctx.strokeRect(2, 2, 6, 6)
+                                    ctx.strokeRect(10, 2, 6, 6)
+                                    ctx.strokeRect(2, 10, 6, 6)
+                                    ctx.strokeRect(10, 10, 6, 6)
+                                } else if (ic === "people") {
+                                    ctx.beginPath()
+                                    ctx.arc(9, 6, 3, 0, 6.28)
+                                    ctx.stroke()
+                                    ctx.beginPath()
+                                    ctx.moveTo(3, 16)
+                                    ctx.quadraticCurveTo(9, 11, 15, 16)
+                                    ctx.stroke()
+                                } else if (ic === "search") {
+                                    ctx.beginPath()
+                                    ctx.arc(8, 8, 5, 0, 6.28)
+                                    ctx.stroke()
+                                    ctx.beginPath()
+                                    ctx.moveTo(12, 12)
+                                    ctx.lineTo(16, 16)
+                                    ctx.stroke()
+                                } else if (ic === "plus") {
+                                    ctx.beginPath()
+                                    ctx.moveTo(9, 3); ctx.lineTo(9, 15)
+                                    ctx.moveTo(3, 9); ctx.lineTo(15, 9)
+                                    ctx.stroke()
+                                } else if (ic === "gear") {
+                                    ctx.beginPath()
+                                    ctx.arc(9, 9, 4, 0, 6.28)
+                                    ctx.stroke()
+                                    ctx.beginPath()
+                                    ctx.arc(9, 9, 7, 0, 6.28)
+                                    ctx.stroke()
+                                }
+                            }
+                            Component.onCompleted: requestPaint()
+                        }
+
+                        Text {
+                            visible: !sidebarCollapsed
+                            text: navLabel
+                            color: navArea.containsMouse ? tokenText : tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        id: navArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (!shellReady) return
+                            var c = navCall
+                            if (c === "wordmark") shellApi.wordmark()
+                            else if (c === "openPeople") shellApi.openPeople()
+                            else if (c === "focusSearch") {
+                                if (primaryModeSafe) searchField.forceActiveFocus()
+                                else commandField.forceActiveFocus()
+                            }
+                            else if (c === "addFolder") { if (!jobRunning) shellApi.addFolder() }
+                            else if (c === "toggleSettings") shellApi.toggleSettings()
+                        }
+                    }
+
+                    ToolTip.visible: sidebarCollapsed && navArea.containsMouse
+                    ToolTip.text: navLabel
+                    ToolTip.delay: 400
+                }
+            }
+
+            Loader {
+                width: parent.width
+                height: 36
+                sourceComponent: navEntry
+                onLoaded: window.bindNav(item, "library", "Library", "grid", "wordmark")
+            }
+            Loader {
+                width: parent.width
+                height: 36
+                sourceComponent: navEntry
+                onLoaded: window.bindNav(item, "people", "People", "people", "openPeople")
+            }
+            Loader {
+                width: parent.width
+                height: 36
+                sourceComponent: navEntry
+                onLoaded: window.bindNav(item, "search", "Search", "search", "focusSearch")
+            }
+            Loader {
+                width: parent.width
+                height: 36
+                sourceComponent: navEntry
+                onLoaded: window.bindNav(item, "add", "Add folder", "plus", "addFolder")
+            }
+            Loader {
+                width: parent.width
+                height: 36
+                sourceComponent: navEntry
+                onLoaded: window.bindNav(item, "settings", "Settings", "gear", "toggleSettings")
+            }
+
+            Item { width: 1; height: 12 }
+
+            // Search field (expanded only)
+            Rectangle {
+                visible: !sidebarCollapsed
+                width: parent.width
+                height: 32
+                radius: 8
+                color: tokenBg2
+                border.color: (searchField.activeFocus || commandField.activeFocus) ? tokenAccent : tokenBorder
+                border.width: 1
+
+                TextField {
+                    id: searchField
+                    objectName: "searchField"
+                    visible: primaryModeSafe
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    placeholderText: "Search memory"
+                    placeholderTextColor: tokenFaint
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                    background: Item {}
+                    selectByMouse: true
+                    onAccepted: if (shellReady) shellApi.submitCommand(text)
+                }
+                TextField {
+                    id: commandField
+                    objectName: "commandField"
+                    visible: advancedModeSafe
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    placeholderText: "Command: people, status"
+                    placeholderTextColor: tokenFaint
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                    background: Item {}
+                    selectByMouse: true
+                    onAccepted: if (shellReady) shellApi.submitCommand(text)
+                }
+            }
+
+            Item { width: 1; height: 8; visible: !sidebarCollapsed }
+
+            // Atmosphere (expanded)
+            ComboBox {
+                id: atmospherePicker
+                objectName: "atmospherePicker"
+                visible: !sidebarCollapsed
+                width: parent.width
+                model: shellReady ? shellApi.atmosphereChoices : []
+                textRole: "label"
+                displayText: (currentIndex >= 0 && model.length > currentIndex) ? model[currentIndex].label : "Atmosphere"
+                onActivated: if (shellReady && currentIndex >= 0 && model.length > currentIndex) {
+                    shellApi.setAtmosphere(model[currentIndex].id)
+                }
+                Component.onCompleted: {
+                    if (!shellReady) return
+                    for (var i = 0; i < model.length; i++) {
+                        if (model[i].id === atmosphereIdSafe) {
+                            currentIndex = i
+                            break
+                        }
+                    }
+                }
+            }
+
+            Item { width: 1; height: 20 }
+
+            // Mode + job at bottom — use a bottom-anchored column instead
+        }
+
+        // Bottom section (mode + job)
+        Column {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: sidebarCollapsed ? 8 : 14
+            spacing: 6
+
+            // Job indicator
+            Row {
+                visible: jobRunning
+                spacing: 8
+                anchors.horizontalCenter: parent.horizontalCenter
+
+                Item {
+                    width: 14
+                    height: 14
+                    RotationAnimation on rotation {
+                        running: shellReady && jobRunning && !shellApi.reducedMotion
+                        loops: Animation.Infinite
+                        duration: 1100
+                        from: 0
+                        to: 360
+                    }
+                    Canvas {
+                        anchors.fill: parent
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.reset()
+                            ctx.strokeStyle = tokenAccent
+                            ctx.lineWidth = 1.5
+                            ctx.beginPath()
+                            ctx.arc(width/2, height/2, 5, 0, Math.PI * 1.35)
+                            ctx.stroke()
+                        }
+                        Component.onCompleted: requestPaint()
+                    }
+                }
+                Text {
+                    visible: !sidebarCollapsed
+                    text: jobLabelSafe
+                    color: tokenMuted
+                    font.pixelSize: 11
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            // Primary / Advanced
+            Rectangle {
+                objectName: "primaryModeButton"
+                width: parent.width
+                height: 28
+                radius: 6
+                visible: !sidebarCollapsed
+                color: primaryModeSafe ? tokenAccentDim : "transparent"
+                border.color: primaryModeSafe ? tokenAccent : tokenBorder
+                border.width: 1
+                Text {
+                    anchors.centerIn: parent
+                    text: "Primary"
+                    color: primaryModeSafe ? tokenText : tokenMuted
+                    font.pixelSize: 12
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady) shellApi.setMode("primary")
+                }
+            }
+            Rectangle {
+                objectName: "advancedModeButton"
+                width: parent.width
+                height: 28
+                radius: 6
+                visible: !sidebarCollapsed
+                color: advancedModeSafe ? tokenAccentDim : "transparent"
+                border.color: advancedModeSafe ? tokenAccent : tokenBorder
+                border.width: 1
+                Text {
+                    anchors.centerIn: parent
+                    text: "Advanced"
+                    color: advancedModeSafe ? tokenText : tokenMuted
+                    font.pixelSize: 12
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady) shellApi.setMode("advanced")
+                }
+            }
+
+            // Collapsed mode icons
+            Item {
+                visible: sidebarCollapsed
+                width: parent.width
+                height: 28
+                Text {
+                    anchors.centerIn: parent
+                    text: primaryModeSafe ? "P" : "A"
+                    color: tokenAccent
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady) shellApi.setMode(primaryModeSafe ? "advanced" : "primary")
                 }
             }
         }
     }
 
+
     Item {
         id: stage
-        anchors.fill: parent
+        anchors.left: navSidebar.right
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
 
         Row {
             id: facetBar
@@ -1318,12 +1402,12 @@ ApplicationWindow {
             Flickable {
                 anchors.fill: parent
                 anchors.margins: 12
-                contentHeight: sidebarColumn.implicitHeight
+                contentHeight: archiveSidebarColumn.implicitHeight
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
                 Column {
-                    id: sidebarColumn
+                    id: archiveSidebarColumn
                     width: parent.width
                     spacing: 6
 
@@ -1671,6 +1755,7 @@ ApplicationWindow {
                 visible: canResumeSafe && !jobRunning
                 Text {
                     id: resumeEmptyLabel
+                    objectName: "resumeJob"
                     anchors.centerIn: parent
                     text: jobLabelSafe === "Last add failed" ? "Try again" : "Resume"
                     color: tokenText

@@ -57,7 +57,7 @@ Optional flags: `--store`, `--reprocess`, `--resume`.
 
 ## Install (power users)
 
-Python **3.11+**, Windows x64 or ARM64 **native** (not x64 Python on ARM64).
+Python **3.11–3.14**, Windows x64 or ARM64 **native** (not x64 Python on ARM64).
 
 Work from the **repository root** (`...\GITHUB\SEMBRON`), not from inside `semblon\`. Put `.venv` at the repo root — never inside the package folder.
 
@@ -77,7 +77,28 @@ python -m pip install -e ".[gui]"
 semblon --help
 ```
 
-`pip install -r requirements.txt` then `pip install -e ".[gui]"` is required. That pulls `insightface`, `onnxruntime`, `opencv-python-headless`, `numpy`, and PySide6, and registers the `semblon` console script. Do not install those packages one failure at a time.
+`pip install -r requirements.txt` then `pip install -e ".[gui]"` is required. That installs the pinned core runtime (`insightface`, `onnxruntime`, `opencv-python-headless`, `numpy`, `pillow`) plus the PySide6 production shell and registers the `semblon` console script.
+
+Optional feature stacks stay separate from the default install. Use either:
+
+```text
+python -m pip install -r requirements-optional.txt
+```
+
+or selected extras:
+
+```text
+python -m pip install -e ".[ocr,clip,pose,translation,capture,sam2]"
+```
+
+Optional surfaces map to the runtime imports in code:
+
+- `ocr` → `pytesseract` (and the external `tesseract` binary on `PATH`)
+- `clip` / `naming` → `open-clip-torch`, `torch`, optional `transformers`
+- `pose` → `mediapipe`
+- `translation` → `argostranslate`
+- `capture` → `windows-capture`
+- `sam2` → install `torch` and `torchvision` from the optional requirements; install the SAM 2 package from the [official repository](https://github.com/facebookresearch/sam2) and provide its local checkpoint/config
 
 Equivalent module entry (same code path):
 

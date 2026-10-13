@@ -249,20 +249,3 @@ def remember_and_find(
         "entity": False,
         "wrote_embedding": False,
     }
-
-
-def format_find_lines(result: dict) -> list[str]:
-    lines = ["Remembered that selection."]
-    similar = result.get("similar") or {}
-    status = similar.get("status")
-    if status == "SUCCESS":
-        n = int(similar.get("count") or 0)
-        lines.append(f"Found {n} similar photo{'s' if n != 1 else ''} in your library.")
-        for item in (similar.get("items") or [])[:5]:
-            lines.append(f"  {item['media_id']} · {item['score']:.3f}")
-        lines.append("These are candidates. They are not named things.")
-    elif status == "NO_RESULT":
-        lines.append(similar.get("reason") or "Nothing similar showed up.")
-    else:
-        lines.append(similar.get("reason") or "Similar search did not run.")
-    return lines

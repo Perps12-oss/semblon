@@ -3,18 +3,40 @@ name = "semblon"
 dynamic = ["version"]
 description = "Local face intelligence — folder-first observation engine"
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 dependencies = [
-  "insightface",
-  "onnxruntime",
-  "opencv-python-headless",
-  "numpy",
-  "pillow",
+  "insightface==2.0",
+  "onnxruntime==1.30.0",
+  "opencv-python-headless==5.0.0.93",
+  "numpy==2.4.6; python_version < '3.12'",
+  "numpy==2.5.3; python_version >= '3.12'",
+  "pillow==12.3.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "PySide6>=6.6"]
 gui = ["PySide6>=6.6"]  # forward shell (`semblon shell`)
+ocr = ["pytesseract"]
+clip = ["open-clip-torch", "torch>=2.5.1"]
+naming = ["open-clip-torch", "torch>=2.5.1", "transformers"]
+pose = ["mediapipe"]
+translation = ["argostranslate"]
+capture = ["windows-capture; platform_system == 'Windows'"]
+sam2 = [
+  "torch>=2.5.1",
+  "torchvision>=0.20.1",
+]
+optional = [
+  "PySide6>=6.6",
+  "pytesseract",
+  "open-clip-torch",
+  "torch>=2.5.1",
+  "transformers",
+  "mediapipe",
+  "argostranslate",
+  "windows-capture; platform_system == 'Windows'",
+  "torchvision>=0.20.1",
+]
 
 [project.scripts]
 semblon = "semblon.cli:main"

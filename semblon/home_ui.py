@@ -269,7 +269,7 @@ except ImportError:  # pragma: no cover - mid-merge stub
     H2 = ("Segoe UI", 15, "bold")
     H3 = ("Segoe UI", 12)
     INK_SECONDARY = "#565656"
-    INK_TERTIARY = "#8A8A8A"
+    INK_TERTIARY = "#6E6E6E"
     META = ("Segoe UI", 11)
     MONO = ("Cascadia Code", 11)
     INSPECTOR_WIDTH = 320
@@ -444,7 +444,7 @@ def landing_cta_plan(*, files: int, unnamed: int) -> dict:
     """Which landing CTAs to show and which is primary.
 
     primary: ``add`` | ``review`` | ``browse``
-    First-run marketing only. Populated libraries use ``_show_library_home``.
+    First-run marketing only. A populated library opens the library route.
     """
     from semblon.library_status import review_people_cta
 
@@ -1989,11 +1989,16 @@ class HomeApp:
             try:
                 rec = self.app.query_media(str(media_id))
             except Exception as exc:  # noqa: BLE001
+                message = str(exc)
                 self.root.after(
                     0,
-                    lambda: self._set_inspector(
-                        "Lens",
-                        ["Semblon could not finish looking.", "Nothing was searched.", str(exc)],
+                    lambda message=message: done(
+                        [
+                            "Semblon could not finish looking.",
+                            "Nothing was searched.",
+                            message,
+                        ],
+                        None,
                     ),
                 )
                 return
@@ -4548,55 +4553,6 @@ class HomeApp:
         self._lib_home_thumbs = tk.Frame(bar, bg=BG_CANVAS)
         self._lib_home_thumb_images: list = []
 
-    def _show_library_home(self, summary: dict | None = None) -> None:
-        """Compatibility shim — route into the unified Library."""
-        self._show_library(filter_key="photos")
-
-    def _refresh_library_home_thumbs(self, waiting: int) -> None:
-        frame = getattr(self, "_lib_home_thumbs", None)
-        if frame is None:
-            return
-        for child in frame.winfo_children():
-            child.destroy()
-        self._lib_home_thumb_images = []
-        if waiting <= 0 or not self.store.is_file():
-            return
-        try:
-            rows = _unnamed_cluster_face_paths(Path(self.store), limit=12)
-        except Exception:  # noqa: BLE001
-            rows = []
-        if not rows:
-            try:
-                rows = _recent_face_paths(Path(self.store), limit=12)
-            except Exception:  # noqa: BLE001
-                return
-        try:
-            from semblon.review_ui import crop_png_b64
-        except Exception:  # noqa: BLE001
-            return
-        for media_path, bbox in rows:
-            try:
-                b64 = crop_png_b64(
-                    media_path,
-                    bbox,
-                    max_side=64,
-                    frame_id=None,
-                )
-            except Exception:  # noqa: BLE001
-                continue
-            if not b64:
-                continue
-            try:
-                img = tk.PhotoImage(data=b64)
-            except Exception:  # noqa: BLE001
-                continue
-            self._lib_home_thumb_images.append(img)
-            lbl = tk.Label(frame, image=img, bg=BG_CANVAS, cursor="hand2")
-            lbl.pack(side=tk.LEFT, padx=(0, SP_8))
-            lbl.bind("<Button-1>", lambda _e: self._navigate("unknown"))
-            if len(self._lib_home_thumb_images) >= 12:
-                break
-
     def _refresh_processing_home(self, ev: ProgressEvent | None = None) -> None:
         """Push soft processing copy into the PROCESSING workspace."""
         from semblon.product_surface import processing_home_snapshot
@@ -4948,18 +4904,6 @@ class HomeApp:
         self._theme_var.set(aid)
         self._preview_theme(aid)
 
-    def _on_theme_list(self, _event=None) -> None:
-        box = getattr(self, "_theme_list", None)
-        ids = getattr(self, "_theme_ids", [])
-        if box is None:
-            return
-        sel = box.curselection()
-        if not sel:
-            return
-        aid = ids[sel[0]]
-        self._theme_var.set(aid)
-        self._preview_theme(aid)
-
     def _preview_theme(self, mode: str) -> None:
         """Apply a theme live. Does not write appearance.json."""
         from semblon.atmosphere import ATMOSPHERE_LABELS
@@ -5241,16 +5185,6 @@ class HomeApp:
             self._inspector_frame.grid()
         except tk.TclError:
             return
-
-    def _on_root_configure(self, event) -> None:
-        if event.widget is not self.root:
-            return
-        # Model D: no left rail / condensed swap — compact header is always used.
-        self._condensed = shell_is_condensed(int(event.width))
-
-    def _apply_shell_width(self, width: int) -> None:
-        """Compatibility no-op — Model D dropped the MAIN sidebar rail."""
-        self._condensed = shell_is_condensed(int(width))
 
     def _mark_nav_active(self, nav_id: str) -> None:
         """One active mode: teal text on a tinted chip. Hover is not a second accent."""
@@ -5874,10 +5808,6 @@ class HomeApp:
                 return
             self._show_failure(e)
 
-    def _list_window(self, title: str, lines: list[str]) -> None:
-        """Legacy helper: route into Inspector (no floating list-only windows)."""
-        self._set_inspector(title, lines)
-
     def _show_people(self) -> None:
         from semblon.inspector_verbs import evidence_lines_for_selection
         from semblon.search import SearchError, search_people
@@ -6028,16 +5958,6 @@ class HomeApp:
             title=title,
             preselect_all=False,
         )
-
-    def _activity_soft_stats(self, run_id: str) -> dict:
-        """Plain-language counts for Recent activity rows (no integrity jargon)."""
-        from semblon.activity_surface import _processing_stats
-
-        return _processing_stats(self.store, run_id)
-
-    def _open_canvas(self) -> None:
-        """First-class canvas is the Home workspace; keep Toplevel as escape hatch."""
-        self._navigate("library")
 
     def _present_search(
         self,

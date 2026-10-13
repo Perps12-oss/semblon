@@ -46,7 +46,7 @@ def watch_folder(
             except CancelledError:
                 raise
             except Exception:
-                pass
+                raise
         cycles += 1
         try:
             rec = ingest(folder, store, observers=observers, on_event=on_event, cancel=cancel)

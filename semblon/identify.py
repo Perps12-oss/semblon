@@ -246,7 +246,7 @@ def identify_image(
     Probe faces are not written to the store. Identification is a decision,
     not enrolment.
     """
-    from semblon.engine import embed_image, load_app
+    from semblon.engine import embed_image, identity_space_mismatch, load_app
     from semblon.ingest import CLUSTER_MIN_SIDE, DET_SCORE_MIN
 
     image = Path(image)
@@ -261,6 +261,11 @@ def identify_image(
         gallery = _gallery(conn, pack_id)
         if app is None:
             app = load_app()
+        mismatch = identity_space_mismatch(
+            pack_id, run["ort_version"], run["runtime_json"]
+        )
+        if mismatch:
+            raise IdentifyError(mismatch)
         faces = embed_image(app, image)
         probes = []
         for f in faces:

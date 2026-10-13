@@ -67,13 +67,6 @@ def siglip_capability() -> dict:
     }
 
 
-def clear_naming_runtime() -> None:
-    _FAIL["weights"] = None
-    _FAIL["error"] = None
-    _MODEL["key"] = None
-    _MODEL["bundle"] = None
-
-
 def mark_naming_failed(weights: str, message: str) -> None:
     _FAIL["weights"] = weights
     _FAIL["error"] = message

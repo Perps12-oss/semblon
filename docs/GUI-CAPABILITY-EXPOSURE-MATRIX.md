@@ -135,7 +135,7 @@ Question used for each row: if a non-technical person opened Semblon once, how w
 | Tracks as their own browser | Review includes track items; no Home lane | `semblon tracks` | Follow a face through a video | Video page, contextual | Open a video → tracks | `tracks.derive_tracks` | A track is not a person | Later |
 | Connections graph | Rows exist (`relationships`) | Snapshot on review | Who appears with whom, beyond the Activity list | Activity detail, or a person inspector | Select a together-line | `memory.together` | Graph UI can imply confirmed social facts; rows are `confirmed=0` | Later, and the UI must not say “confirmed” |
 | Worker count / reprocess | CLI flags | `--workers`, `--reprocess` | Performance / force redo | Not a normal control | — | Ingest | Reprocess rewrites embeddings; workers default stays 1 until a harness says otherwise | Not in the product UI |
-| Dead library-home layout | Method exists, never navigated to | `_show_library_home` | Was a photos+review strip | Delete or reconnect only under an explicit IA decision | — | — | Reviving it silently changes Photos | Decide during migration step 1; do not leave a third Photos |
+| Dead library-home layout | Removed | `_show_library_home` deleted | Was a photos+review strip | Do not restore it | — | — | Reviving it silently changes Photos | Deleted in the audit fix |
 
 ---
 

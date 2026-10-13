@@ -144,8 +144,15 @@ def test_merge_clusters_records_decision(tmp_path):
     assert rec["face_count"] == 4
 
     conn = sqlite3.connect(str(store))
-    n = conn.execute("SELECT COUNT(*) FROM clusters WHERE run_id='r1'").fetchone()[0]
-    assert n == 1
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT cluster_id, status, face_count FROM clusters WHERE run_id='r1'"
+    ).fetchall()
+    by_id = {r["cluster_id"]: r for r in rows}
+    assert by_id[c1]["status"] != "merged"
+    assert by_id[c2]["status"] == "merged"
+    assert by_id[c2]["face_count"] == 0
+    assert sum(1 for r in rows if r["status"] != "merged") == 1
     faces = {
         r[0]: r[1]
         for r in conn.execute("SELECT face_id, cluster_id FROM faces WHERE status='ok'")
@@ -157,6 +164,136 @@ def test_merge_clusters_records_decision(tmp_path):
     ).fetchone()[0]
     assert kind == "merge"
     conn.close()
+
+
+def test_merge_reviewed_same_person_keeps_decision_rows(tmp_path):
+    """Naming both clusters, then merging either order, must not drop decision FKs."""
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    c1 = assigned["f1"]
+    c2 = assigned["f3"]
+    first = name_cluster(store, "r1", c1, "Bob")
+    second = name_cluster(
+        store, "r1", c2, "Bob", attach_to_person_id=first["person_id"]
+    )
+    assert second["person_id"] == first["person_id"]
+
+    for order in ((c1, c2), (c2, c1)):
+        # Rebuild so each order starts from two named clusters.
+        if order != (c1, c2):
+            store = tmp_path / "s-reverse.sqlite"
+            assigned = _clustered(store)
+            c1 = assigned["f1"]
+            c2 = assigned["f3"]
+            first = name_cluster(store, "r1", c1, "Bob")
+            name_cluster(store, "r1", c2, "Bob", attach_to_person_id=first["person_id"])
+            order = (c2, c1)
+        rec = merge_clusters(store, "r1", list(order))
+        assert rec["survivor"] == order[0]
+        assert rec["person_id"] == first["person_id"]
+        conn = sqlite3.connect(str(store))
+        conn.row_factory = sqlite3.Row
+        donor = conn.execute(
+            "SELECT status, face_count FROM clusters WHERE cluster_id=?",
+            (order[1],),
+        ).fetchone()
+        assert donor["status"] == "merged"
+        assert donor["face_count"] == 0
+        # Name decisions on both clusters, plus the merge decision, all remain.
+        n_dec = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
+        assert n_dec == 3
+        still = conn.execute(
+            """SELECT d.decision_id FROM decisions d
+               JOIN clusters c ON c.cluster_id = d.cluster_id"""
+        ).fetchall()
+        assert len(still) == 3
+        named = {
+            r[0]
+            for r in conn.execute(
+                "SELECT face_id FROM faces WHERE person_id=?",
+                (first["person_id"],),
+            )
+        }
+        assert named == {"f1", "f2", "f3", "f4"}
+        conn.close()
+
+
+def test_name_attach_refuses_different_person(tmp_path):
+    store = tmp_path / "s.sqlite"
+    assigned = _clustered(store)
+    c1 = assigned["f1"]
+    c2 = assigned["f3"]
+    a = name_cluster(store, "r1", c1, "Ann")
+    b = name_cluster(store, "r1", c2, "Bea")
+    with pytest.raises(ReviewError, match="already linked"):
+        name_cluster(store, "r1", c1, "Bea", attach_to_person_id=b["person_id"])
+    conn = sqlite3.connect(str(store))
+    link = conn.execute(
+        "SELECT person_id FROM cluster_person WHERE cluster_id=?", (c1,)
+    ).fetchone()[0]
+    name = conn.execute(
+        "SELECT display_name FROM persons WHERE person_id=?", (a["person_id"],)
+    ).fetchone()[0]
+    conn.close()
+    assert link == a["person_id"]
+    assert name == "Ann"
+
+
+def test_merge_min_intra_includes_donor_pairs(tmp_path):
+    """The weakest pair can sit between donors. Survivor-vs-donors must not hide it."""
+    store = tmp_path / "s.sqlite"
+    conn = sqlite3.connect(str(store))
+    conn.execute("PRAGMA foreign_keys=ON")
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        ("r1", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute("INSERT INTO media VALUES ('m1','folder','/a.jpg','aaa',10,10,0,1)")
+    conn.execute("INSERT INTO observations VALUES ('o1','m1',NULL,NULL,'r1')")
+    # A·B and A·C are 0.98. B·C is 0.98^2 - 0.199^2 ≈ 0.9208, the true minimum.
+    vectors = {
+        "fa1": (1.0, 0.0),
+        "fa2": (1.0, 0.0),
+        "fb1": (0.98, 0.199),
+        "fb2": (0.98, 0.199),
+        "fc1": (0.98, -0.199),
+        "fc2": (0.98, -0.199),
+    }
+    clusters = {"ca": ("fa1", "fa2"), "cb": ("fb1", "fb2"), "cc": ("fc1", "fc2")}
+    for cid in clusters:
+        conn.execute(
+            """INSERT INTO clusters(cluster_id, run_id, strategy, face_count, min_intra, status)
+               VALUES (?,?,?,?,?,?)""",
+            (cid, "r1", "dbscan", 2, 1.0, "auto"),
+        )
+    for fid, vec in vectors.items():
+        cid = next(c for c, members in clusters.items() if fid in members)
+        conn.execute(
+            """INSERT INTO faces(face_id,observation_id,run_id,bbox_x1,bbox_y1,bbox_x2,bbox_y2,
+               det_score,face_w,face_h,size_band,status,embedding,embedding_pack,embedding_dim,cluster_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                fid, "o1", "r1", 0, 0, 20, 20, 0.9, 20, 20, "80-119", "ok",
+                _vec(*vec), "pack-a", 2, cid,
+            ),
+        )
+    conn.commit()
+    conn.close()
+
+    rec = merge_clusters(store, "r1", ["ca", "cb", "cc"])
+    donor_donor = 0.98 * 0.98 + 0.199 * -0.199
+    survivor_donor = 0.98
+    conn = sqlite3.connect(str(store))
+    got = conn.execute(
+        "SELECT min_intra FROM clusters WHERE cluster_id='ca'"
+    ).fetchone()[0]
+    conn.close()
+    assert rec["face_count"] == 6
+    assert got == pytest.approx(donor_donor, abs=1e-6)
+    assert got < survivor_donor
 
 
 def test_merge_rejects_different_persons(tmp_path):

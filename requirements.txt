@@ -1,9 +1,12 @@
-# Semblon runtime (CPU). Python >=3.11,<3.14. Match pyproject.toml.
+# Semblon runtime (CPU). Python >=3.11,<3.15. Match pyproject.toml.
+# Pins are the FACE-000 lab wheels. They do not change pack_id or stored embeddings.
 # Native arch only: ARM64 Windows → ARM64 Python + this file, not x64.
-# Install from repo root: pip install -r requirements.txt && pip install -e .
-# That is what provides cv2 + insightface — do not install them ad hoc after failures.
-insightface
-onnxruntime
-opencv-python-headless
-numpy
-pillow
+# Install from repo root: pip install -r requirements.txt
+# Then install Semblon itself with the extras you need, for example: pip install -e ".[gui]"
+# Optional feature stacks live in requirements-optional.txt and pyproject extras.
+insightface==2.0
+onnxruntime==1.30.0
+opencv-python-headless==5.0.0.93
+numpy==2.4.6; python_version < "3.12"
+numpy==2.5.3; python_version >= "3.12"
+pillow==12.3.0

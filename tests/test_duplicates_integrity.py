@@ -73,7 +73,7 @@ def _seed_media(store: Path, items: list[tuple[str, Path]]) -> None:
 
 def test_hash_algorithm_is_sha256():
     assert HASH_ALGORITHM == "sha256"
-    assert "sha256" in inspect.getsource(_sha256_file).lower() or True
+    assert "sha256" in _sha256_file.__code__.co_names
 
 
 def test_exact_duplicate_groups_from_sibling_files(tmp_path):

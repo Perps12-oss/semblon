@@ -122,7 +122,7 @@ Routes that exist and are **not** in `HOME_NAV`:
 | `canvas` | More → “Explore workspace” (`home_ui.py:1013-1014`) | Canvas, no source filter (`home_ui.py:3328-3332`) |
 | settings | Settings button; Ctrl+K item | `Toplevel` (`home_ui.py:4007-4224`) |
 
-`_show_library_home` (`home_ui.py:2644-2695`) would pack the photo grid under a review strip. Nothing in `semblon/` calls it. `tests/test_home_ui.py:264-274` asserts `_show_home_landing` does **not** call it. The docstring on `landing_cta_plan` (`home_ui.py:300-304`) still says populated libraries use `_show_library_home`. The running path does not.
+`_show_library_home` used to pack the photo grid under a review strip. The 2026-10-11 audit fix deleted that method. Do not restore it.
 
 Populated “Photos” therefore shows the library shell (headline, stat tiles, Available / Optional capability rows, last Lens result) plus CTAs. The photo grid is a second route. Inspector copy on that shell says “Browse Photos when you want the grid” (`home_ui.py:2597-2599`) while the sidebar item is already labeled Photos.
 
@@ -213,7 +213,7 @@ Classification:
 | Section titles hard-coded beside the tuple | `home_ui.py:1116-1121` | Accidental. ASK is blanked so Lens has no section title. |
 | `_navigate` if-chain names every route | `home_ui.py:3319-3375` | Accidental. This is the router. A new page requires a new branch. |
 | Route `photos` and `canvas` omitted from the sidebar | `home_ui.py:199-204` vs `3334`, `3328` | Feature placement that the shell special-cases. Photos-the-label and photos-the-grid are different ids. |
-| `_show_library_home` unused | `home_ui.py:2644`; only definition, test forbids the call `tests/test_home_ui.py:274` | Debt. A full “photos + review strip” layout exists and is unreachable. Docstring at `home_ui.py:300-304` is stale. |
+| `_show_library_home` unused | Deleted in the 2026-10-11 audit fix. The old definition was `home_ui.py:2644`. | Debt, now removed. Do not restore the photos-plus-review-strip layout. |
 | More menu items | `home_ui.py:1008-1015` Open Review, Live, Browse photos, Explore | Accidental. Overflow is a shell slot; the four commands are features. |
 | Lens button in the brand row | `home_ui.py:927` | Accidental duplicate of the sidebar Lens item. |
 | Search calls `_search_person` only | `home_ui.py:969-972`, `3928-4005` | Feature. People search, then OCR text fallback, is a feature pipeline inside the shell. |

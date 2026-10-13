@@ -752,7 +752,8 @@ def snapshot_groups_from_clusters(conn, run_id: str) -> dict:
         (run_id,),
     )
     clusters = conn.execute(
-        "SELECT cluster_id, strategy, face_count FROM clusters WHERE run_id=?",
+        """SELECT cluster_id, strategy, face_count FROM clusters
+           WHERE run_id=? AND status != 'merged'""",
         (run_id,),
     ).fetchall()
     n_groups = 0

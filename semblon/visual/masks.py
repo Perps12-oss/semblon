@@ -144,17 +144,6 @@ def connected_labels(binary: np.ndarray) -> np.ndarray:
     return flat.reshape(h, w)
 
 
-def stock_nms(masks: list[np.ndarray], scores: list[float], iou_thresh: float) -> list[int]:
-    """Keep indices. High box-like mask IoU suppresses the lower score. Drops contained children."""
-    order = sorted(range(len(masks)), key=lambda i: scores[i], reverse=True)
-    keep: list[int] = []
-    for i in order:
-        if any(iou(masks[i], masks[j]) >= iou_thresh for j in keep):
-            continue
-        keep.append(i)
-    return keep
-
-
 def containment_keep(
     masks: list[np.ndarray],
     scores: list[float],

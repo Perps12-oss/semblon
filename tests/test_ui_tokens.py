@@ -7,6 +7,25 @@ import pytest
 from semblon import ui_tokens as t
 
 
+def _channel(value: float) -> float:
+    value = value / 255.0
+    if value <= 0.04045:
+        return value / 12.92
+    return ((value + 0.055) / 1.055) ** 2.4
+
+
+def _contrast(fg: str, bg: str) -> float:
+    def lum(hex_color: str) -> float:
+        r = _channel(int(hex_color[1:3], 16))
+        g = _channel(int(hex_color[3:5], 16))
+        b = _channel(int(hex_color[5:7], 16))
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    lighter = max(lum(fg), lum(bg))
+    darker = min(lum(fg), lum(bg))
+    return (lighter + 0.05) / (darker + 0.05)
+
+
 def test_type_scale_sizes_and_family():
     assert t.HERO == ("Segoe UI", 22, "bold")
     assert t.TITLE == ("Segoe UI", 15, "bold")
@@ -38,7 +57,8 @@ def test_color_tokens_match_visual_design():
     light = t.LIGHT
     assert light.text_primary == "#171717"
     assert light.text_secondary == "#565656"
-    assert light.text_tertiary == "#8A8A8A"
+    assert _contrast(light.text_tertiary, light.surface) >= 4.5
+    assert _contrast(light.text_tertiary, light.surface_muted) >= 4.5
     assert light.text_quaternary == "#B9B9B9"
     assert light.surface == "#FFFFFF"
     assert light.surface_muted == "#F5F5F4"

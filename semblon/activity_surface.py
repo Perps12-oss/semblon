@@ -210,7 +210,8 @@ def _processing_stats(store: Path, run_id: str) -> dict[str, Any]:
             conn.execute(
                 """
                 SELECT COUNT(*) FROM clusters
-                WHERE run_id=? AND (status IS NULL OR status != 'ignored')
+                WHERE run_id=?
+                  AND (status IS NULL OR status NOT IN ('ignored', 'merged'))
                 """,
                 (run_id,),
             ).fetchone()[0]
@@ -220,6 +221,7 @@ def _processing_stats(store: Path, run_id: str) -> dict[str, Any]:
                 """
                 SELECT COUNT(*) FROM clusters c
                 WHERE c.run_id=?
+                  AND (c.status IS NULL OR c.status NOT IN ('ignored', 'merged'))
                   AND NOT EXISTS (
                     SELECT 1 FROM faces f
                     WHERE f.cluster_id = c.cluster_id AND f.person_id IS NOT NULL

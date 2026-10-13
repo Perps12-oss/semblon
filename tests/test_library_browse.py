@@ -62,5 +62,6 @@ def test_moments_and_albums_deferred_copy(tmp_path):
     moments = moment_buckets(store)
     assert moments
     assert any(m.get("media_ids") for m in moments)
-    assert "album" not in " ".join(ALBUMS_DEFERRED_LINES).lower() or True
-    assert any("not stored" in ln.lower() for ln in ALBUMS_DEFERRED_LINES)
+    copy = " ".join(ALBUMS_DEFERRED_LINES).lower()
+    assert "not stored" in copy
+    assert "user collections" in copy

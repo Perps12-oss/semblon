@@ -398,11 +398,6 @@ else:
             self._fit_size = size
             self._paint_fitted()
 
-        def set_advanced(self, advanced: bool) -> None:
-            self._advanced = bool(advanced)
-            if self._current_media is not None:
-                self._emit_inspector()
-
         def reload(
             self,
             store: Path | None = None,
@@ -968,9 +963,15 @@ else:
                     on_done=_done,
                     on_progress=_on_progress,
                 )
-            except Exception:
+            except Exception as exc:
+                from semblon.jobs import JobBusy
+
                 self._visual_analyzing = False
-                self._run_visual_inline(media_id, persist=True, store=store, faces=faces)
+                if self._open:
+                    if isinstance(exc, JobBusy):
+                        self.status.set("Visual analysis is already running")
+                    else:
+                        self.status.set("Visual analysis could not start")
 
         def _run_visual_inline(
             self,
@@ -1561,11 +1562,6 @@ else:
                 return
 
             self._call_on_select(mid, soft_inspector_for_media(board, mid), None)
-
-        def _on_list_select(self, _evt=None) -> None:
-            sel = self._listbox.curselection()
-            if sel:
-                self.show_index(int(sel[0]))
 
         def _on_motion(self, event) -> None:
             # Pointer movement is a lookup. No SAM2, naming, or image analysis.

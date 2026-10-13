@@ -759,7 +759,7 @@ Fields are the same for every entry. “State at `35eeb72`” means what the sou
 
 - **Label:** Hover chip / inspector soft name. No sidebar item.
 - **What it is:** Open-vocabulary regions on a photo. Not people.
-- **Where implemented:** `visual_segment.py` `VisualSegment`; `visual_analyze.analyze_image` / `analyze_and_cache` / `hover_lookup`; `semantic_visual.py`; `application.analyse_visual` (`application.py:160`).
+- **Where implemented:** `visual_segment.py` `VisualSegment`; `visual_analyze.analyze_image` / `analyze_and_cache` / `hover_lookup`; `semantic_visual.py`; `Application.submit_visual` / `submit_visual_analyze`.
 - **Owner:** Visual understanding.
 - **What it exposes:** Canvas hover after a photo is open; CLI `semblon lab visual-understand` (`cli.py:80-88`).
 - **Where the user accesses it:** Open photo on the canvas. Not the Photos landing.

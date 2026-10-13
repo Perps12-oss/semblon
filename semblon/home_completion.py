@@ -123,12 +123,6 @@ def clear_completion(store: Path) -> None:
         conn.close()
 
 
-def latest_unfinished_run(store: Path) -> str | None:
-    """run_id of a leftover unfinished run, if any (restart-during-ingest)."""
-    info = latest_unfinished_run_info(store)
-    return None if info is None else str(info["run_id"])
-
-
 def latest_unfinished_run_info(store: Path) -> dict[str, Any] | None:
     """{run_id, folder?} for a leftover unfinished run (restart-during-ingest)."""
     p = Path(store)

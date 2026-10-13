@@ -9,6 +9,19 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Exit-IfNativeFailed {
+    param([string]$What)
+    # $ErrorActionPreference=Stop does not fail PowerShell 5.1 on a native non-zero exit.
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        Write-Error "$What failed with exit code $LASTEXITCODE"
+    }
+}
+
+# Dot-sourcing defines Exit-IfNativeFailed only. It must not create a venv.
+if ($MyInvocation.InvocationName -eq '.') {
+    return
+}
+
 if ($Root) {
     $Root = $Root.TrimEnd('\', '/')
 } else {
@@ -31,6 +44,7 @@ $VenvPy = Join-Path $Root ".venv\Scripts\python.exe"
 if (-not (Test-Path $VenvPy)) {
     Write-Host "Creating .venv with $PythonLauncher $PythonVersion"
     & $PythonLauncher $PythonVersion -m venv .venv
+    Exit-IfNativeFailed "venv create"
 }
 
 if (-not (Test-Path $VenvPy)) {
@@ -38,9 +52,12 @@ if (-not (Test-Path $VenvPy)) {
 }
 
 & $VenvPy -m pip install -U pip
+Exit-IfNativeFailed "pip upgrade"
 & $VenvPy -m pip install -r (Join-Path $Root "requirements.txt")
+Exit-IfNativeFailed "pip install -r requirements.txt"
 # Product shell is PySide6 (`semblon shell`). The gui extra is required.
 & $VenvPy -m pip install -e ".[gui]"
+Exit-IfNativeFailed "pip install -e .[gui]"
 
 & $VenvPy -c "import semblon, PySide6; print('import ok', semblon.__version__, 'PySide6', PySide6.__version__)"
 if ($LASTEXITCODE -ne 0) {

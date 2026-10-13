@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import platform
 import sys
@@ -93,6 +94,60 @@ def pack_id(insightface_version: str, weight_hashes: dict[str, str]) -> str:
         blob = "".join(f"{k}:{v};" for k, v in sorted(weight_hashes.items()))
         digest = hashlib.sha256(blob.encode()).hexdigest()[:16]
     return f"{PACK_FAMILY}@{insightface_version}/adapter-{ADAPTER_VERSION}/sha256:{digest}"
+
+
+def current_identity_space() -> dict:
+    """Live FaceKit space. Digest width stays 16 hex. Call after weights are loaded."""
+    import insightface
+    import onnxruntime as ort
+
+    ifver = getattr(insightface, "__version__", "unknown")
+    hashes = discover_weight_hashes()
+    return {
+        "pack_id": pack_id(ifver, hashes),
+        "ort_version": getattr(ort, "__version__", None),
+        "opencv_version": getattr(cv2, "__version__", None),
+        "insightface_version": ifver,
+        "weights_present": bool(hashes),
+    }
+
+
+def identity_space_mismatch(
+    run_pack: str | None,
+    run_ort: str | None,
+    run_runtime_json: str | dict | None,
+    *,
+    live: dict | None = None,
+) -> str | None:
+    """Why resume or identify must refuse this run, or None when the space matches.
+
+    Stored ort_version and opencv_version are checked only when the run recorded
+    them. Older rows without those fields still match on pack_id alone.
+    An unhashed live pack does not match a content-addressed run pack.
+    """
+    space = live if live is not None else current_identity_space()
+    live_pack = str(space.get("pack_id") or "")
+    stored_pack = str(run_pack or "")
+    if stored_pack != live_pack:
+        return f"pack_id mismatch: run {stored_pack} live {live_pack}"
+    if run_ort:
+        live_ort = str(space.get("ort_version") or "")
+        if live_ort != str(run_ort):
+            return f"ort_version mismatch: run {run_ort} live {live_ort}"
+    runtime = run_runtime_json
+    if isinstance(runtime, str):
+        try:
+            runtime = json.loads(runtime or "{}")
+        except json.JSONDecodeError:
+            runtime = {}
+    if not isinstance(runtime, dict):
+        runtime = {}
+    stored_cv = runtime.get("opencv_version")
+    if stored_cv:
+        live_cv = str(space.get("opencv_version") or "")
+        if live_cv != str(stored_cv):
+            return f"opencv_version mismatch: run {stored_cv} live {live_cv}"
+    return None
 
 
 def onnx_providers() -> list[str]:
