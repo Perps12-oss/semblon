@@ -569,6 +569,7 @@ def test_atmosphere_tertiary_contrast():
             assert _contrast(spec.text_tertiary, bg) >= 4.5
 
 
+@pytest.mark.skipif(os.name != "nt", reason="PowerShell installer test requires Windows")
 def test_installer_native_failure_and_dotsource(tmp_path):
     script = Path(__file__).resolve().parents[1] / "tools" / "install-windows.ps1"
     exe = tmp_path / "python.exe"
