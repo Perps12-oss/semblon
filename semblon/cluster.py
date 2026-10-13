@@ -324,6 +324,21 @@ def cluster_run(
     from semblon.observers import snapshot_groups_from_clusters
 
     groups = snapshot_groups_from_clusters(conn, run_id)
+    row = conn.execute(
+        "SELECT timings_json FROM runs WHERE run_id=?", (run_id,)
+    ).fetchone()
+    try:
+        timings = json.loads((row["timings_json"] if row else None) or "{}")
+    except (json.JSONDecodeError, TypeError, KeyError):
+        timings = {}
+    if not isinstance(timings, dict):
+        timings = {}
+    timings["cluster_s"] = round(elapsed, 3)
+    timings["stage"] = "cluster"
+    conn.execute(
+        "UPDATE runs SET timings_json=? WHERE run_id=?",
+        (json.dumps(timings), run_id),
+    )
     conn.commit()
     conn.close()
     return {

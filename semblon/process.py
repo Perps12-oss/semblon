@@ -255,7 +255,11 @@ def inspect_run_stages(
     n_faces = int(faces["n"] or 0)
     n_ok = int(faces["ok"] or 0)
     n_clusters = int(
-        conn.execute("SELECT COUNT(*) FROM clusters WHERE run_id=?", (run_id,)).fetchone()[0]
+        conn.execute(
+            """SELECT COUNT(*) FROM clusters
+               WHERE run_id=? AND status != 'merged'""",
+            (run_id,),
+        ).fetchone()[0]
     )
     media_complete = True
     if folder is not None:
@@ -296,7 +300,12 @@ def inspect_run_stages(
         pass
     if not isinstance(timings, dict):
         timings = {}
-    cluster_done = ingest_done and (n_ok == 0 or n_clusters > 0)
+    # A finished cluster pass with zero clusters (all noise, or only video
+    # faces) records cluster_s. finished_at is stamped by ingest and is not
+    # a cluster-done signal. Merged shells are not live clusters.
+    cluster_done = ingest_done and (
+        n_ok == 0 or n_clusters > 0 or timings.get("cluster_s") is not None
+    )
     # The library is the review surface. review.html is not a process stage.
     export_done = cluster_done
     return {
@@ -340,43 +349,16 @@ def find_resumable_run(store: Path, folder: Path) -> str | None:
     return None
 
 
-def _ingest_record_from_run(store: Path, run_id: str) -> dict:
-    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=5000")
-    row = conn.execute("SELECT timings_json FROM runs WHERE run_id=?", (run_id,)).fetchone()
-    n_faces = int(
-        conn.execute("SELECT COUNT(*) FROM faces WHERE run_id=?", (run_id,)).fetchone()[0]
-    )
-    n_ok = int(
-        conn.execute(
-            "SELECT COUNT(*) FROM faces WHERE run_id=? AND status='ok'", (run_id,)
-        ).fetchone()[0]
-    )
-    conn.close()
-    timings = {}
-    if row and row["timings_json"]:
-        try:
-            timings = json.loads(row["timings_json"])
-        except json.JSONDecodeError:
-            timings = {}
-    return {
-        "run_id": run_id,
-        "new_media": int(timings.get("new_media") or 0),
-        "faces": int(timings.get("faces") or n_faces),
-        "ok": int(timings.get("ok") or n_ok),
-        "skipped_seen": int(timings.get("skipped_seen") or 0),
-        "files": int(timings.get("files") or 0),
-        "resumed": True,
-    }
-
-
 def _cluster_record_from_run(store: Path, run_id: str) -> dict:
     conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     n_clusters = int(
-        conn.execute("SELECT COUNT(*) FROM clusters WHERE run_id=?", (run_id,)).fetchone()[0]
+        conn.execute(
+            """SELECT COUNT(*) FROM clusters
+               WHERE run_id=? AND status != 'merged'""",
+            (run_id,),
+        ).fetchone()[0]
     )
     n_clustered = int(
         conn.execute(
@@ -444,11 +426,7 @@ def process_folder(
     start_msg = f"Ingesting media from: {folder.resolve()}"
     if resume_run and stages:
         nxt = "ingest"
-        if stages["ingest_done"] and not stages["cluster_done"]:
-            nxt = "cluster"
-        elif stages["cluster_done"] and not stages["export_done"]:
-            nxt = "export"
-        elif stages["ingest_done"] and stages["cluster_done"] and stages["export_done"]:
+        if stages["ingest_done"] and stages["cluster_done"] and stages["export_done"]:
             nxt = "already complete"
         start_msg = f"Resume run_id={resume_run} at {nxt}"
 
@@ -476,31 +454,19 @@ def process_folder(
     progress(f"Store: {store_path.resolve()}")
     try:
         try:
-            if resume_run and stages and stages["ingest_done"]:
-                progress(f"Resume: skip ingest (run_id={resume_run})")
-                emit(
-                    on_event,
-                    make_event(
-                        STAGE_PROCESS,
-                        KIND_STARTED,
-                        run_id=resume_run,
-                        message=f"Resume: skip ingest (run_id={resume_run})",
-                        outcome="skipped_stage",
-                    ),
-                )
-                ing = _ingest_record_from_run(store_path, resume_run)
-            else:
-                ing = ingest(
-                    folder,
-                    store_path,
-                    reprocess=reprocess,
-                    on_event=on_event,
-                    cancel=cancel,
-                    workers=workers,
-                    observers=observers,
-                    prefer_gpu=prefer_gpu,
-                    resume_run_id=resume_run if resume else None,
-                )
+            # Incremental ingest on every resume. Skipping it drops files
+            # added after a finished ingest and before cluster completes.
+            ing = ingest(
+                folder,
+                store_path,
+                reprocess=reprocess,
+                on_event=on_event,
+                cancel=cancel,
+                workers=workers,
+                observers=observers,
+                prefer_gpu=prefer_gpu,
+                resume_run_id=resume_run if resume else None,
+            )
         except CancelledError as e:
             progress("Cancelled.")
             emit(

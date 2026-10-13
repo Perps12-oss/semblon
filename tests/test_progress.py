@@ -505,7 +505,7 @@ def test_process_resume_skips_finished_stages(tmp_path):
     assert not out.exists()
 
 
-def test_resume_skips_finished_ingest_without_writing_html(tmp_path):
+def test_resume_ingests_when_cluster_is_unfinished(tmp_path):
     folder = tmp_path / "photos"
     folder.mkdir()
     store = tmp_path / "store.sqlite"
@@ -549,10 +549,20 @@ def test_resume_skips_finished_ingest_without_writing_html(tmp_path):
     assert find_resumable_run(store, folder) == "r-resume"
 
     with (
-        patch("semblon.process.ingest") as ing,
+        patch(
+            "semblon.process.ingest",
+            return_value={
+                "run_id": "r-resume",
+                "faces": 1,
+                "ok": 1,
+                "new_media": 0,
+                "skipped_seen": 0,
+                "files": 1,
+            },
+        ) as ing,
         patch(
             "semblon.process.cluster_run",
-            return_value={"clusters": 1, "clustered": 1, "unassigned": 0},
+            return_value={"clusters": 1, "clustered": 1, "unassigned": 0, "cluster_s": 0.01},
         ) as clu,
     ):
         rec = process_folder(
@@ -563,11 +573,12 @@ def test_resume_skips_finished_ingest_without_writing_html(tmp_path):
             progress=lambda *_: None,
         )
 
-    ing.assert_not_called()
+    ing.assert_called_once()
+    assert ing.call_args.kwargs["resume_run_id"] == "r-resume"
     clu.assert_called_once()
     assert rec["run_id"] == "r-resume"
     assert rec["out"] is None
-    assert rec["ingest"]["resumed"] is True
+    assert rec["ingest"]["run_id"] == "r-resume"
     assert not out.is_file()
 
 

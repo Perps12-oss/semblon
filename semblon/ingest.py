@@ -14,6 +14,7 @@ import json
 import platform
 import signal
 import sqlite3
+import struct
 import sys
 import time
 import uuid
@@ -30,6 +31,7 @@ from semblon.engine import (
     PACK_FAMILY,
     discover_weight_hashes,
     embed_bgr,
+    identity_space_mismatch,
     pack_id,
     process_arch,
     process_execution,
@@ -84,11 +86,17 @@ def _cancel_requested(cancel: CancelCallback) -> bool:
         return False
     try:
         return bool(cancel())
+    except CancelledError:
+        raise
     except Exception:
-        return False
+        # Stop the pipeline. Swallowing this used to spin until the folder ended.
+        return True
 
 
 STILL_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+# Refuse a still before the full decode. Caps are resource limits, not identity.
+MAX_STILL_BYTES = 256 * 1024 * 1024
+MAX_IMAGE_PIXELS = 80_000_000
 DET_SCORE_MIN = 0.60
 CLUSTER_MIN_SIDE = 80
 DET_SIZE = (640, 640)
@@ -257,11 +265,66 @@ def _mark_video_sampling_complete(
     )
 
 
+def _jpeg_sof_pixels(data: bytes) -> int | None:
+    """Pixel count from a JPEG SOF, or None if the header is not usable.
+
+    Fill bytes (0xFF) are not markers. Standalone markers have no length.
+    """
+    sof = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+    standalone = {0x01, 0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8}
+    i = 2
+    n = len(data)
+    while i < n:
+        if data[i] != 0xFF:
+            return None
+        while i < n and data[i] == 0xFF:
+            i += 1
+        if i >= n:
+            return None
+        marker = data[i]
+        i += 1
+        if marker in (0xD9, 0xDA):
+            return None
+        if marker in standalone or marker == 0x00:
+            continue
+        if i + 1 >= n:
+            return None
+        seglen = int.from_bytes(data[i : i + 2], "big")
+        if seglen < 2 or i + seglen > n:
+            return None
+        if marker in sof and seglen >= 7 and i + 7 <= n:
+            height, width = struct.unpack(">HH", data[i + 3 : i + 7])
+            return int(width) * int(height)
+        i += seglen
+    return None
+
+
+def _header_pixels(data: bytes) -> int | None:
+    """Pixel count from a still header. None means decode, then measure."""
+    if len(data) >= 24 and data[:8] == b"\x89PNG\r\n\x1a\n":
+        width, height = struct.unpack(">II", data[16:24])
+        return int(width) * int(height)
+    if len(data) >= 26 and data[:2] == b"BM":
+        width, height = struct.unpack("<ii", data[18:26])
+        return abs(int(width)) * abs(int(height))
+    if len(data) >= 30 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        if data[12:16] == b"VP8X":
+            width = 1 + int.from_bytes(data[24:27], "little")
+            height = 1 + int.from_bytes(data[27:30], "little")
+            return width * height
+        return None
+    if data[:2] == b"\xff\xd8":
+        return _jpeg_sof_pixels(data)
+    return None
+
+
 def _hash_path(path: Path, index: int) -> dict:
     """SHA-256 only. No decode, no embed, no SQLite."""
     try:
-        digest = _sha256_file(path)
         st = path.stat()
+        if st.st_size > MAX_STILL_BYTES:
+            return {"index": index, "path": path, "outcome": "failed", "error": "too_large"}
+        digest = _sha256_file(path)
     except OSError:
         return {"index": index, "path": path, "outcome": "failed", "error": "hash"}
     return {
@@ -275,25 +338,47 @@ def _hash_path(path: Path, index: int) -> dict:
 
 
 def _read_and_hash(path: Path) -> tuple[str, bytes, int, int]:
-    """One I/O: bytes + sha256 + mtime_ns + byte_size."""
+    """One I/O: bytes + sha256 + mtime_ns + byte_size. Refuses oversized stills."""
+    st = path.stat()
+    size = int(st.st_size)
+    if size > MAX_STILL_BYTES:
+        raise OSError("still exceeds byte cap")
     data = path.read_bytes()
     digest = hashlib.sha256(data).hexdigest()
-    st = path.stat()
     return (
         digest,
         data,
         getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
-        st.st_size,
+        size,
     )
 
 
 def _decode_bgr(data: bytes | None, path: Path):
-    if data:
-        arr = np.frombuffer(data, dtype=np.uint8)
+    payload = data
+    if not payload:
+        try:
+            if path.stat().st_size > MAX_STILL_BYTES:
+                return None
+            payload = path.read_bytes()
+        except OSError:
+            return cv2.imread(str(path))
+    elif len(payload) > MAX_STILL_BYTES:
+        return None
+    pixels = _header_pixels(payload) if payload else None
+    if pixels is not None and pixels > MAX_IMAGE_PIXELS:
+        return None
+    img = None
+    if payload:
+        arr = np.frombuffer(payload, dtype=np.uint8)
         img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        if img is not None:
-            return img
-    return cv2.imread(str(path))
+    if img is None:
+        img = cv2.imread(str(path))
+    if img is None:
+        return None
+    height, width = img.shape[:2]
+    if int(height) * int(width) > MAX_IMAGE_PIXELS:
+        return None
+    return img
 
 
 def _persist_faces(conn, *, obs_id: str, run_id: str, pack_id: str, faces: list) -> tuple[int, int, int, int]:
@@ -429,278 +514,383 @@ def ingest(
 
     conn = connect(store)
     init_db(conn)
+    _sig_prev = {"fn": None}
 
-    import insightface
-    import onnxruntime as ort
-
-    hashes = discover_weight_hashes()
-    ifver = getattr(insightface, "__version__", "unknown")
-
-    ep = select_execution_provider(prefer_gpu=prefer_gpu)
-    t_load = time.perf_counter()
-    app = load_app(DET_SIZE, prefer_gpu=prefer_gpu)
-    load_s = time.perf_counter() - t_load
-    # Re-hash after load so first-run download is captured in pack_id.
-    hashes = discover_weight_hashes() or hashes
-    pid = pack_id(ifver, hashes)
-
-    runtime = {
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
-        "hostname": platform.node(),
-        "os": platform.system().lower(),
-        "os_version": platform.version(),
-        "arch": _arch(),
-        "execution": _execution(),
-        "python": sys.version.split()[0],
-        "python_arch": platform.architecture()[0],
-        "ort_package": "onnxruntime",
-        "ort_version": ort.__version__,
-        "insightface_version": ifver,
-        "pack_family": PACK_FAMILY,
-        "pack_id": pid,
-        "det_size": list(DET_SIZE),
-        "device": ep["device"],
-        "execution_provider": ep["chosen"],
-        "gpu": ep["gpu"],
-        "onnx_providers": ep["available"],
-        "provider": FaceKitProvider.info.name,
-        "modality": FaceKitProvider.info.modality,
-        "workers": int(workers),
-        "observers": list(observer_list),
-        "model_load_s": round(load_s, 3),
-        "software_version": __version__,
-    }
-    config = {
-        "det_score_min": DET_SCORE_MIN,
-        "cluster_min_side": CLUSTER_MIN_SIDE,
-        "det_size": list(DET_SIZE),
-        "folder": str(folder),
-        "reprocess": bool(reprocess),
-        "incremental": not reprocess,
-        "sample_hz": DEFAULT_SAMPLE_HZ,
-        "workers": int(workers),
-        "observers": list(observer_list),
-        "prefer_gpu": bool(prefer_gpu),
-    }
-    if resume_run_id:
-        row = conn.execute("SELECT * FROM runs WHERE run_id=?", (resume_run_id,)).fetchone()
-        if row is None:
-            conn.close()
-            raise ValueError(f"unknown run: {resume_run_id}")
-        run_id = str(row["run_id"])
-        pid = str(row["pack_id"])
-        conn.execute(
-            "UPDATE runs SET finished_at=NULL, notes=NULL WHERE run_id=?",
-            (run_id,),
-        )
-        conn.commit()
-    else:
-        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
-        conn.execute(
-            """INSERT INTO runs(run_id, started_at, software_version, pack_id,
-               embedding_dim, embedding_norm, config_json, runtime_json, arch, execution,
-               ort_version)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                run_id,
-                datetime.now(timezone.utc).isoformat(),
-                __version__,
-                pid,
-                512,
-                "l2",
-                json.dumps(config),
-                json.dumps(runtime),
-                _arch(),
-                _execution(),
-                ort.__version__,
-            ),
-        )
-        conn.commit()
-    stamp_unfinished_runs(conn, except_run_id=run_id)
-
-    emit(on_event, make_event(STAGE_DISCOVER, KIND_STARTED, path=str(folder), run_id=run_id))
-    files, videos = discover_media(folder)
-    n_files = len(files) + len(videos)
-    emit(
-        on_event,
-        make_event(
-            STAGE_DISCOVER,
-            KIND_PROGRESS,
-            current=n_files,
-            total=n_files,
-            files_total=n_files,
-            run_id=run_id,
-        ),
-    )
-    emit(
-        on_event,
-        make_event(
-            STAGE_DISCOVER,
-            KIND_COMPLETED,
-            current=n_files,
-            total=n_files,
-            files_total=n_files,
-            run_id=run_id,
-        ),
-    )
-    emit(
-        on_event,
-        make_event(
-            STAGE_INGEST,
-            KIND_STARTED,
-            current=0,
-            total=n_files,
-            files_processed=0,
-            files_total=n_files,
-            faces_found=0,
-            run_id=run_id,
-        ),
-    )
-
-    n_media = n_skip_seen = n_skip_same = n_faces = n_ok = n_lq = n_rej = n_fail = 0
-    n_video_frames = 0
-    cancelled = False
-    completed = 0
-    dirty = 0
-    t0 = time.perf_counter()
-    last_commit = t0
-    last_emit = 0.0
-    sigint = {"hit": False}
-    prev_sigint = None
-
-    def _on_sigint(_signum, _frame):
-        sigint["hit"] = True
-
-    def want_cancel() -> bool:
-        return sigint["hit"] or _cancel_requested(cancel)
+    def _restore_installed_sig() -> None:
+        prev = _sig_prev["fn"]
+        _sig_prev["fn"] = None
+        if prev is None:
+            return
+        try:
+            signal.signal(signal.SIGINT, prev)
+        except (ValueError, OSError):
+            pass
 
     try:
-        prev_sigint = signal.signal(signal.SIGINT, _on_sigint)
-    except (ValueError, OSError):
-        prev_sigint = None
+        import insightface
+        import onnxruntime as ort
 
-    def _restore_sig() -> None:
-        if prev_sigint is not None:
-            try:
-                signal.signal(signal.SIGINT, prev_sigint)
-            except (ValueError, OSError):
-                pass
+        hashes = discover_weight_hashes()
+        ifver = getattr(insightface, "__version__", "unknown")
 
-    def maybe_commit(*, force: bool = False) -> None:
-        nonlocal dirty, last_commit
-        if dirty <= 0:
-            return
-        now = time.perf_counter()
-        if force or dirty >= COMMIT_EVERY_N or (now - last_commit) >= COMMIT_EVERY_S:
+        ep = select_execution_provider(prefer_gpu=prefer_gpu)
+        t_load = time.perf_counter()
+        app = load_app(DET_SIZE, prefer_gpu=prefer_gpu)
+        load_s = time.perf_counter() - t_load
+        # Re-hash after load so first-run download is captured in pack_id.
+        hashes = discover_weight_hashes() or hashes
+        pid = pack_id(ifver, hashes)
+
+        runtime = {
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "hostname": platform.node(),
+            "os": platform.system().lower(),
+            "os_version": platform.version(),
+            "arch": _arch(),
+            "execution": _execution(),
+            "python": sys.version.split()[0],
+            "python_arch": platform.architecture()[0],
+            "ort_package": "onnxruntime",
+            "ort_version": ort.__version__,
+            "insightface_version": ifver,
+            "opencv_version": cv2.__version__,
+            "pack_family": PACK_FAMILY,
+            "pack_id": pid,
+            "det_size": list(DET_SIZE),
+            "device": ep["device"],
+            "execution_provider": ep["chosen"],
+            "gpu": ep["gpu"],
+            "onnx_providers": ep["available"],
+            "provider": FaceKitProvider.info.name,
+            "modality": FaceKitProvider.info.modality,
+            "workers": int(workers),
+            "observers": list(observer_list),
+            "model_load_s": round(load_s, 3),
+            "software_version": __version__,
+        }
+        config = {
+            "det_score_min": DET_SCORE_MIN,
+            "cluster_min_side": CLUSTER_MIN_SIDE,
+            "det_size": list(DET_SIZE),
+            "folder": str(folder),
+            "reprocess": bool(reprocess),
+            "incremental": not reprocess,
+            "sample_hz": DEFAULT_SAMPLE_HZ,
+            "workers": int(workers),
+            "observers": list(observer_list),
+            "prefer_gpu": bool(prefer_gpu),
+        }
+        if resume_run_id:
+            row = conn.execute("SELECT * FROM runs WHERE run_id=?", (resume_run_id,)).fetchone()
+            if row is None:
+                raise ValueError(f"unknown run: {resume_run_id}")
+            mismatch = identity_space_mismatch(
+                row["pack_id"],
+                row["ort_version"],
+                row["runtime_json"],
+                live={
+                    "pack_id": pid,
+                    "ort_version": ort.__version__,
+                    "opencv_version": cv2.__version__,
+                },
+            )
+            if mismatch:
+                raise ValueError(mismatch)
+            run_id = str(row["run_id"])
+            conn.execute(
+                "UPDATE runs SET finished_at=NULL, notes=NULL WHERE run_id=?",
+                (run_id,),
+            )
             conn.commit()
-            dirty = 0
-            last_commit = now
-
-    def tick(path: Path, outcome: str, *, force: bool = False) -> None:
-        nonlocal completed, last_emit
-        completed += 1
-        now = time.perf_counter()
-        if (
-            force
-            or completed >= n_files
-            or last_emit == 0.0
-            or (now - last_emit) >= PROGRESS_THROTTLE_S
-        ):
-            last_emit = now
-            emit(
-                on_event,
-                make_event(
-                    STAGE_INGEST,
-                    KIND_PROGRESS,
-                    current=completed,
-                    total=n_files,
-                    files_processed=completed,
-                    files_total=n_files,
-                    faces_found=n_faces,
-                    path=str(path),
-                    run_id=run_id,
-                    outcome=outcome,
-                    elapsed_s=now - t0,
+        else:
+            run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
+            conn.execute(
+                """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+                   embedding_dim, embedding_norm, config_json, runtime_json, arch, execution,
+                   ort_version)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    run_id,
+                    datetime.now(timezone.utc).isoformat(),
+                    __version__,
+                    pid,
+                    512,
+                    "l2",
+                    json.dumps(config),
+                    json.dumps(runtime),
+                    _arch(),
+                    _execution(),
+                    ort.__version__,
                 ),
             )
+            conn.commit()
+        stamp_unfinished_runs(conn, except_run_id=run_id)
 
-    def persist_still(
-        *,
-        path: Path,
-        digest: str,
-        media_id: str | None,
-        mtime_ns: int,
-        byte_size: int,
-        data: bytes | None,
-    ) -> None:
-        nonlocal n_media, n_faces, n_ok, n_lq, n_rej, n_fail, dirty
-        if want_cancel():
-            return
-        img0 = _decode_bgr(data, path)
-        if img0 is None:
-            n_fail += 1
-            tick(path, "failed", force=True)
-            return
-        h, w = img0.shape[:2]
-        if media_id is None:
-            media_id = uuid.uuid4().hex
-            conn.execute(
-                """INSERT INTO media(media_id, source_type, path, sha256, width, height,
-                   mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
-                (media_id, "folder", str(path), digest, w, h, mtime_ns, byte_size),
-            )
-            n_media += 1
-            dirty += 1
-
-        obs_id = uuid.uuid4().hex
-        conn.execute(
-            "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
-            (obs_id, media_id, None, None, run_id),
+        emit(on_event, make_event(STAGE_DISCOVER, KIND_STARTED, path=str(folder), run_id=run_id))
+        files, videos = discover_media(folder)
+        n_files = len(files) + len(videos)
+        emit(
+            on_event,
+            make_event(
+                STAGE_DISCOVER,
+                KIND_PROGRESS,
+                current=n_files,
+                total=n_files,
+                files_total=n_files,
+                run_id=run_id,
+            ),
         )
-        dirty += 1
+        emit(
+            on_event,
+            make_event(
+                STAGE_DISCOVER,
+                KIND_COMPLETED,
+                current=n_files,
+                total=n_files,
+                files_total=n_files,
+                run_id=run_id,
+            ),
+        )
+        emit(
+            on_event,
+            make_event(
+                STAGE_INGEST,
+                KIND_STARTED,
+                current=0,
+                total=n_files,
+                files_processed=0,
+                files_total=n_files,
+                faces_found=0,
+                run_id=run_id,
+            ),
+        )
+
+        n_media = n_skip_seen = n_skip_same = n_faces = n_ok = n_lq = n_rej = n_fail = 0
+        n_video_frames = 0
+        cancelled = False
+        completed = 0
+        dirty = 0
+        t0 = time.perf_counter()
+        last_commit = t0
+        last_emit = 0.0
+        sigint = {"hit": False}
+
+        def _on_sigint(_signum, _frame):
+            sigint["hit"] = True
+
+        def want_cancel() -> bool:
+            return sigint["hit"] or _cancel_requested(cancel)
+
         try:
+            _sig_prev["fn"] = signal.signal(signal.SIGINT, _on_sigint)
+        except (ValueError, OSError):
+            _sig_prev["fn"] = None
+
+        def _restore_sig() -> None:
+            _restore_installed_sig()
+
+        def maybe_commit(*, force: bool = False) -> None:
+            nonlocal dirty, last_commit
+            if dirty <= 0:
+                return
+            now = time.perf_counter()
+            if force or dirty >= COMMIT_EVERY_N or (now - last_commit) >= COMMIT_EVERY_S:
+                conn.commit()
+                dirty = 0
+                last_commit = now
+
+        def tick(path: Path, outcome: str, *, force: bool = False) -> None:
+            nonlocal completed, last_emit
+            completed += 1
+            now = time.perf_counter()
+            if (
+                force
+                or completed >= n_files
+                or last_emit == 0.0
+                or (now - last_emit) >= PROGRESS_THROTTLE_S
+            ):
+                last_emit = now
+                emit(
+                    on_event,
+                    make_event(
+                        STAGE_INGEST,
+                        KIND_PROGRESS,
+                        current=completed,
+                        total=n_files,
+                        files_processed=completed,
+                        files_total=n_files,
+                        faces_found=n_faces,
+                        path=str(path),
+                        run_id=run_id,
+                        outcome=outcome,
+                        elapsed_s=now - t0,
+                    ),
+                )
+
+        def persist_still(
+            *,
+            path: Path,
+            digest: str,
+            media_id: str | None,
+            mtime_ns: int,
+            byte_size: int,
+            data: bytes | None,
+        ) -> None:
+            nonlocal n_media, n_faces, n_ok, n_lq, n_rej, n_fail, dirty
             if want_cancel():
                 return
-            faces = embed_bgr(app, img0)
-        except Exception:
-            n_fail += 1
-            dirty += 1
-            maybe_commit(force=True)
-            tick(path, "failed", force=True)
-            return
+            img0 = _decode_bgr(data, path)
+            if img0 is None:
+                n_fail += 1
+                tick(path, "failed", force=True)
+                return
+            h, w = img0.shape[:2]
+            created_media = False
+            if media_id is None:
+                media_id = uuid.uuid4().hex
+                conn.execute(
+                    """INSERT INTO media(media_id, source_type, path, sha256, width, height,
+                       mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
+                    (media_id, "folder", str(path), digest, w, h, mtime_ns, byte_size),
+                )
+                created_media = True
+                n_media += 1
+                dirty += 1
 
-        nf, nok, nlq, nrej = _persist_faces(
-            conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
-        )
-        n_faces += nf
-        n_ok += nok
-        n_lq += nlq
-        n_rej += nrej
-        dirty += max(nf, 1)
-        if extra_observers:
-            observe_bgr(
-                conn,
-                observation_id=obs_id,
-                run_id=run_id,
-                img=img0,
-                observers=extra_observers,
+            obs_id = uuid.uuid4().hex
+            conn.execute(
+                "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                (obs_id, media_id, None, None, run_id),
             )
             dirty += 1
-        maybe_commit()
-        tick(path, "processed")
 
-    # --- stills: hash → skip → decode/embed ---
-    if workers == 1:
-        for index, path in enumerate(files, start=1):
+            def _drop_failed_still() -> None:
+                nonlocal n_media, dirty
+                conn.execute("DELETE FROM faces WHERE observation_id=?", (obs_id,))
+                conn.execute("DELETE FROM observations WHERE observation_id=?", (obs_id,))
+                if created_media:
+                    left = conn.execute(
+                        "SELECT 1 FROM observations WHERE media_id=? LIMIT 1",
+                        (media_id,),
+                    ).fetchone()
+                    if left is None:
+                        conn.execute("DELETE FROM media WHERE media_id=?", (media_id,))
+                        n_media = max(0, n_media - 1)
+                dirty += 1
+                maybe_commit(force=True)
+
+            try:
+                if want_cancel():
+                    _drop_failed_still()
+                    return
+                faces = embed_bgr(app, img0)
+            except Exception:
+                _drop_failed_still()
+                n_fail += 1
+                tick(path, "failed", force=True)
+                return
+
+            nf, nok, nlq, nrej = _persist_faces(
+                conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+            )
+            n_faces += nf
+            n_ok += nok
+            n_lq += nlq
+            n_rej += nrej
+            dirty += max(nf, 1)
+            if extra_observers:
+                observe_bgr(
+                    conn,
+                    observation_id=obs_id,
+                    run_id=run_id,
+                    img=img0,
+                    observers=extra_observers,
+                )
+                dirty += 1
+            maybe_commit()
+            tick(path, "processed")
+
+        # --- stills: hash → skip → decode/embed ---
+        if workers == 1:
+            for index, path in enumerate(files, start=1):
+                if want_cancel():
+                    cancelled = True
+                    break
+                try:
+                    digest, data, mtime_ns, byte_size = _read_and_hash(path)
+                except OSError:
+                    n_fail += 1
+                    tick(path, "failed", force=True)
+                    continue
+                reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
+                if reason == "seen":
+                    n_skip_seen += 1
+                    tick(path, "skipped_seen")
+                    continue
+                if reason == "same_run":
+                    n_skip_same += 1
+                    tick(path, "skipped_same_run")
+                    continue
+                persist_still(
+                    path=path,
+                    digest=digest,
+                    media_id=media_id,
+                    mtime_ns=mtime_ns,
+                    byte_size=byte_size,
+                    data=data,
+                )
+                if want_cancel():
+                    cancelled = True
+                    break
+        else:
+            for rec in _iter_hash_results(files, workers=workers, want_cancel=want_cancel):
+                if want_cancel():
+                    cancelled = True
+                    break
+                path = Path(rec["path"])
+                if rec.get("outcome") == "failed":
+                    n_fail += 1
+                    tick(path, "failed", force=True)
+                    continue
+                digest = rec["digest"]
+                reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
+                if reason == "seen":
+                    n_skip_seen += 1
+                    tick(path, "skipped_seen")
+                    continue
+                if reason == "same_run":
+                    n_skip_same += 1
+                    tick(path, "skipped_same_run")
+                    continue
+                persist_still(
+                    path=path,
+                    digest=digest,
+                    media_id=media_id,
+                    mtime_ns=rec["mtime_ns"],
+                    byte_size=rec["byte_size"],
+                    data=None,
+                )
+                if want_cancel():
+                    cancelled = True
+                    break
+
+        # --- videos: hash → skip → stream frames (never list()) ---
+        for offset, path in enumerate(videos, start=1):
+            if cancelled:
+                break
             if want_cancel():
                 cancelled = True
                 break
             try:
-                digest, data, mtime_ns, byte_size = _read_and_hash(path)
+                digest = _sha256_file(path)
+                st = path.stat()
+                mtime_ns = getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9))
+                byte_size = st.st_size
             except OSError:
                 n_fail += 1
                 tick(path, "failed", force=True)
                 continue
+
             reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
             if reason == "seen":
                 n_skip_seen += 1
@@ -710,215 +900,196 @@ def ingest(
                 n_skip_same += 1
                 tick(path, "skipped_same_run")
                 continue
-            persist_still(
-                path=path,
-                digest=digest,
-                media_id=media_id,
-                mtime_ns=mtime_ns,
-                byte_size=byte_size,
-                data=data,
-            )
-            if want_cancel():
-                cancelled = True
-                break
-    else:
-        for rec in _iter_hash_results(files, workers=workers, want_cancel=want_cancel):
-            if want_cancel():
-                cancelled = True
-                break
-            path = Path(rec["path"])
-            if rec.get("outcome") == "failed":
+
+            width = height = None
+            frames_ok = 0
+            frames_sampled = 0
+            frames_failed = 0
+            try:
+                for frame_id, t_ms, img in iter_sampled_frames(path, DEFAULT_SAMPLE_HZ):
+                    frames_sampled += 1
+                    if want_cancel():
+                        cancelled = True
+                        break
+                    fh, fw = img.shape[:2]
+                    if int(fh) * int(fw) > MAX_IMAGE_PIXELS:
+                        frames_failed += 1
+                        continue
+                    if width is None:
+                        height, width = img.shape[:2]
+                        if media_id is None:
+                            media_id = uuid.uuid4().hex
+                            conn.execute(
+                                """INSERT INTO media(media_id, source_type, path, sha256, width, height,
+                                   mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
+                                (
+                                    media_id,
+                                    "video",
+                                    str(path),
+                                    digest,
+                                    width,
+                                    height,
+                                    mtime_ns,
+                                    byte_size,
+                                ),
+                            )
+                            n_media += 1
+                            dirty += 1
+                    obs_id = uuid.uuid4().hex
+                    inserted = False
+                    try:
+                        conn.execute(
+                            "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                            (obs_id, media_id, int(frame_id), int(t_ms), run_id),
+                        )
+                        inserted = True
+                        dirty += 1
+                    except sqlite3.IntegrityError:
+                        row = conn.execute(
+                            """SELECT observation_id FROM observations
+                               WHERE media_id=? AND frame_id=? AND run_id=?""",
+                            (media_id, int(frame_id), run_id),
+                        ).fetchone()
+                        if row is None:
+                            frames_failed += 1
+                            continue
+                        obs_id = row[0]
+                        have = conn.execute(
+                            "SELECT COUNT(*) FROM faces WHERE observation_id=?",
+                            (obs_id,),
+                        ).fetchone()[0]
+                        if have:
+                            frames_ok += 1
+                            continue
+                    try:
+                        faces = embed_bgr(app, img)
+                    except Exception:
+                        conn.execute(
+                            "DELETE FROM observations WHERE observation_id=?",
+                            (obs_id,),
+                        )
+                        frames_failed += 1
+                        continue
+                    if not inserted:
+                        dirty += 1
+                    nf, nok, nlq, nrej = _persist_faces(
+                        conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+                    )
+                    n_faces += nf
+                    n_ok += nok
+                    n_lq += nlq
+                    n_rej += nrej
+                    dirty += max(nf, 1)
+                    frames_ok += 1
+                    maybe_commit()
+            except VideoError:
                 n_fail += 1
+                maybe_commit(force=True)
                 tick(path, "failed", force=True)
                 continue
-            digest = rec["digest"]
-            reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
-            if reason == "seen":
-                n_skip_seen += 1
-                tick(path, "skipped_seen")
-                continue
-            if reason == "same_run":
-                n_skip_same += 1
-                tick(path, "skipped_same_run")
-                continue
-            persist_still(
-                path=path,
-                digest=digest,
-                media_id=media_id,
-                mtime_ns=rec["mtime_ns"],
-                byte_size=rec["byte_size"],
-                data=None,
-            )
-            if want_cancel():
-                cancelled = True
-                break
 
-    # --- videos: hash → skip → stream frames (never list()) ---
-    for offset, path in enumerate(videos, start=1):
-        if cancelled:
-            break
-        if want_cancel():
-            cancelled = True
-            break
-        try:
-            digest = _sha256_file(path)
-            st = path.stat()
-            mtime_ns = getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9))
-            byte_size = st.st_size
-        except OSError:
-            n_fail += 1
-            tick(path, "failed", force=True)
-            continue
-
-        reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
-        if reason == "seen":
-            n_skip_seen += 1
-            tick(path, "skipped_seen")
-            continue
-        if reason == "same_run":
-            n_skip_same += 1
-            tick(path, "skipped_same_run")
-            continue
-
-        width = height = None
-        frames_ok = 0
-        frames_sampled = 0
-        try:
-            for frame_id, t_ms, img in iter_sampled_frames(path, DEFAULT_SAMPLE_HZ):
-                frames_sampled += 1
-                if want_cancel():
-                    cancelled = True
-                    break
-                if width is None:
-                    height, width = img.shape[:2]
-                    if media_id is None:
-                        media_id = uuid.uuid4().hex
-                        conn.execute(
-                            """INSERT INTO media(media_id, source_type, path, sha256, width, height,
-                               mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
-                            (
-                                media_id,
-                                "video",
-                                str(path),
-                                digest,
-                                width,
-                                height,
-                                mtime_ns,
-                                byte_size,
-                            ),
-                        )
-                        n_media += 1
-                        dirty += 1
-                obs_id = uuid.uuid4().hex
-                try:
-                    conn.execute(
-                        "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
-                        (obs_id, media_id, int(frame_id), int(t_ms), run_id),
-                    )
-                except sqlite3.IntegrityError:
-                    continue
-                dirty += 1
-                try:
-                    faces = embed_bgr(app, img)
-                except Exception:
-                    continue
-                nf, nok, nlq, nrej = _persist_faces(
-                    conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+            if (
+                frames_sampled
+                and not cancelled
+                and frames_failed == 0
+                and media_id is not None
+            ):
+                _mark_video_sampling_complete(
+                    conn, media_id=media_id, run_id=run_id, frames=frames_sampled
                 )
-                n_faces += nf
-                n_ok += nok
-                n_lq += nlq
-                n_rej += nrej
-                dirty += max(nf, 1)
-                frames_ok += 1
-                maybe_commit()
-        except VideoError:
-            n_fail += 1
+                dirty += 1
+
+            if width is None and media_id is None:
+                # No frames decoded — insert media row with null dims so hash skip works later.
+                media_id = uuid.uuid4().hex
+                conn.execute(
+                    """INSERT INTO media(media_id, source_type, path, sha256, width, height,
+                       mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
+                    (media_id, "video", str(path), digest, None, None, mtime_ns, byte_size),
+                )
+                n_media += 1
+                dirty += 1
+
+            n_video_frames += frames_ok
             maybe_commit(force=True)
-            tick(path, "failed", force=True)
-            continue
+            if cancelled:
+                tick(path, "cancelled", force=True)
+            elif frames_ok == 0:
+                n_fail += 1
+                tick(path, "failed", force=True)
+            else:
+                tick(path, "processed", force=True)
 
-        if frames_sampled and not cancelled:
-            _mark_video_sampling_complete(
-                conn, media_id=media_id, run_id=run_id, frames=frames_sampled
-            )
-            dirty += 1
-
-        if width is None and media_id is None:
-            # No frames decoded — insert media row with null dims so hash skip works later.
-            media_id = uuid.uuid4().hex
-            conn.execute(
-                """INSERT INTO media(media_id, source_type, path, sha256, width, height,
-                   mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
-                (media_id, "video", str(path), digest, None, None, mtime_ns, byte_size),
-            )
-            n_media += 1
-            dirty += 1
-
-        n_video_frames += frames_ok
         maybe_commit(force=True)
+
+        if videos and not cancelled:
+            persist_derived_tracks(store, run_id, conn=conn)
+
+        timings = {
+            "model_load_s": load_s,
+            "ingest_s": time.perf_counter() - t0,
+            "files": n_files,
+            "stills": len(files),
+            "videos": len(videos),
+            "video_frames": n_video_frames,
+            "new_media": n_media,
+            "skipped": n_skip_seen + n_skip_same,
+            "skipped_seen": n_skip_seen,
+            "skipped_same_run": n_skip_same,
+            "faces": n_faces,
+            "ok": n_ok,
+            "low_quality": n_lq,
+            "rejected": n_rej,
+            "failed": n_fail,
+            "incremental": not reprocess,
+            "workers": int(workers),
+            "observers": list(observer_list),
+            "gpu": ep["gpu"],
+            "cancelled": bool(cancelled),
+        }
+        if n_files and timings["ingest_s"] > 0:
+            timings["images_per_second"] = round(n_files / timings["ingest_s"], 4)
+            timings["faces_per_second"] = round(n_faces / timings["ingest_s"], 4)
+        notes = "cancelled" if cancelled else None
+        conn.execute(
+            "UPDATE runs SET finished_at=?, timings_json=?, notes=? WHERE run_id=?",
+            (datetime.now(timezone.utc).isoformat(), json.dumps(timings), notes, run_id),
+        )
+        conn.commit()
+        counts = {
+            "new_media": n_media,
+            "skipped_seen": n_skip_seen,
+            "skipped_same_run": n_skip_same,
+            "ok": n_ok,
+            "low_quality": n_lq,
+            "rejected": n_rej,
+            "failed": n_fail,
+        }
         if cancelled:
-            tick(path, "cancelled", force=True)
-        elif frames_ok == 0:
-            n_fail += 1
-            tick(path, "failed", force=True)
-        else:
-            tick(path, "processed", force=True)
-
-    maybe_commit(force=True)
-
-    if videos and not cancelled:
-        persist_derived_tracks(store, run_id, conn=conn)
-
-    timings = {
-        "model_load_s": load_s,
-        "ingest_s": time.perf_counter() - t0,
-        "files": n_files,
-        "stills": len(files),
-        "videos": len(videos),
-        "video_frames": n_video_frames,
-        "new_media": n_media,
-        "skipped": n_skip_seen + n_skip_same,
-        "skipped_seen": n_skip_seen,
-        "skipped_same_run": n_skip_same,
-        "faces": n_faces,
-        "ok": n_ok,
-        "low_quality": n_lq,
-        "rejected": n_rej,
-        "failed": n_fail,
-        "incremental": not reprocess,
-        "workers": int(workers),
-        "observers": list(observer_list),
-        "gpu": ep["gpu"],
-        "cancelled": bool(cancelled),
-    }
-    if n_files and timings["ingest_s"] > 0:
-        timings["images_per_second"] = round(n_files / timings["ingest_s"], 4)
-        timings["faces_per_second"] = round(n_faces / timings["ingest_s"], 4)
-    notes = "cancelled" if cancelled else None
-    conn.execute(
-        "UPDATE runs SET finished_at=?, timings_json=?, notes=? WHERE run_id=?",
-        (datetime.now(timezone.utc).isoformat(), json.dumps(timings), notes, run_id),
-    )
-    conn.commit()
-    conn.close()
-    counts = {
-        "new_media": n_media,
-        "skipped_seen": n_skip_seen,
-        "skipped_same_run": n_skip_same,
-        "ok": n_ok,
-        "low_quality": n_lq,
-        "rejected": n_rej,
-        "failed": n_fail,
-    }
-    if cancelled:
-        done = completed
-        if done > 0 or n_faces > 0:
+            done = completed
+            if done > 0 or n_faces > 0:
+                emit(
+                    on_event,
+                    make_event(
+                        STAGE_INGEST,
+                        KIND_PARTIAL,
+                        current=done,
+                        total=n_files,
+                        files_processed=done,
+                        files_total=n_files,
+                        faces_found=n_faces,
+                        run_id=run_id,
+                        elapsed_s=timings["ingest_s"],
+                        message="partial",
+                        outcome="partial",
+                        counts=counts,
+                    ),
+                )
             emit(
                 on_event,
                 make_event(
                     STAGE_INGEST,
-                    KIND_PARTIAL,
+                    KIND_CANCELLED,
                     current=done,
                     total=n_files,
                     files_processed=done,
@@ -926,44 +1097,33 @@ def ingest(
                     faces_found=n_faces,
                     run_id=run_id,
                     elapsed_s=timings["ingest_s"],
-                    message="partial",
-                    outcome="partial",
+                    message="cancelled",
+                    outcome="cancelled",
                     counts=counts,
                 ),
             )
+            _restore_sig()
+            raise CancelledError("ingest cancelled", run_id=run_id, timings=timings)
+        _restore_sig()
         emit(
             on_event,
             make_event(
                 STAGE_INGEST,
-                KIND_CANCELLED,
-                current=done,
+                KIND_COMPLETED,
+                current=n_files,
                 total=n_files,
-                files_processed=done,
+                files_processed=n_files,
                 files_total=n_files,
                 faces_found=n_faces,
                 run_id=run_id,
                 elapsed_s=timings["ingest_s"],
-                message="cancelled",
-                outcome="cancelled",
                 counts=counts,
             ),
         )
-        _restore_sig()
-        raise CancelledError("ingest cancelled", run_id=run_id, timings=timings)
-    _restore_sig()
-    emit(
-        on_event,
-        make_event(
-            STAGE_INGEST,
-            KIND_COMPLETED,
-            current=n_files,
-            total=n_files,
-            files_processed=n_files,
-            files_total=n_files,
-            faces_found=n_faces,
-            run_id=run_id,
-            elapsed_s=timings["ingest_s"],
-            counts=counts,
-        ),
-    )
-    return {"run_id": run_id, "pack_id": pid, **timings}
+        return {"run_id": run_id, "pack_id": pid, **timings}
+    finally:
+        _restore_installed_sig()
+        try:
+            conn.close()
+        except Exception:
+            pass

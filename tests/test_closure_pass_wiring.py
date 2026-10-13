@@ -169,12 +169,11 @@ def test_pause_resume_cancel_use_job_engine_contracts():
     """Busy ingest controls call existing JobEngine pause/cancel — no second path."""
     import semblon.home_ui as home_ui
 
-    pause_src = inspect.getsource(home_ui.HomeApp._request_pause)
+    assert "pause_job" in home_ui.HomeApp._request_pause.__code__.co_names
+    assert "cancel_job" in home_ui.HomeApp._request_cancel.__code__.co_names
+    assert "_request_pause" in home_ui.HomeApp._toggle_pause_resume.__code__.co_names
     cancel_src = inspect.getsource(home_ui.HomeApp._request_cancel)
     toggle_src = inspect.getsource(home_ui.HomeApp._toggle_pause_resume)
-    assert "pause_job" in pause_src
-    assert "cancel_job" in cancel_src
-    assert "_request_pause" in toggle_src
     assert "_resume" in toggle_src
     # Cancel must not delete media / unlink files.
     assert "unlink" not in cancel_src

@@ -276,28 +276,6 @@ def crop_png_b64(
     return out
 
 
-def crop_jpeg_bytes(
-    path: str,
-    bbox,
-    max_side: int = THUMB_MAX,
-    *,
-    frame_id: int | None = None,
-    source_type: str | None = None,
-) -> bytes | None:
-    """JPEG bytes for tests / non-tk consumers."""
-    try:
-        import cv2
-    except ImportError:
-        return None
-    crop = _crop_bgr(
-        path, bbox, max_side=max_side, frame_id=frame_id, source_type=source_type
-    )
-    if crop is None:
-        return None
-    ok, buf = cv2.imencode(".jpg", crop, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-    if not ok:
-        return None
-    return buf.tobytes()
 
 
 

@@ -122,7 +122,7 @@ def test_archive_model_filter_does_not_widen_the_window(tmp_path):
     app.archive.window = wrapped
     model.set_media_ids(["m2"])
     assert model.rowCount() == 1
-    assert model.data(model.index(0, 0), 0) or True
+    assert model.data(model.index(0, 0), 0) == "b.jpg"
     from PySide6.QtCore import Qt
 
     assert model.data(model.index(0, 0), Qt.ItemDataRole.UserRole + 1) == "m2"

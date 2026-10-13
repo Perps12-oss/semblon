@@ -226,7 +226,7 @@ def load_board(
 
     items: list[dict] = []
     for c in clusters:
-        if c["status"] == "ignored" or c["cluster_id"] in ignored_clusters:
+        if c["status"] in ("ignored", "merged") or c["cluster_id"] in ignored_clusters:
             continue
         members = by_cluster.get(c["cluster_id"], [])
         mi = c["min_intra"]

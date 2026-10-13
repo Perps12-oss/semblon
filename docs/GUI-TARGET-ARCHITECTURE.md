@@ -68,7 +68,7 @@ The full table is `docs/GUI-CAPABILITY-EXPOSURE-MATRIX.md`. The highest-value ga
 
 | Already implemented | How a new user would have to know |
 |---|---|
-| The photo grid | Sidebar **Photos** opens the library dashboard (route `home`). The grid is route `photos`, reached by a “Browse photos” button or More. `_show_library_home` would show a grid and is never called (`home_ui.py:2644`, `tests/test_home_ui.py:274`). |
+| The photo grid | Sidebar **Photos** opens the library dashboard (route `home`). The grid is route `photos`, reached by a “Browse photos” button or More. The unused `_show_library_home` layout was removed. Do not restore it. |
 | Compare every face in a group, and write a note | More → Open Review (`home_ui.py:1008`, `review_ui.py:1088`). The inspector tells you only after you select a cluster (`home_ui.py:1812-1822`). |
 | One person’s history (when / where) | `semblon memory history`. Activity shows aggregate “People together” and “Moments” only (`activity_surface.py:25-27`, `memory.py:323`). |
 | “Is this face someone I already named?” | `semblon identify`. The GUI never calls it. Naming is manual. That is safe; the capability is still invisible. |

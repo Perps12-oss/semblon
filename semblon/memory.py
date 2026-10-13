@@ -12,7 +12,7 @@ import re
 import sqlite3
 import struct
 from functools import lru_cache
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 BURST_NS = 90 * 1_000_000_000
@@ -82,12 +82,39 @@ def _filename_when_ns(path: str) -> int | None:
 
 
 def _parse_exif_datetime(raw: bytes) -> datetime | None:
+    """Naive local EXIF timestamp. Do not label it UTC without an offset."""
     try:
         s = raw.split(b"\x00", 1)[0].decode("ascii", errors="ignore").strip()
-        dt = datetime.strptime(s, "%Y:%m:%d %H:%M:%S")
-        return dt.replace(tzinfo=timezone.utc)
+        return datetime.strptime(s, "%Y:%m:%d %H:%M:%S")
     except (ValueError, UnicodeError):
         return None
+
+
+def _parse_exif_offset(raw: bytes) -> timedelta | None:
+    """EXIF OffsetTime* ASCII ±HH:MM. None when the field is missing or malformed."""
+    try:
+        s = raw.split(b"\x00", 1)[0].decode("ascii", errors="ignore").strip()
+    except UnicodeError:
+        return None
+    m = re.fullmatch(r"([+-])(\d{2}):(\d{2})", s)
+    if not m:
+        return None
+    hours, minutes = int(m.group(2)), int(m.group(3))
+    if hours > 14 or minutes > 59:
+        return None
+    sign = 1 if m.group(1) == "+" else -1
+    return timedelta(minutes=sign * (hours * 60 + minutes))
+
+
+def _exif_ascii(app1: bytes, endian: str, count: int, val: bytes) -> bytes | None:
+    if count <= 0:
+        return None
+    if count <= 4:
+        return val[:count]
+    voff = struct.unpack(endian + "I", val)[0]
+    if voff < 0 or voff + count > len(app1):
+        return None
+    return app1[voff : voff + count]
 
 
 def _rational(buf: bytes, count: int, endian: str) -> list[float]:
@@ -124,11 +151,17 @@ def read_still_exif(path: Path) -> dict:
                     break
                 if b != b"\xff":
                     continue
+                # Fill 0xFF is padding, not a marker. Standalone markers have no length.
                 marker = fh.read(1)
+                while marker == b"\xff":
+                    marker = fh.read(1)
                 if not marker:
                     break
-                if marker == b"\xda":  # SOS
+                code = marker[0]
+                if code in (0xDA, 0xD9):  # SOS, EOI
                     break
+                if code == 0x01 or code == 0x00 or 0xD0 <= code <= 0xD8:
+                    continue
                 seglen_raw = fh.read(2)
                 if len(seglen_raw) != 2:
                     break
@@ -139,7 +172,7 @@ def read_still_exif(path: Path) -> dict:
                 if marker == b"\xe1" and payload.startswith(b"Exif\x00\x00"):
                     app1 = payload[6:]
                     break
-    except OSError:
+    except (OSError, struct.error):
         return {}
     if not app1 or len(app1) < 8:
         return {}
@@ -147,6 +180,8 @@ def read_still_exif(path: Path) -> dict:
     ifd0 = struct.unpack(endian + "I", app1[4:8])[0]
     out: dict = {}
     exif_off = gps_off = None
+    naive: dict[str, datetime] = {}
+    offsets: dict[str, timedelta] = {}
 
     def read_ifd(off: int):
         nonlocal exif_off, gps_off
@@ -162,44 +197,76 @@ def read_still_exif(path: Path) -> dict:
                 exif_off = struct.unpack(endian + "I", val)[0]
             elif tag == 0x8825 and typ == 4:
                 gps_off = struct.unpack(endian + "I", val)[0]
-            elif tag in (0x0132, 0x9003) and typ == 2:
-                voff = struct.unpack(endian + "I", val)[0] if cnt > 4 else None
-                raw = app1[voff : voff + cnt] if voff else val[:cnt]
-                dt = _parse_exif_datetime(raw)
+            elif tag in (0x0132, 0x9003, 0x9004) and typ == 2:
+                raw = _exif_ascii(app1, endian, cnt, val)
+                dt = _parse_exif_datetime(raw or b"")
                 if dt is not None:
-                    key = "datetime_original" if tag == 0x9003 else "datetime"
-                    out[key] = dt.isoformat()
-                    out[key + "_ns"] = _dt_to_ns(dt)
+                    key = {
+                        0x9003: "datetime_original",
+                        0x9004: "datetime_digitized",
+                    }.get(tag, "datetime")
+                    naive[key] = dt
+            elif tag in (0x9010, 0x9011, 0x9012) and typ == 2:
+                raw = _exif_ascii(app1, endian, cnt, val)
+                off_td = _parse_exif_offset(raw or b"")
+                if off_td is not None:
+                    key = {
+                        0x9011: "datetime_original",
+                        0x9012: "datetime_digitized",
+                    }.get(tag, "datetime")
+                    offsets[key] = off_td
 
-    read_ifd(ifd0)
-    if exif_off:
-        read_ifd(exif_off)
-    if gps_off and gps_off + 2 <= len(app1):
-        n = struct.unpack_from(endian + "H", app1, gps_off)[0]
-        lat = lon = lat_ref = lon_ref = None
-        for k in range(n):
-            e = gps_off + 2 + k * 12
-            if e + 12 > len(app1):
-                break
-            tag, typ, cnt, val = struct.unpack_from(endian + "HHI4s", app1, e)
-            if tag == 1 and typ == 2:
-                lat_ref = val
-            elif tag == 3 and typ == 2:
-                lon_ref = val
-            elif tag in (2, 4) and typ == 5:
-                voff = struct.unpack(endian + "I", val)[0]
-                nums = _rational(app1[voff : voff + cnt * 8], cnt, endian)
-                if tag == 2:
-                    lat = nums
-                else:
-                    lon = nums
-        if lat and lon and lat_ref and lon_ref:
-            la = _dms_to_deg(lat, lat_ref)
-            lo = _dms_to_deg(lon, lon_ref)
-            if la is not None and lo is not None:
-                out["lat"] = round(la, 6)
-                out["lon"] = round(lo, 6)
+    try:
+        read_ifd(ifd0)
+        if exif_off:
+            read_ifd(exif_off)
+        for key, dt in naive.items():
+            off_td = offsets.get(key)
+            if off_td is None and key != "datetime":
+                off_td = offsets.get("datetime")
+            if off_td is None:
+                # Local wall time with no offset is not a UTC instant.
+                out[key] = dt.isoformat()
+                continue
+            utc = (dt.replace(tzinfo=timezone.utc) - off_td).astimezone(timezone.utc)
+            out[key] = utc.isoformat()
+            out[key + "_ns"] = _dt_to_ns(utc)
+    except (struct.error, ValueError):
+        return {}
+    try:
+        _read_gps(app1, endian, gps_off, out)
+    except struct.error:
+        return out
     return out
+
+
+def _read_gps(app1: bytes, endian: str, gps_off, out: dict) -> None:
+    if not gps_off or gps_off + 2 > len(app1):
+        return
+    n = struct.unpack_from(endian + "H", app1, gps_off)[0]
+    lat = lon = lat_ref = lon_ref = None
+    for k in range(n):
+        e = gps_off + 2 + k * 12
+        if e + 12 > len(app1):
+            break
+        tag, typ, cnt, val = struct.unpack_from(endian + "HHI4s", app1, e)
+        if tag == 1 and typ == 2:
+            lat_ref = val
+        elif tag == 3 and typ == 2:
+            lon_ref = val
+        elif tag in (2, 4) and typ == 5:
+            voff = struct.unpack(endian + "I", val)[0]
+            nums = _rational(app1[voff : voff + cnt * 8], cnt, endian)
+            if tag == 2:
+                lat = nums
+            else:
+                lon = nums
+    if lat and lon and lat_ref and lon_ref:
+        la = _dms_to_deg(lat, lat_ref)
+        lo = _dms_to_deg(lon, lon_ref)
+        if la is not None and lo is not None:
+            out["lat"] = round(la, 6)
+            out["lon"] = round(lo, 6)
 
 
 def when_where(

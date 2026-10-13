@@ -326,6 +326,7 @@ def score_set(
         ).fetchall()
         scored_rows = []
         n_same = n_diff = 0
+        n_same_scored = n_diff_scored = 0
         n_scored = n_skipped = 0
         n_fa = n_fr = 0
         n_hard = 0
@@ -346,10 +347,14 @@ def score_set(
                 skip_reasons[reason] = int(skip_reasons.get(reason, 0)) + 1
             else:
                 n_scored += 1
-                if p["label"] == "different" and rec["decision"] == "accept":
-                    n_fa += 1
-                if p["label"] == "same" and rec["decision"] == "reject":
-                    n_fr += 1
+                if p["label"] == "same":
+                    n_same_scored += 1
+                    if rec["decision"] == "reject":
+                        n_fr += 1
+                else:
+                    n_diff_scored += 1
+                    if rec["decision"] == "accept":
+                        n_fa += 1
                 if (
                     p["label"] == "different"
                     and rec["similarity"] is not None
@@ -372,17 +377,22 @@ def score_set(
         if confirmatory and not frozen:
             reasons.append("confirmatory set is not frozen")
         if confirmatory and frozen:
-            if n_same < MIN_SAME:
-                reasons.append(f"underpowered same pairs ({n_same} < {MIN_SAME})")
-            if n_diff < MIN_DIFFERENT:
-                reasons.append(f"underpowered different pairs ({n_diff} < {MIN_DIFFERENT})")
+            if n_same_scored < MIN_SAME:
+                reasons.append(
+                    f"underpowered same pairs ({n_same_scored} scored < {MIN_SAME})"
+                )
+            if n_diff_scored < MIN_DIFFERENT:
+                reasons.append(
+                    f"underpowered different pairs ({n_diff_scored} scored < {MIN_DIFFERENT})"
+                )
             if n_hard < 1:
                 reasons.append("underpowered: no hard-negative pair near the identity boundary")
 
         if confirmatory and frozen and not reasons:
             status = "measurable"
-            far = (n_fa / n_diff) if n_diff else None
-            frr = (n_fr / n_same) if n_same else None
+            # Skipped pairs are not trials. They must not dilute FAR/FRR.
+            far = (n_fa / n_diff_scored) if n_diff_scored else None
+            frr = (n_fr / n_same_scored) if n_same_scored else None
         elif confirmatory:
             status = "underpowered"
             far = None
@@ -405,6 +415,8 @@ def score_set(
                 "pairs": len(pairs),
                 "same": n_same,
                 "different": n_diff,
+                "same_scored": n_same_scored,
+                "different_scored": n_diff_scored,
                 "scored": n_scored,
                 "skipped": n_skipped,
                 "false_accept": n_fa,

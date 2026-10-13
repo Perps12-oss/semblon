@@ -55,7 +55,7 @@ Palette “Go to” should read nav contributions. If it still looks like today�
 
 Tests: a pure test that the tuple’s nav labels and route ids equal today’s `HOME_NAV`, plus the known non-nav routes. No screenshot requirement.
 
-**Leave in place:** `_show_library_home` (`home_ui.py:2644`). It is unused. Do not wire it in this step. Note the stale docstring on `landing_cta_plan` (`home_ui.py:300-304`) and correct the comment when touching that function, so the next reader does not “restore” a dead layout by accident.
+`_show_library_home` was removed. Do not restore it. It was an unused third Photos layout. `landing_cta_plan` no longer points at it.
 
 **Out of step 1:** renaming sidebar Photos, Qt shell, context menus.
 
@@ -165,7 +165,7 @@ Information architecture fix, **its own slice after the registry works**, becaus
 
 Do not do both. Prefer: **Photos opens the grid** once the dashboard has another honest name, because Videos already opens a grid and Photos should match. The dashboard remains the first-run and processing state. That slice updates `tests/test_home_ui.py:264-278`, which currently locks the populated home to the shell.
 
-`_show_library_home`: delete it in the IA slice, or call it only if product intent returns to “strip + grid”. Do not leave it as a secret third layout.
+`_show_library_home` is deleted. Do not restore that strip-plus-grid layout unless product intent explicitly returns to it.
 
 ---
 

@@ -139,50 +139,6 @@ class Application:
             reprocess=reprocess,
         )
 
-    def analyse_visual(
-        self,
-        media_id: str,
-        *,
-        run_id: str,
-        nouns: list[str] | None = None,
-        score_fn=None,
-        view_w: int | None = None,
-        view_h: int | None = None,
-    ) -> dict:
-        """Synchronous visual understanding for one media id. Does not enrol a person.
-
-        The file is decoded from the store. Callers do not pass pixel arrays.
-        """
-        import numpy as np
-
-        from semblon.selection import load_media_bgr
-        from semblon.visual.engine import analyse
-        from semblon.visual.persist import load_scene_inputs, persist_analysis
-
-        image = load_media_bgr(self.store, media_id)
-        if image is None:
-            raise FileNotFoundError(f"could not read media {media_id}")
-        frame = np.asarray(image)
-        rgb = np.ascontiguousarray(frame[:, :, :3][:, :, ::-1])
-        height, width = int(rgb.shape[0]), int(rgb.shape[1])
-        scene = load_scene_inputs(self.store, media_id=media_id, run_id=run_id, height=height, width=width)
-        analysis = analyse(
-            rgb,
-            nouns=nouns,
-            score_fn=score_fn,
-            view_w=view_w,
-            view_h=view_h,
-            user_regions=scene["user_regions"],
-            face_boxes=scene["face_boxes"],
-            revision=f"visual-{run_id}",
-        )
-        rec = persist_analysis(self.store, analysis, media_id=media_id, run_id=run_id)
-        rec["level"] = analysis.level
-        rec["regions"] = len(analysis.regions)
-        rec["named"] = sum(1 for region in analysis.regions if region.label)
-        rec["persons_touched"] = False
-        return rec
-
     def submit_visual(self, media_id: str, *, run_id: str, **kwargs):
         """Background visual understanding. The engine decodes the stored file."""
         return self.engine.submit_visual(media_id=media_id, run_id=run_id, **kwargs)
@@ -241,11 +197,6 @@ class Application:
         summary["region"] = dict(getattr(report, "region", {}) or {})
         summary["media_id"] = str(media_id)
         return summary
-
-    def visual_capabilities(self) -> dict:
-        from semblon.visual.engine import capabilities
-
-        return capabilities()
 
     def pause_job(self) -> None:
         self.engine.pause()

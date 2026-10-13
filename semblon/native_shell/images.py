@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QRunnable, QSize, QThreadPool, Qt
+from PySide6.QtCore import QRect, QRunnable, QSize, QThreadPool, Qt
 from PySide6.QtGui import QImage, QImageReader
 from PySide6.QtQuick import QQuickAsyncImageProvider, QQuickImageResponse, QQuickTextureFactory
 
@@ -73,21 +73,41 @@ class _CropFace(QRunnable):
     def run(self) -> None:
         image = QImage()
         file = Path(self._path) if self._path else None
+        if self._response.cancelled:
+            self._response.finished.emit()
+            return
         if file is not None and file.is_file():
             reader = QImageReader(str(file))
             reader.setAutoTransform(True)
-            loaded = reader.read()
-            if not loaded.isNull():
-                x, y, w, h = self._bbox
-                x = max(0, min(max(0, loaded.width() - 1), int(x)))
-                y = max(0, min(max(0, loaded.height() - 1), int(y)))
+            x, y, w, h = self._bbox
+            size = reader.size()
+            if size.isValid() and size.width() > 0 and size.height() > 0:
+                x = max(0, min(size.width() - 1, int(x)))
+                y = max(0, min(size.height() - 1, int(y)))
                 w = max(1, int(w))
                 h = max(1, int(h))
-                if x + w > loaded.width():
-                    w = max(1, loaded.width() - x)
-                if y + h > loaded.height():
-                    h = max(1, loaded.height() - y)
-                crop = loaded.copy(x, y, w, h)
+                if x + w > size.width():
+                    w = max(1, size.width() - x)
+                if y + h > size.height():
+                    h = max(1, size.height() - y)
+                # Clip before decode. setScaledSize would distort the bbox.
+                reader.setClipRect(QRect(x, y, w, h))
+            loaded = reader.read()
+            if self._response.cancelled:
+                self._response.finished.emit()
+                return
+            if not loaded.isNull():
+                crop = loaded
+                if not size.isValid():
+                    x = max(0, min(max(0, loaded.width() - 1), int(x)))
+                    y = max(0, min(max(0, loaded.height() - 1), int(y)))
+                    w = max(1, int(w))
+                    h = max(1, int(h))
+                    if x + w > loaded.width():
+                        w = max(1, loaded.width() - x)
+                    if y + h > loaded.height():
+                        h = max(1, loaded.height() - y)
+                    crop = loaded.copy(x, y, w, h)
                 if not crop.isNull():
                     if self._max_side > 0 and max(crop.width(), crop.height()) > self._max_side:
                         crop = crop.scaled(
@@ -98,7 +118,8 @@ class _CropFace(QRunnable):
                     image = crop
                 else:
                     image = loaded
-        self._response._image = image
+        if not self._response.cancelled:
+            self._response._image = image
         self._response.finished.emit()
 
 
@@ -109,6 +130,14 @@ class FaceCropImageResponse(QQuickImageResponse):
         self._path = path
         self._bbox = bbox
         self._max_side = max_side
+        self._cancelled = False
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancelled
+
+    def cancel(self) -> None:
+        self._cancelled = True
 
     def start(self) -> None:
         QThreadPool.globalInstance().start(_CropFace(self, self._path, self._bbox, self._max_side))

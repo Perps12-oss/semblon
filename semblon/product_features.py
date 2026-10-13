@@ -107,13 +107,6 @@ def _page_settings(host: Any) -> None:
     host._set_inspector_collapsed(True)
 
 
-def _page_activity(host: Any) -> None:
-    from semblon.features.activity_feature import show_activity_page
-
-    show_activity_page(host)
-    host._set_inspector_collapsed(True)
-
-
 # --- commands (Phase 5–7) -------------------------------------------------
 
 

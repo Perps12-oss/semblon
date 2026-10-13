@@ -203,6 +203,7 @@ class IpcProbeServer:
 
     def _serve_client(self, client: socket.socket) -> None:
         buf = b""
+        max_line = 1 << 20
         try:
             client.settimeout(1.0)
             while not self._stop.is_set():
@@ -215,6 +216,12 @@ class IpcProbeServer:
                 if not chunk:
                     break
                 buf += chunk
+                if len(buf) > max_line:
+                    try:
+                        client.close()
+                    except OSError:
+                        pass
+                    return
                 while b"\n" in buf:
                     raw, buf = buf.split(b"\n", 1)
                     line = raw.decode("utf-8", errors="replace").strip()
@@ -398,18 +405,4 @@ class IpcProbeClient:
         if not line:
             return None
         return json.loads(line)
-
-
-def serve_forever(store: Path, *, host: str = DEFAULT_HOST, port: int = 0) -> int:
-    """Block until shutdown op or KeyboardInterrupt. Returns bound port."""
-    server = IpcProbeServer(store, host=host, port=port)
-    bound = server.start()
-    try:
-        while server.wait_stopped(0.25) is False:
-            pass
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.stop()
-    return bound
 

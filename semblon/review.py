@@ -364,6 +364,11 @@ def name_cluster(
                     f"cluster linked to multiple persons ({len(existing)}); resolve before rename"
                 )
             person_id = existing[0]
+            if attach_to_person_id and attach_to_person_id != person_id:
+                raise ReviewError(
+                    "cluster is already linked to a different person; "
+                    "refusing attach_to_person_id"
+                )
             conn.execute(
                 "UPDATE persons SET display_name=? WHERE person_id=?",
                 (display_name, person_id),
@@ -700,19 +705,19 @@ def merge_clusters(
             person_id = None
 
         face_groups = [_faces_in_cluster(conn, cid) for cid in ids]
-        survivor_faces = face_groups[0]
-        donor_faces: list = []
-        for g in face_groups[1:]:
-            donor_faces.extend(g)
-
-        mins: list[float] = []
-        for c in clusters:
-            if c["min_intra"] is not None:
-                mins.append(float(c["min_intra"]))
-        cross = _cross_min(survivor_faces, donor_faces, pack_id)
-        if cross is not None:
-            mins.append(cross)
-        new_min = min(mins) if mins else None
+        all_faces = []
+        for group in face_groups:
+            all_faces.extend(group)
+        # Donor–donor pairs are part of the merged set. Survivor-vs-donors
+        # alone misses the weakest pair when it sits between donors.
+        pairwise = _pairwise_min(all_faces, pack_id)
+        if pairwise is not None:
+            new_min = pairwise
+        else:
+            stored = [
+                float(c["min_intra"]) for c in clusters if c["min_intra"] is not None
+            ]
+            new_min = min(stored) if stored else None
         new_centroid = _centroid_merge(face_groups)
 
         moved = 0
@@ -722,8 +727,15 @@ def merge_clusters(
                 (survivor, cid),
             ).rowcount
             moved += n
+            # decisions.cluster_id has no ON DELETE. Keep the donor row so a
+            # name/merge decision on it does not raise IntegrityError.
             conn.execute("DELETE FROM cluster_person WHERE cluster_id=?", (cid,))
-            conn.execute("DELETE FROM clusters WHERE cluster_id=?", (cid,))
+            conn.execute(
+                """UPDATE clusters
+                   SET status='merged', face_count=0, centroid=NULL, min_intra=NULL
+                   WHERE cluster_id=?""",
+                (cid,),
+            )
 
         if person_id is not None:
             conn.execute(

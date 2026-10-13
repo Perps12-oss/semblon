@@ -219,6 +219,7 @@ class LocalSemanticVisualProvider:
         self.min_area_frac = min_area_frac
         self.max_regions = max_regions
         self.levels = levels
+        self.last_optional_errors: list[str] = []
 
     def discover_regions(self, image: np.ndarray) -> list[dict]:
         import cv2
@@ -303,9 +304,13 @@ class LocalSemanticVisualProvider:
                     "payload": {"inventory": "appearance"},
                 }
         concepts = list(by_label.values())
+        self.last_optional_errors = []
 
         # Optional CLIP open-vocab ranking (when installed + weights present).
         concepts.extend(_clip_image_concepts(image, existing={c["label"].lower() for c in concepts}))
+        clip_error = clip_last_error()
+        if clip_error:
+            self.last_optional_errors.append(clip_error)
 
         # Optional VLM concepts (SEMBLON_VLM_MODEL); may lack bboxes.
         concepts.extend(_vlm_image_concepts(image, existing={c["label"].lower() for c in concepts}))
@@ -478,10 +483,37 @@ _OPEN_CANDIDATE_BANK = (
 )
 
 
+_CLIP_BUNDLE = None
+_CLIP_LAST_ERROR: str | None = None
+
+
+def clip_last_error() -> str | None:
+    """Runtime failure from the last CLIP attempt. Import misses stay empty."""
+    return _CLIP_LAST_ERROR
+
+
+def _load_clip_bundle():
+    """Process-local CLIP weights. Failures are not cached."""
+    global _CLIP_BUNDLE
+    if _CLIP_BUNDLE is not None:
+        return _CLIP_BUNDLE
+    import open_clip
+
+    model, _, preprocess = open_clip.create_model_and_transforms(
+        "ViT-B-32", pretrained="openai"
+    )
+    tokenizer = open_clip.get_tokenizer("ViT-B-32")
+    model.eval()
+    _CLIP_BUNDLE = (model, preprocess, tokenizer)
+    return _CLIP_BUNDLE
+
+
 def _clip_image_concepts(image: np.ndarray, *, existing: set[str]) -> list[dict]:
     """Optional CLIP zero-shot inventory. Missing CLIP → empty (not a crash)."""
+    global _CLIP_LAST_ERROR
+    _CLIP_LAST_ERROR = None
     try:
-        import open_clip
+        import open_clip  # noqa: F401
         import torch
         from PIL import Image
     except Exception:
@@ -495,11 +527,7 @@ def _clip_image_concepts(image: np.ndarray, *, existing: set[str]) -> list[dict]
     except Exception:
         return []
     try:
-        model, _, preprocess = open_clip.create_model_and_transforms(
-            "ViT-B-32", pretrained="openai"
-        )
-        tokenizer = open_clip.get_tokenizer("ViT-B-32")
-        model.eval()
+        model, preprocess, tokenizer = _load_clip_bundle()
         arr = np.asarray(image)
         rgb = arr[:, :, ::-1].copy()
         with torch.no_grad():
@@ -530,7 +558,9 @@ def _clip_image_concepts(image: np.ndarray, *, existing: set[str]) -> list[dict]
             )
             existing.add(label.lower())
         return out
-    except Exception:
+    except Exception as exc:
+        # Not a concept label. Callers copy this into metrics, not the gallery.
+        _CLIP_LAST_ERROR = f"clip: {type(exc).__name__}: {exc}"
         return []
 
 

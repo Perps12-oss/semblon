@@ -1,0 +1,25 @@
+# Optional Semblon feature stacks. Install only if you need these surfaces.
+# This file layers on top of the required runtime in requirements.txt.
+-r requirements.txt
+
+# Production GUI shell (`semblon shell`)
+PySide6>=6.6
+
+# OCR observer. Also requires the external `tesseract` binary on PATH.
+pytesseract
+
+# Local CLIP/SigLIP semantics and naming runtimes.
+open-clip-torch
+torch>=2.5.1
+transformers
+
+# Optional observers and providers.
+mediapipe
+argostranslate
+windows-capture; platform_system == "Windows"
+
+# SAM 2 spatial discovery dependencies. Install the package from the official
+# facebookresearch/sam2 repository; it is not published as a PyPI distribution.
+# Also requires a local checkpoint/config. See https://github.com/facebookresearch/sam2
+torch>=2.5.1
+torchvision>=0.20.1

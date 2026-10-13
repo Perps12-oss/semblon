@@ -38,7 +38,6 @@ def test_registry_exposes_browse_and_regions():
 def test_home_methods_exist():
     import semblon.home_ui as home_ui
 
-    src = inspect.getsource(home_ui.HomeApp)
     for name in (
         "_open_browse_facet",
         "_run_unified_search",
@@ -48,7 +47,7 @@ def test_home_methods_exist():
         "_set_grid_density",
         "_set_search_mode",
     ):
-        assert name in src
+        assert callable(getattr(home_ui.HomeApp, name))
 
 
 def test_find_similar_not_search_similar_firewall():

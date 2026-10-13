@@ -237,6 +237,9 @@ def analyze_image(
     # Concepts stay on the OpenCV path. SAM 2's provider returns none on purpose.
     t_con0 = time.perf_counter()
     concepts = list(prov.discover_concepts(arr, regions=regions))
+    optional_errors = list(getattr(prov, "last_optional_errors", []) or [])
+    if optional_errors:
+        metrics["optional_errors"] = optional_errors
     # Ground ungrounded concepts via segment_concept.
     grounded = []
     for c in concepts:
@@ -434,29 +437,3 @@ def hover_lookup(
     ix = int((widget_x - ox) / scale)
     iy = int((widget_y - oy) / scale)
     return index.lookup(ix, iy)
-
-
-def display_mask_overlay(
-    mask: np.ndarray,
-    *,
-    scale: float,
-    ox: float,
-    oy: float,
-    color_bgr: tuple[int, int, int] = (40, 94, 202),
-    alpha: float = 0.35,
-) -> tuple[np.ndarray, int, int]:
-    """Build a translucent RGBA overlay image (display size) from a source mask."""
-    import cv2
-
-    h, w = mask.shape[:2]
-    nw = max(1, int(round(w * scale)))
-    nh = max(1, int(round(h * scale)))
-    resized = cv2.resize(
-        (mask > 0).astype(np.uint8) * 255, (nw, nh), interpolation=cv2.INTER_NEAREST
-    )
-    rgba = np.zeros((nh, nw, 4), dtype=np.uint8)
-    rgba[:, :, 0] = color_bgr[2]
-    rgba[:, :, 1] = color_bgr[1]
-    rgba[:, :, 2] = color_bgr[0]
-    rgba[:, :, 3] = (resized > 0).astype(np.uint8) * int(max(0, min(255, round(alpha * 255))))
-    return rgba, int(round(ox)), int(round(oy))

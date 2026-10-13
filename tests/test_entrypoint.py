@@ -82,7 +82,7 @@ def test_packaging_hygiene():
     assert "semblon-desktop" not in scripts
     req = data["project"]["requires-python"]
     assert req.startswith(">=3.11")
-    assert "<3.14" in req
+    assert "<3.15" in req
     assert "version" in data["project"]["dynamic"]
     assert __version__
     assert not (root / "semblon" / "desktop").exists()

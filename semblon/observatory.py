@@ -101,9 +101,14 @@ def snapshot(store: Path, run_id: str, strong_min_intra: float = STRONG_MIN_INTR
         "SELECT COUNT(*) FROM faces WHERE run_id=? AND status='ok' AND cluster_id IS NULL",
         (run_id,),
     )
-    n_clusters = n("SELECT COUNT(*) FROM clusters WHERE run_id=?", (run_id,))
+    n_clusters = n(
+        """SELECT COUNT(*) FROM clusters WHERE run_id=?
+           AND status != 'merged'""",
+        (run_id,),
+    )
     review = n(
         """SELECT COUNT(*) FROM clusters WHERE run_id=?
+           AND status != 'merged'
            AND (min_intra IS NULL OR min_intra < ?)""",
         (run_id, strong_min_intra),
     )
