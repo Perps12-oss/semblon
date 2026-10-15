@@ -163,7 +163,20 @@ def test_timeline_chrome_object_names(tmp_path, monkeypatch):
     assert root.findChild(QObject, "zeroResultFilter") is not None
     assert root.findChild(QObject, "archiveSidebar") is not None
     assert root.findChild(QObject, "contextSidebarSearch") is not None
+    assert root.findChild(QObject, "libraryButton") is not None
+    assert root.findChild(QObject, "sidebarSectionMedia") is not None
+    assert root.findChild(QObject, "sidebarSectionFolders") is not None
     assert root.findChild(QQuickItem, "memoryCalendar") is not None
+    header = root.findChild(QQuickItem, "archiveHeaderBand")
+    assert header is not None
+    viewport = root.findChild(QQuickItem, "fieldViewport")
+    assert viewport is not None
+    assert viewport.clip() is True
+    grid = root.findChild(QQuickItem, "fieldGrid")
+    assert grid is not None
+    assert grid.clip() is True
+    # Field viewport must start below the calendar/timeline band.
+    assert viewport.y() >= header.y() + header.height() - 1
     assert root.findChild(QObject, "sidebarYear_2024") is None
     assert root.findChild(QObject, "sidebarDay_2024-05-01") is None
     bridge.selectMonth("2024-05")

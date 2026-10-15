@@ -11,9 +11,10 @@ Item {
     property var shellApi: null
     property bool shellReady: false
     property bool advancedMode: false
-    property color tokenBg1: "#131417"
-    property color tokenBg2: "#1b1d21"
-    property color tokenBg3: "#24272c"
+    property color tokenBg0: "#0d0e12"
+    property color tokenBg1: "#1c1d21"
+    property color tokenBg2: "#25262c"
+    property color tokenBg3: "#2e3036"
     property color tokenAccent: "#4f8cff"
     property color tokenText: "#f2f3f5"
     property color tokenMuted: "#a8adb7"
@@ -65,6 +66,77 @@ Item {
         else if (name === "media") mediaOpen = !mediaOpen
     }
 
+    component SectionHeader: Item {
+        id: hdr
+        property string sectionKey: ""
+        property string title: ""
+        property string iconName: "folder"
+        property bool open: true
+        property bool accented: false
+        property string objectNameValue: ""
+        signal activated()
+        width: parent.width
+        height: 28
+        Component.onCompleted: if (objectNameValue !== "") objectName = objectNameValue
+
+        Row {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+
+            Text {
+                text: hdr.open ? "▾" : "▸"
+                color: tokenFaint
+                font.family: "Segoe UI"
+                font.pixelSize: 11
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            DuotoneIcon {
+                width: 14
+                height: 14
+                icon: hdr.iconName
+                fillColor: hdr.accented ? tokenAccent : "#8A8D93"
+                cutoutColor: tokenBg1
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                text: hdr.title
+                color: hdr.accented ? tokenAccent : tokenFaint
+                font.family: "Segoe UI"
+                font.pixelSize: 11
+                font.letterSpacing: 1.0
+                font.weight: Font.DemiBold
+                font.capitalization: Font.AllUppercase
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                root.toggleSection(hdr.sectionKey)
+                hdr.activated()
+            }
+        }
+    }
+
+    component CountPill: Rectangle {
+        property string label: ""
+        width: Math.max(28, pillText.implicitWidth + 12)
+        height: 18
+        radius: 9
+        color: tokenBg3
+        Text {
+            id: pillText
+            anchors.centerIn: parent
+            text: label
+            color: "#B0B3B8"
+            font.family: "Segoe UI"
+            font.pixelSize: 11
+            font.weight: Font.Medium
+        }
+    }
+
     Column {
         id: column
         width: parent.width
@@ -84,15 +156,16 @@ Item {
             color: tokenFaint
             font.family: "Segoe UI"
             font.pixelSize: 11
-            font.letterSpacing: 0.5
+            font.letterSpacing: 1.0
             font.weight: Font.DemiBold
+            font.capitalization: Font.AllUppercase
         }
 
         Rectangle {
             width: parent.width
-            height: 30
+            height: 32
             radius: 6
-            color: tokenBg2
+            color: tokenBg0
             border.color: folderSearch.activeFocus ? tokenAccent : tokenBorder
             border.width: 1
 
@@ -147,20 +220,58 @@ Item {
             }
         }
 
-        Text {
+        Item {
             objectName: "sidebarAll"
             width: parent.width
-            text: shellReady && (shellApi.scopeLabel !== "" || shellApi.facet !== "memory")
-                  ? "Show everything"
-                  : "Everything"
-            color: shellReady && shellApi.scopeLabel === "" && shellApi.facet === "memory"
-                   ? tokenText : tokenAccent
-            font.family: "Segoe UI"
-            font.pixelSize: 13
-            Accessible.name: text
-            MouseArea {
+            height: 36
+            readonly property bool everythingActive: shellReady
+                && shellApi.scopeLabel === "" && shellApi.facet === "memory"
+
+            Rectangle {
                 anchors.fill: parent
-                anchors.margins: -3
+                radius: 6
+                color: parent.everythingActive
+                       ? Qt.rgba(1, 1, 1, 0.08)
+                       : (allArea.containsMouse ? Qt.rgba(1, 1, 1, 0.04) : "transparent")
+            }
+            Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.topMargin: 8
+                anchors.bottomMargin: 8
+                width: 3
+                radius: 1.5
+                color: tokenAccent
+                visible: parent.everythingActive
+            }
+            Row {
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 10
+                DuotoneIcon {
+                    width: 16
+                    height: 16
+                    icon: "library"
+                    fillColor: (parent.parent.everythingActive || allArea.containsMouse) ? tokenAccent : "#8A8D93"
+                    cutoutColor: tokenBg1
+                }
+                Text {
+                    text: shellReady && (shellApi.scopeLabel !== "" || shellApi.facet !== "memory")
+                          ? "Show everything"
+                          : "Everything"
+                    color: (parent.parent.everythingActive || allArea.containsMouse) ? tokenText : tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                    anchors.verticalCenter: parent.verticalCenter
+                    Accessible.name: text
+                }
+            }
+            MouseArea {
+                id: allArea
+                anchors.fill: parent
+                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: if (shellReady) shellApi.clearScope()
             }
@@ -169,54 +280,62 @@ Item {
         Column {
             width: parent.width
             spacing: 4
-            Text {
-                objectName: "sidebarSectionMedia"
-                text: (root.mediaOpen ? "▾  " : "▸  ") + "Media"
-                color: tokenFaint
-                font.family: "Segoe UI"
-                font.pixelSize: 11
-                font.letterSpacing: 0.4
+            SectionHeader {
+                sectionKey: "media"
+                title: "Media"
+                iconName: "media"
+                open: root.mediaOpen
+                objectNameValue: "sidebarSectionMedia"
                 Accessible.name: "Media, " + (root.mediaOpen ? "expanded" : "collapsed")
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.toggleSection("media")
-                }
             }
-            Flow {
+            Rectangle {
+                objectName: "mediaKindSegment"
                 width: parent.width
-                spacing: 6
+                height: 32
+                radius: 8
+                color: tokenBg0
+                border.color: tokenBorder
+                border.width: 1
                 visible: root.mediaOpen
-                Repeater {
-                    model: [
-                        {"key": "all", "label": "All"},
-                        {"key": "photo", "label": "Photos"},
-                        {"key": "video", "label": "Videos"}
-                    ]
-                    delegate: Rectangle {
-                        property bool active: shellReady && shellApi.mediaKind === modelData.key
-                        Component.onCompleted: objectName = "sidebarKind_" + modelData.key
-                        width: kindLabel.implicitWidth + 14
-                        height: 24
-                        radius: 6
-                        color: active ? tokenAccentDim : (kindArea.containsMouse ? tokenBg3 : "transparent")
-                        border.color: active ? tokenAccent : tokenBorder
-                        border.width: 1
-                        Text {
-                            id: kindLabel
-                            anchors.centerIn: parent
-                            text: modelData.label
-                            color: active ? tokenText : tokenMuted
-                            font.family: "Segoe UI"
-                            font.pixelSize: 11
-                        }
-                        Accessible.name: modelData.label + (active ? ", selected" : "")
-                        MouseArea {
-                            id: kindArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (shellReady) shellApi.setMediaKind(modelData.key)
+
+                Row {
+                    anchors.fill: parent
+                    anchors.margins: 3
+                    spacing: 2
+
+                    Repeater {
+                        model: [
+                            {"key": "all", "label": "All"},
+                            {"key": "photo", "label": "Photos"},
+                            {"key": "video", "label": "Videos"}
+                        ]
+                        delegate: Rectangle {
+                            property bool active: shellReady && shellApi.mediaKind === modelData.key
+                            Component.onCompleted: objectName = "sidebarKind_" + modelData.key
+                            width: (parent.width - 4) / 3
+                            height: parent.height
+                            radius: 6
+                            color: active
+                                   ? tokenBg3
+                                   : (kindArea.containsMouse ? Qt.rgba(1, 1, 1, 0.04) : "transparent")
+                            border.color: active ? Qt.rgba(tokenAccent.r, tokenAccent.g, tokenAccent.b, 0.45) : "transparent"
+                            border.width: active ? 1 : 0
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData.label
+                                color: active ? tokenText : tokenMuted
+                                font.family: "Segoe UI"
+                                font.pixelSize: 11
+                                font.weight: active ? Font.DemiBold : Font.Normal
+                            }
+                            Accessible.name: modelData.label + (active ? ", selected" : "")
+                            MouseArea {
+                                id: kindArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.setMediaKind(modelData.key)
+                            }
                         }
                     }
                 }
@@ -236,59 +355,74 @@ Item {
         Column {
             width: parent.width
             spacing: 4
-            Text {
-                objectName: "sidebarSectionFolders"
-                text: (root.foldersOpen ? "▾  " : "▸  ") + "Folders"
-                color: tokenFaint
-                font.family: "Segoe UI"
-                font.pixelSize: 11
-                font.letterSpacing: 0.4
+            SectionHeader {
+                sectionKey: "folders"
+                title: "Folders"
+                iconName: "folder"
+                open: root.foldersOpen
+                objectNameValue: "sidebarSectionFolders"
                 Accessible.name: "Folders, " + (root.foldersOpen ? "expanded" : "collapsed")
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.toggleSection("folders")
-                }
             }
             Column {
                 width: parent.width
                 visible: root.foldersOpen
-                spacing: 1
+                spacing: 2
                 Repeater {
                     model: root.filteredFolders()
                     delegate: Item {
                         width: parent.width
-                        height: 26
+                        height: 36
                         property bool active: shellReady && shellApi.scopeKind === "folder" && shellApi.scopeLabel === modelData.label
                         Component.onCompleted: objectName = "sidebarFolder_" + modelData.label
 
                         Rectangle {
                             anchors.fill: parent
                             radius: 6
-                            color: active ? tokenAccentDim : (folderArea.containsMouse ? tokenBg3 : "transparent")
+                            color: active
+                                   ? Qt.rgba(1, 1, 1, 0.08)
+                                   : (folderArea.containsMouse ? Qt.rgba(1, 1, 1, 0.04) : "transparent")
+                        }
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            anchors.topMargin: 8
+                            anchors.bottomMargin: 8
+                            width: 3
+                            radius: 1.5
+                            color: tokenAccent
+                            visible: active
+                        }
+                        DuotoneIcon {
+                            id: folderIcon
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 16
+                            height: 16
+                            icon: "folder"
+                            fillColor: (active || folderArea.containsMouse) ? tokenAccent : "#8A8D93"
+                            cutoutColor: tokenBg1
                         }
                         Text {
-                            anchors.left: parent.left
-                            anchors.right: countBadge.left
-                            anchors.rightMargin: 6
+                            anchors.left: folderIcon.right
+                            anchors.leftMargin: 10
+                            anchors.right: folderPill.left
+                            anchors.rightMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 6
                             text: modelData.displayName || modelData.label
-                            color: active ? tokenAccent : tokenMuted
+                            color: (active || folderArea.containsMouse) ? tokenText : "#E1E3E6"
                             font.family: "Segoe UI"
-                            font.pixelSize: 12
+                            font.pixelSize: 13
                             elide: Text.ElideRight
                             Accessible.name: modelData.accessibleName || text
                         }
-                        Text {
-                            id: countBadge
+                        CountPill {
+                            id: folderPill
                             anchors.right: parent.right
                             anchors.rightMargin: 6
                             anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.countLabel !== undefined ? String(modelData.countLabel) : String(modelData.count)
-                            color: tokenFaint
-                            font.family: "Segoe UI"
-                            font.pixelSize: 11
+                            label: modelData.countLabel !== undefined ? String(modelData.countLabel) : String(modelData.count)
                         }
                         ToolTip.visible: folderArea.containsMouse
                         ToolTip.delay: 450
@@ -319,61 +453,64 @@ Item {
         Column {
             width: parent.width
             spacing: 4
-            Text {
+            SectionHeader {
                 objectName: "sidebarMoments"
-                text: (root.momentsOpen ? "▾  " : "▸  ") + "Moments"
-                color: shellReady && shellApi.facet === "moments" ? tokenAccent : tokenFaint
-                font.family: "Segoe UI"
-                font.pixelSize: 11
-                font.letterSpacing: 0.4
+                sectionKey: "moments"
+                title: "Moments"
+                iconName: "moments"
+                open: root.momentsOpen
+                accented: shellReady && shellApi.facet === "moments"
                 Accessible.name: "Moments, " + (root.momentsOpen ? "expanded" : "collapsed")
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.toggleSection("moments")
-                        if (shellReady && shellApi.facet !== "moments")
-                            shellApi.setFacet("moments")
-                    }
+                onActivated: {
+                    if (shellReady && shellApi.facet !== "moments")
+                        shellApi.setFacet("moments")
                 }
             }
             Column {
                 width: parent.width
                 visible: root.momentsOpen
-                spacing: 1
+                spacing: 2
                 Repeater {
                     model: root.filteredMoments()
                     delegate: Item {
                         width: parent.width
-                        height: 26
+                        height: 36
                         Component.onCompleted: objectName = "sidebarBucket_" + modelData.key
                         Rectangle {
                             anchors.fill: parent
                             radius: 6
-                            color: bucketArea.containsMouse ? tokenBg3 : "transparent"
+                            color: bucketArea.containsMouse ? Qt.rgba(1, 1, 1, 0.04) : "transparent"
+                        }
+                        DuotoneIcon {
+                            id: momentIcon
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 16
+                            height: 16
+                            icon: "tag"
+                            fillColor: bucketArea.containsMouse ? tokenAccent : "#8A8D93"
+                            cutoutColor: tokenBg1
                         }
                         Text {
-                            anchors.left: parent.left
-                            anchors.right: mCount.left
-                            anchors.rightMargin: 6
+                            anchors.left: momentIcon.right
+                            anchors.leftMargin: 10
+                            anchors.right: mPill.left
+                            anchors.rightMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.leftMargin: 6
                             text: modelData.label
-                            color: tokenMuted
+                            color: bucketArea.containsMouse ? tokenText : "#E1E3E6"
                             font.family: "Segoe UI"
-                            font.pixelSize: 12
+                            font.pixelSize: 13
                             elide: Text.ElideRight
                             Accessible.name: modelData.label + ", " + modelData.count + " photos"
                         }
-                        Text {
-                            id: mCount
+                        CountPill {
+                            id: mPill
                             anchors.right: parent.right
                             anchors.rightMargin: 6
                             anchors.verticalCenter: parent.verticalCenter
-                            text: shellReady ? shellApi.formatCount(Number(modelData.count || 0)) : String(modelData.count || 0)
-                            color: tokenFaint
-                            font.family: "Segoe UI"
-                            font.pixelSize: 11
+                            label: shellReady ? shellApi.formatCount(Number(modelData.count || 0)) : String(modelData.count || 0)
                         }
                         MouseArea {
                             id: bucketArea
@@ -401,37 +538,56 @@ Item {
         Column {
             width: parent.width
             spacing: 4
-            Text {
-                text: (root.similarOpen ? "▾  " : "▸  ") + "Similar"
-                color: tokenFaint
-                font.family: "Segoe UI"
-                font.pixelSize: 11
-                font.letterSpacing: 0.4
+            SectionHeader {
+                sectionKey: "similar"
+                title: "Similar"
+                iconName: "similar"
+                open: root.similarOpen
+                objectNameValue: "sidebarSectionSimilar"
                 Accessible.name: "Similar memories, " + (root.similarOpen ? "expanded" : "collapsed")
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.toggleSection("similar")
-                }
             }
             Column {
                 visible: root.similarOpen
                 width: parent.width
                 spacing: 4
-                Text {
-                    objectName: "sidebarSimilar"
+                Item {
                     width: parent.width
-                    text: "Find similar"
-                    color: shellReady && shellApi.similarActionReady
-                           ? (similarNavArea.containsMouse ? tokenText : tokenAccent)
-                           : tokenFaint
-                    font.family: "Segoe UI"
-                    font.pixelSize: 13
-                    Accessible.name: shellReady ? shellApi.similarActionHint : "Find similar"
+                    height: 36
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 6
+                        color: similarNavArea.containsMouse ? Qt.rgba(1, 1, 1, 0.04) : "transparent"
+                    }
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 10
+                        DuotoneIcon {
+                            width: 16
+                            height: 16
+                            icon: "similar"
+                            fillColor: shellReady && shellApi.similarActionReady
+                                       ? (similarNavArea.containsMouse ? tokenAccent : tokenAccent)
+                                       : "#8A8D93"
+                            cutoutColor: tokenBg1
+                            opacity: shellReady && shellApi.similarActionReady ? 1 : 0.55
+                        }
+                        Text {
+                            objectName: "sidebarSimilar"
+                            text: "Find similar"
+                            color: shellReady && shellApi.similarActionReady
+                                   ? (similarNavArea.containsMouse ? tokenText : tokenAccent)
+                                   : tokenFaint
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                            anchors.verticalCenter: parent.verticalCenter
+                            Accessible.name: shellReady ? shellApi.similarActionHint : "Find similar"
+                        }
+                    }
                     MouseArea {
                         id: similarNavArea
                         anchors.fill: parent
-                        anchors.margins: -3
                         hoverEnabled: true
                         cursorShape: shellReady && shellApi.similarActionReady
                                      ? Qt.PointingHandCursor : Qt.ArrowCursor
