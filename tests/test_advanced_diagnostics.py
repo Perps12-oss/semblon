@@ -123,11 +123,3 @@ def test_open_advanced_diagnostics_is_public_and_import_safe():
     assert "Toplevel" in src or "tk is None" in src
 
 
-def test_home_ui_s7_stub_import_safe():
-    import semblon.home_ui as home_ui
-
-    src = inspect.getsource(home_ui.HomeApp)
-    assert "UX-RESCUE S7" in src
-    assert "open_advanced_diagnostics" in src
-    # Settings body not rewritten by this slice (Section 6 owns that).
-    assert "_show_settings" in src

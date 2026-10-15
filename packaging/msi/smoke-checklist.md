@@ -37,11 +37,11 @@ Requires Python 3.11–3.13 (`py -3.12`).
 
 ```text
 "%LOCALAPPDATA%\Programs\Semblon\semblon.cmd" --help
-"%LOCALAPPDATA%\Programs\Semblon\semblon.cmd" home
+"%LOCALAPPDATA%\Programs\Semblon\semblon.cmd" shell
 "%LOCALAPPDATA%\Programs\Semblon\semblon.cmd" lab models
 ```
 
-Expect: `--help` exit 0; Home opens; `lab models` reports weights missing or present under InsightFace cache — not under Programs\Semblon.
+Expect: `--help` exit 0; PySide6 archive opens; `lab models` reports weights missing or present under InsightFace cache — not under Programs\Semblon.
 
 ## D. Store survives uninstall
 

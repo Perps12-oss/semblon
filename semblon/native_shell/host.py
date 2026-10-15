@@ -53,8 +53,16 @@ def shutdown_shell(engine: QQmlApplicationEngine) -> None:
     bridge = getattr(engine, "_semblon_bridge", None)
     if bridge is not None:
         bridge.shutdown()
-    for root in engine.rootObjects():
+    ctx = engine.rootContext()
+    for name in ("shell", "archiveModel", "similarModel", "peopleModel"):
+        ctx.setContextProperty(name, None)
+    for root in list(engine.rootObjects()):
         root.deleteLater()
+    engine._semblon_bridge = None  # type: ignore[attr-defined]
+    engine._semblon_model = None  # type: ignore[attr-defined]
+    engine._semblon_similar = None  # type: ignore[attr-defined]
+    engine._semblon_people = None  # type: ignore[attr-defined]
+    engine._semblon_session = None  # type: ignore[attr-defined]
     engine.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     QCoreApplication.processEvents()

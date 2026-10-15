@@ -522,43 +522,6 @@ def test_ipc_oversize_line_closes_client(tmp_path):
     assert worker.is_alive() is False
 
 
-def test_lens_failure_clears_busy(tmp_path, monkeypatch):
-    import semblon.home_ui as home_ui
-
-    class ImmediateThread:
-        def __init__(self, target=None, name=None, daemon=None):
-            self._target = target
-
-        def start(self):
-            self._target()
-
-    states = []
-
-    class Btn:
-        def configure(self, **kwargs):
-            states.append(kwargs.get("state"))
-
-    class Root:
-        def after(self, _delay, fn):
-            fn()
-
-    monkeypatch.setattr(home_ui.threading, "Thread", ImmediateThread)
-    monkeypatch.setattr("semblon.selection.media_file", lambda _store, _media: tmp_path / "p.jpg")
-    host = home_ui.HomeApp.__new__(home_ui.HomeApp)
-    host.store = tmp_path / "s.sqlite"
-    host._insp_media_id = "m1"
-    host.app = type("App", (), {"query_media": staticmethod(lambda _mid: (_ for _ in ()).throw(RuntimeError("look failed")))})()
-    host.root = Root()
-    host._lens_busy = False
-    host.btn_lens_region = Btn()
-    host.btn_lens_whole = Btn()
-    host._set_inspector = lambda *_a, **_k: None
-    host._set_lens_processing = lambda *_a, **_k: None
-    host._refresh_lens_workspace = lambda: None
-    host._lens_ask_whole()
-    assert host._lens_busy is False
-    assert "normal" in states
-
 
 def test_atmosphere_tertiary_contrast():
     from semblon.atmosphere import ATMOSPHERES

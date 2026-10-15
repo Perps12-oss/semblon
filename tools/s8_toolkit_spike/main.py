@@ -1,7 +1,7 @@
-"""S8 shell slice: PySide6 + Qt Quick over review_ui → review.py.
+"""S8 shell slice: PySide6 + Qt Quick over review_board → review.py.
 
-Does not import ingest/cluster/identify. Mutations only via review_ui apply_*.
-tkinter review-ui remains the shipping vertical; this is the toolkit dump-gate path.
+Does not import ingest/cluster/identify. Mutations only via review_board apply_*.
+Research only; the shipping UI is `semblon shell`.
 """
 
 from __future__ import annotations

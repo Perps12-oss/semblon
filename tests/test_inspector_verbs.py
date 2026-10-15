@@ -25,7 +25,7 @@ from semblon.inspector_verbs import (
     inspector_verb_states,
     items_from_media_board,
 )
-from semblon.review_ui import load_board
+from semblon.review_board import load_board
 from tests.test_review import _clustered
 
 
@@ -211,28 +211,8 @@ def test_flatten_board_items():
     assert [x["face_id"] for x in flat[1:]] == ["f1", "f2"]
 
 
-def test_home_ui_wires_inspector_verbs():
-    import semblon.home_ui as home_ui
-
-    src = inspect.getsource(home_ui.HomeApp)
-    # Soft product labels (engineering verbs stay in inspector_verbs / apply_*).
-    assert "VERB_LABEL_MERGE" in src or "Combine face groups" in src
-    assert "VERB_LABEL_ASSIGN" in src or "Add to person" in src
-    assert "What you can do" in src
-    assert "apply_inspector_merge" in src or "inspector_verbs" in src
-    assert "_name_entry" in src
-    assert "<Return>" in src
-    assert "<Escape>" in src
-    assert "btn_rule_out" in src
-    assert "btn_ignore" in src
-    # Must not equate merge with assign in one control.
-    assert "Combining groups is separate from naming" in src
-    # Engineering dump headings stay out of the product inspector.
-    assert "Evidence relationship (machine)" not in src
-    assert "Proposed action (human)" not in src
-
 def test_canvas_inspector_lines_split_evidence_action():
-    from semblon.canvas import media_inspector_lines
+    from semblon.canvas_data import media_inspector_lines
 
     lines = media_inspector_lines(
         {

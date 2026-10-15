@@ -18,7 +18,7 @@ from semblon.review import (
     rule_out_subject,
     ruled_out_enabled,
 )
-from semblon.review_ui import apply_rule_out
+from semblon.review_board import apply_rule_out
 from semblon.store import init_db
 
 

@@ -2,7 +2,9 @@
 
 **Superseded 2026-10-05 by the completed PySide6 production migration.**
 
-**Current (2026-10-05):** one production UI, PySide6 `semblon shell` → `Application`. Tk Home and Tk review-ui are legacy clients. `review.html` is retired. The September 2026 shell rule below is historical.
+**Current (2026-10-15):** one production UI, PySide6 `semblon shell` → `Application`. Tk Home, review-ui, and canvas are retired. `review.html` is retired. The September 2026 shell rule below is historical.
+
+**Production window (2026-10-15):** the left nav is Library, People, Search, Add folder, and Settings. The right archive sidebar is the only library filter: All / Photos / Videos, years, days, folders, and Moments in Advanced. People shows face crops; Focus shows observation boxes; Advanced Activity lists history. Video tiles are labeled and do not open. Playback is not implemented.
 
 **Date:** 2026-09-25  
 **Rule:** Backend capability does not dictate navigation. Product intent dictates navigation.  
@@ -191,9 +193,9 @@ Open photo → Lens → select region → Semblon runs available capabilities
 
 | Implementation | Class | Action |
 |---|---|---|
-| tk `semblon home` | **CANONICAL** | Sole product shell |
-| `semblon review-ui` | **SECONDARY** · **KEEP** | Do not make a second Home |
-| Optional Qt `semblon shell` | **KEEP (optional)** | Application API client (`native_shell/`); **not** product Home; **not** a mapped blocker |
+| PySide6 `semblon shell` | **CANONICAL** | Sole product shell |
+| tk `semblon home` | **SUPERSEDED** | Removed 2026-10-15 |
+| `semblon review-ui` / `canvas` | **SUPERSEDED** | Removed 2026-10-15 |
 | `review_chrome/` (HTML host) | KEEP / engineering chrome for Review | Not a second app |
 | `review.html` as primary UX | **SUPERSEDED as UX** | Export only — Settings → Advanced |
 | Job-bar **Canvas** as equal primary chrome | **STALE → removed** | Photos embed + More → Explore |

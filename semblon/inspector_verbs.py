@@ -3,7 +3,7 @@
 Evidence relationship (machine) ≠ Proposed action (human).
 Merge observations ≠ Assign to person — separate controls.
 
-Mutations go through review_ui.apply_* → review.py. No new schema columns.
+Mutations go through review_board.apply_* → review.py. No new schema columns.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from semblon.gates import RULED_OUT, enabled as gate_enabled, require_human_note
-from semblon.review_ui import (
+from semblon.review_board import (
     ReviewUiError,
     apply_ignore,
     apply_merge,

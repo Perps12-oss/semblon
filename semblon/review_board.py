@@ -1,4 +1,4 @@
-"""UI-free review board. Tk review_ui is a client of these functions.
+"""UI-free review board. The PySide6 shell and CLI review commands call these functions.
 
 People exist only after an explicit Name action. Does not retune clustering.
 Does not identify. Does not import tkinter, Home, canvas, or Qt.

@@ -23,9 +23,12 @@ SIMILAR_NOTE = (
     "Similar is not a collection. "
     "Nothing was searched. Open a photo and draw a region in Focus to look for similar images."
 )
+# Playback is deferred. Tiles are labeled and Focus stays on stills so video
+# frames stay out of DBSCAN. Remaining work: a viewer for the URL focusUrl
+# already builds, without changing archive_session.open_focus or cluster eligibility.
 VIDEO_NOTE = (
-    "Videos stay in the store. Year and folder scopes use the media the library "
-    "already groups; videos are not separated from photos."
+    "Videos stay in the library and can be shown on their own. "
+    "A video is labeled Video and does not open. Playback is not available."
 )
 YEAR_NOTE = "Year counts use stored file time. Choosing a year or folder scopes the library to it."
 
@@ -85,6 +88,7 @@ def scope_ids(store: Path, kind: str = "all") -> dict[str, dict[str, list[str]]]
     """
     keep = _kind_filter(store, kind)
     years: dict[str, list[str]] = {}
+    days: dict[str, list[str]] = {}
     everything: list[str] = []
     for bucket in timeline_buckets(store):
         label = str(bucket.get("label") or "")
@@ -92,13 +96,14 @@ def scope_ids(store: Path, kind: str = "all") -> dict[str, dict[str, list[str]]]
         ids = [str(i) for i in bucket.get("media_ids") or [] if keep(str(i))]
         if ids:
             years.setdefault(year, []).extend(ids)
+            days[label] = ids
             everything.extend(ids)
     folders: dict[str, list[str]] = {}
     for bucket in folder_buckets(store):
         ids = [str(i) for i in bucket.get("media_ids") or [] if keep(str(i))]
         if ids:
             folders[str(bucket.get("label") or "")] = ids
-    return {"year": years, "folder": folders, "everything": {"": everything}}
+    return {"year": years, "day": days, "folder": folders, "everything": {"": everything}}
 
 
 def rows_from_scope(ids: dict[str, list[str]], *, newest_first: bool = False) -> list[dict]:
@@ -108,6 +113,10 @@ def rows_from_scope(ids: dict[str, list[str]], *, newest_first: bool = False) ->
 
 def year_rows(store: Path, kind: str = "all") -> list[dict]:
     return rows_from_scope(scope_ids(store, kind)["year"], newest_first=True)
+
+
+def day_rows(store: Path, kind: str = "all") -> list[dict]:
+    return rows_from_scope(scope_ids(store, kind)["day"], newest_first=True)
 
 
 def folder_rows(store: Path, kind: str = "all") -> list[dict]:

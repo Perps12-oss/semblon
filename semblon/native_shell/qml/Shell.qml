@@ -54,6 +54,17 @@ ApplicationWindow {
     readonly property int splitSelectionCountSafe: shellReady ? shellApi.splitSelectionCount : 0
     readonly property bool canMergeSelectedSafe: shellReady && shellApi.canMergeSelected
     readonly property bool canSplitSelectedSafe: shellReady && shellApi.canSplitSelected
+    readonly property string selectedKindSafe: shellReady ? shellApi.selectedKind : ""
+    readonly property bool canNameSelectedSafe: shellReady && shellApi.canNameSelected
+    readonly property bool canNoteSelectedSafe: shellReady && shellApi.canNoteSelected
+    readonly property bool canIgnoreSelectedSafe: shellReady && shellApi.canIgnoreSelected
+    readonly property bool canRuleOutSelectedSafe: shellReady && shellApi.canRuleOutSelected
+    readonly property bool canMergeClusterSafe: shellReady && shellApi.canMergeCluster
+    readonly property bool canSplitClusterSafe: shellReady && shellApi.canSplitCluster
+    readonly property bool activityOpenSafe: shellReady && shellApi.activityOpen
+    readonly property var activityRowsSafe: shellReady ? shellApi.activityRows : []
+    readonly property var focusBoxesSafe: shellReady ? shellApi.focusObservationBoxes : []
+    readonly property string selectedObservationSafe: shellReady ? shellApi.selectedObservationId : ""
     readonly property int motion: shellReady && shellApi.reducedMotion ? 0 : 180
     readonly property color tokenBg: shellReady ? shellApi.bg0 : "#0b0c0e"
     readonly property color tokenBg1: shellReady ? shellApi.bg1 : "#131417"
@@ -71,7 +82,6 @@ ApplicationWindow {
     readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Rescan", "Reset defaults"]
     readonly property var advancedSettingCalls: ["scanDuplicates", "showCapabilities", "gpuAuto", "gpuOff", "namedItems", "knowledgePack", "installModel"]
     readonly property var advancedSettingLabels: ["Duplicates", "Capabilities", "GPU auto", "GPU off", "Named items", "Knowledge pack", "Install model"]
-    readonly property var facetNames: ["Memory", "Days", "Folders", "Moments"]
     font.family: "Segoe UI"
 
     function handleSetting(call) {
@@ -586,82 +596,161 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
 
         Row {
-            id: facetBar
-            objectName: "facetBar"
+            id: jobBand
+            objectName: "jobBand"
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.leftMargin: 28
             anchors.topMargin: 8
-            spacing: 14
-            visible: !peopleVisible && !focusActive
+            spacing: 16
             z: 2
+            visible: shellReady && (jobRunning || shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
 
-            Repeater {
-                model: advancedModeSafe ? 4 : 3
-                delegate: Text {
-                    property string facetName: facetNames[index]
-                    Component.onCompleted: objectName = "facet_" + facetName
-                    text: facetName
-                    color: facetArea.containsMouse ? tokenText : tokenMuted
-                    font.family: "Segoe UI"
-                    font.pixelSize: 13
-                    MouseArea {
-                        id: facetArea
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.setFacet(facetName)
-                    }
+            Text {
+                objectName: "surfaceState"
+                text: {
+                    if (!shellReady)
+                        return ""
+                    if (jobRunning)
+                        return jobLabelSafe || "Processing"
+                    return shellApi.noticeText || (shellApi.surfaceState === "loading" ? "Working…" : "Something went wrong. Try again.")
+                }
+                color: shellReady && !jobRunning && shellApi.surfaceState === "error" ? tokenDanger : tokenMuted
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+            }
+
+            Text {
+                objectName: "pauseJob"
+                visible: jobRunning && jobStateSafe !== "paused"
+                text: "Pause"
+                color: pauseJobArea.containsMouse ? tokenText : tokenAccent
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                MouseArea {
+                    id: pauseJobArea
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady) shellApi.pauseJob()
+                }
+            }
+
+            Text {
+                objectName: "resumeJobBand"
+                visible: jobRunning && jobStateSafe === "paused"
+                text: "Resume"
+                color: resumeJobArea.containsMouse ? tokenText : tokenAccent
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                MouseArea {
+                    id: resumeJobArea
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady) shellApi.resumeJob()
+                }
+            }
+
+            Text {
+                objectName: "cancelJob"
+                visible: jobRunning
+                text: "Cancel"
+                color: cancelJobArea.containsMouse ? tokenText : tokenDanger
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                MouseArea {
+                    id: cancelJobArea
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (shellReady) shellApi.cancelJob()
                 }
             }
         }
 
-        Row {
-            id: quickActionRail
-            objectName: "quickActionRail"
-            anchors.left: facetBar.left
-            anchors.top: facetBar.bottom
-            anchors.topMargin: 12
-            spacing: 10
-            visible: primaryModeSafe && !peopleVisible && !focusActive
-            z: 2
+        Rectangle {
+            objectName: "activitySheet"
+            anchors.right: archiveSidebar.visible ? archiveSidebar.left : parent.right
+            anchors.top: parent.top
+            anchors.topMargin: 16
+            anchors.rightMargin: archiveSidebar.visible ? 12 : 16
+            width: 320
+            height: Math.min(stage.height - 40, activityColumn.implicitHeight + 28)
+            radius: 10
+            visible: advancedModeSafe && activityOpenSafe && !focusActive && !peopleVisible
+            color: tokenBg1
+            border.color: tokenBorder
+            border.width: 1
+            z: 3
 
-            Repeater {
-                model: [
-                    { label: "Archive", action: "setFacet('memory')" },
-                    { label: "People", action: "openPeople()" },
-                    { label: "Search", action: "setSearchMode('people')" },
-                    { label: "Ask photo", action: "findSimilarWhole()" }
-                ]
-                delegate: Rectangle {
-                    width: actionText.implicitWidth + 18
-                    height: 28
-                    radius: 14
-                    color: actionArea.containsMouse ? tokenBg3 : tokenBg2
-                    border.color: tokenBorder
-                    border.width: 1
+            Column {
+                id: activityColumn
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 14
+                spacing: 8
 
+                Item {
+                    width: parent.width
+                    height: 22
                     Text {
-                        id: actionText
-                        anchors.centerIn: parent
-                        text: modelData.label
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Activity"
                         color: tokenText
+                        font.pixelSize: 16
                         font.family: "Segoe UI"
-                        font.pixelSize: 12
                     }
+                    Text {
+                        objectName: "closeActivity"
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Close"
+                        color: closeActivityArea.containsMouse ? tokenText : tokenMuted
+                        font.pixelSize: 13
+                        MouseArea {
+                            id: closeActivityArea
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.closeActivity()
+                        }
+                    }
+                }
 
-                    MouseArea {
-                        id: actionArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (!shellReady) return
-                            if (modelData.action === "setFacet('memory')") shellApi.setFacet("memory")
-                            else if (modelData.action === "openPeople()") shellApi.openPeople()
-                            else if (modelData.action === "setSearchMode('people')") shellApi.setSearchMode("people")
-                            else if (modelData.action === "findSimilarWhole()") shellApi.findSimilarWhole()
+                Text {
+                    width: parent.width
+                    visible: activityRowsSafe.length === 0
+                    text: shellReady ? (shellApi.noticeText || "Nothing processed yet.") : ""
+                    color: tokenMuted
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+
+                Repeater {
+                    model: activityRowsSafe
+                    delegate: Column {
+                        width: activityColumn.width
+                        spacing: 2
+                        Text {
+                            visible: index === 0 || activityRowsSafe[index - 1].section !== modelData.section
+                            text: modelData.section
+                            color: tokenFaint
+                            font.pixelSize: 11
+                            font.letterSpacing: 0.4
+                        }
+                        Text {
+                            width: parent.width
+                            text: modelData.text
+                            color: tokenText
+                            font.pixelSize: 13
+                            wrapMode: Text.WordWrap
                         }
                     }
                 }
@@ -669,96 +758,11 @@ ApplicationWindow {
         }
 
         Rectangle {
-            id: librarySnapshot
-            objectName: "librarySnapshot"
-            anchors.left: quickActionRail.left
-            anchors.top: quickActionRail.bottom
-            anchors.topMargin: 8
-            width: 390
-            height: 56
-            radius: 10
-            color: tokenBg1
-            border.color: tokenBorder
-            border.width: 1
-            visible: primaryModeSafe && !emptySafe && !peopleVisible && !focusActive
-            z: 2
-
-            Row {
-                anchors.fill: parent
-                anchors.margins: 12
-                spacing: 18
-
-                Column {
-                    width: 150
-                    spacing: 2
-                    Text { text: "Library"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
-                    Text { text: shellReady ? shellApi.count + " items" : "0 items"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                    Text { objectName: "mediaKinds"; text: shellReady ? shellApi.photoCount + " photos · " + shellApi.videoCount + " videos" : ""; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
-                }
-
-                Column {
-                    width: 96
-                    spacing: 2
-                    Text { text: "Review"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
-                    Text { text: shellReady ? shellApi.reviewCountText : "0 groups"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 12; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
-                }
-
-                Column {
-                    width: 124
-                    spacing: 2
-                    Text { text: "Ready"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
-                    Text { text: "Browse and search"; color: tokenAccent; font.family: "Segoe UI"; font.pixelSize: 12 }
-                }
-            }
-        }
-
-        Text {
-            objectName: "surfaceState"
-            anchors.left: facetBar.left
-            anchors.top: librarySnapshot.visible ? librarySnapshot.bottom : quickActionRail.bottom
-            anchors.topMargin: 4
-            visible: shellReady && (shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
-            text: shellReady ? (shellApi.noticeText || (shellApi.surfaceState === "loading" ? "Working…" : "Something went wrong. Try again.")) : ""
-            color: shellReady && shellApi.surfaceState === "error" ? tokenDanger : tokenMuted
-            font.family: "Segoe UI"
-            font.pixelSize: 13
-            z: 2
-        }
-
-        Row {
-            id: bucketRow
-            objectName: "bucketRow"
-            anchors.left: facetBar.left
-            anchors.top: facetBar.bottom
-            anchors.topMargin: 18
-            spacing: 10
-            visible: !peopleVisible && !focusActive && shellReady && shellApi.buckets.length > 0
-            z: 2
-
-            Repeater {
-                model: shellReady ? shellApi.buckets : []
-                delegate: Text {
-                    text: modelData.label + " (" + modelData.count + ")"
-                    color: bucketHit.containsMouse ? tokenText : tokenMuted
-                    font.family: "Segoe UI"
-                    font.pixelSize: 12
-                    MouseArea {
-                        id: bucketHit
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.selectBucket(modelData.key)
-                    }
-                }
-            }
-        }
-
-        Rectangle {
             objectName: "settingsSheet"
-            anchors.right: parent.right
+            anchors.right: archiveSidebar.visible ? archiveSidebar.left : parent.right
             anchors.top: parent.top
-            anchors.margins: 16
+            anchors.topMargin: 16
+            anchors.rightMargin: archiveSidebar.visible ? 12 : 16
             width: 280
             height: settingsColumn.implicitHeight + 28
             radius: 10
@@ -846,9 +850,9 @@ ApplicationWindow {
         Rectangle {
             objectName: "namedItemsSheet"
             anchors.left: parent.left
-            anchors.top: facetBar.bottom
+            anchors.top: parent.top
             anchors.leftMargin: 16
-            anchors.topMargin: 12
+            anchors.topMargin: 16
             width: 300
             height: Math.min(420, namedItemsColumn.implicitHeight + 28)
             radius: 10
@@ -1015,7 +1019,7 @@ ApplicationWindow {
                                     spacing: 8
                                     delegate: Rectangle {
                                         width: ListView.view.width
-                                        height: 54
+                                        height: 64
                                         radius: 8
                                         color: named
                                                 ? ((shellReady && shell.selectedSubject === subject) ? tokenAccentDim : tokenBg2)
@@ -1025,21 +1029,49 @@ ApplicationWindow {
                                                 : tokenReview
                                         border.width: 1
 
-                                        Column {
+                                        Row {
                                             anchors.fill: parent
-                                            anchors.margins: 10
-                                            spacing: 2
+                                            anchors.margins: 8
+                                            spacing: 10
 
-                                            Text {
-                                                text: title
-                                                color: tokenText
-                                                font.pixelSize: 14
-                                                elide: Text.ElideRight
+                                            Rectangle {
+                                                width: 48
+                                                height: 48
+                                                radius: 6
+                                                color: tokenBg
+                                                border.color: tokenBorder
+                                                border.width: 1
+                                                anchors.verticalCenter: parent.verticalCenter
+
+                                                Image {
+                                                    anchors.fill: parent
+                                                    anchors.margins: 1
+                                                    source: shellReady && faceId !== "" ? shell.faceThumb(faceId) : ""
+                                                    fillMode: Image.PreserveAspectCrop
+                                                    asynchronous: true
+                                                    cache: true
+                                                    visible: status === Image.Ready
+                                                }
                                             }
-                                            Text {
-                                                text: faceCount + (faceCount === 1 ? " face" : " faces")
-                                                color: tokenMuted
-                                                font.pixelSize: 12
+
+                                            Column {
+                                                width: parent.width - 58
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 2
+
+                                                Text {
+                                                    width: parent.width
+                                                    text: title
+                                                    color: tokenText
+                                                    font.pixelSize: 14
+                                                    elide: Text.ElideRight
+                                                }
+                                                Text {
+                                                    width: parent.width
+                                                    text: faceCount + (faceCount === 1 ? " face" : " faces")
+                                                    color: tokenMuted
+                                                    font.pixelSize: 12
+                                                }
                                             }
                                         }
 
@@ -1130,8 +1162,10 @@ ApplicationWindow {
                                 Row {
                                     width: parent.width
                                     spacing: 16
+                                    visible: shellReady && shellApi.selectedSubject !== ""
 
                                     Text {
+                                        visible: canNameSelectedSafe
                                         text: "Name"
                                         color: decisionText.text.trim().length > 0 ? tokenAccent : tokenFaint
                                         font.pixelSize: 14
@@ -1142,6 +1176,7 @@ ApplicationWindow {
                                         }
                                     }
                                     Text {
+                                        visible: canNoteSelectedSafe
                                         text: "Note"
                                         color: decisionText.text.trim().length > 0 ? tokenAccent : tokenFaint
                                         font.pixelSize: 14
@@ -1152,6 +1187,7 @@ ApplicationWindow {
                                         }
                                     }
                                     Text {
+                                        visible: canIgnoreSelectedSafe
                                         text: "Ignore"
                                         color: tokenAccent
                                         font.pixelSize: 14
@@ -1162,8 +1198,9 @@ ApplicationWindow {
                                         }
                                     }
                                     Text {
+                                        visible: canRuleOutSelectedSafe
                                         text: primaryModeSafe ? "Not this person" : "Rule out"
-                                                                                color: tokenAccent
+                                        color: tokenAccent
                                         font.pixelSize: 14
                                         MouseArea {
                                             anchors.fill: parent
@@ -1181,6 +1218,7 @@ ApplicationWindow {
                                 }
 
                                 Rectangle {
+                                    visible: canMergeClusterSafe
                                     width: parent.width
                                     height: 86
                                     radius: 8
@@ -1205,6 +1243,7 @@ ApplicationWindow {
                                             Repeater {
                                                 model: mergeCandidatesSafe
                                                 delegate: Rectangle {
+                                                    visible: kind === "cluster"
                                                     width: Math.min(180, titleText.implicitWidth + 28)
                                                     height: 30
                                                     radius: 15
@@ -1233,10 +1272,12 @@ ApplicationWindow {
                                 }
 
                                 Row {
+                                    visible: canMergeClusterSafe || canSplitClusterSafe
                                     width: parent.width
                                     spacing: 14
 
                                     Text {
+                                        visible: canMergeClusterSafe
                                         text: "Merge"
                                         color: canMergeSelectedSafe ? tokenAccent : tokenFaint
                                         font.pixelSize: 14
@@ -1249,6 +1290,7 @@ ApplicationWindow {
 
                                     Text {
                                         objectName: "clearSplitSelection"
+                                        visible: canSplitClusterSafe
                                         text: "Clear selection"
                                         color: splitSelectionCountSafe > 0 ? tokenAccent : tokenFaint
                                         font.pixelSize: 14
@@ -1260,12 +1302,14 @@ ApplicationWindow {
                                     }
 
                                     Text {
+                                        visible: canSplitClusterSafe
                                         text: splitSelectionCountSafe > 0 ? (splitSelectionCountSafe === 1 ? "1 face selected" : splitSelectionCountSafe + " faces selected") : "Select faces below to split them out"
-                                                                                color: tokenMuted
+                                        color: tokenMuted
                                         font.pixelSize: 13
                                     }
 
                                     Text {
+                                        visible: canSplitClusterSafe
                                         text: "Split selected"
                                         color: canSplitSelectedSafe ? tokenAccent : tokenFaint
                                         font.pixelSize: 14
@@ -1278,6 +1322,7 @@ ApplicationWindow {
                                 }
 
                                 Rectangle {
+                                    visible: canSplitClusterSafe
                                     width: parent.width
                                     height: 280
                                     radius: 8
@@ -1297,7 +1342,7 @@ ApplicationWindow {
                                         }
                                         Text {
                                             text: "Click one or more faces, then split only those faces out of the group."
-                                                                                        color: tokenMuted
+                                            color: tokenMuted
                                             font.pixelSize: 12
                                             wrapMode: Text.WordWrap
                                         }
@@ -1388,7 +1433,7 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            anchors.topMargin: 52
+            anchors.topMargin: 12
             anchors.rightMargin: 12
             anchors.bottomMargin: 12
             width: 190
@@ -1412,9 +1457,19 @@ ApplicationWindow {
                     spacing: 6
 
                     Text {
+                        objectName: "mediaKinds"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: shellReady ? shellApi.photoCount + " photos · " + shellApi.videoCount + " videos" : ""
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 11
+                    }
+
+                    Text {
                         objectName: "sidebarAll"
-                        text: shellReady && shellApi.scopeLabel !== "" ? "Show everything" : "Everything"
-                        color: shellReady && shellApi.scopeLabel === "" ? tokenText : tokenAccent
+                        text: shellReady && (shellApi.scopeLabel !== "" || shellApi.facet !== "memory") ? "Show everything" : "Everything"
+                        color: shellReady && shellApi.scopeLabel === "" && shellApi.facet === "memory" ? tokenText : tokenAccent
                         font.family: "Segoe UI"
                         font.pixelSize: 13
                         MouseArea {
@@ -1476,7 +1531,7 @@ ApplicationWindow {
                         delegate: Text {
                             property bool active: shellReady && shellApi.scopeKind === "year" && shellApi.scopeLabel === modelData.label
                             Component.onCompleted: objectName = "sidebarYear_" + modelData.label
-                            width: sidebarColumn.width
+                            width: parent.width
                             text: modelData.label + "  " + modelData.count
                             color: active ? tokenAccent : (yearArea.containsMouse ? tokenText : tokenMuted)
                             font.family: "Segoe UI"
@@ -1493,6 +1548,30 @@ ApplicationWindow {
                     }
 
                     Item { width: 1; height: 6 }
+                    Text { text: "Days"; color: tokenFaint; font.family: "Segoe UI"; font.pixelSize: 11; font.letterSpacing: 0.6 }
+
+                    Repeater {
+                        model: shellReady ? shellApi.dayRows : []
+                        delegate: Text {
+                            property bool active: shellReady && shellApi.scopeKind === "day" && shellApi.scopeLabel === modelData.label
+                            Component.onCompleted: objectName = "sidebarDay_" + modelData.label
+                            width: parent.width
+                            text: modelData.label + "  " + modelData.count
+                            color: active ? tokenAccent : (dayArea.containsMouse ? tokenText : tokenMuted)
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            MouseArea {
+                                id: dayArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.selectDay(modelData.label)
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: 6 }
                     Text { text: "Folders"; color: tokenFaint; font.family: "Segoe UI"; font.pixelSize: 11; font.letterSpacing: 0.6 }
 
                     Repeater {
@@ -1500,7 +1579,7 @@ ApplicationWindow {
                         delegate: Text {
                             property bool active: shellReady && shellApi.scopeKind === "folder" && shellApi.scopeLabel === modelData.label
                             Component.onCompleted: objectName = "sidebarFolder_" + modelData.label
-                            width: sidebarColumn.width
+                            width: parent.width
                             text: modelData.label + "  " + modelData.count
                             color: active ? tokenAccent : (folderArea.containsMouse ? tokenText : tokenMuted)
                             font.family: "Segoe UI"
@@ -1515,6 +1594,44 @@ ApplicationWindow {
                             }
                         }
                     }
+
+                    Text {
+                        objectName: "sidebarMoments"
+                        visible: advancedModeSafe
+                        text: "Moments"
+                        color: shellReady && shellApi.facet === "moments" ? tokenAccent : (momentsArea.containsMouse ? tokenText : tokenMuted)
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        MouseArea {
+                            id: momentsArea
+                            anchors.fill: parent
+                            anchors.margins: -3
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.setFacet("moments")
+                        }
+                    }
+
+                    Repeater {
+                        model: advancedModeSafe && shellReady && shellApi.facet === "moments" ? shellApi.buckets : []
+                        delegate: Text {
+                            property bool active: false
+                            Component.onCompleted: objectName = "sidebarBucket_" + modelData.key
+                            width: parent.width
+                            text: modelData.label + "  " + modelData.count
+                            color: bucketArea.containsMouse ? tokenText : tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            MouseArea {
+                                id: bucketArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.selectBucket(modelData.key)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1525,7 +1642,7 @@ ApplicationWindow {
             anchors.fill: parent
             anchors.margins: 22
             anchors.rightMargin: archiveSidebar.visible ? 214 : 22
-            anchors.topMargin: 52
+            anchors.topMargin: 22
             visible: !emptySafe
             opacity: !focusActive ? 1 : 0
             cellWidth: shellReady ? shellApi.cellSize : 160
@@ -1560,8 +1677,12 @@ ApplicationWindow {
                     }
 
                     Text {
-                        visible: false
-                        text: ""
+                        anchors.centerIn: parent
+                        visible: kind === "video"
+                        text: "Video"
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
                     }
 
                     Rectangle {
@@ -1581,6 +1702,8 @@ ApplicationWindow {
                                 return
                             grid.currentIndex = index
                             shellApi.setScroll(grid.contentY)
+                            if (kind === "video")
+                                return
                             shellApi.openFocus(mediaId)
                         }
                     }
@@ -1797,11 +1920,59 @@ ApplicationWindow {
                 cache: false
             }
 
+            Item {
+                id: observationLayer
+                objectName: "observationLayer"
+                anchors.fill: photo
+                visible: focusKindSafe !== "video" && photo.paintedWidth > 0
+
+                function contentOrigin() {
+                    return Qt.point(
+                        (width - photo.paintedWidth) / 2,
+                        (height - photo.paintedHeight) / 2
+                    )
+                }
+
+                Repeater {
+                    model: focusBoxesSafe
+                    delegate: Rectangle {
+                        property var box: modelData
+                        readonly property var origin: observationLayer.contentOrigin()
+                        x: origin.x + box.nx * photo.paintedWidth
+                        y: origin.y + box.ny * photo.paintedHeight
+                        width: Math.max(2, box.nw * photo.paintedWidth)
+                        height: Math.max(2, box.nh * photo.paintedHeight)
+                        color: "transparent"
+                        border.color: selectedObservationSafe === box.id ? tokenAccent : box.color
+                        border.width: selectedObservationSafe === box.id ? 2 : 1
+                        z: 1
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.margins: 2
+                            text: box.tag
+                            color: tokenText
+                            font.pixelSize: 10
+                            visible: selectedObservationSafe === box.id && box.tag !== ""
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.selectObservation(box.id)
+                        }
+                    }
+                }
+            }
+
             MouseArea {
                 id: regionDrag
                 objectName: "regionDrag"
                 anchors.fill: photo
                 enabled: focusKindSafe !== "video" && photo.paintedWidth > 0
+                z: 2
                 property real rx: 0
                 property real ry: 0
                 property real rw: 0
@@ -1809,6 +1980,7 @@ ApplicationWindow {
                 property bool hasRect: false
                 property real x0: 0
                 property real y0: 0
+                property bool dragging: false
 
                 function contentOrigin() {
                     return Qt.point(
@@ -1825,7 +1997,26 @@ ApplicationWindow {
                             && py < origin.y + photo.paintedHeight
                 }
 
+                function hitObservation(px, py) {
+                    var origin = contentOrigin()
+                    var pw = photo.paintedWidth
+                    var ph = photo.paintedHeight
+                    if (pw <= 1 || ph <= 1)
+                        return ""
+                    for (var i = focusBoxesSafe.length - 1; i >= 0; i--) {
+                        var box = focusBoxesSafe[i]
+                        var bx = origin.x + box.nx * pw
+                        var by = origin.y + box.ny * ph
+                        var bw = Math.max(2, box.nw * pw)
+                        var bh = Math.max(2, box.nh * ph)
+                        if (px >= bx && py >= by && px <= bx + bw && py <= by + bh)
+                            return box.id
+                    }
+                    return ""
+                }
+
                 onPressed: function(mouse) {
+                    dragging = false
                     if (shellReady)
                         shellApi.clearDrawnQuery()
                     x0 = mouse.x
@@ -1843,6 +2034,8 @@ ApplicationWindow {
                     ry = Math.min(y0, mouse.y)
                     rw = Math.abs(mouse.x - x0)
                     rh = Math.abs(mouse.y - y0)
+                    if (rw >= 4 || rh >= 4)
+                        dragging = true
                 }
                 onReleased: function(mouse) {
                     var origin = contentOrigin()
@@ -1854,24 +2047,26 @@ ApplicationWindow {
                         return
                     }
                     if (rw < 4 || rh < 4) {
+                        hasRect = false
                         if (!insidePainted(mouse.x, mouse.y)) {
-                            hasRect = false
                             shell.clearDrawnQuery()
+                            return
+                        }
+                        var hit = hitObservation(mouse.x, mouse.y)
+                        if (hit !== "") {
+                            if (shellReady)
+                                shellApi.selectObservation(hit)
                             return
                         }
                         var spec = shell.pointAt(
                             Math.max(0, Math.min(0.999999, (mouse.x - origin.x) / pw)),
                             Math.max(0, Math.min(0.999999, (mouse.y - origin.y) / ph))
                         )
-                        if (!spec) {
-                            hasRect = false
+                        if (!spec)
                             return
-                        }
                         var parts = spec.split(",")
-                        if (parts.length !== 4) {
-                            hasRect = false
+                        if (parts.length !== 4)
                             return
-                        }
                         rx = origin.x + parseFloat(parts[0]) * pw
                         ry = origin.y + parseFloat(parts[1]) * ph
                         rw = Math.max(1, parseFloat(parts[2]) * pw)
@@ -1902,8 +2097,12 @@ ApplicationWindow {
                 color: tokenAccentDim
                 border.color: tokenAccent
                 border.width: 1
+                z: 3
             }
 
+            // Playback is deferred. This output stays hidden so a non-working
+            // player is not shown. Remaining work: play focusUrl in a viewer
+            // that does not admit source_type=video to open_focus or DBSCAN.
             VideoOutput {
                 id: videoOut
                 anchors.fill: parent
@@ -2177,10 +2376,7 @@ ApplicationWindow {
                 function onFocusChanged() {
                     regionDrag.hasRect = false
                     player.stop()
-                    if (focusKindSafe === "video" && shellReady && shellApi.focusUrl !== "")
-                        player.source = shellApi.focusUrl
-                    else
-                        player.source = ""
+                    player.source = ""
                 }
             }
         }

@@ -1,4 +1,4 @@
-"""S8 toolkit spike — bridge loads review_ui board; mutations via apply_*. No display."""
+"""S8 toolkit spike — bridge loads review_board board; mutations via apply_*. No display."""
 
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def test_shell_bridge_missing_store(tmp_path):
 def test_shell_bridge_loads_board_and_names(tmp_path):
     pytest.importorskip("PySide6")
     from bridge import ShellBridge
-    from semblon.review_ui import load_board
+    from semblon.review_board import load_board
 
     store = tmp_path / "s.sqlite"
     _seed_clustered(store)

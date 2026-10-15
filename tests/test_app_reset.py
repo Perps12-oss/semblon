@@ -222,31 +222,6 @@ def test_reset_manifest_covers_media_boundary() -> None:
     assert rows["visual_cache/ sidecars"][0] == "YES"
 
 
-def test_home_reset_requires_confirmation_and_calls_service() -> None:
-    import semblon.home_ui as home_ui
-
-    src = inspect.getsource(home_ui.HomeApp._reset_app_to_defaults)
-    fill = inspect.getsource(home_ui.HomeApp._fill_settings_body)
-    assert "askyesno" in src
-    assert "SETTINGS_RESET_CONFIRM" in src
-    assert "reset_app_to_defaults" in src
-    assert "self.app.busy" in src
-    assert "SETTINGS_RESET_BUTTON" in fill
-    assert "SETTINGS_RECOVERY" in fill
-
-
-def test_cancel_path_is_no_op_when_declined() -> None:
-    """Structural: early return before reset_app_to_defaults when confirm is False."""
-    import semblon.home_ui as home_ui
-
-    src = inspect.getsource(home_ui.HomeApp._reset_app_to_defaults)
-    # Confirm gate precedes the service call.
-    confirm_at = src.index("askyesno")
-    call_at = src.index("reset_app_to_defaults(self.store)")
-    assert confirm_at < call_at
-    assert "return" in src[confirm_at:call_at]
-
-
 def test_identity_authorization_strings_unchanged_by_reset_module() -> None:
     """Reset must not introduce a second compare/identity path or wipe store identity."""
     text = Path("semblon/app_reset.py").read_text(encoding="utf-8")

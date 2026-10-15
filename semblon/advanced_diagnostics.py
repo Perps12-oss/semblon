@@ -99,10 +99,7 @@ def open_advanced_diagnostics(parent: Any, store: Path | str | None) -> Any:
     lines = build_advanced_diagnostics_lines(store)
     text = "\n".join(lines)
 
-    from semblon.ui_theme import apply_theme
-
     win = tk.Toplevel(parent)
-    apply_theme(win)
     win.title("Advanced diagnostics")
     win.configure(bg=SURFACE_PRIMARY)
     win.geometry(f"{_PANEL_WIDTH}x{_PANEL_HEIGHT}")

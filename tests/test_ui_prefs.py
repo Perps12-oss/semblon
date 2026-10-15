@@ -56,18 +56,3 @@ def test_damaged_file_falls_back_to_mica_dark(tmp_path):
     assert load_theme_mode(store) == "mica_dark"
 
 
-def test_publish_rebinds_consumer_names():
-    import semblon.ui_tokens as tokens
-
-    from semblon.atmosphere_render import publish_atmosphere
-
-    publish_atmosphere("mica_dark")
-    try:
-        mica = get_atmosphere("mica_dark")
-        assert tokens.ACCENT == mica.accent
-        assert tokens.BG_CANVAS == mica.surface
-        assert tokens.active_palette().accent == mica.accent
-    finally:
-        publish(LIGHT)
-        publish_atmosphere("light")
-    assert tokens.ACCENT == LIGHT.accent

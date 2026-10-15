@@ -62,11 +62,15 @@ def _page_videos(host: Any) -> None:
     host._show_library(filter_key="videos")
 
 
-def _page_canvas(host: Any) -> None:
-    from semblon.home_ui import INSPECTOR_EMPTY
+_INSPECTOR_EMPTY = (
+    "Open a photo to inspect observations.",
+    "Boxes are evidence. They are not people.",
+)
 
+
+def _page_canvas(host: Any) -> None:
     host._show_workspace_canvas(reload=True, source_types=None)
-    host._set_inspector("Details", list(INSPECTOR_EMPTY))
+    host._set_inspector("Details", list(_INSPECTOR_EMPTY))
     host._set_inspector_collapsed(True)
 
 
@@ -143,9 +147,6 @@ def _cmd_review_to_name(host: Any, _ctx: Any = None) -> None:
 def _cmd_explore_canvas(host: Any, _ctx: Any = None) -> None:
     host._navigate("canvas")
 
-
-def _cmd_open_review(host: Any, _ctx: Any = None) -> None:
-    host._open_review_ui()
 
 
 def _cmd_live(host: Any, _ctx: Any = None) -> None:
@@ -808,13 +809,6 @@ def build_product_registry() -> FeatureRegistry:
                     label="Settings",
                     run=_cmd_open_settings,
                     surfaces=frozenset({"palette"}),
-                ),
-                # Review UI remains KEEP via CLI (`semblon review-ui`). Naming door is To name.
-                GuiCommand(
-                    id="shell.open_review",
-                    label="Review UI",
-                    run=_cmd_open_review,
-                    surfaces=frozenset(),
                 ),
                 GuiCommand(
                     id="shell.live",

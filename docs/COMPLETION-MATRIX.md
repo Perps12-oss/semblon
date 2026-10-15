@@ -34,7 +34,7 @@ These are product and engineering gaps. They are not permission to reopen the sh
 | Find | **OUT OF V1** | Not a second query path. Lens remains `Application.query_media`. Region Similar remains `Application.remember_and_find_region`. |
 | People / Decision / Appearance / Time as lenses | **LANDED on branch** | Same session. Time is the mtime lens. People writes only through `review.py`. |
 | Remaining production UX and polish | **OPEN** | Windows product, not another prototype |
-| Eventual Tk retirement | **OPEN** | `semblon home` and Tk review-ui are legacy clients only |
+| Eventual Tk retirement | **COMPLETE** | `home`, `review-ui`, and `canvas` CLI clients removed; production UI is `semblon shell` only |
 | Whole-machine stress testing | **OPEN** | Owner Windows. Not a second architecture |
 | PERF ARM64 OpenCV load | **BLOCKED** | See the ledger below. Not a shell decision |
 | MSI `wix build` / sign | **PARTIAL** | Engineering source exists. Owner Windows build |
@@ -65,7 +65,7 @@ The table below is the longer capability ledger (identity, APP-1, packaging). Wh
 
 Production UI is PySide6 → Application. See `docs/ARCHITECTURE.md`.
 
-Tk Home and Tk review-ui remain legacy clients. `review.html` is not on the production path.
+Tk Home, Tk review-ui, and Tk canvas are retired. `review.html` is not on the production path.
 
 The block below is the 2026-09 correction of an earlier “native shell in progress” claim. It is **historical**. It is not the current shell decision.
 

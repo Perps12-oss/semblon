@@ -6,8 +6,7 @@ FACE-004: identify vs persons, never clusters. Unknown is valid.
 FACE-005: incremental ingest + inbox. No watcher.
 S6: memory history / together / events. Time/place are not identity.
 process: synchronous headless ingest -> cluster. Does not construct a JobEngine.
-home: double-click opens the PySide6 archive (`semblon shell`). `semblon home` is the legacy Tk surface.
-review-ui: legacy Tk review vertical (Name/Merge/Split/Ignore/Note). Not the product shell.
+shell: PySide6 production archive (double-click opens `semblon shell`).
 S7a: video files in the ingest folder are sampled (not every frame).
 S7b: tracks --run is derived IoU+time association (not identity, not written).
 """
@@ -416,33 +415,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     r_ro.add_argument("--text", default=None, help="optional note text")
 
-    rui = sub.add_parser(
-        "review-ui",
-        help="secondary Review workspace (tk; Name/Merge/Split/Ignore; not product Home)",
-    )
-    rui.add_argument(
-        "--store",
-        default=None,
-        type=Path,
-        help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
-    )
-    rui.add_argument(
-        "--run",
-        default=None,
-        help="run id (default: latest run that has faces)",
-    )
-
-    home = sub.add_parser(
-        "home",
-        help="legacy Tk surface (folder, scan, review). Forward shell is `semblon shell`",
-    )
-    home.add_argument(
-        "--store",
-        default=None,
-        type=Path,
-        help="SQLite store (default: %%LOCALAPPDATA%%\\Semblon\\store.sqlite)",
-    )
-
     shell = sub.add_parser(
         "shell",
         help="PySide6 archive shell (forward UI; requires PySide6)",
@@ -504,13 +476,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     liv.add_argument("--strict", action="store_true", help="fail run on detect/embed errors")
     liv.add_argument("--prefer-gpu", action="store_true")
-
-    canv = sub.add_parser(
-        "canvas",
-        help="secondary observation workspace (boxes + tracks; not identity; not product Home)",
-    )
-    canv.add_argument("--store", default=None, type=Path)
-    canv.add_argument("--run", default=None)
 
     args = p.parse_args(argv)
 
@@ -1130,22 +1095,6 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(rec, indent=2))
         return 0
 
-    if args.cmd == "review-ui":
-        from semblon.review_ui import ReviewUiError, run_review_ui
-
-        try:
-            run_review_ui(store=args.store, run_id=args.run)
-        except ReviewUiError as e:
-            print(str(e), file=sys.stderr)
-            return 2
-        return 0
-
-    if args.cmd == "home":
-        # Legacy Tk surface. Does not install Lens onto the class.
-        from semblon.home_ui import run_home_ui
-
-        return run_home_ui(store=args.store)
-
     if args.cmd == "shell":
         from semblon.native_shell import run_native_shell
 
@@ -1287,15 +1236,6 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         print(json.dumps(rec, indent=2, default=str))
         return 0
-
-    if args.cmd == "canvas":
-        from semblon.canvas import CanvasError, run_canvas
-
-        try:
-            return run_canvas(args.store, args.run)
-        except CanvasError as e:
-            print(str(e), file=sys.stderr)
-            return 2
 
     return 2
 

@@ -12,7 +12,7 @@ semblon.cmd --help
 semblon.cmd shell
 ```
 
-The installer runs `pip install -e ".[gui]"` so PySide6 is present. Double-click `semblon.cmd` opens the PySide6 archive. `semblon home` is the legacy Tk client, not the product door.
+The installer runs `pip install -e ".[gui]"` so PySide6 is present. Double-click `semblon.cmd` opens the PySide6 archive (`semblon shell`).
 
 Does not bundle model weights. First real ingest may download buffalo_l into `%USERPROFILE%\.insightface\models\buffalo_l` via InsightFace.
 
@@ -73,8 +73,8 @@ MSI uninstall removes `%LOCALAPPDATA%\Programs\Semblon` only — **not** the sto
 
 1. Clean directory, run `install-windows.ps1`
 2. `semblon.cmd --help` exits 0
-3. `semblon.cmd home` opens the window
-4. Process a small stills folder; Open Review; Name one cluster
+3. `semblon.cmd` with no arguments opens the PySide archive (`python -m semblon shell`).
+4. Process a small stills folder from the shell or `semblon.cmd process`. Name a cluster from People in the shell.
 5. `semblon.cmd lab integrity --store "%LOCALAPPDATA%\Semblon\store.sqlite"`
 
 ## Smoke procedure (human) — MSI

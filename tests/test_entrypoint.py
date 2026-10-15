@@ -34,8 +34,7 @@ def test_python_m_semblon_help():
         "name",
         "merge",
         "split",
-        "home",
-        "review-ui",
+        "shell",
         "tracks",
         "memory",
         "identify",
@@ -45,6 +44,9 @@ def test_python_m_semblon_help():
         "search",
     ):
         assert cmd in out, cmd
+    assert "home" not in out.split()
+    assert "review-ui" not in out.split()
+    assert "canvas" not in out.split()
     assert "desktop" not in out.split()
     from semblon.cli import main as _main
     import io
@@ -88,8 +90,7 @@ def test_packaging_hygiene():
     assert not (root / "semblon" / "desktop").exists()
     assert (root / "semblon" / "ui_copy.py").is_file()
     readme = (root / "README.md").read_text(encoding="utf-8")
-    assert "tk Home" in readme or "review-ui" in readme
-    assert "shipping UI is the PySide6 window" not in readme
+    assert "semblon shell" in readme or "PySide6" in readme
     assert "semblon-desktop" not in readme
     assert "s8_toolkit_spike" in readme and "research spike" in readme
     assert not (root / "tools" / "s8_toolkit_spike" / "__init__.py").exists()

@@ -9,9 +9,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from semblon.canvas import overlay_boxes
+from semblon.canvas_data import overlay_boxes
 from semblon.cluster import cluster_run
-from semblon.home_ui import format_people_lines, format_search_lines, format_unknown_lines
 from semblon.identify import identify_face
 from semblon.observers import (
     CLIP_PACK,
@@ -338,38 +337,3 @@ def test_overlay_boxes_skip_dual_write_faces():
     assert "object" in kinds
 
 
-def test_home_list_formatters():
-    people = format_people_lines({"items": [{"display_name": "Alice", "faces": 3}]})
-    # Soft coaching header first; named rows follow (group ≠ person until named).
-    assert "People you have named" in people[0] or "Named people" in people[0]
-    assert any("Alice" in ln for ln in people[1:])
-    empty = format_people_lines({"items": []})
-    assert "No people yet" in empty[0]
-    unk = format_unknown_lines({"counts": {"KNOWN": 1, "UNKNOWN": 4}}, "r1")
-    assert "4 people to name" in unk[0]
-    assert "UNKNOWN=" not in "\n".join(unk)
-    sim = format_search_lines(
-        {
-            "kind": "similar",
-            "query": "abc",
-            "modality": "appearance",
-            "pack_id": "appearance/rgb8@1",
-            "count": 1,
-            "items": [{"score": 0.9, "kind": "appearance", "item_id": "x", "why": "same modality+pack only; not a person"}],
-            "note": "Similarity is not identity.",
-        }
-    )
-    assert "modality=" not in "\n".join(sim)
-    assert "Similar" in sim[0]
-    text_lines = format_search_lines(
-        {
-            "kind": "text",
-            "query": "hello",
-            "count": 1,
-            "status": "SUCCESS",
-            "items": [{"item_id": "t1", "text": "hello world", "why": "OCR payload substring; not a person"}],
-            "note": "OCR text lookup is observation evidence only; not identity.",
-        }
-    )
-    assert "hello" in text_lines[0].lower() or "Text" in text_lines[0]
-    assert "hello world" in "\n".join(text_lines)

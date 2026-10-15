@@ -597,7 +597,7 @@ def soft_inspector_for_region(
 
 def advanced_inspector_for_media(board: dict, media_id: str | None) -> list[str]:
     """Engineering dump — progressive disclosure only."""
-    from semblon.canvas import media_inspector_lines
+    from semblon.canvas_data import media_inspector_lines
 
     return media_inspector_lines(board, media_id)
 
