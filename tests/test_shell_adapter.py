@@ -149,9 +149,9 @@ def test_archive_model_filter_does_not_widen_the_window(tmp_path):
 
 
 def test_qml_exposes_four_operations_and_hides_places():
-    qml = (
-        Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml" / "Shell.qml"
-    ).read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml"
+    qml = (root / "Shell.qml").read_text(encoding="utf-8")
+    sidebar = (root / "ContextSidebar.qml").read_text(encoding="utf-8")
     assert '"rescan"' in qml
     assert '"namedItems"' in qml
     assert '"knowledgePack"' in qml
@@ -165,8 +165,9 @@ def test_qml_exposes_four_operations_and_hides_places():
     assert 'objectName: "peopleCard"' in qml
     assert 'objectName: "searchCard"' in qml
     assert 'objectName: "lensCard"' in qml
-    assert 'objectName: "archiveSidebar"' in qml
-    assert 'objectName: "sidebarMoments"' in qml
+    assert "ContextSidebar" in qml
+    assert 'objectName: "archiveSidebar"' in sidebar
+    assert 'objectName: "sidebarMoments"' in sidebar
     assert 'text: "Video"' in qml
     assert "facetBar" not in qml
     assert "quickActionRail" not in qml
@@ -179,6 +180,7 @@ def test_qml_exposes_four_operations_and_hides_places():
     assert "Coming soon" not in qml
     assert "coming soon" not in qml
     assert 'objectName: "mainSidebar"' not in qml
+    assert "timelineRail" not in qml
 
 
 def test_named_items_do_not_create_people(tmp_path):

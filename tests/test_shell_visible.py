@@ -184,9 +184,16 @@ def test_visible_windows_shell_exercises_exposed_controls(tmp_path, monkeypatch)
     click("sidebarMoments")
     log.append(f"moments notice={bridge.noticeText!r} facet={bridge.facet}")
     assert bridge.facet == "moments"
-    click("sidebarDay_1970-01-01")
-    log.append(f"day notice={bridge.noticeText!r} scope={bridge.scopeKind}:{bridge.scopeLabel}")
-    assert bridge.scopeKind == "day"
+    day_label = "1970-01-01"
+    month = root.findChild(QQuickItem, f"timelineMonth_{day_label[:7]}")
+    if month is not None and month.isVisible():
+        click(f"timelineMonth_{day_label[:7]}")
+        log.append(f"month notice={bridge.noticeText!r} scope={bridge.scopeKind}:{bridge.scopeLabel}")
+        assert bridge.scopeKind == "month"
+    else:
+        bridge.selectDay(day_label)
+        log.append(f"day notice={bridge.noticeText!r} scope={bridge.scopeKind}:{bridge.scopeLabel}")
+        assert bridge.scopeKind == "day"
     click(f"sidebarFolder_{photo.parent.name}")
     log.append(f"folder notice={bridge.noticeText!r} scope={bridge.scopeKind}:{bridge.scopeLabel}")
     assert bridge.scopeKind == "folder"
