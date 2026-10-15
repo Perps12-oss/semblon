@@ -39,9 +39,16 @@ from semblon.native_shell.editorial import (
     VIDEO_NOTE,
     YEAR_NOTE,
     MEDIA_KINDS,
+    calendar_month_cells,
+    default_calendar_month,
+    month_heading,
+    range_media_ids,
     rows_from_scope,
     scope_ids,
+    shift_month,
+    sort_ids_newest_first,
     source_counts,
+    timeline_density,
 )
 from semblon.ui_prefs import load_prefer_gpu, load_prefs, save_theme_mode, update_prefs
 
@@ -130,10 +137,17 @@ class ShellBridge(QObject):
         self._years: list[dict] = []
         self._days: list[dict] = []
         self._folders: list[dict] = []
+        self._timeline_density: list[dict] = []
+        self._timeline_loading = False
+        self._sticky_heading = ""
+        self._calendar_month = ""
+        self._calendar_cells: list[dict] = []
         self._scope_ids: dict[str, dict[str, list[str]]] = {
             "year": {},
+            "month": {},
             "day": {},
             "folder": {},
+            "range": {},
             "everything": {"": []},
         }
         self._media_kind = "all"
@@ -348,6 +362,10 @@ class ShellBridge(QObject):
         prefix = ""
         if self._scope_kind == "year":
             prefix = self._scope_label
+        elif self._scope_kind == "month":
+            prefix = self._scope_label
+        elif self._scope_kind == "range" and ":" in self._scope_label:
+            prefix = self._scope_label.split(":", 1)[0][:4]
         elif self._scope_kind == "day" and len(self._scope_label) >= 4 and self._scope_label[:4].isdigit():
             prefix = self._scope_label[:4]
         if prefix:
@@ -357,6 +375,34 @@ class ShellBridge(QObject):
     @Property("QVariantList", notify=editorialChanged)
     def folderRows(self):
         return list(self._folders)
+
+    @Property("QVariantList", notify=editorialChanged)
+    def timelineDensity(self):
+        return list(self._timeline_density)
+
+    @Property(bool, notify=editorialChanged)
+    def timelineLoading(self) -> bool:
+        return self._timeline_loading
+
+    @Property(str, notify=editorialChanged)
+    def stickyHeading(self) -> str:
+        return self._sticky_heading
+
+    @Property(bool, notify=editorialChanged)
+    def timeScopeActive(self) -> bool:
+        return self._scope_kind in ("year", "month", "day", "range")
+
+    @Property(str, notify=editorialChanged)
+    def calendarMonth(self) -> str:
+        return self._calendar_month
+
+    @Property(str, notify=editorialChanged)
+    def calendarTitle(self) -> str:
+        return month_heading(self._calendar_month + "-01") if self._calendar_month else ""
+
+    @Property("QVariantList", notify=editorialChanged)
+    def calendarCells(self):
+        return list(self._calendar_cells)
 
     @Property(str, notify=editorialChanged)
     def savedViewsNote(self) -> str:
@@ -376,27 +422,66 @@ class ShellBridge(QObject):
 
     def _reload_editorial(self) -> None:
         store = self._jobs.store
+        self._timeline_loading = True
+        self.editorialChanged.emit()
         counts = source_counts(store)
         self._photo_count = int(counts.get("folder") or 0)
         self._video_count = int(counts.get("video") or 0)
+        previous_range = None
+        if self._scope_kind == "range" and ":" in self._scope_label:
+            previous_range = self._scope_label
         self._scope_ids = scope_ids(store, self._media_kind)
+        if previous_range:
+            start, end = previous_range.split(":", 1)
+            ids = range_media_ids(self._scope_ids.get("day", {}), start, end)
+            self._scope_ids.setdefault("range", {})[previous_range] = ids
         self._years = rows_from_scope(self._scope_ids["year"], newest_first=True)
         self._days = rows_from_scope(self._scope_ids["day"], newest_first=True)
         self._folders = rows_from_scope(self._scope_ids["folder"])
+        self._timeline_density = timeline_density(store, self._media_kind)
         if self._scope_kind and self._scope_label not in self._scope_ids.get(self._scope_kind, {}):
             self._scope_kind = ""
             self._scope_label = ""
+        day_map = self._scope_ids.get("day", {})
+        if not self._calendar_month:
+            self._calendar_month = default_calendar_month(day_map)
+        self._calendar_cells = calendar_month_cells(self._calendar_month, day_map)
         self._apply_scope_view()
+        self._timeline_loading = False
         self.editorialChanged.emit()
+
+    def _sync_calendar_month(self, month_label: str, *, rebuild: bool = True) -> None:
+        label = str(month_label or "").strip()[:7]
+        if len(label) < 7:
+            return
+        if label == self._calendar_month and not rebuild:
+            return
+        self._calendar_month = label
+        if rebuild:
+            self._calendar_cells = calendar_month_cells(
+                self._calendar_month, self._scope_ids.get("day", {})
+            )
+        self.editorialChanged.emit()
+
+    def _ordered_ids(self, ids: list[str]) -> list[str]:
+        return sort_ids_newest_first(self._scope_ids.get("day", {}), list(ids))
 
     def _apply_scope_view(self) -> None:
         """Point the grid at the current scope, narrowed by the photo/video choice."""
+        day_map = self._scope_ids.get("day", {})
         if self._scope_kind:
-            self._model.set_media_ids(list(self._scope_ids[self._scope_kind][self._scope_label]))
+            ids = list(self._scope_ids[self._scope_kind][self._scope_label])
+            self._model.set_media_ids(self._ordered_ids(ids))
         elif self._media_kind != "all" or self._video_count:
-            self._model.set_media_ids(list(self._scope_ids["everything"][""]))
+            self._model.set_media_ids(self._ordered_ids(list(self._scope_ids["everything"][""])))
         else:
-            self._model.set_media_ids(None)
+            # Still newest-first when the full archive is shown via explicit ids.
+            everything = list(self._scope_ids.get("everything", {}).get("", []))
+            if everything:
+                self._model.set_media_ids(self._ordered_ids(everything))
+            else:
+                self._model.set_media_ids(None)
+        self._sticky_heading = ""
 
     @Property(str, notify=editorialChanged)
     def mediaKind(self) -> str:
@@ -430,13 +515,33 @@ class ShellBridge(QObject):
         self._scope_label = str(label)
         self._facet = "memory"
         self._buckets = []
-        self._model.set_media_ids(list(ids))
+        self._model.set_media_ids(self._ordered_ids(list(ids)))
+        self._sticky_heading = ""
         self.editorialChanged.emit()
         self._apply_result(Result("ready", f"Showing {label}."))
 
+    def _newest_month_in_year(self, year: str) -> str:
+        months = [
+            m
+            for m in self._scope_ids.get("month", {})
+            if str(m).startswith(f"{year}-")
+        ]
+        if months:
+            return max(months)
+        return f"{year}-01"
+
     @Slot(str)
     def selectYear(self, label: str) -> None:
-        self._select_scope("year", label)
+        year = str(label or "").strip()[:4]
+        if year.isdigit():
+            self._sync_calendar_month(self._newest_month_in_year(year))
+        self._select_scope("year", year)
+
+    @Slot(str)
+    def selectMonth(self, label: str) -> None:
+        month = str(label or "").strip()[:7]
+        self._sync_calendar_month(month)
+        self._select_scope("month", month)
 
     @Slot(str)
     def selectFolder(self, label: str) -> None:
@@ -444,7 +549,76 @@ class ShellBridge(QObject):
 
     @Slot(str)
     def selectDay(self, label: str) -> None:
-        self._select_scope("day", label)
+        day = str(label or "").strip()[:10]
+        if (
+            self._scope_kind == "day"
+            and self._scope_label == day
+        ):
+            self.clearScope()
+            return
+        if len(day) >= 7:
+            self._sync_calendar_month(day[:7])
+        self._select_scope("day", day)
+
+    @Slot(str, str)
+    def selectRange(self, start: str, end: str) -> None:
+        ids = range_media_ids(self._scope_ids.get("day", {}), start, end)
+        a = str(start or "").strip()[:10]
+        b = str(end or "").strip()[:10]
+        if a > b:
+            a, b = b, a
+        key = f"{a}:{b}"
+        self._scope_ids.setdefault("range", {})[key] = ids
+        if len(a) >= 7:
+            self._sync_calendar_month(a[:7])
+        self._select_scope("range", key)
+
+    @Slot()
+    def calendarPrevMonth(self) -> None:
+        """Browse previous month without changing the media scope."""
+        self._sync_calendar_month(shift_month(self._calendar_month, -1))
+
+    @Slot()
+    def calendarNextMonth(self) -> None:
+        """Browse next month without changing the media scope."""
+        self._sync_calendar_month(shift_month(self._calendar_month, 1))
+
+    @Slot(str)
+    def setCalendarMonth(self, label: str) -> None:
+        """Browse a month without changing the media scope."""
+        self._sync_calendar_month(str(label or "").strip()[:7])
+
+    @Slot(str, result="QVariantList")
+    def timelinePreviewIds(self, label: str):
+        """Up to three media ids for a year, month, or day label (hover popover)."""
+        text = str(label or "").strip()
+        if not text:
+            return []
+        if len(text) == 4 and text.isdigit():
+            ids = self._scope_ids.get("year", {}).get(text, [])
+        elif len(text) == 7 and text[4:5] == "-":
+            ids = self._scope_ids.get("month", {}).get(text, [])
+        else:
+            ids = self._scope_ids.get("day", {}).get(text, [])
+        return list(ids[:3])
+
+    @Slot(str)
+    def setStickyDay(self, day: str) -> None:
+        heading = month_heading(str(day or ""))
+        if heading == self._sticky_heading:
+            return
+        self._sticky_heading = heading
+        self.editorialChanged.emit()
+
+    @Slot(int, result=str)
+    def dayAt(self, index: int) -> str:
+        """Day key for a Field row (sticky header)."""
+        idx = self._model.index(int(index), 0)
+        if not idx.isValid():
+            return ""
+        role = int(Qt.ItemDataRole.UserRole) + 3
+        value = self._model.data(idx, role)
+        return str(value or "")
 
     def _library_root_message(self) -> str:
         if self._media_kind == "photo":

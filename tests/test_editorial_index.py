@@ -7,7 +7,9 @@ from semblon.native_shell.editorial import (
     day_rows,
     folder_rows,
     month_heading,
+    month_rows,
     source_counts,
+    timeline_density,
     year_rows,
 )
 from semblon.store import connect, init_db
@@ -43,6 +45,10 @@ def test_index_counts_come_from_media_rows(tmp_path):
     assert years["2018"] == 1
     days = day_rows(store)
     assert sum(row["count"] for row in days) == 3
+    months = {row["label"]: row["count"] for row in month_rows(store)}
+    assert sum(months.values()) == 3
+    dens = timeline_density(store)
+    assert {row["label"]: row["count"] for row in dens} == years
     assert "Playback is not available" in VIDEO_NOTE
     folders = {row["label"]: row["count"] for row in folder_rows(store)}
     assert folders["2017"] == 2
