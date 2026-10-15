@@ -168,6 +168,8 @@ def test_qml_exposes_four_operations_and_hides_places():
     assert "ContextSidebar" in qml
     assert 'objectName: "archiveSidebar"' in sidebar
     assert 'objectName: "sidebarMoments"' in sidebar
+    assert "Explore your archive" not in sidebar
+    assert 'objectName: "archiveBrowseFlick"' in qml
     assert 'text: "Video"' in qml
     assert "facetBar" not in qml
     assert "quickActionRail" not in qml

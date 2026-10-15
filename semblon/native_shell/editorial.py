@@ -7,12 +7,56 @@ Nothing here writes identity or invents a relationship.
 from __future__ import annotations
 
 import calendar
+import math
+import re
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 
 from semblon.library_browse import ALBUMS_DEFERRED_LINES, folder_buckets, timeline_buckets
 from semblon.store import connect
+
+# Parent-folder names that are usually app/dev assets, not user albums.
+# Legitimate user folders with these exact names can still be shown via
+# ``show_technical_folders``.
+TECHNICAL_FOLDER_NAMES = frozenset(
+    {
+        "icons",
+        "osx",
+        "js_assets",
+        "imageryproviders",
+        "deploy_lib",
+        "node_modules",
+        "__pycache__",
+        ".git",
+        ".venv",
+        "venv",
+        "site-packages",
+        "dist",
+        "build",
+        "tmp",
+        "temp",
+        "cache",
+        ".cache",
+        "assets",
+        "static",
+        "vendor",
+        "resources",
+        "bin",
+        "obj",
+        "debug",
+        "release",
+    }
+)
+
+_FOLDER_GROUP_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("People & Family", ("family", "people", "kids", "portrait", "portraits", "wedding")),
+    ("Trips", ("trip", "travel", "vacation", "holiday", "voyage", "tour")),
+    ("Screenshots", ("screenshot", "screenshots", "screen shot", "screengrab")),
+    ("Downloads", ("download", "downloads")),
+)
+
+FIELD_SECTION_PREVIEW_CAP = 24
 
 SAVED_VIEWS_NOTE = ALBUMS_DEFERRED_LINES[0] if ALBUMS_DEFERRED_LINES else "Saved views are not stored yet."
 SPATIAL_NOTE = (
@@ -313,6 +357,7 @@ def field_sections(day_map: dict[str, list[str]], media_ids: list[str]) -> list[
             order.append(day)
         buckets[day].append(media_id)
     out: list[dict] = []
+    preview_cap = 24
     for day in order:
         ids = buckets[day]
         out.append(
@@ -321,6 +366,7 @@ def field_sections(day_map: dict[str, list[str]], media_ids: list[str]) -> list[
                 "label": day_section_label(day) if day != "unknown" else "Unknown date",
                 "count": len(ids),
                 "mediaIds": ids,
+                "previewIds": ids[:preview_cap],
             }
         )
     return out
