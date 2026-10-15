@@ -1,4 +1,4 @@
-# Double-click entry: Semblon archive shell (PySide6). Legacy Tk is `semblon home`.
+# Double-click entry: Semblon archive shell (PySide6).
 param(
     [Parameter(Mandatory = $true)]
     [string]$Root,

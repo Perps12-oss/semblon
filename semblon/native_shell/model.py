@@ -142,6 +142,7 @@ _GROUP_COUNT = Qt.ItemDataRole.UserRole + 3
 _GROUP_NAMED = Qt.ItemDataRole.UserRole + 4
 _GROUP_MEDIA = Qt.ItemDataRole.UserRole + 5
 _GROUP_FACE = Qt.ItemDataRole.UserRole + 6
+_GROUP_KIND = Qt.ItemDataRole.UserRole + 7
 
 
 class PeopleModel(QAbstractListModel):
@@ -164,6 +165,7 @@ class PeopleModel(QAbstractListModel):
             _GROUP_NAMED: b"named",
             _GROUP_MEDIA: b"mediaId",
             _GROUP_FACE: b"faceId",
+            _GROUP_KIND: b"kind",
         }
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
@@ -182,6 +184,8 @@ class PeopleModel(QAbstractListModel):
             return row["mediaId"]
         if role == _GROUP_FACE:
             return row["faceId"]
+        if role == _GROUP_KIND:
+            return row["kind"]
         return None
 
     def set_rows(self, rows: list[dict]) -> None:

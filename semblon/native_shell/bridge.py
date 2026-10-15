@@ -104,6 +104,10 @@ class ShellBridge(QObject):
         self._evidence_id = ""
         self._merge_target_subject = ""
         self._split_faces: list[str] = []
+        self._focus_boxes: list[dict] = []
+        self._selected_observation = ""
+        self._activity_rows: list[dict] = []
+        self._activity_open = False
         self._mode = self._load_shell_mode()
         self._atmosphere_id = self._load_atmosphere_id()
         self._adapter = ArchiveAdapter(jobs)
@@ -260,6 +264,27 @@ class ShellBridge(QObject):
         if not path.is_file():
             return ""
         return QUrl.fromLocalFile(str(path)).toString()
+
+    @Property("QVariantList", notify=focusChanged)
+    def focusObservationBoxes(self):
+        return list(self._focus_boxes)
+
+    @Property(str, notify=focusChanged)
+    def selectedObservationId(self) -> str:
+        return self._selected_observation
+
+    @Slot(str)
+    def selectObservation(self, observation_id: str) -> None:
+        wanted = str(observation_id or "").strip()
+        if not wanted:
+            self._selected_observation = ""
+            self.focusChanged.emit()
+            return
+        for box in self._focus_boxes:
+            if str(box.get("id") or "") == wanted:
+                self._selected_observation = wanted
+                self.focusChanged.emit()
+                return
 
     @Property(float, notify=focusChanged)
     def scrollY(self) -> float:
@@ -596,6 +621,52 @@ class ShellBridge(QObject):
         self.resultChanged.emit()
         self._clear_similar()
 
+    def _load_focus_boxes(self, media_id: str) -> None:
+        """Non-identity observation outlines for the open still. Never stamps identity."""
+        from semblon.canvas_data import overlay_boxes
+
+        self._selected_observation = ""
+        self._focus_boxes = []
+        item = self._jobs.media(media_id)
+        if item is None or item.source_type != "folder":
+            return
+        width = float(item.width or 0)
+        height = float(item.height or 0)
+        if width <= 0 or height <= 0:
+            return
+        try:
+            board = self._jobs.canvas()
+        except Exception:
+            return
+        for box in overlay_boxes(board, media_id):
+            bbox = box.get("bbox") or []
+            if len(bbox) != 4:
+                continue
+            try:
+                x1, y1, x2, y2 = (float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
+            except (TypeError, ValueError):
+                continue
+            nw = max(0.0, (x2 - x1) / width)
+            nh = max(0.0, (y2 - y1) / height)
+            if nw <= 0 or nh <= 0:
+                continue
+            self._focus_boxes.append(
+                {
+                    "id": str(box.get("id") or ""),
+                    "kind": str(box.get("kind") or ""),
+                    "tag": str(box.get("tag") or ""),
+                    "color": str(box.get("color") or "#2e8b57"),
+                    "nx": max(0.0, min(1.0, x1 / width)),
+                    "ny": max(0.0, min(1.0, y1 / height)),
+                    "nw": max(0.0, min(1.0, nw)),
+                    "nh": max(0.0, min(1.0, nh)),
+                }
+            )
+
+    def _clear_focus_boxes(self) -> None:
+        self._focus_boxes = []
+        self._selected_observation = ""
+
     @Slot(str)
     def openFocus(self, media_id: str) -> None:
         item = self._jobs.media(media_id)
@@ -603,6 +674,7 @@ class ShellBridge(QObject):
             return
         self._session.open_focus(media_id)
         self._clear_query()
+        self._load_focus_boxes(media_id)
         self.focusChanged.emit()
         self.diagnosticsChanged.emit()
 
@@ -613,6 +685,7 @@ class ShellBridge(QObject):
             return
         self._session.open_focus(rows[0].media_id)
         self._clear_query()
+        self._load_focus_boxes(rows[0].media_id)
         self.focusChanged.emit()
         self.diagnosticsChanged.emit()
 
@@ -626,6 +699,10 @@ class ShellBridge(QObject):
     def focusNext(self) -> None:
         self._session.move_focus(1)
         self._clear_query()
+        if self._session.focus_id:
+            self._load_focus_boxes(self._session.focus_id)
+        else:
+            self._clear_focus_boxes()
         self.focusChanged.emit()
         self.diagnosticsChanged.emit()
 
@@ -633,6 +710,10 @@ class ShellBridge(QObject):
     def focusPrev(self) -> None:
         self._session.move_focus(-1)
         self._clear_query()
+        if self._session.focus_id:
+            self._load_focus_boxes(self._session.focus_id)
+        else:
+            self._clear_focus_boxes()
         self.focusChanged.emit()
         self.diagnosticsChanged.emit()
 
@@ -682,6 +763,8 @@ class ShellBridge(QObject):
         for item in self._people._rows:
             if item["subject"] == self._selected_subject:
                 continue
+            if str(item.get("kind") or "") != "cluster":
+                continue
             rows.append(dict(item))
         return rows
 
@@ -692,14 +775,20 @@ class ShellBridge(QObject):
     @Property(bool, notify=peopleChanged)
     def canSplitSelected(self) -> bool:
         row = self._people.row(self._selected_subject)
-        if not row:
+        if not row or str(row.get("kind") or "") != "cluster":
             return False
         total = len(row.get("members") or [])
         return 0 < len(self._split_faces) < total
 
     @Property(bool, notify=peopleChanged)
     def canMergeSelected(self) -> bool:
-        return bool(self._selected_subject and self._merge_target_subject and self._selected_subject != self._merge_target_subject)
+        selected = self._people.row(self._selected_subject)
+        target = self._people.row(self._merge_target_subject)
+        if not selected or not target:
+            return False
+        if str(selected.get("kind") or "") != "cluster" or str(target.get("kind") or "") != "cluster":
+            return False
+        return self._selected_subject != self._merge_target_subject
 
     @Property(str, notify=peopleChanged)
     def peopleNote(self) -> str:
@@ -708,6 +797,41 @@ class ShellBridge(QObject):
     @Property(str, notify=peopleChanged)
     def selectedSubject(self) -> str:
         return self._selected_subject
+
+    @Property(str, notify=peopleChanged)
+    def selectedKind(self) -> str:
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return ""
+        return str(row.get("kind") or "")
+
+    @Property(bool, notify=peopleChanged)
+    def canNameSelected(self) -> bool:
+        return self.selectedKind in {"cluster", "track", "unassigned"}
+
+    @Property(bool, notify=peopleChanged)
+    def canNoteSelected(self) -> bool:
+        return self.selectedKind in {"cluster", "unassigned"}
+
+    @Property(bool, notify=peopleChanged)
+    def canIgnoreSelected(self) -> bool:
+        return self.selectedKind in {"cluster", "unassigned"}
+
+    @Property(bool, notify=peopleChanged)
+    def canRuleOutSelected(self) -> bool:
+        if self.selectedKind not in {"cluster", "unassigned"}:
+            return False
+        from semblon.review import ruled_out_enabled
+
+        return bool(ruled_out_enabled())
+
+    @Property(bool, notify=peopleChanged)
+    def canMergeCluster(self) -> bool:
+        return self.selectedKind == "cluster"
+
+    @Property(bool, notify=peopleChanged)
+    def canSplitCluster(self) -> bool:
+        return self.selectedKind == "cluster"
 
     @Property(str, notify=peopleChanged)
     def evidenceId(self) -> str:
@@ -833,6 +957,7 @@ class ShellBridge(QObject):
                     "named": bool(item.get("named")),
                     "mediaId": media_id,
                     "faceId": face_id,
+                    "kind": str(item.get("kind") or "cluster"),
                     "members": list(members),
                 }
             )
@@ -851,14 +976,19 @@ class ShellBridge(QObject):
         if self._session.focus_id and self._people_open:
             self._session.escape()
             self._clear_query()
+            self._clear_focus_boxes()
             self.focusChanged.emit()
             self.diagnosticsChanged.emit()
             return
         if self._people_open:
             self.closePeople()
             return
+        if self._activity_open:
+            self.closeActivity()
+            return
         self._session.escape()
         self._clear_query()
+        self._clear_focus_boxes()
         self.focusChanged.emit()
         self.diagnosticsChanged.emit()
         self.lensChanged.emit()
@@ -1348,9 +1478,50 @@ class ShellBridge(QObject):
     def scanDuplicates(self) -> None:
         self._apply_result(self._safe_call(self._adapter.duplicates))
 
+    @Property(bool, notify=surfaceChanged)
+    def activityOpen(self) -> bool:
+        return self._activity_open
+
+    @Property("QVariantList", notify=surfaceChanged)
+    def activityRows(self):
+        return list(self._activity_rows)
+
     @Slot()
     def showActivity(self) -> None:
-        self._apply_result(self._safe_call(self._adapter.activity))
+        result = self._safe_call(self._adapter.activity)
+        rows: list[dict] = []
+        rec = result.data.get("activity") or {}
+        for key, label in (
+            ("processing", "Processing"),
+            ("together_lines", "Together"),
+            ("moment_lines", "Moments"),
+        ):
+            if key == "processing":
+                lines = list((rec.get("processing") or {}).get("lines") or [])
+            else:
+                lines = list(rec.get(key) or [])
+            for line in lines:
+                text = str(line or "").strip()
+                if text:
+                    rows.append({"section": label, "text": text})
+        self._activity_rows = rows
+        self._activity_open = self._mode == ADVANCED
+        if self._mode != ADVANCED:
+            self._apply_result(result)
+            return
+        if not rows:
+            self._apply_result(result)
+        else:
+            self._apply_result(Result("ready", f"Activity: {len(rows)} recent lines.", {"activity": rec}))
+        self.surfaceChanged.emit()
+
+    @Slot()
+    def closeActivity(self) -> None:
+        if not self._activity_open and not self._activity_rows:
+            return
+        self._activity_open = False
+        self._activity_rows = []
+        self.surfaceChanged.emit()
 
     @Slot()
     def showCapabilities(self) -> None:

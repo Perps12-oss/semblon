@@ -56,13 +56,11 @@ No production Review page replaces it.
 
 Historical documentation may continue to reference the former HTML review system where necessary to preserve an accurate record of past development.
 
-## Legacy clients
+## Retired Tk clients
 
-Tk Home (`semblon home`) and Tk review-ui remain only as temporary legacy clients.
+Tk Home (`semblon home`), Tk review-ui, and Tk canvas are removed. Do not resurrect those commands or modules.
 
-They are not alternative production architecture and must not be used as the basis for new product work.
-
-New production UI work belongs in the PySide6 shell.
+New production UI work belongs in the PySide6 shell (`semblon shell`).
 
 ## Research and secondary tools
 

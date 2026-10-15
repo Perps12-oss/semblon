@@ -13,7 +13,7 @@ import pytest
 from semblon.cli import main
 from semblon.ingest import ingest
 from semblon.review import name_cluster
-from semblon.review_ui import ReviewExpectedEmpty, ReviewUiError, resolve_run_id
+from semblon.review_board import ReviewExpectedEmpty, ReviewUiError, resolve_run_id
 from semblon.store import backup_store, init_db, restore_store
 from tests.test_cluster import _seed
 from tests.test_review import _clustered
@@ -166,7 +166,7 @@ def test_naming_one_person_does_not_rename_another(tmp_path):
 
 
 def test_review_ui_missing_store_and_empty_store(tmp_path):
-    from semblon.review_ui import ReviewExpectedEmpty
+    from semblon.review_board import ReviewExpectedEmpty
 
     missing = tmp_path / "nope.sqlite"
     with pytest.raises(ReviewExpectedEmpty, match="no_store") as ei:

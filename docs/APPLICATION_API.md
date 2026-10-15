@@ -131,12 +131,11 @@ Production UI is PySide6 `semblon shell` → `Application`. See `docs/ARCHITECTU
 | Surface | Command | Role |
 |---|---|---|
 | **Production GUI** | `semblon shell` | The only production UI. Installer includes `.[gui]`. |
-| Legacy Tk Home | `semblon home` | Temporary legacy client. Not a basis for new product work. |
-| Legacy Tk review | `semblon review-ui` | Temporary legacy client. Not a production Review page. |
+| Tk Home / review-ui / canvas | — | **Retired.** Commands and Tk-only modules removed. |
 | `review.html` | — | **Retired.** No production writer. Do not resurrect. |
 | S8 toolkit spike | `tools/s8_toolkit_spike` | Research only. Does not create a second production architecture. |
 
-Do not resurrect Tk Home as the product door, `review.html`, `review_chrome`, `lens_home`, `native_shell/window.py`, or a parallel application/storage path. The production architecture is PySide6 → Application.
+Do not resurrect Tk Home, `review-ui`, `canvas`, `review.html`, `review_chrome`, `lens_home`, `native_shell/window.py`, or a parallel application/storage path. The production architecture is PySide6 → Application.
 
 A September note called `semblon home` the one shipping GUI (#54) and `semblon shell` an optional client (#67). That note is historical.
 

@@ -150,11 +150,9 @@ def run_live_overlay(
         except Exception as e:  # noqa: BLE001
             raise LiveOverlayError(f"tkinter required for live overlay: {e}") from e
 
-        from semblon.ui_theme import apply_theme
         from semblon.ui_tokens import BG_DARK
 
         root = tk.Tk()
-        apply_theme(root)
         root.title("Semblon Live Overlay")
         root.geometry("960x640")
         root.configure(bg=BG_DARK)

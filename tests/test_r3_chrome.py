@@ -48,7 +48,7 @@ def test_face_axes_do_not_smuggle_person_into_evidence():
 
 def test_caller_similarity_is_evidence_not_identity():
     """Caller scores change the evidence token only. They do not enrol anyone."""
-    from semblon.canvas import face_evidence_tag
+    from semblon.canvas_data import face_evidence_tag
 
     scored = {"face_id": "f", "similarity": 0.71}
     assert evidence_from_face(scored) == "similar"

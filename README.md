@@ -27,14 +27,12 @@ py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -e ".[gui]"
 ```
 
-Then **double-click `semblon.cmd`** to open the **PySide6 archive**: the Time lens over one library, open a memory, ask about the photo, and add a folder. `semblon home` is the legacy Tk surface. `review-ui` is the legacy Tk review vertical. The installer includes PySide6 (`pip install -e ".[gui]"`).
+Then **double-click `semblon.cmd`** to open the **PySide6 archive**: the Time lens over one library, open a memory, ask about the photo, and add a folder. The installer includes PySide6 (`pip install -e ".[gui]"`).
 
-**Status:** architecture migration **COMPLETE** (2026-10-05). Production UI is the **PySide6 archive** (`semblon shell`) → `Application`. Baseline: `docs/ARCHITECTURE.md`. The engine is Python. Tk Home remains only as `semblon home`. Tk `review-ui` is a legacy client. `review.html` is retired. The QML tree under `tools/s8_toolkit_spike/` is a research spike, not this shell. Next work is the product (Field + Focus), not another shell.
+**Status:** architecture migration **COMPLETE** (2026-10-05). Production UI is the **PySide6 archive** (`semblon shell`) → `Application`. Baseline: `docs/ARCHITECTURE.md`. The engine is Python. Tk Home, review-ui, and canvas are retired. `review.html` is retired. The QML tree under `tools/s8_toolkit_spike/` is a research spike, not this shell. Next work is the product (Field + Focus), not another shell.
 
 ```text
 semblon.cmd shell
-semblon.cmd home
-semblon.cmd review-ui
 ```
 
 Or pass a path explicitly (no need to activate the venv, no need to copy a run id):
@@ -119,8 +117,7 @@ semblon lab profile --image "D:\photos\face.jpg" --out "docs\runtime.md"
 
 semblon process "D:\photos\dump"
 semblon process "D:\photos\dump" --store "D:\semblon\store.sqlite"
-semblon review-ui --store "D:\semblon\store.sqlite"
-semblon review-ui --store "D:\semblon\store.sqlite" --run RUN_ID
+semblon shell --store "D:\semblon\store.sqlite"
 
 semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite"
 semblon ingest "D:\photos\dump" --store "D:\semblon\store.sqlite" --reprocess

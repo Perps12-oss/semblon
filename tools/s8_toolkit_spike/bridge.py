@@ -8,17 +8,24 @@ from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from semblon.process import default_store_path
 from semblon.review import ReviewError
-from semblon.review_ui import (
+from semblon.review_board import (
     ReviewUiError,
     apply_ignore,
     apply_merge,
     apply_name,
     apply_note,
     apply_split,
-    item_label,
     load_board,
     resolve_run_id,
 )
+
+
+def item_label(item: dict) -> str:
+    names = item.get("person_names") or []
+    if names:
+        return str(names[0])
+    kind = str(item.get("kind") or "group")
+    return str(item.get("cluster_id") or item.get("face_id") or item.get("track_id") or kind)
 
 
 def _uri(path: str) -> str | None:
@@ -50,7 +57,7 @@ def _item_for_qml(it: dict) -> dict:
 
 
 class ShellBridge(QObject):
-    """Presentation adapter. Mutations call semblon.review_ui → review.py only."""
+    """Presentation adapter. Mutations call semblon.review_board → review.py only."""
 
     boardChanged = Signal()
     sectionChanged = Signal()

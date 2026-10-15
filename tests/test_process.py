@@ -87,7 +87,7 @@ def test_process_folder_orchestrates_and_owns_run_id(tmp_path):
 
 def test_process_skip_all_keeps_prior_run_with_faces(tmp_path):
     """A later empty ingest must not hide the prior run that still has faces."""
-    from tests.test_review_ui import _seed
+    from tests.test_review import _seed
     from semblon.review_board import load_board
 
     folder = tmp_path / "photos"

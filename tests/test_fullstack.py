@@ -9,7 +9,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from semblon.canvas import load_canvas
+from semblon.canvas_data import load_canvas
 from semblon.cli import main
 from semblon.compare import CompareError, compare, compare_space
 from semblon.engine import select_execution_provider
@@ -156,8 +156,9 @@ def test_cli_help_lists_fullstack_commands():
         except SystemExit as e:
             assert e.code == 0
     out = buf.getvalue()
-    for cmd in ("watch", "live", "canvas", "search"):
+    for cmd in ("watch", "live", "shell", "search"):
         assert cmd in out, cmd
+    assert "canvas" not in out.split()
 
 
 def test_gpu_detection_does_not_invent_gpu():

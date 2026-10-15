@@ -40,6 +40,25 @@ def test_shell_package_stays_off_identity_engines():
         assert "FaceAnalysis" not in text
 
 
+def test_cli_exposes_shell_as_the_only_gui_command():
+    import re
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "semblon", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    help_text = proc.stdout
+    assert re.search(r"\bshell\b", help_text)
+    assert "review-ui" not in help_text
+    assert not re.search(r"^\s+home\s", help_text, flags=re.M)
+    assert not re.search(r"^\s+canvas\s", help_text, flags=re.M)
+
+
 def test_tokens_match_the_blueprint_dark_contract():
     assert DARK["bg0"] == "#0b0c0e"
     assert DARK["accent"] == "#4f8cff"

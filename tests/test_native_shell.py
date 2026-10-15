@@ -982,6 +982,187 @@ def test_people_desk_hides_video_only_tracks_from_qt_shell(tmp_path, monkeypatch
     shutdown_shell(engine)
 
 
+def test_people_actions_follow_selected_kind(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell, shutdown_shell
+    from semblon.store import connect, init_db
+
+    def fake_board(self, run_id=None):
+        return {
+            "items": [
+                {
+                    "kind": "cluster",
+                    "cluster_id": "c1",
+                    "face_count": 2,
+                    "named": False,
+                    "person_names": [],
+                    "members": [
+                        {"media_id": "m1", "face_id": "f1", "source_type": "folder", "path": "/a", "bbox": (0, 0, 10, 10)},
+                        {"media_id": "m1", "face_id": "f2", "source_type": "folder", "path": "/a", "bbox": (20, 0, 10, 10)},
+                    ],
+                },
+                {
+                    "kind": "unassigned",
+                    "face_id": "f9",
+                    "face_count": 1,
+                    "named": False,
+                    "person_names": [],
+                    "members": [
+                        {"media_id": "m2", "face_id": "f9", "source_type": "folder", "path": "/b", "bbox": (0, 0, 8, 8)}
+                    ],
+                },
+            ]
+        }
+
+    monkeypatch.setattr(Application, "board", fake_board)
+    monkeypatch.setattr("semblon.process.latest_run_id", lambda store, **kwargs: "run-1")
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    bridge.openPeople()
+    bridge.selectGroup("c1")
+    assert bridge.selectedKind == "cluster"
+    assert bridge.canNameSelected is True
+    assert bridge.canNoteSelected is True
+    assert bridge.canIgnoreSelected is True
+    assert bridge.canMergeCluster is True
+    assert bridge.canSplitCluster is True
+    assert bridge.people_model.row("c1")["faceId"] == "f1"
+    bridge.selectGroup("f9")
+    assert bridge.selectedKind == "unassigned"
+    assert bridge.canNameSelected is True
+    assert bridge.canNoteSelected is True
+    assert bridge.canIgnoreSelected is True
+    assert bridge.canMergeCluster is False
+    assert bridge.canSplitCluster is False
+    assert bridge.canMergeSelected is False
+    shutdown_shell(engine)
+
+
+def test_focus_loads_observation_boxes(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell, shutdown_shell
+    from semblon.store import connect, init_db
+
+    def fake_canvas(self, run_id=None):
+        return {
+            "faces": [
+                {
+                    "face_id": "f1",
+                    "media_id": "m1",
+                    "bbox_x1": 10,
+                    "bbox_y1": 20,
+                    "bbox_x2": 110,
+                    "bbox_y2": 120,
+                    "cluster_id": None,
+                    "person_id": None,
+                    "status": "ok",
+                }
+            ],
+            "items": [],
+            "track_lane_by_face": {},
+            "track_lane_by_item": {},
+        }
+
+    monkeypatch.setattr(Application, "canvas", fake_canvas)
+    store = tmp_path / "s.sqlite"
+    photo = tmp_path / "a.jpg"
+    photo.write_bytes(b"x")
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(photo), "h1", 200, 100, 1, 1),
+    )
+    conn.commit()
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    bridge.openFocus("m1")
+    boxes = bridge.focusObservationBoxes
+    assert len(boxes) == 1
+    assert boxes[0]["id"] == "f1"
+    assert boxes[0]["nx"] == 0.05
+    assert boxes[0]["ny"] == 0.2
+    bridge.selectObservation("f1")
+    assert bridge.selectedObservationId == "f1"
+    bridge.escape()
+    assert bridge.focusObservationBoxes == []
+    shutdown_shell(engine)
+
+
+def test_advanced_activity_opens_history_rows(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell, shutdown_shell
+    from semblon.store import connect, init_db
+
+    def fake_activity(self, run_id=None):
+        return {
+            "empty": False,
+            "processing": {"lines": ["Scanned 3 photos."]},
+            "together_lines": ["Ada and Bea appear together."],
+            "moment_lines": ["A quiet afternoon."],
+        }
+
+    monkeypatch.setattr(Application, "activity_memory", fake_activity)
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    bridge = engine._semblon_bridge
+    bridge.setMode("advanced")
+    bridge.showActivity()
+    assert bridge.activityOpen is True
+    assert len(bridge.activityRows) == 3
+    assert root.findChild(QObject, "activitySheet") is not None
+    bridge.closeActivity()
+    assert bridge.activityOpen is False
+    shutdown_shell(engine)
+
+
+def test_job_band_exposes_pause_and_cancel(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell, shutdown_shell
+    from semblon.store import connect, init_db
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    assert root.findChild(QObject, "jobBand") is not None
+    assert root.findChild(QObject, "pauseJob") is not None
+    assert root.findChild(QObject, "cancelJob") is not None
+    shutdown_shell(engine)
+
+
 def test_unresolved_text_is_initialized(tmp_path, monkeypatch):
     pytest.importorskip("PySide6")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")

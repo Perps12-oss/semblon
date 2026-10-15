@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from semblon.canvas import load_canvas, media_inspector_lines, media_state_triples
-from semblon.home_ui import format_library_lines
+from semblon.canvas_data import load_canvas, media_inspector_lines, media_state_triples
 from semblon.state_triple import (
     ANALYSIS_DONE,
     ANALYSIS_FAILED,
@@ -534,17 +533,6 @@ def test_load_canvas_exposes_decisions_and_triples(tmp_path):
     assert any(line.startswith("state=(") for line in lines)
 
 
-def test_format_library_lines_include_channel_markers(tmp_path):
-    store = tmp_path / "s.sqlite"
-    _seed_store(store)
-    lines = format_library_lines(store)
-    body = "\n".join(lines)
-    assert "state=(Ingest, Analysis, Identity)" in body or "state triple" in body
-    # possible + unknown notches appear
-    assert "◧" in body or "⬚" in body
-    assert "●" in body  # analysis done ring
-
-
 def test_as_dict_roundtrip_shape():
     t = build_triple(
         ingest=INGEST_OK, analysis=ANALYSIS_FAILED, identity=IDENTITY_MIXED
@@ -555,3 +543,4 @@ def test_as_dict_roundtrip_shape():
     assert d["identity"] == IDENTITY_MIXED
     assert d["notch"]["neq"] is True
     assert d["ring"]["bang"] is True
+

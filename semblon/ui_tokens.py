@@ -374,16 +374,11 @@ _ALIAS_NAMES = (
 )
 
 _CONSUMERS = (
-    "semblon.ui_widgets",
-    "semblon.ui_theme",
-    "semblon.ui_primitives",
-    "semblon.home_ui",
-    "semblon.canvas",
-    "semblon.review_ui",
     "semblon.empty_states",
     "semblon.live_overlay",
     "semblon.advanced_diagnostics",
-    "semblon.atmosphere_render",
+    "semblon.features.activity_feature",
+    "semblon.native_shell.bridge",
 )
 
 
