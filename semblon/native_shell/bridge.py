@@ -68,6 +68,7 @@ def reduced_motion() -> bool:
 class ShellBridge(QObject):
     lensChanged = Signal()
     focusChanged = Signal()
+    diagnosticsChanged = Signal()
     libraryChanged = Signal()
     jobChanged = Signal()
     emptyChanged = Signal()
@@ -119,11 +120,18 @@ class ShellBridge(QObject):
         self._last_job_failed = False
         self._terminal_status = ""
         self._review_text = ""
+        self._unresolved_text = ""
         self._photo_count = 0
         self._video_count = 0
         self._years: list[dict] = []
+        self._days: list[dict] = []
         self._folders: list[dict] = []
-        self._scope_ids: dict[str, dict[str, list[str]]] = {"year": {}, "folder": {}, "everything": {"": []}}
+        self._scope_ids: dict[str, dict[str, list[str]]] = {
+            "year": {},
+            "day": {},
+            "folder": {},
+            "everything": {"": []},
+        }
         self._media_kind = "all"
         self._scope_kind = ""
         self._scope_label = ""
@@ -191,7 +199,7 @@ class ShellBridge(QObject):
             return "Simple product language"
         return "Diagnostics and technical detail"
 
-    @Property(str, notify=lensChanged)
+    @Property(str, notify=diagnosticsChanged)
     def diagnosticsText(self) -> str:
         if self._mode != ADVANCED:
             return ""
@@ -310,6 +318,18 @@ class ShellBridge(QObject):
         return list(self._years)
 
     @Property("QVariantList", notify=editorialChanged)
+    def dayRows(self):
+        rows = list(self._days)
+        prefix = ""
+        if self._scope_kind == "year":
+            prefix = self._scope_label
+        elif self._scope_kind == "day" and len(self._scope_label) >= 4 and self._scope_label[:4].isdigit():
+            prefix = self._scope_label[:4]
+        if prefix:
+            rows = [row for row in rows if str(row.get("label") or "").startswith(prefix)]
+        return rows
+
+    @Property("QVariantList", notify=editorialChanged)
     def folderRows(self):
         return list(self._folders)
 
@@ -336,6 +356,7 @@ class ShellBridge(QObject):
         self._video_count = int(counts.get("video") or 0)
         self._scope_ids = scope_ids(store, self._media_kind)
         self._years = rows_from_scope(self._scope_ids["year"], newest_first=True)
+        self._days = rows_from_scope(self._scope_ids["day"], newest_first=True)
         self._folders = rows_from_scope(self._scope_ids["folder"])
         if self._scope_kind and self._scope_label not in self._scope_ids.get(self._scope_kind, {}):
             self._scope_kind = ""
@@ -396,15 +417,32 @@ class ShellBridge(QObject):
     def selectFolder(self, label: str) -> None:
         self._select_scope("folder", label)
 
-    @Slot()
-    def clearScope(self) -> None:
-        if not self._scope_kind:
-            return
+    @Slot(str)
+    def selectDay(self, label: str) -> None:
+        self._select_scope("day", label)
+
+    def _library_root_message(self) -> str:
+        if self._media_kind == "photo":
+            return "Showing photos."
+        if self._media_kind == "video":
+            return "Showing videos."
+        return "Showing everything."
+
+    def _reset_library_scope(self) -> None:
+        """Clear year, day, folder, and moment buckets. Keep the photo/video choice."""
         self._scope_kind = ""
         self._scope_label = ""
+        self._facet = "memory"
+        self._buckets = []
         self._apply_scope_view()
         self.editorialChanged.emit()
-        self._apply_result(Result("ready", "Showing everything."))
+        self._apply_result(Result("ready", self._library_root_message()))
+
+    @Slot()
+    def clearScope(self) -> None:
+        if not self._scope_kind and not self._buckets and self._facet == "memory":
+            return
+        self._reset_library_scope()
 
     @Property(str, notify=surfaceChanged)
     def facet(self) -> str:
@@ -560,18 +598,23 @@ class ShellBridge(QObject):
 
     @Slot(str)
     def openFocus(self, media_id: str) -> None:
+        item = self._jobs.media(media_id)
+        if item is None or item.source_type != "folder":
+            return
         self._session.open_focus(media_id)
         self._clear_query()
         self.focusChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(int)
     def openIndex(self, index: int) -> None:
         rows = self._jobs.archive_window(index, 1)
-        if not rows:
+        if not rows or rows[0].source_type != "folder":
             return
         self._session.open_focus(rows[0].media_id)
         self._clear_query()
         self.focusChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(float)
     def setScroll(self, y: float) -> None:
@@ -584,12 +627,14 @@ class ShellBridge(QObject):
         self._session.move_focus(1)
         self._clear_query()
         self.focusChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot()
     def focusPrev(self) -> None:
         self._session.move_focus(-1)
         self._clear_query()
         self.focusChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @property
     def people_model(self) -> PeopleModel:
@@ -807,6 +852,7 @@ class ShellBridge(QObject):
             self._session.escape()
             self._clear_query()
             self.focusChanged.emit()
+            self.diagnosticsChanged.emit()
             return
         if self._people_open:
             self.closePeople()
@@ -814,6 +860,7 @@ class ShellBridge(QObject):
         self._session.escape()
         self._clear_query()
         self.focusChanged.emit()
+        self.diagnosticsChanged.emit()
         self.lensChanged.emit()
 
     @Slot()
@@ -821,6 +868,7 @@ class ShellBridge(QObject):
         self._session.wordmark()
         self._clear_query()
         self.focusChanged.emit()
+        self.diagnosticsChanged.emit()
         self.lensChanged.emit()
 
     @Slot(str)
@@ -879,6 +927,7 @@ class ShellBridge(QObject):
             self.peopleChanged.emit()
         self._set_result(self._result_text)
         self.lensChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot()
     def toggleMode(self) -> None:
@@ -1067,50 +1116,78 @@ class ShellBridge(QObject):
             return None
         return int(x1), int(y1), max(1, int(round(x2 - x1))), max(1, int(round(y2 - y1)))
 
+    def _item_for_decision(self, subject: str) -> dict:
+        """Board row for a people-desk subject. Cluster id is never a person id."""
+        subject = str(subject or "").strip()
+        items: list[dict] = []
+        try:
+            board = self._jobs.board()
+            items = [item for item in (board.get("items") or []) if isinstance(item, dict)]
+        except Exception:  # noqa: BLE001 — decide still reports a review error
+            items = []
+        for item in items:
+            if subject and str(item.get("cluster_id") or "") == subject:
+                if item.get("kind") not in {"cluster", "track", "unassigned"}:
+                    return {**item, "kind": "cluster"}
+                return item
+        for item in items:
+            if item.get("kind") == "track" and subject and str(item.get("track_id") or "") == subject:
+                return item
+        for item in items:
+            if item.get("kind") == "cluster":
+                continue
+            if subject and str(item.get("face_id") or "") == subject:
+                return item
+        return {"kind": "cluster", "cluster_id": subject}
+
     @Slot(str, str, str, result=str)
     def decide(self, kind: str, subject: str, text: str) -> str:
-        """Human decision only. Writes through review.py. Does not assign a person by score."""
+        """Human decision only. review_board routes; review.py is the only SQL writer."""
         from semblon.process import latest_run_id
         from semblon.review import ReviewError
+        from semblon.review_board import (
+            ReviewUiError,
+            apply_ignore,
+            apply_merge,
+            apply_name,
+            apply_note,
+            apply_rule_out,
+            apply_split,
+        )
 
         run_id = latest_run_id(self._jobs.store)
         if not run_id:
             return self._after_decision("No reviewed run yet.")
         if not (text or "").strip() and kind in {"name", "note"}:
             return self._after_decision("A name or note is required.")
+        item = self._item_for_decision(subject)
         try:
             if kind == "name":
-                from semblon.review import name_cluster
-                rec = name_cluster(self._jobs.store, run_id, subject, text)
+                rec = apply_name(self._jobs.store, run_id, item, text)
                 return self._after_decision(decision_success("name", str(rec.get("display_name") or "")))
             if kind == "ignore":
-                from semblon.review import ignore_subject
-                ignore_subject(self._jobs.store, run_id, cluster_id=subject)
+                apply_ignore(self._jobs.store, run_id, item)
                 return self._after_decision(decision_success("ignore"))
             if kind == "note":
-                from semblon.review import note_subject
-                note_subject(self._jobs.store, run_id, text, cluster_id=subject)
+                apply_note(self._jobs.store, run_id, item, text)
                 return self._after_decision(decision_success("note"))
             if kind == "merge":
-                from semblon.review import merge_clusters
                 other = text.strip()
-                merge_clusters(self._jobs.store, run_id, [subject, other])
+                apply_merge(self._jobs.store, run_id, [subject, other])
                 return self._after_decision(decision_success("merge"))
             if kind == "split":
-                from semblon.review import split_cluster
                 face_ids = [part.strip() for part in text.split(",") if part.strip()]
-                split_cluster(self._jobs.store, run_id, subject, face_ids)
+                cluster_id = str(item.get("cluster_id") or subject)
+                apply_split(self._jobs.store, run_id, cluster_id, face_ids)
                 return self._after_decision(decision_success("split"))
             if kind == "rule_out":
-                from semblon.review import rule_out_subject
-
                 target_person = text.strip() or None
-                kwargs = {"cluster_id": subject}
+                ruled = {}
                 if target_person:
-                    kwargs["person" + "_id"] = target_person
-                rule_out_subject(self._jobs.store, run_id, **kwargs)
+                    ruled["person" + "_id"] = target_person
+                apply_rule_out(self._jobs.store, run_id, item, **ruled)
                 return self._after_decision(decision_success("rule_out"))
-        except ReviewError as exc:
+        except (ReviewError, ReviewUiError) as exc:
             return self._after_decision(str(exc))
         except Exception as exc:  # noqa: BLE001 — show the decision failure
             return self._after_decision(str(exc))
@@ -1216,15 +1293,12 @@ class ShellBridge(QObject):
             self._facet = "memory"
             self._apply_result(Result("unavailable", "Moments: open Advanced to see named moments."))
             return
-        self._facet = facet
         if facet == "memory":
-            self._buckets = []
-            self._model.set_media_ids(None)
-            self._apply_result(self._adapter.archive_summary())
+            self._reset_library_scope()
             return
+        self._facet = facet
         result = self._safe_call(lambda: self._adapter.browse(facet))
         self._buckets = list(result.data.get("buckets") or [])
-        self._model.set_media_ids(None)
         self._apply_result(result)
 
     @Slot(str)
@@ -1556,6 +1630,7 @@ class ShellBridge(QObject):
             self._session.clear_focus()
             self._clear_query()
             self.focusChanged.emit()
+        self.diagnosticsChanged.emit()
         self.libraryChanged.emit()
         if empty != self._empty:
             self._empty = empty

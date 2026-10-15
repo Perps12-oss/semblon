@@ -45,28 +45,28 @@ Fields are the same for every entry. “State at `35eeb72`” means what the sou
 *Historical entry (commit `35eeb72`). Not the 2026-10-05 production UI. `lens_home.py` is deleted. The production door is `semblon shell` → `Application`.*
 
 - **Label:** Semblon (window title). Sidebar Photos is the landing, not a separate app.
-- **What it is:** The production GUI: one Tk process started by `semblon home`.
-- **Where implemented:** `cli.py:1177-1181` `run_product_home`; `lens_home.py:102-107` installs the region mouse-up handler then `run_home_ui`; `home_ui.py` `HomeApp`.
+- **What it is:** Historical Tk Home, started by `semblon home`. Not the production window.
+- **Where implemented:** `home_ui.py` `HomeApp`. `lens_home.py` is deleted. `cli.py` still dispatches `home` to `run_home_ui`.
 - **Owner:** Home shell.
-- **What it exposes:** CLI `semblon home`; double-click script `tools/semblon-interactive.ps1` (forensic audit).
+- **What it exposes:** CLI `semblon home`. Double-click `semblon.cmd` opens `semblon shell`, not this client.
 - **Where the user accesses it:** The product window.
 - **Dependencies:** Tk; default store `process.default_store_path` (CLI help: `%LOCALAPPDATA%\Semblon\store.sqlite`).
 - **Persistence:** The library SQLite file. The window itself is not persisted.
-- **Tests that prove it:** `tests/test_product_exposure.py` `test_canonical_entry_is_tk_home`, `test_interactive_launcher_opens_home_only`. Not re-run here.
+- **Tests that prove it:** Historical names. The live entry test is `tests/test_product_exposure.py` `test_canonical_entry_is_pyside_shell`. `test_interactive_launcher_opens_home_only` asserts the double-click script runs `semblon shell`.
 - **Platform:** Windows is the product target. Tk can start elsewhere; this session did not start it.
 - **State at `35eeb72`:** Present. Owner record: production GUI = tk Home **COMPLETE**; APP-1 C.3 **VERIFIED ON WINDOWS** 2026-09-22 (`docs/COMPLETION-MATRIX.md`). Not re-executed at this commit.
 - **Notes:** `HomeApp` still owns chrome, settings, and inspector verbs. The registry feeds nav, More, palette, and some inspector buttons. It is not a plugin host (`gui_registry.py:1-8`).
 
 #### `qt-shell`
 
-- **Label:** none inside Tk Home.
-- **What it is:** Optional PySide6 window, not product Home.
-- **Where implemented:** `cli.py` parser `shell`; `native_shell/run.py`.
-- **Owner:** Optional shell.
-- **What it exposes:** CLI `semblon shell`.
-- **Where the user accesses it:** CLI only. Not advertised in Tk Home.
+- **Label:** Semblon.
+- **What it is:** The production window. PySide6 loads `native_shell/qml/Shell.qml`.
+- **Where implemented:** `cli.py` command `shell`; `native_shell/run.py`; `native_shell/host.py`.
+- **Owner:** Archive shell.
+- **What it exposes:** CLI `semblon shell`. `semblon.cmd` with no arguments opens it.
+- **Where the user accesses it:** Double-click and the `shell` command. `home`, `review-ui`, and `canvas` remain separate legacy Tk clients.
 - **Dependencies:** extra `[gui]` / PySide6.
-- **Persistence:** Reads the same store. Does not replace tk Home.
+- **Persistence:** Reads the same store. Does not replace the legacy Tk clients while those commands stay registered.
 - **Tests:** `tests/test_product_exposure.py` class coverage includes OPTIONAL. Not re-run here.
 - **Platform:** Cross-platform only if PySide6 is installed. Product claim is Windows.
 - **State at `35eeb72`:** KEEP optional (`product_exposure.py:125-129`, completion matrix).

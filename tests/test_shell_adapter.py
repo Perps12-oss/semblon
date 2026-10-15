@@ -146,6 +146,12 @@ def test_qml_exposes_four_operations_and_hides_places():
     assert 'objectName: "peopleCard"' in qml
     assert 'objectName: "searchCard"' in qml
     assert 'objectName: "lensCard"' in qml
+    assert 'objectName: "archiveSidebar"' in qml
+    assert 'objectName: "sidebarMoments"' in qml
+    assert 'text: "Video"' in qml
+    assert "facetBar" not in qml
+    assert "quickActionRail" not in qml
+    assert "librarySnapshot" not in qml
     assert "Explore your local photo memory" in qml
     assert "Review groups with human decisions" in qml
     assert "Find faces, people, and media" in qml
@@ -258,7 +264,10 @@ def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
     _qapp, engine = build_shell(store, app=app)
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
-    assert root.findChild(QObject, "facetBar") is not None
+    assert root.findChild(QObject, "facetBar") is None
+    assert root.findChild(QObject, "quickActionRail") is None
+    assert root.findChild(QObject, "librarySnapshot") is None
+    assert root.findChild(QObject, "archiveSidebar") is not None
     assert root.findChild(QObject, "settingsButton") is not None
     assert root.findChild(QObject, "searchField") is not None
     assert root.findChild(QObject, "searchField").property("visible") is True

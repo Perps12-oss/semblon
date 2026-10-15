@@ -4,6 +4,8 @@
 
 **Current (2026-10-05):** one production UI, PySide6 `semblon shell` → `Application`. Tk Home and Tk review-ui are legacy clients. `review.html` is retired. The September 2026 shell rule below is historical.
 
+**Production window (2026-10-15):** the left nav is Library, People, Search, Add folder, and Settings. The right archive sidebar is the only library filter: All / Photos / Videos, years, days, folders, and Moments in Advanced. Video tiles are labeled and do not open. Playback is not implemented. The Model D “no permanent sidebar” lock below applies to legacy Tk Home.
+
 **Date:** 2026-09-25  
 **Rule:** Backend capability does not dictate navigation. Product intent dictates navigation.  
 **Historical shell rule (2026-09-25):** One production GUI (`semblon home`, tk) → multiple workspaces/routes. Not separate apps or GUI stacks.

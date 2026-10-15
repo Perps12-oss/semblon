@@ -71,7 +71,6 @@ ApplicationWindow {
     readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Rescan", "Reset defaults"]
     readonly property var advancedSettingCalls: ["scanDuplicates", "showCapabilities", "gpuAuto", "gpuOff", "namedItems", "knowledgePack", "installModel"]
     readonly property var advancedSettingLabels: ["Duplicates", "Capabilities", "GPU auto", "GPU off", "Named items", "Knowledge pack", "Install model"]
-    readonly property var facetNames: ["Memory", "Days", "Folders", "Moments"]
     font.family: "Segoe UI"
 
     function handleSetting(call) {
@@ -585,138 +584,12 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
 
-        Row {
-            id: facetBar
-            objectName: "facetBar"
+        Text {
+            objectName: "surfaceState"
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.leftMargin: 28
             anchors.topMargin: 8
-            spacing: 14
-            visible: !peopleVisible && !focusActive
-            z: 2
-
-            Repeater {
-                model: advancedModeSafe ? 4 : 3
-                delegate: Text {
-                    property string facetName: facetNames[index]
-                    Component.onCompleted: objectName = "facet_" + facetName
-                    text: facetName
-                    color: facetArea.containsMouse ? tokenText : tokenMuted
-                    font.family: "Segoe UI"
-                    font.pixelSize: 13
-                    MouseArea {
-                        id: facetArea
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.setFacet(facetName)
-                    }
-                }
-            }
-        }
-
-        Row {
-            id: quickActionRail
-            objectName: "quickActionRail"
-            anchors.left: facetBar.left
-            anchors.top: facetBar.bottom
-            anchors.topMargin: 12
-            spacing: 10
-            visible: primaryModeSafe && !peopleVisible && !focusActive
-            z: 2
-
-            Repeater {
-                model: [
-                    { label: "Archive", action: "setFacet('memory')" },
-                    { label: "People", action: "openPeople()" },
-                    { label: "Search", action: "setSearchMode('people')" },
-                    { label: "Ask photo", action: "findSimilarWhole()" }
-                ]
-                delegate: Rectangle {
-                    width: actionText.implicitWidth + 18
-                    height: 28
-                    radius: 14
-                    color: actionArea.containsMouse ? tokenBg3 : tokenBg2
-                    border.color: tokenBorder
-                    border.width: 1
-
-                    Text {
-                        id: actionText
-                        anchors.centerIn: parent
-                        text: modelData.label
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 12
-                    }
-
-                    MouseArea {
-                        id: actionArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (!shellReady) return
-                            if (modelData.action === "setFacet('memory')") shellApi.setFacet("memory")
-                            else if (modelData.action === "openPeople()") shellApi.openPeople()
-                            else if (modelData.action === "setSearchMode('people')") shellApi.setSearchMode("people")
-                            else if (modelData.action === "findSimilarWhole()") shellApi.findSimilarWhole()
-                        }
-                    }
-                }
-            }
-        }
-
-        Rectangle {
-            id: librarySnapshot
-            objectName: "librarySnapshot"
-            anchors.left: quickActionRail.left
-            anchors.top: quickActionRail.bottom
-            anchors.topMargin: 8
-            width: 390
-            height: 56
-            radius: 10
-            color: tokenBg1
-            border.color: tokenBorder
-            border.width: 1
-            visible: primaryModeSafe && !emptySafe && !peopleVisible && !focusActive
-            z: 2
-
-            Row {
-                anchors.fill: parent
-                anchors.margins: 12
-                spacing: 18
-
-                Column {
-                    width: 150
-                    spacing: 2
-                    Text { text: "Library"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
-                    Text { text: shellReady ? shellApi.count + " items" : "0 items"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                    Text { objectName: "mediaKinds"; text: shellReady ? shellApi.photoCount + " photos · " + shellApi.videoCount + " videos" : ""; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
-                }
-
-                Column {
-                    width: 96
-                    spacing: 2
-                    Text { text: "Review"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
-                    Text { text: shellReady ? shellApi.reviewCountText : "0 groups"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 12; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
-                }
-
-                Column {
-                    width: 124
-                    spacing: 2
-                    Text { text: "Ready"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 11 }
-                    Text { text: "Browse and search"; color: tokenAccent; font.family: "Segoe UI"; font.pixelSize: 12 }
-                }
-            }
-        }
-
-        Text {
-            objectName: "surfaceState"
-            anchors.left: facetBar.left
-            anchors.top: librarySnapshot.visible ? librarySnapshot.bottom : quickActionRail.bottom
-            anchors.topMargin: 4
             visible: shellReady && (shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
             text: shellReady ? (shellApi.noticeText || (shellApi.surfaceState === "loading" ? "Working…" : "Something went wrong. Try again.")) : ""
             color: shellReady && shellApi.surfaceState === "error" ? tokenDanger : tokenMuted
@@ -725,40 +598,12 @@ ApplicationWindow {
             z: 2
         }
 
-        Row {
-            id: bucketRow
-            objectName: "bucketRow"
-            anchors.left: facetBar.left
-            anchors.top: facetBar.bottom
-            anchors.topMargin: 18
-            spacing: 10
-            visible: !peopleVisible && !focusActive && shellReady && shellApi.buckets.length > 0
-            z: 2
-
-            Repeater {
-                model: shellReady ? shellApi.buckets : []
-                delegate: Text {
-                    text: modelData.label + " (" + modelData.count + ")"
-                    color: bucketHit.containsMouse ? tokenText : tokenMuted
-                    font.family: "Segoe UI"
-                    font.pixelSize: 12
-                    MouseArea {
-                        id: bucketHit
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.selectBucket(modelData.key)
-                    }
-                }
-            }
-        }
-
         Rectangle {
             objectName: "settingsSheet"
-            anchors.right: parent.right
+            anchors.right: archiveSidebar.visible ? archiveSidebar.left : parent.right
             anchors.top: parent.top
-            anchors.margins: 16
+            anchors.topMargin: 16
+            anchors.rightMargin: archiveSidebar.visible ? 12 : 16
             width: 280
             height: settingsColumn.implicitHeight + 28
             radius: 10
@@ -846,9 +691,9 @@ ApplicationWindow {
         Rectangle {
             objectName: "namedItemsSheet"
             anchors.left: parent.left
-            anchors.top: facetBar.bottom
+            anchors.top: parent.top
             anchors.leftMargin: 16
-            anchors.topMargin: 12
+            anchors.topMargin: 16
             width: 300
             height: Math.min(420, namedItemsColumn.implicitHeight + 28)
             radius: 10
@@ -1388,7 +1233,7 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            anchors.topMargin: 52
+            anchors.topMargin: 12
             anchors.rightMargin: 12
             anchors.bottomMargin: 12
             width: 190
@@ -1412,9 +1257,19 @@ ApplicationWindow {
                     spacing: 6
 
                     Text {
+                        objectName: "mediaKinds"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: shellReady ? shellApi.photoCount + " photos · " + shellApi.videoCount + " videos" : ""
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 11
+                    }
+
+                    Text {
                         objectName: "sidebarAll"
-                        text: shellReady && shellApi.scopeLabel !== "" ? "Show everything" : "Everything"
-                        color: shellReady && shellApi.scopeLabel === "" ? tokenText : tokenAccent
+                        text: shellReady && (shellApi.scopeLabel !== "" || shellApi.facet !== "memory") ? "Show everything" : "Everything"
+                        color: shellReady && shellApi.scopeLabel === "" && shellApi.facet === "memory" ? tokenText : tokenAccent
                         font.family: "Segoe UI"
                         font.pixelSize: 13
                         MouseArea {
@@ -1476,7 +1331,7 @@ ApplicationWindow {
                         delegate: Text {
                             property bool active: shellReady && shellApi.scopeKind === "year" && shellApi.scopeLabel === modelData.label
                             Component.onCompleted: objectName = "sidebarYear_" + modelData.label
-                            width: sidebarColumn.width
+                            width: parent.width
                             text: modelData.label + "  " + modelData.count
                             color: active ? tokenAccent : (yearArea.containsMouse ? tokenText : tokenMuted)
                             font.family: "Segoe UI"
@@ -1493,6 +1348,30 @@ ApplicationWindow {
                     }
 
                     Item { width: 1; height: 6 }
+                    Text { text: "Days"; color: tokenFaint; font.family: "Segoe UI"; font.pixelSize: 11; font.letterSpacing: 0.6 }
+
+                    Repeater {
+                        model: shellReady ? shellApi.dayRows : []
+                        delegate: Text {
+                            property bool active: shellReady && shellApi.scopeKind === "day" && shellApi.scopeLabel === modelData.label
+                            Component.onCompleted: objectName = "sidebarDay_" + modelData.label
+                            width: parent.width
+                            text: modelData.label + "  " + modelData.count
+                            color: active ? tokenAccent : (dayArea.containsMouse ? tokenText : tokenMuted)
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            MouseArea {
+                                id: dayArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.selectDay(modelData.label)
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: 6 }
                     Text { text: "Folders"; color: tokenFaint; font.family: "Segoe UI"; font.pixelSize: 11; font.letterSpacing: 0.6 }
 
                     Repeater {
@@ -1500,7 +1379,7 @@ ApplicationWindow {
                         delegate: Text {
                             property bool active: shellReady && shellApi.scopeKind === "folder" && shellApi.scopeLabel === modelData.label
                             Component.onCompleted: objectName = "sidebarFolder_" + modelData.label
-                            width: sidebarColumn.width
+                            width: parent.width
                             text: modelData.label + "  " + modelData.count
                             color: active ? tokenAccent : (folderArea.containsMouse ? tokenText : tokenMuted)
                             font.family: "Segoe UI"
@@ -1515,6 +1394,44 @@ ApplicationWindow {
                             }
                         }
                     }
+
+                    Text {
+                        objectName: "sidebarMoments"
+                        visible: advancedModeSafe
+                        text: "Moments"
+                        color: shellReady && shellApi.facet === "moments" ? tokenAccent : (momentsArea.containsMouse ? tokenText : tokenMuted)
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        MouseArea {
+                            id: momentsArea
+                            anchors.fill: parent
+                            anchors.margins: -3
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.setFacet("moments")
+                        }
+                    }
+
+                    Repeater {
+                        model: advancedModeSafe && shellReady && shellApi.facet === "moments" ? shellApi.buckets : []
+                        delegate: Text {
+                            property bool active: false
+                            Component.onCompleted: objectName = "sidebarBucket_" + modelData.key
+                            width: parent.width
+                            text: modelData.label + "  " + modelData.count
+                            color: bucketArea.containsMouse ? tokenText : tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            MouseArea {
+                                id: bucketArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.selectBucket(modelData.key)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1525,7 +1442,7 @@ ApplicationWindow {
             anchors.fill: parent
             anchors.margins: 22
             anchors.rightMargin: archiveSidebar.visible ? 214 : 22
-            anchors.topMargin: 52
+            anchors.topMargin: 22
             visible: !emptySafe
             opacity: !focusActive ? 1 : 0
             cellWidth: shellReady ? shellApi.cellSize : 160
@@ -1560,8 +1477,12 @@ ApplicationWindow {
                     }
 
                     Text {
-                        visible: false
-                        text: ""
+                        anchors.centerIn: parent
+                        visible: kind === "video"
+                        text: "Video"
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
                     }
 
                     Rectangle {
@@ -1581,6 +1502,8 @@ ApplicationWindow {
                                 return
                             grid.currentIndex = index
                             shellApi.setScroll(grid.contentY)
+                            if (kind === "video")
+                                return
                             shellApi.openFocus(mediaId)
                         }
                     }
@@ -1904,6 +1827,9 @@ ApplicationWindow {
                 border.width: 1
             }
 
+            // Playback is deferred. This output stays hidden so a non-working
+            // player is not shown. Remaining work: play focusUrl in a viewer
+            // that does not admit source_type=video to open_focus or DBSCAN.
             VideoOutput {
                 id: videoOut
                 anchors.fill: parent
@@ -2177,10 +2103,7 @@ ApplicationWindow {
                 function onFocusChanged() {
                     regionDrag.hasRect = false
                     player.stop()
-                    if (focusKindSafe === "video" && shellReady && shellApi.focusUrl !== "")
-                        player.source = shellApi.focusUrl
-                    else
-                        player.source = ""
+                    player.source = ""
                 }
             }
         }

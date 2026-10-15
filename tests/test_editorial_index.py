@@ -3,6 +3,8 @@
 from semblon.native_shell.editorial import (
     SAVED_VIEWS_NOTE,
     SPATIAL_NOTE,
+    VIDEO_NOTE,
+    day_rows,
     folder_rows,
     month_heading,
     source_counts,
@@ -39,6 +41,9 @@ def test_index_counts_come_from_media_rows(tmp_path):
     years = {row["label"]: row["count"] for row in year_rows(store)}
     assert years["2017"] == 2
     assert years["2018"] == 1
+    days = day_rows(store)
+    assert sum(row["count"] for row in days) == 3
+    assert "Playback is not available" in VIDEO_NOTE
     folders = {row["label"]: row["count"] for row in folder_rows(store)}
     assert folders["2017"] == 2
     assert folders["2018"] == 1

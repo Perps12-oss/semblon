@@ -57,7 +57,7 @@
       <Shortcut
           Id="SemblonHomeShortcut"
           Name="Semblon"
-          Description="Open Semblon Home (code install; weights not bundled)"
+          Description="Open Semblon (code install; weights not bundled)"
           Target="[INSTALLFOLDER]semblon.cmd"
           WorkingDirectory="INSTALLFOLDER"
           Advertise="no" />

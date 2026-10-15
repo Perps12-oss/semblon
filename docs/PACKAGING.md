@@ -73,8 +73,8 @@ MSI uninstall removes `%LOCALAPPDATA%\Programs\Semblon` only — **not** the sto
 
 1. Clean directory, run `install-windows.ps1`
 2. `semblon.cmd --help` exits 0
-3. `semblon.cmd home` opens the window
-4. Process a small stills folder; Open Review; Name one cluster
+3. `semblon.cmd` with no arguments opens the PySide archive (`python -m semblon shell`). `semblon.cmd home` is the legacy Tk client.
+4. Process a small stills folder from the shell or `semblon.cmd process`. Name a cluster from People or `semblon review-ui`.
 5. `semblon.cmd lab integrity --store "%LOCALAPPDATA%\Semblon\store.sqlite"`
 
 ## Smoke procedure (human) — MSI

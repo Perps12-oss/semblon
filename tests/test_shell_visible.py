@@ -181,15 +181,15 @@ def test_visible_windows_shell_exercises_exposed_controls(tmp_path, monkeypatch)
     assert "old camera" in bridge.noticeText
     bridge.closeNamedItems()
     app.processEvents()
-    click("facet_Days")
-    log.append(f"days notice={bridge.noticeText!r} facet={bridge.facet}")
-    assert bridge.facet == "timeline"
-    click("facet_Folders")
-    log.append(f"folders notice={bridge.noticeText!r} facet={bridge.facet}")
-    assert bridge.facet == "folders"
-    click("facet_Moments")
+    click("sidebarMoments")
     log.append(f"moments notice={bridge.noticeText!r} facet={bridge.facet}")
     assert bridge.facet == "moments"
+    click("sidebarDay_1970-01-01")
+    log.append(f"day notice={bridge.noticeText!r} scope={bridge.scopeKind}:{bridge.scopeLabel}")
+    assert bridge.scopeKind == "day"
+    click(f"sidebarFolder_{photo.parent.name}")
+    log.append(f"folder notice={bridge.noticeText!r} scope={bridge.scopeKind}:{bridge.scopeLabel}")
+    assert bridge.scopeKind == "folder"
     click("peopleButton")
     app.processEvents()
     assert root.findChild(QQuickItem, "peopleDesk").isVisible()

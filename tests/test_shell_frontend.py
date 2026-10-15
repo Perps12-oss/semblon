@@ -307,6 +307,65 @@ def test_library_filters_facets_and_settings_keep_state_stable(shell, tmp_path):
     assert bridge.photoCount == 4
 
 
+def test_memory_facet_keeps_the_media_kind_filter(shell, tmp_path):
+    from semblon.store import connect
+
+    store = tmp_path / "lib.sqlite"
+    _seed(store, tmp_path)
+    conn = connect(store)
+    conn.execute("UPDATE media SET source_type = 'video' WHERE media_id = 'm0'")
+    conn.commit()
+    conn.close()
+    bridge = shell(store)
+    bridge.setMediaKind("photo")
+    assert bridge._model.rowCount() == 3
+    bridge.setFacet("folders")
+    assert bridge.buckets
+    bridge.selectBucket(bridge.buckets[0]["key"])
+    bridge.setFacet("memory")
+    assert bridge.mediaKind == "photo"
+    assert bridge.scopeKind == ""
+    assert bridge.facet == "memory"
+    assert bridge._model.rowCount() == 3
+
+
+def test_select_day_narrows_to_that_day(shell, tmp_path):
+    store = tmp_path / "lib.sqlite"
+    _seed(store, tmp_path)
+    bridge = shell(store)
+    assert len(bridge.dayRows) == 4
+    label = bridge.dayRows[0]["label"]
+    bridge.selectDay(label)
+    assert bridge.scopeKind == "day"
+    assert bridge.scopeLabel == label
+    assert bridge._model.rowCount() == 1
+    bridge.setFacet("memory")
+    assert bridge.scopeKind == ""
+    assert bridge._model.rowCount() == 4
+
+
+def test_video_focus_stays_closed(shell, tmp_path):
+    from semblon.store import connect
+
+    store = tmp_path / "lib.sqlite"
+    _seed(store, tmp_path)
+    conn = connect(store)
+    conn.execute("UPDATE media SET source_type = 'video' WHERE media_id = 'm0'")
+    conn.commit()
+    conn.close()
+    bridge = shell(store)
+    bridge.openFocus("m0")
+    assert bridge.focusId == ""
+    bridge.openFocus("m1")
+    assert bridge.focusId == "m1"
+    qml = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "semblon" / "native_shell" / "qml" / "Shell.qml"
+    ).read_text(encoding="utf-8")
+    assert 'text: "Video"' in qml
+    assert "player.source = shellApi.focusUrl" not in qml
+
+
 def test_moments_facet_is_advanced_only(shell):
     bridge = shell()
     bridge.setFacet("moments")
