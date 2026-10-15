@@ -26,6 +26,10 @@ Horizontal density timeline above a Monday–Sunday month calendar. Clear photo 
 
 Browsing the calendar month must **not** silently change the media scope.
 
+## Field sections (year / month / range)
+
+When media scope is `year`, `month`, or `range`, the Field switches from the flat `GridView` to a day-grouped `ListView` (`fieldSections`). Each section has a day heading and that day’s thumbs; Focus still opens via `openFocus`. Unscoped, folder, and single-day scopes keep the flat grid.
+
 ## Selection / navigation
 
 | Action | Behavior |
@@ -67,4 +71,4 @@ Browsing the calendar month must **not** silently change the media scope.
 
 ## Object names
 
-`timelineHero`, `timelineYear_*`, `timelineMonth_*`, `timelineRail`, `timelineRailYear_*`, `memoryCalendar`, `calendarPrev`, `calendarNext`, `calendarTitle`, `calendarDay_*`, `stickyHeader`, `zeroResultFilter`, `fieldGrid`, `archiveSidebar`
+`timelineHero`, `timelineYear_*`, `timelineMonth_*`, `timelineRail`, `timelineRailYear_*`, `memoryCalendar`, `calendarPrev`, `calendarNext`, `calendarTitle`, `calendarDay_*`, `fieldSections`, `fieldSection_*`, `stickyHeader`, `zeroResultFilter`, `fieldGrid`, `archiveSidebar`

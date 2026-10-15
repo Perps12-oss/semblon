@@ -41,6 +41,7 @@ from semblon.native_shell.editorial import (
     MEDIA_KINDS,
     calendar_month_cells,
     default_calendar_month,
+    field_sections,
     month_heading,
     range_media_ids,
     rows_from_scope,
@@ -142,6 +143,7 @@ class ShellBridge(QObject):
         self._sticky_heading = ""
         self._calendar_month = ""
         self._calendar_cells: list[dict] = []
+        self._field_sections: list[dict] = []
         self._scope_ids: dict[str, dict[str, list[str]]] = {
             "year": {},
             "month": {},
@@ -404,6 +406,14 @@ class ShellBridge(QObject):
     def calendarCells(self):
         return list(self._calendar_cells)
 
+    @Property("QVariantList", notify=editorialChanged)
+    def fieldSections(self):
+        return list(self._field_sections)
+
+    @Property(bool, notify=editorialChanged)
+    def fieldSectionsActive(self) -> bool:
+        return bool(self._field_sections)
+
     @Property(str, notify=editorialChanged)
     def savedViewsNote(self) -> str:
         return SAVED_VIEWS_NOTE
@@ -466,21 +476,35 @@ class ShellBridge(QObject):
     def _ordered_ids(self, ids: list[str]) -> list[str]:
         return sort_ids_newest_first(self._scope_ids.get("day", {}), list(ids))
 
+    def _refresh_field_sections(self, ordered_ids: list[str] | None) -> None:
+        """Day-grouped Field rows for year/month/range only."""
+        if self._scope_kind in ("year", "month", "range") and ordered_ids:
+            self._field_sections = field_sections(
+                self._scope_ids.get("day", {}), list(ordered_ids)
+            )
+        else:
+            self._field_sections = []
+
     def _apply_scope_view(self) -> None:
         """Point the grid at the current scope, narrowed by the photo/video choice."""
         day_map = self._scope_ids.get("day", {})
+        ordered: list[str] | None = None
         if self._scope_kind:
             ids = list(self._scope_ids[self._scope_kind][self._scope_label])
-            self._model.set_media_ids(self._ordered_ids(ids))
+            ordered = self._ordered_ids(ids)
+            self._model.set_media_ids(ordered)
         elif self._media_kind != "all" or self._video_count:
-            self._model.set_media_ids(self._ordered_ids(list(self._scope_ids["everything"][""])))
+            ordered = self._ordered_ids(list(self._scope_ids["everything"][""]))
+            self._model.set_media_ids(ordered)
         else:
             # Still newest-first when the full archive is shown via explicit ids.
             everything = list(self._scope_ids.get("everything", {}).get("", []))
             if everything:
-                self._model.set_media_ids(self._ordered_ids(everything))
+                ordered = self._ordered_ids(everything)
+                self._model.set_media_ids(ordered)
             else:
                 self._model.set_media_ids(None)
+        self._refresh_field_sections(ordered)
         self._sticky_heading = ""
 
     @Property(str, notify=editorialChanged)
@@ -515,7 +539,9 @@ class ShellBridge(QObject):
         self._scope_label = str(label)
         self._facet = "memory"
         self._buckets = []
-        self._model.set_media_ids(self._ordered_ids(list(ids)))
+        ordered = self._ordered_ids(list(ids))
+        self._model.set_media_ids(ordered)
+        self._refresh_field_sections(ordered)
         self._sticky_heading = ""
         self.editorialChanged.emit()
         self._apply_result(Result("ready", f"Showing {label}."))

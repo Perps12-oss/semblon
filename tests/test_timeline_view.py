@@ -9,10 +9,12 @@ import pytest
 from semblon.native_shell.editorial import (
     calendar_month_cells,
     default_calendar_month,
+    field_sections,
     month_rows,
     range_media_ids,
     scope_ids,
     shift_month,
+    sort_ids_newest_first,
     timeline_density,
     year_rows,
 )
@@ -310,3 +312,107 @@ def test_calendar_large_day_map_cells_are_bounded():
     assert len(cells) in (35, 42)
     assert sum(c["count"] for c in cells if c["inMonth"]) == 30
     assert all(c["thumbId"] for c in cells if c["inMonth"] and c["count"])
+
+
+def test_field_sections_group_ordered_ids_by_day():
+    day_map = {
+        "2024-01-20": ["b"],
+        "2024-01-10": ["a", "a2"],
+        "2024-06-01": ["c"],
+    }
+    ordered = sort_ids_newest_first(day_map, ["a", "a2", "b", "c"])
+    sections = field_sections(day_map, ordered)
+    assert [s["day"] for s in sections] == ["2024-06-01", "2024-01-20", "2024-01-10"]
+    assert sections[2]["mediaIds"] == ["a2", "a"] or sections[2]["mediaIds"] == ["a", "a2"]
+    assert sections[2]["count"] == 2
+    assert "January" in sections[2]["label"]
+    assert field_sections(day_map, []) == []
+
+
+def test_bridge_field_sections_for_month_and_range(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+
+    store = tmp_path / "s.sqlite"
+    _seed_days(
+        store,
+        tmp_path,
+        [
+            ("a", 2024, 1, 10),
+            ("b", 2024, 1, 20),
+            ("c", 2024, 6, 1),
+            ("d", 2025, 3, 15),
+        ],
+    )
+    app = QApplication.instance() or QApplication([])
+    del app
+    jobs = Application(store)
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+
+    assert bridge.fieldSectionsActive is False
+    bridge.selectMonth("2024-01")
+    assert bridge.fieldSectionsActive is True
+    days = [s["day"] for s in bridge.fieldSections]
+    assert days == ["2024-01-20", "2024-01-10"]
+    assert sum(s["count"] for s in bridge.fieldSections) == 2
+
+    bridge.selectRange("2024-01-10", "2024-06-01")
+    assert bridge.fieldSectionsActive is True
+    assert [s["day"] for s in bridge.fieldSections] == [
+        "2024-06-01",
+        "2024-01-20",
+        "2024-01-10",
+    ]
+
+    bridge.selectDay("2024-01-10")
+    assert bridge.fieldSectionsActive is False
+    bridge.selectFolder(next(iter(bridge._scope_ids["folder"])))
+    assert bridge.fieldSectionsActive is False
+    bridge.clearScope()
+    assert bridge.fieldSectionsActive is False
+    bridge.shutdown()
+
+
+def test_field_sections_chrome(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtQuick import QQuickItem
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell, shutdown_shell
+
+    store = tmp_path / "s.sqlite"
+    _seed_days(
+        store,
+        tmp_path,
+        [("a", 2024, 5, 1), ("b", 2024, 5, 10), ("c", 2024, 5, 10)],
+    )
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    bridge = engine._semblon_bridge
+    for _ in range(30):
+        app.processEvents()
+    bridge.selectMonth("2024-05")
+    for _ in range(30):
+        app.processEvents()
+    assert bridge.fieldSectionsActive is True
+    sections = root.findChild(QQuickItem, "fieldSections")
+    assert sections is not None
+    assert sections.isVisible()
+    assert _find_visual(sections, "fieldSection_2024-05-10") is not None
+    assert _find_visual(sections, "fieldSection_2024-05-01") is not None
+    grid = root.findChild(QQuickItem, "fieldGrid")
+    assert grid is not None
+    assert grid.isVisible() is False
+    bridge.clearScope()
+    for _ in range(20):
+        app.processEvents()
+    assert bridge.fieldSectionsActive is False
+    assert grid.isVisible() is True
+    shutdown_shell(engine)

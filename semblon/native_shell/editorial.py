@@ -230,6 +230,52 @@ def month_heading(day: str) -> str:
     return stamp.strftime("%B, %Y")
 
 
+def day_section_label(day: str) -> str:
+    """Human day heading for Field sections (e.g. ``Wednesday 10 January 2024``)."""
+    text = str(day or "").strip()[:10]
+    if len(text) < 10:
+        return text or "Unknown date"
+    try:
+        stamp = datetime.strptime(text, "%Y-%m-%d")
+    except ValueError:
+        return text
+    return f"{stamp.strftime('%A')} {stamp.day} {stamp.strftime('%B %Y')}"
+
+
+def field_sections(day_map: dict[str, list[str]], media_ids: list[str]) -> list[dict]:
+    """Group already-ordered media ids into day sections (order preserved).
+
+    Used for year / month / range Field browsing. Empty ``media_ids`` → [].
+    Ids with no day bucket land in a trailing ``unknown`` section.
+    """
+    day_of: dict[str, str] = {}
+    for day, ids in day_map.items():
+        key = str(day)[:10]
+        for mid in ids:
+            day_of[str(mid)] = key
+    order: list[str] = []
+    buckets: dict[str, list[str]] = {}
+    for mid in media_ids:
+        media_id = str(mid)
+        day = day_of.get(media_id) or "unknown"
+        if day not in buckets:
+            buckets[day] = []
+            order.append(day)
+        buckets[day].append(media_id)
+    out: list[dict] = []
+    for day in order:
+        ids = buckets[day]
+        out.append(
+            {
+                "day": day,
+                "label": day_section_label(day) if day != "unknown" else "Unknown date",
+                "count": len(ids),
+                "mediaIds": ids,
+            }
+        )
+    return out
+
+
 def _parse_month(label: str) -> tuple[int, int] | None:
     text = str(label or "").strip()[:7]
     if len(text) < 7 or text[4:5] != "-":

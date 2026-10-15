@@ -68,6 +68,7 @@ ApplicationWindow {
     readonly property string stickyHeadingSafe: shellReady ? shellApi.stickyHeading : ""
     readonly property bool timeScopeActiveSafe: shellReady && shellApi.timeScopeActive
     readonly property bool timelineLoadingSafe: shellReady && shellApi.timelineLoading
+    readonly property bool fieldSectionsActiveSafe: shellReady && shellApi.fieldSectionsActive
     readonly property int motion: shellReady && shellApi.reducedMotion ? 0 : 180
     readonly property color tokenBg: shellReady ? shellApi.bg0 : "#0b0c0e"
     readonly property color tokenBg1: shellReady ? shellApi.bg1 : "#131417"
@@ -1688,6 +1689,121 @@ ApplicationWindow {
             }
         }
 
+        ListView {
+            id: fieldSectionsView
+            objectName: "fieldSections"
+            anchors.left: parent.left
+            anchors.right: archiveSidebar.visible ? archiveSidebar.left : parent.right
+            anchors.top: zeroResultFilter.visible
+                ? zeroResultFilter.bottom
+                : (stickyHeader.visible ? stickyHeader.bottom : memoryCalendar.bottom)
+            anchors.bottom: timelineRail.top
+            anchors.leftMargin: 22
+            anchors.rightMargin: archiveSidebar.visible ? 8 : 22
+            anchors.topMargin: 8
+            anchors.bottomMargin: 4
+            visible: !emptySafe && fieldSectionsActiveSafe
+            opacity: !focusActive ? 1 : 0
+            clip: true
+            spacing: 14
+            boundsBehavior: Flickable.StopAtBounds
+            model: shellReady ? shellApi.fieldSections : []
+            enabled: !focusActive
+            Behavior on opacity { NumberAnimation { duration: window.motion } }
+
+            delegate: Column {
+                id: sectionCol
+                width: fieldSectionsView.width
+                spacing: 6
+                property var section: modelData
+                property string sectionDay: section ? String(section.day) : ""
+
+                Text {
+                    objectName: "fieldSection_" + sectionCol.sectionDay
+                    width: parent.width
+                    text: section && section.label ? section.label : sectionCol.sectionDay
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    Accessible.name: text
+                }
+
+                Flow {
+                    width: parent.width
+                    spacing: 0
+                    Repeater {
+                        model: section && section.mediaIds ? section.mediaIds : []
+                        delegate: Item {
+                            width: shellReady ? shellApi.cellSize : 160
+                            height: shellReady ? shellApi.cellSize : 160
+
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                color: tokenBg2
+                                radius: 2
+
+                                Image {
+                                    anchors.fill: parent
+                                    anchors.margins: 1
+                                    source: "image://archive/t/" + modelData
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    cache: true
+                                }
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    color: "transparent"
+                                    border.width: sectionTile.containsMouse ? 1 : 0
+                                    border.color: tokenAccent
+                                    radius: 2
+                                }
+
+                                MouseArea {
+                                    id: sectionTile
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (!shellReady)
+                                            return
+                                        shellApi.setScroll(fieldSectionsView.contentY)
+                                        shellApi.openFocus(modelData)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            onContentYChanged: {
+                if (!focusActive && shellReady) {
+                    timelineHero.cancelHover()
+                    memoryCalendar.cancelHover()
+                    var idx = indexAt(width / 2, contentY + 8)
+                    if (idx < 0 && count > 0)
+                        idx = 0
+                    if (idx >= 0) {
+                        var item = itemAtIndex(idx)
+                        if (item && item.sectionDay)
+                            shellApi.setStickyDay(item.sectionDay)
+                    }
+                    shellApi.setScroll(contentY)
+                }
+            }
+
+            Connections {
+                target: shellReady ? shellApi : null
+                function onEditorialChanged() {
+                    if (!focusActive && fieldSectionsActiveSafe)
+                        fieldSectionsView.contentY = 0
+                }
+            }
+        }
+
         GridView {
             id: grid
             objectName: "fieldGrid"
@@ -1701,7 +1817,7 @@ ApplicationWindow {
             anchors.rightMargin: archiveSidebar.visible ? 8 : 22
             anchors.topMargin: 8
             anchors.bottomMargin: 4
-            visible: !emptySafe
+            visible: !emptySafe && !fieldSectionsActiveSafe
             opacity: !focusActive ? 1 : 0
             cellWidth: shellReady ? shellApi.cellSize : 160
             cellHeight: shellReady ? shellApi.cellSize : 160
@@ -1709,8 +1825,8 @@ ApplicationWindow {
             boundsBehavior: Flickable.StopAtBounds
             model: archiveModel
             currentIndex: 0
-            enabled: !focusActive
-            keyNavigationEnabled: !focusActive
+            enabled: !focusActive && !fieldSectionsActiveSafe
+            keyNavigationEnabled: !focusActive && !fieldSectionsActiveSafe
             highlightFollowsCurrentItem: false
             Behavior on opacity { NumberAnimation { duration: window.motion } }
 
@@ -1769,7 +1885,7 @@ ApplicationWindow {
             }
 
             onContentYChanged: {
-                if (!focusActive && shellReady) {
+                if (!focusActive && shellReady && !fieldSectionsActiveSafe) {
                     timelineHero.cancelHover()
                     memoryCalendar.cancelHover()
                     var idx = indexAt(width / 2, contentY + 16)
