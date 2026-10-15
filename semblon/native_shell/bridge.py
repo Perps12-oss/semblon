@@ -42,6 +42,9 @@ from semblon.native_shell.editorial import (
     calendar_month_cells,
     default_calendar_month,
     field_sections,
+    format_count,
+    format_count_exact,
+    month_end_day,
     month_heading,
     range_media_ids,
     rows_from_scope,
@@ -613,6 +616,33 @@ class ShellBridge(QObject):
     def setCalendarMonth(self, label: str) -> None:
         """Browse a month without changing the media scope."""
         self._sync_calendar_month(str(label or "").strip()[:7])
+
+    @Slot()
+    def calendarGoHome(self) -> None:
+        """Jump the displayed calendar to the newest month with media (or today)."""
+        self._sync_calendar_month(default_calendar_month(self._scope_ids.get("day", {})))
+
+    @Slot(str, result=str)
+    def monthEndDay(self, month_label: str) -> str:
+        return month_end_day(str(month_label or ""))
+
+    @Slot(int, result=str)
+    def formatCount(self, value: int) -> str:
+        return format_count(value)
+
+    @Slot(int, result=str)
+    def formatCountExact(self, value: int) -> str:
+        return format_count_exact(value)
+
+    @Property(bool, notify=surfaceChanged)
+    def similarActionReady(self) -> bool:
+        return bool(self._session.focus_id)
+
+    @Property(str, notify=surfaceChanged)
+    def similarActionHint(self) -> str:
+        if self._session.focus_id:
+            return "Find visually similar memories from the open photo."
+        return "Open a photo first, then find similar memories."
 
     @Slot(str, result="QVariantList")
     def timelinePreviewIds(self, label: str):
@@ -1619,10 +1649,6 @@ class ShellBridge(QObject):
         facet = mapping.get(str(name or "").strip().lower())
         if facet is None:
             return
-        if facet == "moments" and self._mode != ADVANCED:
-            self._facet = "memory"
-            self._apply_result(Result("unavailable", "Moments: open Advanced to see named moments."))
-            return
         if facet == "memory":
             self._reset_library_scope()
             return
@@ -1636,7 +1662,11 @@ class ShellBridge(QObject):
         wanted = str(key or "")
         for row in self._buckets:
             if str(row.get("key") or "") == wanted:
+                self._scope_kind = ""
+                self._scope_label = ""
+                self._field_sections = []
                 self._model.set_media_ids(list(row.get("media_ids") or []))
+                self.editorialChanged.emit()
                 label = str(row.get("label") or "group")
                 self._apply_result(Result("ready", f"Showing {label}."))
                 return

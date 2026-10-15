@@ -1431,166 +1431,28 @@ ApplicationWindow {
             }
         }
 
-        Rectangle {
+        ContextSidebar {
             id: archiveSidebar
-            objectName: "archiveSidebar"
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.bottom: timelineRail.top
+            anchors.bottom: parent.bottom
             anchors.topMargin: 12
             anchors.rightMargin: 12
-            anchors.bottomMargin: 8
-            width: 260
-            radius: 10
-            color: tokenBg1
-            border.color: tokenBorder
-            border.width: 1
+            anchors.bottomMargin: 12
+            width: Math.min(280, Math.max(220, Math.floor(parent.width * 0.2)))
             visible: !emptySafe && !peopleVisible && !focusActive
             z: 2
-
-            Flickable {
-                anchors.fill: parent
-                anchors.margins: 12
-                contentHeight: archiveSidebarColumn.implicitHeight
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-
-                Column {
-                    id: archiveSidebarColumn
-                    width: parent.width
-                    spacing: 8
-
-                    Text {
-                        objectName: "mediaKinds"
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        text: shellReady ? shellApi.photoCount + " photos · " + shellApi.videoCount + " videos" : ""
-                        color: tokenMuted
-                        font.family: "Segoe UI"
-                        font.pixelSize: 11
-                    }
-
-                    Text {
-                        objectName: "sidebarAll"
-                        text: shellReady && (shellApi.scopeLabel !== "" || shellApi.facet !== "memory") ? "Show everything" : "Everything"
-                        color: shellReady && shellApi.scopeLabel === "" && shellApi.facet === "memory" ? tokenText : tokenAccent
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                        MouseArea {
-                            anchors.fill: parent
-                            anchors.margins: -3
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (shellReady) shellApi.clearScope()
-                        }
-                    }
-
-                    Row {
-                        spacing: 10
-                        Repeater {
-                            model: [
-                                {"key": "all", "label": "All"},
-                                {"key": "photo", "label": "Photos"},
-                                {"key": "video", "label": "Videos"}
-                            ]
-                            delegate: Text {
-                                property bool active: shellReady && shellApi.mediaKind === modelData.key
-                                Component.onCompleted: objectName = "sidebarKind_" + modelData.key
-                                text: modelData.label
-                                color: active ? tokenAccent : (kindArea.containsMouse ? tokenText : tokenMuted)
-                                font.family: "Segoe UI"
-                                font.pixelSize: 12
-                                MouseArea {
-                                    id: kindArea
-                                    anchors.fill: parent
-                                    anchors.margins: -3
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: if (shellReady) shellApi.setMediaKind(modelData.key)
-                                }
-                            }
-                        }
-                    }
-
-                    Item { width: 1; height: 4 }
-                    Text { text: "Folders"; color: tokenFaint; font.family: "Segoe UI"; font.pixelSize: 11; font.letterSpacing: 0.6 }
-
-                    Repeater {
-                        model: shellReady ? shellApi.folderRows : []
-                        delegate: Text {
-                            property bool active: shellReady && shellApi.scopeKind === "folder" && shellApi.scopeLabel === modelData.label
-                            Component.onCompleted: objectName = "sidebarFolder_" + modelData.label
-                            width: parent.width
-                            text: modelData.label + "  " + modelData.count
-                            color: active ? tokenAccent : (folderArea.containsMouse ? tokenText : tokenMuted)
-                            font.family: "Segoe UI"
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                            MouseArea {
-                                id: folderArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: if (shellReady) shellApi.selectFolder(modelData.label)
-                            }
-                        }
-                    }
-
-                    Item { width: 1; height: 4 }
-                    Text {
-                        objectName: "sidebarSimilar"
-                        text: "Similar"
-                        color: similarNavArea.containsMouse ? tokenText : tokenMuted
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                        MouseArea {
-                            id: similarNavArea
-                            anchors.fill: parent
-                            anchors.margins: -3
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (shellReady) shellApi.findSimilarWhole()
-                        }
-                    }
-
-                    Text {
-                        objectName: "sidebarMoments"
-                        visible: advancedModeSafe
-                        text: "Moments"
-                        color: shellReady && shellApi.facet === "moments" ? tokenAccent : (momentsArea.containsMouse ? tokenText : tokenMuted)
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                        MouseArea {
-                            id: momentsArea
-                            anchors.fill: parent
-                            anchors.margins: -3
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (shellReady) shellApi.setFacet("moments")
-                        }
-                    }
-
-                    Repeater {
-                        model: advancedModeSafe && shellReady && shellApi.facet === "moments" ? shellApi.buckets : []
-                        delegate: Text {
-                            property bool active: false
-                            Component.onCompleted: objectName = "sidebarBucket_" + modelData.key
-                            width: parent.width
-                            text: modelData.label + "  " + modelData.count
-                            color: bucketArea.containsMouse ? tokenText : tokenMuted
-                            font.family: "Segoe UI"
-                            font.pixelSize: 12
-                            elide: Text.ElideRight
-                            MouseArea {
-                                id: bucketArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: if (shellReady) shellApi.selectBucket(modelData.key)
-                            }
-                        }
-                    }
-                }
-            }
+            shellApi: window.shellApi
+            shellReady: window.shellReady
+            advancedMode: window.advancedModeSafe
+            tokenBg1: window.tokenBg1
+            tokenBg2: window.tokenBg2
+            tokenAccent: window.tokenAccent
+            tokenText: window.tokenText
+            tokenMuted: window.tokenMuted
+            tokenFaint: window.tokenFaint
+            tokenBorder: window.tokenBorder
+            motion: window.motion
         }
 
         TimelineLandscape {
@@ -1651,6 +1513,7 @@ ApplicationWindow {
             onDayClicked: (day) => { if (window.shellReady) window.shellApi.selectDay(day) }
             onPrevMonth: { if (window.shellReady) window.shellApi.calendarPrevMonth() }
             onNextMonth: { if (window.shellReady) window.shellApi.calendarNextMonth() }
+            onGoHome: { if (window.shellReady) window.shellApi.calendarGoHome() }
         }
 
         Text {
@@ -1660,7 +1523,7 @@ ApplicationWindow {
             anchors.right: timelineHero.right
             anchors.top: memoryCalendar.bottom
             anchors.topMargin: 8
-            visible: !emptySafe && !peopleVisible && !focusActive && stickyHeadingSafe !== ""
+            visible: !emptySafe && !peopleVisible && !focusActive && fieldSectionsActiveSafe && stickyHeadingSafe !== ""
             z: 2
             text: stickyHeadingSafe
             color: tokenText
@@ -1697,11 +1560,11 @@ ApplicationWindow {
             anchors.top: zeroResultFilter.visible
                 ? zeroResultFilter.bottom
                 : (stickyHeader.visible ? stickyHeader.bottom : memoryCalendar.bottom)
-            anchors.bottom: timelineRail.top
+            anchors.bottom: parent.bottom
             anchors.leftMargin: 22
             anchors.rightMargin: archiveSidebar.visible ? 8 : 22
             anchors.topMargin: 8
-            anchors.bottomMargin: 4
+            anchors.bottomMargin: 12
             visible: !emptySafe && fieldSectionsActiveSafe
             opacity: !focusActive ? 1 : 0
             clip: true
@@ -1812,11 +1675,11 @@ ApplicationWindow {
             anchors.top: zeroResultFilter.visible
                 ? zeroResultFilter.bottom
                 : (stickyHeader.visible ? stickyHeader.bottom : memoryCalendar.bottom)
-            anchors.bottom: timelineRail.top
+            anchors.bottom: parent.bottom
             anchors.leftMargin: 22
             anchors.rightMargin: archiveSidebar.visible ? 8 : 22
             anchors.topMargin: 8
-            anchors.bottomMargin: 4
+            anchors.bottomMargin: 12
             visible: !emptySafe && !fieldSectionsActiveSafe
             opacity: !focusActive ? 1 : 0
             cellWidth: shellReady ? shellApi.cellSize : 160
@@ -1909,62 +1772,6 @@ ApplicationWindow {
                 function onEditorialChanged() {
                     if (!focusActive)
                         grid.contentY = 0
-                }
-            }
-        }
-
-        Rectangle {
-            id: timelineRail
-            objectName: "timelineRail"
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: 24
-            color: tokenBg1
-            border.color: tokenBorder
-            border.width: 1
-            visible: !emptySafe && !peopleVisible && !focusActive
-            z: 2
-
-            Row {
-                id: railRow
-                anchors.fill: parent
-                anchors.leftMargin: 22
-                anchors.rightMargin: archiveSidebar.visible ? 282 : 22
-                spacing: 0
-
-                Repeater {
-                    model: shellReady ? shellApi.yearRows : []
-                    delegate: Item {
-                        property var yearData: modelData
-                        property real share: 0.1
-                        width: Math.max(36, railRow.width / Math.max(1, shellApi.yearRows.length))
-                        height: railRow.height
-                        Component.onCompleted: objectName = "timelineRailYear_" + String(yearData.label)
-                        Accessible.name: "Year " + String(yearData.label)
-
-                        Rectangle {
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.margins: 2
-                            height: 4
-                            radius: 2
-                            color: shellReady && shellApi.scopeKind === "year" && shellApi.scopeLabel === yearData.label ? tokenAccent : tokenFaint
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            text: String(yearData.label)
-                            color: shellReady && shellApi.scopeKind === "year" && shellApi.scopeLabel === yearData.label ? tokenAccent : tokenMuted
-                            font.family: "Segoe UI"
-                            font.pixelSize: 10
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (shellReady) shellApi.selectYear(yearData.label)
-                        }
-                    }
                 }
             }
         }

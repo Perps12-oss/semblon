@@ -366,12 +366,9 @@ def test_video_focus_stays_closed(shell, tmp_path):
     assert "player.source = shellApi.focusUrl" not in qml
 
 
-def test_moments_facet_is_advanced_only(shell):
+def test_moments_facet_available_in_primary(shell):
+    """Context Sidebar Moments uses real browse buckets in Primary mode."""
     bridge = shell()
-    bridge.setFacet("moments")
-    assert bridge.facet == "memory"
-    assert "Advanced" in bridge.noticeText
-    bridge.setMode("advanced")
     bridge.setFacet("moments")
     assert bridge.facet == "moments"
 

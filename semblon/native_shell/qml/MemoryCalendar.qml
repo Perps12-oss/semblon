@@ -25,6 +25,7 @@ Item {
     signal dayClicked(string day)
     signal prevMonth()
     signal nextMonth()
+    signal goHome()
 
     property int focusIndex: -1
     property string hoverDay: ""
@@ -33,10 +34,20 @@ Item {
     property real hoverX: 0
     property real hoverY: 0
     property bool popoverVisible: false
+    property string hoverGeneration: ""
 
     readonly property int cellCount: cells && cells.length ? cells.length : 0
-    readonly property real cellW: Math.max(44, (width - 12) / 7)
-    readonly property real cellH: Math.max(52, Math.min(110, (height - 56) / Math.max(1, Math.ceil(cellCount / 7))))
+    readonly property real cellW: Math.max(48, (width - 14) / 7)
+    readonly property real cellH: Math.max(56, Math.min(108, (height - 64) / Math.max(1, Math.ceil(cellCount / 7))))
+    readonly property int monthMediaCount: {
+        var n = 0
+        if (!cells) return 0
+        for (var i = 0; i < cells.length; i++) {
+            if (cells[i] && cells[i].inMonth)
+                n += Number(cells[i].count || 0)
+        }
+        return n
+    }
 
     readonly property var weekdayLabels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -44,8 +55,9 @@ Item {
         id: hoverTimer
         interval: 150
         repeat: false
+        property string pendingDay: ""
         onTriggered: {
-            if (!root.shellReady || root.hoverDay === "" || !root.shellApi)
+            if (!root.shellReady || pendingDay === "" || pendingDay !== root.hoverDay || !root.shellApi)
                 return
             root.hoverPreviewIds = root.shellApi.timelinePreviewIds(root.hoverDay)
             root.popoverVisible = true
@@ -54,6 +66,7 @@ Item {
 
     function cancelHover() {
         hoverTimer.stop()
+        hoverTimer.pendingDay = ""
         popoverVisible = false
         hoverDay = ""
         hoverCount = 0
@@ -67,20 +80,54 @@ Item {
         hoverY = y
         popoverVisible = false
         hoverPreviewIds = []
+        hoverTimer.pendingDay = day
         hoverTimer.restart()
     }
 
     function isSelected(day) {
-        return scopeKind === "day" && scopeLabel === day
+        if (scopeKind === "day" && scopeLabel === day)
+            return true
+        if (scopeKind === "range" && scopeLabel.indexOf(":") > 0) {
+            var parts = scopeLabel.split(":")
+            return day >= parts[0] && day <= parts[1]
+        }
+        if (scopeKind === "month" && day.length >= 7 && day.slice(0, 7) === scopeLabel)
+            return true
+        return false
     }
 
     function moveFocus(delta) {
         if (cellCount <= 0)
             return
-        if (focusIndex < 0)
+        if (focusIndex < 0) {
             focusIndex = 0
-        else
-            focusIndex = Math.max(0, Math.min(cellCount - 1, focusIndex + delta))
+            return
+        }
+        var next = focusIndex + delta
+        if (next < 0) {
+            root.prevMonth()
+            focusIndex = Math.max(0, cellCount + next)
+            return
+        }
+        if (next >= cellCount) {
+            root.nextMonth()
+            focusIndex = Math.min(cellCount - 1, next - cellCount)
+            return
+        }
+        focusIndex = next
+    }
+
+    function countText(cell) {
+        if (!cell || !cell.count)
+            return ""
+        if (cell.countLabel)
+            return String(cell.countLabel)
+        return shellReady ? shellApi.formatCount(Number(cell.count)) : String(cell.count)
+    }
+
+    Connections {
+        target: shellReady ? shellApi : null
+        function onEditorialChanged() { root.cancelHover() }
     }
 
     Column {
@@ -89,7 +136,8 @@ Item {
 
         Row {
             width: parent.width
-            spacing: 12
+            spacing: 10
+            height: 32
 
             Text {
                 id: titleText
@@ -103,7 +151,26 @@ Item {
                 height: 32
             }
 
-            Item { width: Math.max(0, parent.width - titleText.width - 100); height: 1 }
+            Text {
+                objectName: "calendarGoHome"
+                text: "Today"
+                color: homeArea.containsMouse ? tokenText : tokenMuted
+                font.family: "Segoe UI"
+                font.pixelSize: 12
+                height: 32
+                verticalAlignment: Text.AlignVCenter
+                Accessible.name: "Go to current archive month"
+                MouseArea {
+                    id: homeArea
+                    anchors.fill: parent
+                    anchors.margins: -4
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.goHome()
+                }
+            }
+
+            Item { width: Math.max(0, parent.width - titleText.width - 160); height: 1 }
 
             Text {
                 objectName: "calendarPrev"
@@ -146,8 +213,11 @@ Item {
         }
 
         Row {
+            id: weekdayRow
+            objectName: "calendarWeekdays"
             width: parent.width
             height: 18
+            z: 5
             Repeater {
                 model: root.weekdayLabels
                 delegate: Text {
@@ -161,12 +231,21 @@ Item {
             }
         }
 
+        Text {
+            visible: root.cellCount > 0 && root.monthMediaCount === 0
+            width: parent.width
+            text: "No media in this month."
+            color: tokenFaint
+            font.family: "Segoe UI"
+            font.pixelSize: 12
+        }
+
         Grid {
             id: dayGrid
             objectName: "calendarDayGrid"
             columns: 7
-            columnSpacing: 2
-            rowSpacing: 2
+            columnSpacing: 3
+            rowSpacing: 3
             width: parent.width
 
             Repeater {
@@ -180,10 +259,11 @@ Item {
                     property string thumbId: cell ? String(cell.thumbId || "") : ""
                     property bool selected: root.isSelected(dayKey)
                     property bool focused: root.focusIndex === index
+                    property bool isToday: cell ? !!cell.isToday : false
                     width: root.cellW
                     height: root.cellH
                     objectName: "calendarDay_" + dayKey
-                    opacity: inMonth ? 1 : 0.42
+                    opacity: inMonth ? 1 : 0.38
                     Accessible.name: cell && cell.accessibleName ? cell.accessibleName : dayKey
 
                     Rectangle {
@@ -191,8 +271,8 @@ Item {
                         anchors.margins: 1
                         radius: 8
                         color: tokenBg2
-                        border.width: selected || focused ? 2 : 1
-                        border.color: selected ? tokenAccent : (focused ? tokenText : tokenBorder)
+                        border.width: selected || focused || isToday ? 2 : 1
+                        border.color: selected ? tokenAccent : (focused ? tokenText : (isToday ? tokenMuted : tokenBorder))
                         clip: true
 
                         Image {
@@ -202,17 +282,16 @@ Item {
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
                             cache: true
-                            opacity: 0.92
+                            opacity: 0.88
                         }
 
                         Rectangle {
-                            anchors.fill: parent
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            height: 26
                             visible: thumbId !== ""
-                            gradient: Gradient {
-                                GradientStop { position: 0.0; color: "#66000000" }
-                                GradientStop { position: 0.45; color: "#00000000" }
-                                GradientStop { position: 1.0; color: "#55000000" }
-                            }
+                            color: "#99000000"
                         }
 
                         Text {
@@ -224,8 +303,7 @@ Item {
                             font.family: "Segoe UI"
                             font.pixelSize: 13
                             font.weight: Font.DemiBold
-                            style: Text.Outline
-                            styleColor: thumbId !== "" ? "#66000000" : "transparent"
+                            z: 2
                         }
 
                         Rectangle {
@@ -233,17 +311,19 @@ Item {
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
                             anchors.margins: 5
-                            width: countLabel.implicitWidth + 10
+                            width: Math.max(22, countLabel.implicitWidth + 10)
                             height: 18
-                            radius: 9
+                            radius: 4
                             color: tokenAccentDim
+                            z: 2
                             Text {
                                 id: countLabel
                                 anchors.centerIn: parent
-                                text: count > 1 ? ("+" + String(count)) : "1"
+                                text: root.countText(cell)
                                 color: tokenText
                                 font.family: "Segoe UI"
                                 font.pixelSize: 10
+                                font.weight: Font.DemiBold
                             }
                         }
 
@@ -257,7 +337,7 @@ Item {
                                     dayKey,
                                     count,
                                     mapToItem(root, width / 2, 0).x,
-                                    mapToItem(root, 0, 0).y
+                                    mapToItem(root, height, 0).y
                                 )
                             }
                             onExited: root.cancelHover()
@@ -279,7 +359,8 @@ Item {
         width: 176
         height: previewRow.visible ? 96 : 48
         x: Math.max(4, Math.min(root.width - width - 4, hoverX - width / 2))
-        y: Math.max(4, hoverY - height - 8)
+        // Prefer below the cell so weekday headers stay clear.
+        y: Math.min(root.height - height - 4, Math.max(weekdayRow.y + weekdayRow.height + 4, hoverY + 6))
         radius: 8
         color: tokenBg1
         border.color: tokenBorder
@@ -292,7 +373,9 @@ Item {
             spacing: 6
             Text {
                 width: parent.width
-                text: hoverDay + (hoverCount > 0 ? (" · " + hoverCount) : "")
+                text: hoverDay + (hoverCount > 0
+                      ? (" · " + (shellReady ? shellApi.formatCountExact(hoverCount) : hoverCount) + " photos")
+                      : "")
                 color: tokenText
                 font.family: "Segoe UI"
                 font.pixelSize: 12
@@ -329,7 +412,7 @@ Item {
             moveFocus(-7); event.accepted = true
         } else if (event.key === Qt.Key_Down) {
             moveFocus(7); event.accepted = true
-        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
             if (focusIndex >= 0 && focusIndex < cellCount)
                 dayClicked(String(cells[focusIndex].day))
             event.accepted = true

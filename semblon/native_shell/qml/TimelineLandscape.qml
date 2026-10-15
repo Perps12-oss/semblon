@@ -3,7 +3,7 @@ import QtQuick
 Item {
     id: root
     objectName: "timelineHero"
-    height: 96
+    height: 100
     Accessible.name: "Memory timeline"
 
     property var shellApi: null
@@ -27,14 +27,16 @@ Item {
     signal rangeSelected(string startDay, string endDay)
 
     property string focusYear: ""
+    property string focusMonth: ""
     property string hoverLabel: ""
+    property int hoverCount: 0
     property var hoverPreviewIds: []
     property real hoverX: 0
     property bool popoverVisible: false
     property string dragStartDay: ""
+    property string dragEndDay: ""
     property bool dragging: false
 
-    // Flat yearRows for the Repeater; nested density used only after mount.
     readonly property var densitySource: shellReady && shellApi ? shellApi.yearRows : []
     readonly property var densityMeta: shellReady && shellApi ? shellApi.timelineDensity : []
     readonly property int yearCount: densitySource && densitySource.length ? densitySource.length : 0
@@ -52,12 +54,29 @@ Item {
         return meta && meta.months ? meta.months : []
     }
 
+    function monthStart(monthLabel) {
+        return String(monthLabel) + "-01"
+    }
+
+    function monthEnd(monthLabel) {
+        if (shellReady && shellApi)
+            return shellApi.monthEndDay(monthLabel) || (String(monthLabel) + "-28")
+        return String(monthLabel) + "-28"
+    }
+
+    function cancelDrag() {
+        dragging = false
+        dragStartDay = ""
+        dragEndDay = ""
+    }
+
     Timer {
         id: hoverTimer
         interval: 150
         repeat: false
+        property string pendingLabel: ""
         onTriggered: {
-            if (!root.shellReady || root.hoverLabel === "" || root.dragging || !root.shellApi)
+            if (!root.shellReady || pendingLabel === "" || pendingLabel !== root.hoverLabel || root.dragging || !root.shellApi)
                 return
             root.hoverPreviewIds = root.shellApi.timelinePreviewIds(root.hoverLabel)
             root.popoverVisible = true
@@ -66,18 +85,22 @@ Item {
 
     function cancelHover() {
         hoverTimer.stop()
+        hoverTimer.pendingLabel = ""
         popoverVisible = false
         hoverLabel = ""
+        hoverCount = 0
         hoverPreviewIds = []
     }
 
-    function armHover(label, x) {
+    function armHover(label, count, x) {
         if (dragging)
             return
         hoverLabel = label
+        hoverCount = Number(count || 0)
         hoverX = x
         popoverVisible = false
         hoverPreviewIds = []
+        hoverTimer.pendingLabel = label
         hoverTimer.restart()
     }
 
@@ -89,8 +112,13 @@ Item {
         return scopeKind === "month" && scopeLabel === label
     }
 
-    function monthToDay(monthLabel) {
-        return monthLabel + "-01"
+    Connections {
+        target: shellReady ? shellApi : null
+        function onEditorialChanged() {
+            root.cancelHover()
+            if (!root.dragging)
+                root.cancelDrag()
+        }
     }
 
     Rectangle {
@@ -110,6 +138,7 @@ Item {
             radius: 3
             color: tokenBg2
             visible: loading
+            Accessible.name: "Loading timeline density"
             SequentialAnimation on opacity {
                 running: loading
                 loops: Animation.Infinite
@@ -137,8 +166,8 @@ Item {
                     property string yearLabel: yearData ? String(yearData.label) : String(index)
                     property real share: yearCount > 0 ? Math.max(0.08, 1.0 / yearCount) : 0.5
                     property var monthList: []
-                    width: Math.max(48, (yearRow.width - Math.max(0, root.yearCount - 1) * yearRow.spacing) * share)
-                    height: 76
+                    width: Math.max(56, (yearRow.width - Math.max(0, root.yearCount - 1) * yearRow.spacing) * share)
+                    height: 80
                     objectName: "timelineYear_" + yearLabel
                     Accessible.name: "Year " + yearLabel + ", " + String(yearData.count) + " photos"
 
@@ -153,8 +182,8 @@ Item {
                         anchors.fill: parent
                         radius: 6
                         color: root.isYearSelected(yearLabel) || root.focusYear === yearLabel ? tokenAccentDim : "transparent"
-                        border.color: root.isYearSelected(yearLabel) ? tokenAccent : tokenBorder
-                        border.width: root.focusYear === yearLabel || root.isYearSelected(yearLabel) ? 1 : 0
+                        border.color: root.focusYear === yearLabel ? tokenText : (root.isYearSelected(yearLabel) ? tokenAccent : tokenBorder)
+                        border.width: root.focusYear === yearLabel || root.isYearSelected(yearLabel) ? 2 : 0
 
                         Column {
                             anchors.fill: parent
@@ -165,14 +194,14 @@ Item {
                                 text: yearLabel
                                 color: root.isYearSelected(yearLabel) ? tokenAccent : tokenText
                                 font.family: "Segoe UI"
-                                font.pixelSize: 11
+                                font.pixelSize: 12
                                 font.weight: Font.DemiBold
                             }
 
                             Row {
                                 id: monthBars
                                 width: parent.width
-                                height: 44
+                                height: 40
                                 spacing: 2
 
                                 Repeater {
@@ -181,7 +210,7 @@ Item {
                                         property var monthData: modelData
                                         property string monthLabel: monthData ? String(monthData.label) : String(index)
                                         property real mShare: Math.max(0.04, Number((monthData && monthData.share) || 0))
-                                        width: Math.max(3, (monthBars.width - Math.max(0, yearBlock.monthList.length - 1) * monthBars.spacing) * mShare)
+                                        width: Math.max(4, (monthBars.width - Math.max(0, yearBlock.monthList.length - 1) * monthBars.spacing) * mShare)
                                         height: parent.height
                                         objectName: "timelineMonth_" + monthLabel
                                         Accessible.name: (monthData && monthData.accessibleName) || monthLabel
@@ -192,30 +221,49 @@ Item {
                                             width: Math.max(2, parent.width - 1)
                                             height: Math.max(4, parent.height * Math.max(0.12, Number((monthData && monthData.share) || 0)))
                                             radius: 2
-                                            color: root.isMonthSelected(monthLabel) ? tokenAccent : tokenMuted
-                                            opacity: root.isMonthSelected(monthLabel) ? 1 : 0.75
+                                            color: root.isMonthSelected(monthLabel) || root.focusMonth === monthLabel ? tokenAccent : tokenMuted
+                                            opacity: root.isMonthSelected(monthLabel) ? 1 : 0.8
                                         }
 
                                         MouseArea {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             preventStealing: true
-                                            onEntered: root.armHover(monthLabel, mapToItem(root, width / 2, 0).x)
-                                            onExited: root.cancelHover()
+                                            onEntered: {
+                                                root.focusMonth = monthLabel
+                                                root.armHover(monthLabel, monthData ? monthData.count : 0, mapToItem(root, width / 2, 0).x)
+                                            }
+                                            onExited: {
+                                                if (root.focusMonth === monthLabel)
+                                                    root.focusMonth = ""
+                                                root.cancelHover()
+                                            }
                                             onPressed: {
                                                 root.cancelHover()
                                                 root.dragging = true
-                                                root.dragStartDay = root.monthToDay(monthLabel)
+                                                root.dragStartDay = root.monthStart(monthLabel)
+                                                root.dragEndDay = root.monthEnd(monthLabel)
+                                            }
+                                            onPositionChanged: {
+                                                if (!root.dragging)
+                                                    return
+                                                root.dragEndDay = root.monthEnd(monthLabel)
                                             }
                                             onReleased: {
-                                                var endDay = root.monthToDay(monthLabel)
-                                                if (root.dragging && root.dragStartDay !== "" && root.dragStartDay !== endDay)
-                                                    root.rangeSelected(root.dragStartDay, endDay)
-                                                else
+                                                if (!root.dragging) {
                                                     root.monthClicked(monthLabel)
-                                                root.dragging = false
-                                                root.dragStartDay = ""
+                                                    return
+                                                }
+                                                var a = root.dragStartDay
+                                                var b = root.monthEnd(monthLabel)
+                                                // If released on same month as press start month, treat as month click.
+                                                if (a.slice(0, 7) === monthLabel)
+                                                    root.monthClicked(monthLabel)
+                                                else
+                                                    root.rangeSelected(a, b)
+                                                root.cancelDrag()
                                             }
+                                            onCanceled: root.cancelDrag()
                                         }
                                     }
                                 }
@@ -237,7 +285,7 @@ Item {
                             hoverEnabled: true
                             onEntered: {
                                 root.focusYear = yearLabel
-                                root.armHover(yearLabel, mapToItem(root, width / 2, 0).x)
+                                root.armHover(yearLabel, yearData ? yearData.count : 0, mapToItem(root, width / 2, 0).x)
                             }
                             onExited: {
                                 if (root.focusYear === yearLabel)
@@ -259,33 +307,45 @@ Item {
             font.family: "Segoe UI"
             font.pixelSize: 12
         }
+
+        Text {
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.margins: 8
+            visible: root.dragging && root.dragStartDay !== ""
+            text: "Range: " + root.dragStartDay + " → …"
+            color: tokenAccent
+            font.family: "Segoe UI"
+            font.pixelSize: 10
+            z: 3
+        }
     }
 
     Rectangle {
         objectName: "timelinePopover"
         visible: popoverVisible && hoverLabel !== ""
-        width: 168
-        height: previewRow.visible ? 88 : 48
-        y: -height - 6
+        width: 180
+        height: previewRow.visible ? 100 : 52
+        y: parent.height + 4
         x: Math.max(4, Math.min(root.width - width - 4, hoverX - width / 2))
         radius: 8
         color: tokenBg2
         border.color: tokenBorder
         border.width: 1
         z: 10
-        opacity: visible ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: Math.min(150, root.motion) } }
 
         Column {
             anchors.fill: parent
             anchors.margins: 8
             spacing: 6
             Text {
-                text: hoverLabel
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: hoverLabel + (hoverCount > 0 ? (" · " + hoverCount + " photos") : "")
+                      + "\nBar height shows share of that year."
                 color: tokenText
                 font.family: "Segoe UI"
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
+                font.pixelSize: 11
             }
             Row {
                 id: previewRow
@@ -309,6 +369,19 @@ Item {
     Keys.onPressed: (event) => {
         if (!shellReady || yearCount === 0)
             return
+        if (event.key === Qt.Key_Escape) {
+            if (dragging) {
+                cancelDrag()
+                cancelHover()
+                event.accepted = true
+                return
+            }
+            cancelHover()
+            if (shellApi)
+                shellApi.clearScope()
+            event.accepted = true
+            return
+        }
         var idx = -1
         for (var i = 0; i < yearCount; i++) {
             if (String(densitySource[i].label) === focusYear || String(densitySource[i].label) === scopeLabel) {
@@ -319,18 +392,47 @@ Item {
         if (event.key === Qt.Key_Left) {
             idx = Math.max(0, (idx < 0 ? 0 : idx) - 1)
             focusYear = String(densitySource[idx].label)
+            focusMonth = ""
             event.accepted = true
         } else if (event.key === Qt.Key_Right) {
             idx = Math.min(yearCount - 1, (idx < 0 ? 0 : idx) + 1)
             focusYear = String(densitySource[idx].label)
+            focusMonth = ""
+            event.accepted = true
+        } else if (event.key === Qt.Key_Down) {
+            var months = monthsFor(focusYear || (idx >= 0 ? String(densitySource[idx].label) : ""))
+            if (months && months.length) {
+                var mi = 0
+                for (var m = 0; m < months.length; m++) {
+                    if (String(months[m].label) === focusMonth) {
+                        mi = Math.min(months.length - 1, m + 1)
+                        break
+                    }
+                }
+                focusMonth = String(months[mi].label)
+                focusYear = focusMonth.slice(0, 4)
+            }
+            event.accepted = true
+        } else if (event.key === Qt.Key_Up) {
+            var monthsUp = monthsFor(focusYear || "")
+            if (monthsUp && monthsUp.length && focusMonth !== "") {
+                var ui = 0
+                for (var u = 0; u < monthsUp.length; u++) {
+                    if (String(monthsUp[u].label) === focusMonth) {
+                        ui = Math.max(0, u - 1)
+                        break
+                    }
+                }
+                focusMonth = String(monthsUp[ui].label)
+            } else if (focusYear !== "") {
+                focusMonth = ""
+            }
             event.accepted = true
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            if (focusYear !== "")
+            if (focusMonth !== "")
+                monthClicked(focusMonth)
+            else if (focusYear !== "")
                 yearClicked(focusYear)
-            event.accepted = true
-        } else if (event.key === Qt.Key_Escape) {
-            if (shellReady && shellApi)
-                shellApi.clearScope()
             event.accepted = true
         }
     }

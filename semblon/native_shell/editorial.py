@@ -34,6 +34,42 @@ VIDEO_NOTE = (
 YEAR_NOTE = "Year counts use stored file time. Choosing a year or folder scopes the library to it."
 
 
+def format_count(n: int | float | None) -> str:
+    """Compact display count (``1.3k``). Exact value stays in ``exactCount`` / a11y."""
+    try:
+        value = int(n or 0)
+    except (TypeError, ValueError):
+        value = 0
+    if value < 0:
+        value = 0
+    if value < 1000:
+        return str(value)
+    if value < 10_000:
+        tenths = value / 1000
+        text = f"{tenths:.1f}k"
+        return text.replace(".0k", "k")
+    return f"{value // 1000}k"
+
+
+def format_count_exact(n: int | float | None) -> str:
+    """Exact count with thousands separators for tooltips / accessible names."""
+    try:
+        value = int(n or 0)
+    except (TypeError, ValueError):
+        value = 0
+    return f"{value:,}"
+
+
+def month_end_day(month_label: str) -> str:
+    """Last calendar day of ``YYYY-MM`` as ``YYYY-MM-DD``."""
+    parsed = _parse_month(month_label)
+    if parsed is None:
+        return ""
+    year, month = parsed
+    last = calendar.monthrange(year, month)[1]
+    return f"{year:04d}-{month:02d}-{last:02d}"
+
+
 def source_counts(store: Path) -> dict[str, int]:
     path = Path(store)
     if not path.is_file():
@@ -128,7 +164,21 @@ def scope_ids(store: Path, kind: str = "all") -> dict[str, dict[str, list[str]]]
 
 def rows_from_scope(ids: dict[str, list[str]], *, newest_first: bool = False) -> list[dict]:
     labels = sorted(ids, reverse=True) if newest_first else list(ids)
-    return [{"label": label, "count": len(ids[label])} for label in labels]
+    rows: list[dict] = []
+    for label in labels:
+        count = len(ids[label])
+        rows.append(
+            {
+                "label": label,
+                "displayName": label,
+                "count": count,
+                "countLabel": format_count(count),
+                "exactCount": count,
+                "countNoun": "photos",
+                "accessibleName": f"{label}, {format_count_exact(count)} photos",
+            }
+        )
+    return rows
 
 
 def year_rows(store: Path, kind: str = "all") -> list[dict]:
@@ -330,23 +380,29 @@ def calendar_month_cells(
     if parsed is None:
         return []
     year, month = parsed
+    today = date.today().isoformat()
     cal = calendar.Calendar(firstweekday=calendar.MONDAY)
     cells: list[dict] = []
     for day in cal.itermonthdates(year, month):
         key = day.isoformat()
         ids = [str(i) for i in day_map.get(key, [])]
+        count = len(ids)
         cells.append(
             {
                 "day": key,
                 "dayNum": day.day,
                 "inMonth": day.month == month,
-                "count": len(ids),
+                "count": count,
+                "countLabel": format_count(count),
+                "exactCount": count,
+                "isToday": key == today,
                 "thumbId": ids[0] if ids else "",
                 "previewIds": ids[:3],
                 "accessibleName": (
-                    f"{day.strftime('%A %d %B %Y')}, {len(ids)} photos"
+                    f"{day.strftime('%A')} {day.day} {day.strftime('%B %Y')}, "
+                    f"{format_count_exact(count)} photos"
                     if ids
-                    else f"{day.strftime('%A %d %B %Y')}, empty"
+                    else f"{day.strftime('%A')} {day.day} {day.strftime('%B %Y')}, empty"
                 ),
             }
         )

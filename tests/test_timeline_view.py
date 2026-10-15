@@ -10,6 +10,9 @@ from semblon.native_shell.editorial import (
     calendar_month_cells,
     default_calendar_month,
     field_sections,
+    format_count,
+    format_count_exact,
+    month_end_day,
     month_rows,
     range_media_ids,
     scope_ids,
@@ -153,20 +156,23 @@ def test_timeline_chrome_object_names(tmp_path, monkeypatch):
     assert bridge.timelineDensity
     hero = root.findChild(QQuickItem, "timelineHero")
     assert hero is not None
-    assert root.findChild(QObject, "timelineRail") is not None
+    assert root.findChild(QObject, "timelineRail") is None
     assert _find_visual(hero, "timelineYear_2024") is not None
     assert _find_visual(hero, "timelineMonth_2024-05") is not None
-    rail = root.findChild(QQuickItem, "timelineRail")
-    assert _find_visual(rail, "timelineRailYear_2025") is not None
     assert root.findChild(QObject, "stickyHeader") is not None
     assert root.findChild(QObject, "zeroResultFilter") is not None
     assert root.findChild(QObject, "archiveSidebar") is not None
+    assert root.findChild(QObject, "contextSidebarSearch") is not None
     assert root.findChild(QQuickItem, "memoryCalendar") is not None
     assert root.findChild(QObject, "sidebarYear_2024") is None
     assert root.findChild(QObject, "sidebarDay_2024-05-01") is None
     bridge.selectMonth("2024-05")
     assert bridge.scopeKind == "month"
     assert bridge.calendarMonth == "2024-05"
+    assert bridge.fieldSectionsActive is True
+    for _ in range(20):
+        app.processEvents()
+    assert root.findChild(QQuickItem, "fieldSections") is not None
     shutdown_shell(engine)
 
 
@@ -312,6 +318,60 @@ def test_calendar_large_day_map_cells_are_bounded():
     assert len(cells) in (35, 42)
     assert sum(c["count"] for c in cells if c["inMonth"]) == 30
     assert all(c["thumbId"] for c in cells if c["inMonth"] and c["count"])
+
+
+def test_format_count_and_high_volume_day_cell():
+    assert format_count(12) == "12"
+    assert format_count(1282) == "1.3k"
+    assert format_count_exact(1282) == "1,282"
+    assert month_end_day("2024-02") == "2024-02-29"
+    assert month_end_day("2023-02") == "2023-02-28"
+    day_map = {"2024-07-04": [f"p{i}" for i in range(1282)]}
+    cells = {c["day"]: c for c in calendar_month_cells("2024-07", day_map)}
+    cell = cells["2024-07-04"]
+    assert cell["count"] == 1282
+    assert cell["countLabel"] == "1.3k"
+    assert cell["thumbId"] == "p0"
+    assert len(cell["previewIds"]) == 3
+    assert "1,282" in cell["accessibleName"]
+
+
+def test_range_selection_reverse_and_month_not_day(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.model import ArchiveModel
+
+    store = tmp_path / "s.sqlite"
+    _seed_days(
+        store,
+        tmp_path,
+        [
+            ("a", 2024, 1, 10),
+            ("b", 2024, 3, 15),
+            ("c", 2024, 6, 1),
+        ],
+    )
+    app = QApplication.instance() or QApplication([])
+    del app
+    jobs = Application(store)
+    bridge = ShellBridge(ArchiveModel(jobs), jobs)
+    bridge.selectRange("2024-06-01", "2024-01-10")
+    assert bridge.scopeKind == "range"
+    assert bridge.scopeLabel == "2024-01-10:2024-06-01"
+    assert bridge._model.rowCount() == 3
+    bridge.selectMonth("2024-03")
+    assert bridge.scopeKind == "month"
+    assert bridge.scopeLabel == "2024-03"
+    assert bridge.scopeKind != "day"
+    bridge.calendarNextMonth()
+    assert bridge.calendarMonth == "2024-04"
+    assert bridge.scopeKind == "month"
+    assert bridge.scopeLabel == "2024-03"
+    bridge.shutdown()
 
 
 def test_field_sections_group_ordered_ids_by_day():
