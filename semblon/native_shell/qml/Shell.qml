@@ -169,14 +169,14 @@ ApplicationWindow {
         onActivated: if (shellReady) shellApi.setFacet("folders")
     }
 
-    // Collapsible navigation sidebar. Replaces the former top rail.
+    // Collapsible navigation sidebar: destinations + archive browse (no right Explore panel).
     Rectangle {
         id: navSidebar
         objectName: "navSidebar"
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        width: sidebarCollapsed ? 56 : 228
+        width: sidebarCollapsed ? 56 : 260
         color: tokenBg1
         z: 10
 
@@ -193,8 +193,10 @@ ApplicationWindow {
         }
 
         Column {
-            id: sidebarColumn
-            anchors.fill: parent
+            id: sidebarTop
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
             anchors.margins: sidebarCollapsed ? 8 : 14
             spacing: 4
 
@@ -421,14 +423,14 @@ ApplicationWindow {
                     anchors.leftMargin: 10
                     anchors.rightMargin: 10
                     verticalAlignment: TextInput.AlignVCenter
-                    placeholderText: "Search memory"
-                    placeholderTextColor: tokenFaint
-                    color: tokenText
-                    font.family: "Segoe UI"
-                    font.pixelSize: 13
-                    background: Item {}
-                    selectByMouse: true
-                    onAccepted: if (shellReady) shellApi.submitCommand(text)
+                placeholderText: "Search memory"
+                placeholderTextColor: tokenFaint
+                color: tokenText
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                background: Item {}
+                selectByMouse: true
+                onAccepted: if (shellReady) shellApi.submitCommand(text)
                 }
                 TextField {
                     id: commandField
@@ -438,7 +440,7 @@ ApplicationWindow {
                     anchors.leftMargin: 10
                     anchors.rightMargin: 10
                     verticalAlignment: TextInput.AlignVCenter
-                    placeholderText: "Command: people, status"
+                    placeholderText: "Command…  Ctrl+K"
                     placeholderTextColor: tokenFaint
                     color: tokenText
                     font.family: "Segoe UI"
@@ -460,6 +462,13 @@ ApplicationWindow {
                 model: shellReady ? shellApi.atmosphereChoices : []
                 textRole: "label"
                 displayText: (currentIndex >= 0 && model.length > currentIndex) ? model[currentIndex].label : "Atmosphere"
+                palette.window: tokenBg2
+                palette.base: tokenBg2
+                palette.button: tokenBg2
+                palette.buttonText: tokenText
+                palette.text: tokenText
+                palette.highlightedText: tokenText
+                palette.highlight: tokenAccentDim
                 onActivated: if (shellReady && currentIndex >= 0 && model.length > currentIndex) {
                     shellApi.setAtmosphere(model[currentIndex].id)
                 }
@@ -473,21 +482,53 @@ ApplicationWindow {
                     }
                 }
             }
+        }
 
-            Item { width: 1; height: 20 }
+        Flickable {
+            id: archiveBrowseFlick
+            objectName: "archiveBrowseFlick"
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: sidebarTop.bottom
+            anchors.bottom: sidebarBottom.top
+            anchors.leftMargin: sidebarCollapsed ? 8 : 14
+            anchors.rightMargin: sidebarCollapsed ? 8 : 14
+            anchors.topMargin: 8
+            anchors.bottomMargin: 8
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            contentHeight: archiveSidebar.contentHeight
+            visible: !sidebarCollapsed && !emptySafe && !peopleVisible
+            interactive: contentHeight > height
 
-            // Mode + job at bottom — use a bottom-anchored column instead
+            ContextSidebar {
+                id: archiveSidebar
+                width: archiveBrowseFlick.width
+                height: contentHeight
+                shellApi: window.shellApi
+                shellReady: window.shellReady
+                advancedMode: window.advancedModeSafe
+                tokenBg1: window.tokenBg1
+                tokenBg2: window.tokenBg2
+                tokenBg3: window.tokenBg3
+                tokenAccent: window.tokenAccent
+                tokenText: window.tokenText
+                tokenMuted: window.tokenMuted
+                tokenFaint: window.tokenFaint
+                tokenBorder: window.tokenBorder
+                motion: window.motion
+            }
         }
 
         // Bottom section (mode + job)
         Column {
+            id: sidebarBottom
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.margins: sidebarCollapsed ? 8 : 14
             spacing: 6
 
-            // Job indicator
             Row {
                 visible: jobRunning
                 spacing: 8
@@ -526,7 +567,15 @@ ApplicationWindow {
                 }
             }
 
-            // Primary / Advanced
+            Text {
+                visible: !sidebarCollapsed
+                width: parent.width
+                text: "Mode"
+                color: tokenFaint
+                font.family: "Segoe UI"
+                font.pixelSize: 11
+                font.letterSpacing: 0.4
+            }
             Rectangle {
                 objectName: "primaryModeButton"
                 width: parent.width
@@ -570,7 +619,6 @@ ApplicationWindow {
                 }
             }
 
-            // Collapsed mode icons
             Item {
                 visible: sidebarCollapsed
                 width: parent.width
@@ -678,10 +726,10 @@ ApplicationWindow {
 
         Rectangle {
             objectName: "activitySheet"
-            anchors.right: archiveSidebar.visible ? archiveSidebar.left : parent.right
+            anchors.right: parent.right
             anchors.top: parent.top
             anchors.topMargin: 16
-            anchors.rightMargin: archiveSidebar.visible ? 12 : 16
+            anchors.rightMargin: 16
             width: 320
             height: Math.min(stage.height - 40, activityColumn.implicitHeight + 28)
             radius: 10
@@ -763,10 +811,10 @@ ApplicationWindow {
 
         Rectangle {
             objectName: "settingsSheet"
-            anchors.right: archiveSidebar.visible ? archiveSidebar.left : parent.right
+            anchors.right: parent.right
             anchors.top: parent.top
             anchors.topMargin: 16
-            anchors.rightMargin: archiveSidebar.visible ? 12 : 16
+            anchors.rightMargin: 16
             width: 280
             height: settingsColumn.implicitHeight + 28
             radius: 10
@@ -1431,37 +1479,13 @@ ApplicationWindow {
             }
         }
 
-        ContextSidebar {
-            id: archiveSidebar
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.topMargin: 12
-            anchors.rightMargin: 12
-            anchors.bottomMargin: 12
-            width: Math.min(280, Math.max(220, Math.floor(parent.width * 0.2)))
-            visible: !emptySafe && !peopleVisible && !focusActive
-            z: 2
-            shellApi: window.shellApi
-            shellReady: window.shellReady
-            advancedMode: window.advancedModeSafe
-            tokenBg1: window.tokenBg1
-            tokenBg2: window.tokenBg2
-            tokenAccent: window.tokenAccent
-            tokenText: window.tokenText
-            tokenMuted: window.tokenMuted
-            tokenFaint: window.tokenFaint
-            tokenBorder: window.tokenBorder
-            motion: window.motion
-        }
-
         TimelineLandscape {
             id: timelineHero
             anchors.left: parent.left
-            anchors.right: archiveSidebar.visible ? archiveSidebar.left : parent.right
+            anchors.right: parent.right
             anchors.top: parent.top
             anchors.leftMargin: 22
-            anchors.rightMargin: archiveSidebar.visible ? 8 : 22
+            anchors.rightMargin: 22
             anchors.topMargin: 12
             visible: !emptySafe && !peopleVisible && !focusActive
             z: 2
@@ -1556,13 +1580,13 @@ ApplicationWindow {
             id: fieldSectionsView
             objectName: "fieldSections"
             anchors.left: parent.left
-            anchors.right: archiveSidebar.visible ? archiveSidebar.left : parent.right
+            anchors.right: parent.right
             anchors.top: zeroResultFilter.visible
                 ? zeroResultFilter.bottom
                 : (stickyHeader.visible ? stickyHeader.bottom : memoryCalendar.bottom)
             anchors.bottom: parent.bottom
             anchors.leftMargin: 22
-            anchors.rightMargin: archiveSidebar.visible ? 8 : 22
+            anchors.rightMargin: 22
             anchors.topMargin: 8
             anchors.bottomMargin: 12
             visible: !emptySafe && fieldSectionsActiveSafe
@@ -1596,7 +1620,9 @@ ApplicationWindow {
                     width: parent.width
                     spacing: 0
                     Repeater {
-                        model: section && section.mediaIds ? section.mediaIds : []
+                        // Cap visible thumbs so section scrolling stays virtualized-friendly.
+                        model: section && section.previewIds ? section.previewIds
+                               : (section && section.mediaIds ? section.mediaIds.slice(0, 24) : [])
                         delegate: Item {
                             width: shellReady ? shellApi.cellSize : 160
                             height: shellReady ? shellApi.cellSize : 160
@@ -1639,6 +1665,19 @@ ApplicationWindow {
                             }
                         }
                     }
+                    Text {
+                        visible: section && Number(section.count || 0) > (section.previewIds ? section.previewIds.length : 24)
+                        text: "Show this day (" + String(section.count) + ")"
+                        color: tokenAccent
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -2
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady && section) shellApi.selectDay(String(section.day))
+                        }
+                    }
                 }
             }
 
@@ -1671,13 +1710,13 @@ ApplicationWindow {
             id: grid
             objectName: "fieldGrid"
             anchors.left: parent.left
-            anchors.right: archiveSidebar.visible ? archiveSidebar.left : parent.right
+            anchors.right: parent.right
             anchors.top: zeroResultFilter.visible
                 ? zeroResultFilter.bottom
                 : (stickyHeader.visible ? stickyHeader.bottom : memoryCalendar.bottom)
             anchors.bottom: parent.bottom
             anchors.leftMargin: 22
-            anchors.rightMargin: archiveSidebar.visible ? 8 : 22
+            anchors.rightMargin: 22
             anchors.topMargin: 8
             anchors.bottomMargin: 12
             visible: !emptySafe && !fieldSectionsActiveSafe

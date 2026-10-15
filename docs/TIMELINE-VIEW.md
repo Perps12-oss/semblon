@@ -7,14 +7,13 @@
 ## Product shape
 
 ```text
-+-- Search & global filters (left nav) --------------------------------------+
-+-- HERO DENSITY TIMELINE (sole temporal overview) --------------------------+
-+-- MEMORY CALENDAR (month title · Today · prev/next · Mon…Sun) ------------+
-+-- FIELD (day-grouped for year/month/range; flat grid otherwise) -----------+
-+-- CONTEXT SIDEBAR: Explore · search · media · folders · moments · similar -+
++-- LEFT NAV: destinations · memory search · Browse (media/folders/moments/similar) · mode -+
++-- HERO DENSITY TIMELINE (sole temporal overview) -----------------------------------------+
++-- MEMORY CALENDAR (month title · Today · prev/next · Mon…Sun) ----------------------------+
++-- FIELD (day-grouped for year/month/range; flat grid otherwise) --------------------------+
 ```
 
-One density timeline only. The bottom year scrubber was removed. Calendar is the primary day browser; the timeline orients years/months and supports inclusive range drag.
+One density timeline only. The bottom year scrubber was removed (product design). Archive browse (media type, folders, Moments, Similar) lives in the left navigation column — there is no right-hand “Explore your archive” panel.
 
 ## Two independent states
 
@@ -29,9 +28,9 @@ Browsing the calendar month must **not** silently change the media scope.
 
 When media scope is `year`, `month`, or `range`, the Field switches from the flat `GridView` to a day-grouped `ListView` (`fieldSections`). Sticky month heading updates while scrolling sections (disabled for single-day / unscoped flat grid). Unscoped, folder, and single-day scopes keep the flat grid.
 
-## Context Sidebar
+## Left-nav archive browse
 
-Heading **Explore your archive**. Local search filters folder and Moments labels (not a full-archive content scan). Sections: Media type, Folders (indexed parent folders only), Moments (real `moment_buckets` / browse facet), Similar memories (requires an open photo). Counts use compact labels (`1.3k`) with exact values in accessible names / tooltips.
+Under primary destinations, a **Browse** block (objectName `archiveSidebar`) provides: folder filter field, Everything / clear scope, Media (All/Photos/Videos), Folders, Moments, Similar. Folder filter is local label match only — not a full-archive content scan. Counts use compact labels (`1.3k`) with exact values in tooltips / accessible names.
 
 ## Selection / navigation
 
@@ -73,4 +72,4 @@ Measured 2026-10-15 (offscreen Qt): high-volume day (1,282 ids) cell build **2.8
 
 ## Object names
 
-`timelineHero`, `timelineYear_*`, `timelineMonth_*`, `memoryCalendar`, `calendarPrev`, `calendarNext`, `calendarGoHome`, `calendarTitle`, `calendarDay_*`, `fieldSections`, `fieldSection_*`, `stickyHeader`, `zeroResultFilter`, `fieldGrid`, `archiveSidebar`, `contextSidebarSearch`, `sidebarFolder_*`, `sidebarMoments`, `sidebarSimilar`, `sidebarKind_*`
+`navSidebar`, `archiveBrowseFlick`, `archiveSidebar` (left-nav Browse block), `contextSidebarSearch`, `sidebarFolder_*`, `sidebarMoments`, `sidebarSimilar`, `sidebarKind_*`, `timelineHero`, `timelineYear_*`, `timelineMonth_*`, `memoryCalendar`, `calendarPrev`, `calendarNext`, `calendarGoHome`, `calendarTitle`, `calendarDay_*`, `fieldSections`, `fieldSection_*`, `stickyHeader`, `zeroResultFilter`, `fieldGrid`
