@@ -901,6 +901,24 @@ class ShellBridge(QObject):
         self._focus_boxes = []
         self._selected_observation = ""
 
+    @Property(bool, notify=focusChanged)
+    def focusFileMissing(self) -> bool:
+        """True when Focus is open but the stored original path is gone."""
+        item = self._jobs.media(self._session.focus_id or "")
+        if item is None or not item.path:
+            return bool(self._session.focus_id)
+        try:
+            return not Path(item.path).is_file()
+        except OSError:
+            return True
+
+    def _report_missing_original(self) -> None:
+        # One line: primary presentation allowlists exact strings.
+        self._set_result(
+            "This photo is missing from its stored path. "
+            "If you moved or renamed it, add that folder again so Semblon can reconnect it."
+        )
+
     @Slot(str)
     def openFocus(self, media_id: str) -> None:
         item = self._jobs.media(media_id)
@@ -909,6 +927,12 @@ class ShellBridge(QObject):
         self._session.open_focus(media_id)
         self._clear_query()
         self._load_focus_boxes(media_id)
+        try:
+            missing = not item.path or not Path(item.path).is_file()
+        except OSError:
+            missing = True
+        if missing:
+            self._report_missing_original()
         self.focusChanged.emit()
         self.diagnosticsChanged.emit()
 
@@ -919,13 +943,17 @@ class ShellBridge(QObject):
         if item is None or item.source_type != "folder":
             return
         day = item.day
+        try:
+            missing = not item.path or not Path(item.path).is_file()
+        except OSError:
+            missing = True
         self.openFocus(media_id)
         if day:
             # Scope neighbours without inventing a date when mtime is missing.
             if len(day) >= 7:
                 self._sync_calendar_month(day[:7])
             self._select_scope("day", day)
-        else:
+        elif not missing:
             self._set_result("Opened photo. No date on file — time context unavailable.")
 
     @Slot(int)

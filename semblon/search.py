@@ -235,6 +235,17 @@ def media_ids_for_items(store: Path, item_ids: list[str]) -> dict[str, str]:
     return out
 
 
+def _whole_image_basis_label(modality: str | None, pack_id: str | None) -> str:
+    """Product label for whole-image Similar. Colour histogram is not semantics."""
+    mod = str(modality or "").strip().lower()
+    pack = str(pack_id or "").strip().lower()
+    if mod == "appearance" or pack.startswith("appearance/") or "color" in pack:
+        return "Whole photo (colour histogram · appearance)"
+    if mod:
+        return f"Whole photo ({mod} · search_similar)"
+    return "Whole photo (search_similar)"
+
+
 def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict:
     """Whole-image (B) discovery from a library photo. Honest UNAVAILABLE without embeddings."""
     mid = (media_id or "").strip()
@@ -250,7 +261,7 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
             "reason": "Open a photo, then search Whole image — or type a media id.",
             "error_id": "similar.NO_MEDIA",
             "note": "Whole-image similarity is not identity.",
-            "similarity_basis": "Whole photo (B)",
+            "similarity_basis": "Whole photo (colour histogram · appearance)",
         }
     item = non_face_item_for_media(store, mid)
     if item is None:
@@ -268,11 +279,11 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
             ),
             "error_id": "similar.NO_EMBEDDING",
             "note": "Whole-image similarity is not identity.",
-            "similarity_basis": "Whole photo (B)",
+            "similarity_basis": "Whole photo (colour histogram · appearance)",
             "media_ids": [],
         }
     rec = search_similar(store, item, limit=limit)
-    rec["similarity_basis"] = "Whole photo (B · search_similar)"
+    rec["similarity_basis"] = _whole_image_basis_label(rec.get("modality"), rec.get("pack_id"))
     rec["seed_media_id"] = mid
     item_ids = [str(it.get("item_id")) for it in (rec.get("items") or []) if it.get("item_id")]
     mid_map = media_ids_for_items(store, item_ids)

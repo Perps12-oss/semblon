@@ -220,6 +220,78 @@ def test_open_focus_in_context_scopes_day_when_mtime_exists(tmp_path, monkeypatc
     assert bridge.focusId == "m1"
     assert bridge.scopeKind == "day"
     assert bridge.scopeLabel == "2024-06-15"
+    assert bridge.focusFileMissing is False
+    shutdown_shell(engine)
+
+
+def test_open_focus_reports_missing_original(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell, shutdown_shell
+    from semblon.store import connect, init_db
+
+    missing = tmp_path / "gone.png"
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    try:
+        init_db(conn)
+        conn.execute(
+            "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+            ("m1", "folder", str(missing), "h1", 32, 32, 1, 1),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    app.processEvents()
+    bridge = engine._semblon_bridge
+    bridge.openFocus("m1")
+    app.processEvents()
+    assert bridge.focusId == "m1"
+    assert bridge.focusFileMissing is True
+    assert "missing" in bridge.resultText.lower()
+    shutdown_shell(engine)
+
+
+def test_open_focus_in_context_without_day_stays_honest(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QImage
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell, shutdown_shell
+    from semblon.store import connect, init_db
+
+    photo = tmp_path / "nodate.png"
+    image = QImage(16, 16, QImage.Format.Format_RGB32)
+    image.fill(Qt.GlobalColor.darkGreen)
+    assert image.save(str(photo))
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    try:
+        init_db(conn)
+        conn.execute(
+            "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+            ("m1", "folder", str(photo), "h1", 16, 16, None, 1),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    app.processEvents()
+    bridge = engine._semblon_bridge
+    bridge.openFocusInContext("m1")
+    app.processEvents()
+    assert bridge.focusId == "m1"
+    assert bridge.scopeKind == ""
+    assert "no date" in bridge.resultText.lower()
     shutdown_shell(engine)
 
 
@@ -511,7 +583,8 @@ def test_drawn_region_strip_replaces_and_clears(tmp_path, monkeypatch):
     bridge.findSimilar()
     assert bridge.similarState == "empty"
     assert bridge.similarCount == 0
-    assert bridge.similarNote == "No similar images found yet."
+    assert "no similar images found yet" in bridge.similarNote.lower()
+    assert "colour histogram" in bridge.similarNote.lower()
     bridge.setRegion(0.1, 0.1, 0.2, 0.2)
     bridge.findSimilar()
     bridge.focusNext()
@@ -1579,3 +1652,135 @@ def test_bridge_exposes_read_only_editorial_counts(tmp_path, monkeypatch):
         assert "no relationship" in bridge.spatialNote.lower()
     finally:
         bridge.shutdown()
+
+
+def test_gate_a_archive_similar_and_context_journey(tmp_path, monkeypatch):
+    """Milestones 1–3: reconnect, honest Similar, day context with neighbours (offscreen)."""
+    import time
+    from unittest.mock import patch
+
+    import numpy as np
+
+    pytest.importorskip("PySide6")
+    cv2 = pytest.importorskip("cv2")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell, shutdown_shell
+    from semblon.process import process_folder
+    from semblon.store import connect
+
+    folder = tmp_path / "José"
+    folder.mkdir()
+    day_ns = 1_718_452_800_000_000_000  # 2024-06-15 UTC
+    other_ns = 1_721_044_800_000_000_000  # 2024-07-15 UTC
+
+    def _write(name: str, bgr, mtime_ns: int) -> Path:
+        path = folder / name
+        ok, buf = cv2.imencode(".png", bgr)
+        assert ok
+        path.write_bytes(buf.tobytes())
+        os.utime(path, ns=(mtime_ns, mtime_ns))
+        return path
+
+    # Distinct bytes (unique sha256) but close colour histograms so Similar can match.
+    green_a = np.zeros((48, 48, 3), dtype=np.uint8)
+    green_a[:, :] = (0, 210, 0)
+    green_a[0, 0] = (1, 210, 0)
+    green_b = np.zeros((48, 48, 3), dtype=np.uint8)
+    green_b[:, :] = (0, 205, 0)
+    green_b[0, 0] = (2, 205, 0)
+    red = np.zeros((48, 48, 3), dtype=np.uint8)
+    red[:, :] = (0, 0, 210)
+    _write("a.png", green_a, day_ns)
+    _write("b.png", green_b, day_ns)
+    _write("c.png", red, other_ns)
+    store = tmp_path / "gate-a.sqlite"
+    quiet = lambda *_a, **_k: None
+    with (
+        patch("semblon.ingest.load_app", return_value=object()),
+        patch("semblon.ingest.embed_bgr", return_value=[]),
+    ):
+        process_folder(folder, store=store, observers="color", progress=quiet)
+
+    conn = connect(store)
+    try:
+        rows = {
+            Path(r[1]).name: (r[0], r[1])
+            for r in conn.execute("SELECT media_id, path FROM media").fetchall()
+        }
+    finally:
+        conn.close()
+    assert set(rows) == {"a.png", "b.png", "c.png"}
+    id_a, path_a = rows["a.png"]
+    id_b, path_b = rows["b.png"]
+    id_c, _path_c = rows["c.png"]
+
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    try:
+        for _ in range(20):
+            app.processEvents()
+            time.sleep(0.01)
+        assert bridge.empty is False
+        assert bridge.count == 3
+
+        bridge.openFocus(id_a)
+        app.processEvents()
+        assert bridge.focusId == id_a
+        assert bridge.focusFileMissing is False
+        bridge.findSimilarWhole()
+        app.processEvents()
+        assert "colour histogram" in bridge.similarNote.lower()
+        assert bridge.similarState in {"ready", "empty"}
+        if bridge.similarState == "ready":
+            assert bridge.similarId(0) in {id_a, id_b, id_c}
+
+        # Context from a same-day neighbour: Field shows that day's archive rows only.
+        bridge.openFocusInContext(id_b)
+        app.processEvents()
+        assert bridge.focusId == id_b
+        assert bridge.scopeKind == "day"
+        assert bridge.scopeLabel == "2024-06-15"
+        field_ids = {
+            bridge._model.data(bridge._model.index(i, 0), Qt.ItemDataRole.UserRole + 1)
+            for i in range(bridge._model.rowCount())
+        }
+        assert id_a in field_ids and id_b in field_ids
+        assert id_c not in field_ids
+
+        Path(path_a).unlink()
+        bridge.openFocus(id_a)
+        app.processEvents()
+        assert bridge.focusFileMissing is True
+        assert "missing" in bridge.resultText.lower()
+
+        moved = folder / "b-renamed.png"
+        Path(path_b).replace(moved)
+        with (
+            patch("semblon.ingest.load_app", return_value=object()),
+            patch("semblon.ingest.embed_bgr", return_value=[]),
+        ):
+            process_folder(folder, store=store, observers="color", progress=quiet)
+        conn = connect(store)
+        try:
+            new_path = conn.execute(
+                "SELECT path FROM media WHERE media_id=?", (id_b,)
+            ).fetchone()[0]
+            count = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+        finally:
+            conn.close()
+        assert count == 3
+        assert Path(new_path) == moved
+        bridge._refresh_library()
+        app.processEvents()
+        bridge.openFocus(id_b)
+        app.processEvents()
+        assert bridge.focusId == id_b
+        assert bridge.focusFileMissing is False
+    finally:
+        shutdown_shell(engine)

@@ -2011,6 +2011,24 @@ ApplicationWindow {
                 cache: false
             }
 
+            Text {
+                objectName: "focusMissingNote"
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - 96
+                visible: focusActive
+                         && focusKindSafe !== "video"
+                         && shellReady
+                         && shellApi.focusFileMissing
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                color: tokenMuted
+                font.family: "Segoe UI"
+                font.pixelSize: 15
+                text: "This photo is missing from its stored path. "
+                      + "If you moved or renamed it, add that folder again so Semblon can reconnect it."
+            }
+
             Item {
                 id: observationLayer
                 objectName: "observationLayer"

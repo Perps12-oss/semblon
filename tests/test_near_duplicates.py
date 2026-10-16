@@ -76,7 +76,9 @@ def test_similarity_basis_labels_distinct():
     assert "Exact" in similarity_basis_label("exact")
     assert "Near" in similarity_basis_label("near")
     assert "Whole" in similarity_basis_label("whole")
+    assert "colour histogram" in similarity_basis_label("whole").lower()
     assert "region" in similarity_basis_label("region").lower()
+    assert "colour histogram" in similarity_basis_label("region").lower()
 
 
 def test_aggressive_near_duplicate_fixture_matrix(tmp_path):

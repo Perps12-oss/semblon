@@ -201,6 +201,8 @@ def find_similar_region(
     )
     rec["query_pixels"] = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
     rec["wrote_embedding"] = False
+    # Product label: this door is colour histogram, never face or semantic search.
+    rec["similarity_basis"] = "Selected region (colour histogram)"
     return rec
 
 

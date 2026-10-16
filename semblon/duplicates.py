@@ -485,10 +485,10 @@ def similarity_basis_label(kind: str | None) -> str:
     return {
         "exact": "Exact (file bytes · SHA-256)",
         "near": "Near match (looks alike · aHash/dHash)",
-        "similar": "Whole photo (image-to-image)",
-        "whole": "Whole photo (image-to-image)",
-        "region": "Selected region",
-        "find_similar": "Selected region",
+        "similar": "Whole photo (colour histogram)",
+        "whole": "Whole photo (colour histogram)",
+        "region": "Selected region (colour histogram)",
+        "find_similar": "Selected region (colour histogram)",
     }.get(k, "Similarity")
 
 

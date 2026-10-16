@@ -608,3 +608,85 @@ def test_same_filename_different_content_does_not_retarget(tmp_path):
     assert row2[0] == str(other)
     assert row2[1] == "hash-two"
     conn.close()
+
+
+def test_ingest_updates_path_when_original_moved(tmp_path):
+    """Re-adding a folder after a rename reconnects the same hash to the new path."""
+    import cv2
+    from unittest.mock import patch
+
+    from semblon.process import process_folder
+
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    photo = folder / "a.jpg"
+    img = np.zeros((24, 24, 3), dtype=np.uint8)
+    img[:, :] = (40, 90, 200)
+    ok, buf = cv2.imencode(".jpg", img)
+    assert ok
+    photo.write_bytes(buf.tobytes())
+    store = tmp_path / "s.sqlite"
+    quiet = lambda *_a, **_k: None
+    with (
+        patch("semblon.ingest.load_app", return_value=object()),
+        patch("semblon.ingest.embed_bgr", return_value=[]),
+    ):
+        process_folder(folder, store=store, observers="color", progress=quiet)
+    conn = connect(store)
+    try:
+        rows = conn.execute("SELECT media_id, path, sha256 FROM media").fetchall()
+        assert len(rows) == 1
+        media_id, old_path, digest = rows[0]
+        assert Path(old_path) == photo
+    finally:
+        conn.close()
+    moved = folder / "renamed.jpg"
+    photo.replace(moved)
+    with (
+        patch("semblon.ingest.load_app", return_value=object()),
+        patch("semblon.ingest.embed_bgr", return_value=[]),
+    ):
+        process_folder(folder, store=store, observers="color", progress=quiet)
+    conn = connect(store)
+    try:
+        rows = conn.execute("SELECT media_id, path, sha256 FROM media").fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == media_id
+        assert rows[0][1] == str(moved)
+        assert rows[0][2] == digest
+        assert not photo.is_file()
+        assert moved.is_file()
+    finally:
+        conn.close()
+
+
+def test_whole_image_similar_basis_says_colour_histogram(tmp_path):
+    from semblon.observers import observe_bgr
+    from semblon.search import search_similar_media
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        ("r1", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute("INSERT INTO media VALUES ('m1','folder','/a.jpg','aaa',8,8,0,1)")
+    conn.execute("INSERT INTO media VALUES ('m2','folder','/b.jpg','bbb',8,8,0,1)")
+    conn.execute("INSERT INTO observations VALUES ('o1','m1',NULL,NULL,'r1')")
+    conn.execute("INSERT INTO observations VALUES ('o2','m2',NULL,NULL,'r1')")
+    dark = np.zeros((8, 8, 3), dtype=np.uint8)
+    light = np.full((8, 8, 3), 255, dtype=np.uint8)
+    observe_bgr(conn, observation_id="o1", run_id="r1", img=dark, observers=("color",))
+    observe_bgr(conn, observation_id="o2", run_id="r1", img=light, observers=("color",))
+    conn.commit()
+    conn.close()
+    rec = search_similar_media(store, "m1")
+    assert "colour histogram" in str(rec.get("similarity_basis") or "").lower()
+    assert rec.get("modality") == "appearance" or rec.get("status") in {
+        "SUCCESS",
+        "NO_RESULT",
+        "UNAVAILABLE",
+    }
