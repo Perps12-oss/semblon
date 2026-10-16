@@ -3,6 +3,9 @@ name: facekit-owner
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   facekit:
     runs-on: windows-latest
