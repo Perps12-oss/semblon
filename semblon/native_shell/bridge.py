@@ -307,6 +307,8 @@ class ShellBridge(QObject):
             if str(box.get("id") or "") == wanted:
                 self._selected_observation = wanted
                 self.focusChanged.emit()
+                if str(box.get("kind") or "") == "face":
+                    self.findSimilarFaces(wanted)
                 return
 
     @Property(float, notify=focusChanged)
@@ -856,7 +858,7 @@ class ShellBridge(QObject):
         self._clear_similar()
 
     def _load_focus_boxes(self, media_id: str) -> None:
-        """Non-identity observation outlines for the open still. Never stamps identity."""
+        """Observation outlines for the open still. Face click → face-similar; never stamps identity."""
         from semblon.canvas_data import overlay_boxes
 
         self._selected_observation = ""
@@ -1911,6 +1913,25 @@ class ShellBridge(QObject):
             self._publish_similar("unavailable", "Open a photo first.", [])
             return
         result = self._safe_call(lambda: self._adapter.similar_media(media_id))
+        rows = [
+            (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
+            for item in (result.data.get("items") or [])
+            if item.get("media_id")
+        ]
+        state = result.state if result.state in {"ready", "empty", "unavailable"} else "unavailable"
+        note = result.message if result.message else "Similar search could not run."
+        self._result_text = ""
+        self.resultChanged.emit()
+        self._publish_similar(state, note, rows)
+
+    @Slot(str)
+    def findSimilarFaces(self, face_id: str = "") -> None:
+        """Focus face → ranked same-pack face hits. Not colour-histogram Similar; no auto-name."""
+        fid = str(face_id or self._selected_observation or "").strip()
+        if not fid:
+            self._publish_similar("unavailable", "Select a face on the photo first.", [])
+            return
+        result = self._safe_call(lambda: self._adapter.similar_faces(fid))
         rows = [
             (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
             for item in (result.data.get("items") or [])

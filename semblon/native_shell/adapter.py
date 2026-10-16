@@ -160,6 +160,12 @@ class ArchiveAdapter:
         rec = search_similar_media(self.store, media_id)
         return self._similar_result(rec, basis="whole")
 
+    def similar_faces(self, face_id: str) -> Result:
+        from semblon.search import search_similar_faces
+
+        rec = search_similar_faces(self.store, face_id)
+        return self._similar_result(rec, basis="face")
+
     def _similar_result(self, rec: dict, *, basis: str) -> Result:
         status = str(rec.get("status") or "")
         items = []
@@ -172,25 +178,34 @@ class ArchiveAdapter:
             except (TypeError, ValueError):
                 score = 0.0
             items.append({"media_id": media_id, "score": score})
-        # Default whole-image / region doors use colour-histogram appearance, not semantics.
-        basis_label = "colour histogram" if basis in {"whole", "region"} else basis
+        if basis == "face":
+            basis_label = "face embedding"
+            engine = "face-embed"
+            empty_msg = f"Similar ({basis_label}): no similar faces found yet."
+            ready_msg = f"Similar ({basis_label}): {len(items)} face matches."
+        else:
+            # Whole-image / region doors use colour-histogram appearance, not semantics.
+            basis_label = "colour histogram" if basis in {"whole", "region"} else basis
+            engine = "color-hist"
+            empty_msg = f"Similar ({basis_label}): no similar images found yet."
+            ready_msg = f"Similar ({basis_label}): {len(items)} colour matches."
         if status == "UNAVAILABLE":
             reason = str(rec.get("reason") or "Similar search could not run.")
             return Result(
                 "unavailable",
                 f"Similar ({basis_label}): {reason}",
-                {"basis": basis, "engine": "color-hist", "items": []},
+                {"basis": basis, "engine": engine, "items": []},
             )
         if not items:
             return Result(
                 "empty",
-                f"Similar ({basis_label}): no similar images found yet.",
-                {"basis": basis, "engine": "color-hist", "items": []},
+                empty_msg,
+                {"basis": basis, "engine": engine, "items": []},
             )
         return Result(
             "ready",
-            f"Similar ({basis_label}): {len(items)} colour matches.",
-            {"basis": basis, "engine": "color-hist", "items": items[:8]},
+            ready_msg,
+            {"basis": basis, "engine": engine, "items": items[:8]},
         )
 
     def review_counts(self) -> Result:

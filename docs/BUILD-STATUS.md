@@ -7,10 +7,10 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-16 (Gate B blocker-resolution pass) |
-| Branch | `grok/product-truth` |
-| Parent HEAD | `f1ba34af` — *Complete Gate A…* |
-| Working tree at evidence | Changes for this pass committed with this document update |
+| Evidence date | 2026-10-16 (discovery slice A — face → similar photos) |
+| Branch | `grok/yunet-sface-discovery-plan` |
+| Parent HEAD | (see git log on branch) |
+| Working tree at evidence | Slice A implementation; pytest below |
 
 ## Status vocabulary
 
@@ -53,7 +53,7 @@ Deferred without blocking unrelated work: **02** encryption, **08** product capt
 | 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | `tools/facekit_owner_evidence.py` + `.github/workflows/facekit-owner.yml` + `docs/FACEKIT-OWNER.md`. No owner pack on this machine — evidence JSON not PASS. |
 | 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Unchanged. |
 | 08 Screen-capture privacy | P1 | DEFERRED | Decision unchanged. |
-| 09 Visual-memory search | P0 | **VERIFIED** (honesty + Unicode + firewall) | Colour-histogram labels end-to-end; Unicode folder region Similar; whole-image note; face modality refused by design. **Not** a semantic-search quality claim. |
+| 09 Visual-memory search | P0 | **VERIFIED** (honesty + Unicode + firewall) + slice A face path | Colour-histogram labels end-to-end; Unicode folder region Similar; whole-image note. Face→similar photos is a **separate** door (`search_similar_faces` / Focus face click) with face-embedding basis — not histogram rebrand. |
 | 10 Archive continuity | P0 | **VERIFIED** | Missing Focus notice; ingest rename reconnect; copy/basename safety; Gate A journey on Unicode folder. |
 | 11 Contextual discovery | P1 | **VERIFIED** | `openFocusInContext` day scope includes same-day neighbours and excludes other days; missing-date honest. |
 | 12 Unified experience + docs | P0/P1 | **VERIFIED** (milestones 1–3) | Gate A journey + ROADMAP sync. Milestones 4–5 / Gates B–C remain. |
@@ -69,14 +69,12 @@ Deferred without blocking unrelated work: **02** encryption, **08** product capt
 
 ## Verification log (commands actually run)
 
-Environment: Windows ARM64 host; clean `py -3.14` venv for 3.14 evidence; `.venv-312` for prior Gate A.
+Environment: Windows ARM64 host; `.venv-312` for slice A.
 
 | Command | Result |
 |---|---|
-| Clean 3.14: nonshell pytest subset | **31 passed** — `docs/evidence/clean-314-pytest-nonshell.txt` |
-| Clean 3.14: shell Focus + Gate A journey (after QML fix) | **2 passed** — `docs/evidence/clean-314-pytest-shell*.txt` |
-| Pre-fix QML load under Essentials | **failed** on `QtMultimedia` — `docs/evidence/clean-314-qml-load-before-fix.txt` |
-| GHA CI matrix / FaceKit owner with real pack / WiX signed MSI | **not run** (no GHA evidence; no owner pack; no cert) |
+| `pytest tests/test_similar_faces.py` + adapter honesty | **7 passed** (`--basetemp=.pytest-tmp-slice-a`) |
+| `pytest tests/test_native_shell.py -k observation` | **1 passed** (Focus face select still works with face-similar door) |
 | Live user database | **not modified** |
 
 ### Tests covering Gate A (unchanged)
@@ -92,11 +90,19 @@ Environment: Windows ARM64 host; clean `py -3.14` venv for 3.14 evidence; `.venv
 | `test_whole_image_similar_basis_says_colour_histogram` | Whole-image basis |
 | `test_windows_journey_launch_ingest_browse_search_theme_restart_recover` | Empty→ingest→browse shell |
 
+## Behaviour landed — discovery slice A
+
+1. Domain: `search_similar_faces(store, face_id)` — same-`pack_id` `compare()`, best score per other media, provisional threshold from `identity_config.DEFAULT_THRESHOLD`, no decisions / no `person_id` writes.
+2. Shell: Focus face box click → `findSimilarFaces` → results strip with `Similar (face embedding): …` (engine `face-embed`). Whole-image / region Similar stay colour histogram.
+3. CLI: `semblon search --similar-face FACE --store …` (lab/read-only).
+4. Plan/ROADMAP: milestone 6 IN PROGRESS (slice A); B–E not started.
+
 ## Capability notes
 
-- Default Similar is colour histogram (`appearance/rgb8@1`), not semantic / face identity.
+- Default whole/region Similar is colour histogram (`appearance/rgb8@1`), not semantic / face identity.
+- Focus face Similar is face embedding (same pack); not a name; not auto-assign.
 - Pack gate unchanged. ARM64 OpenCV load remains BLOCKED historically (`docs/PERF-P1-ARM64.md`).
-- Identity engine remains FaceKit / InsightFace only; buffalo_l is BYO, not bundled.
+- Identity runtime is YuNet + SFace (`opencv/yunet_sface`); buffalo_l retired from deps (BYO historical only).
 
 ## Outstanding blockers (exact)
 

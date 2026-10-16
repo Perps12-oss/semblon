@@ -30,6 +30,7 @@ _SAFE_PRIMARY_EXACT = {
     "No people matched that search.",
     "Open a photo first.",
     "Draw a region on the photo first.",
+    "Select a face on the photo first.",
     "No similar images found yet.",
     "Similar search needs photos that have already been looked at.",
     "That decision is not available.",

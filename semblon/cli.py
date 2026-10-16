@@ -480,6 +480,12 @@ def main(argv: list[str] | None = None) -> int:
     srch.add_argument("--people", action="store_true", help="list active named persons")
     srch.add_argument("--similar", default=None, help="observation_item_id in a non-identity space")
     srch.add_argument(
+        "--similar-face",
+        default=None,
+        metavar="FACE",
+        help="face_id → other photos by same-pack face embedding (not identify; no writes)",
+    )
+    srch.add_argument(
         "--text",
         default=None,
         help="substring over OCR observation payloads (not identity; no new columns)",
@@ -1217,6 +1223,7 @@ def main(argv: list[str] | None = None) -> int:
             search_people,
             search_person,
             search_similar,
+            search_similar_faces,
             search_text,
         )
 
@@ -1230,13 +1237,16 @@ def main(argv: list[str] | None = None) -> int:
                     print("--run is required with --face", file=sys.stderr)
                     return 2
                 rec = search_face(args.store, args.run, args.face)
+            elif getattr(args, "similar_face", None):
+                rec = search_similar_faces(args.store, args.similar_face)
             elif args.similar:
                 rec = search_similar(args.store, args.similar)
             elif args.text is not None:
                 rec = search_text(args.store, args.text)
             else:
                 print(
-                    "search requires --people, --person, --face, --similar, or --text",
+                    "search requires --people, --person, --face, --similar-face, "
+                    "--similar, or --text",
                     file=sys.stderr,
                 )
                 return 2
