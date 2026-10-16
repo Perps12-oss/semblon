@@ -4,8 +4,8 @@ Clears Semblon-owned rebuildable caches and preferences beside the library
 store. Never deletes original media files or user library folders.
 
 Identity decisions, named persons, notes, saved regions, and the media index
-live in store.sqlite and are PRESERVED — wiping them would destroy
-user-authored information and is outside this operation.
+live in store.sqlite and are PRESERVED. Erasing them is ``semblon erase``
+(``semblon.erasure``), not this reset.
 """
 
 from __future__ import annotations

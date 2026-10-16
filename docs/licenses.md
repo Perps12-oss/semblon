@@ -4,7 +4,7 @@ InsightFace code is typically MIT. buffalo_l weights often research/non-commerci
 FACE-000–003 = internal evaluation only. Not commercial permission.
 Shipping weights needs a separate licence/pack decision. Fallback: YuNet + SFace.
 Do not block FACE-000 on that decision.
-Do not bundle buffalo_l into a frozen installer until that decision exists. `tools/install-windows.ps1` and the WiX **code MSI** (`packaging/msi`, `tools/msi/build-msi.ps1`) install **application code only**. Stage/build scripts refuse `buffalo_l` / `*.onnx` in the payload (`tools/msi/assert-no-weights.py`). First real ingest may still download buffalo_l via InsightFace into `%USERPROFILE%\.insightface\models\buffalo_l` — that is not Semblon redistribution.
+Do not bundle buffalo_l into a frozen installer until that decision exists. `tools/install-windows.ps1` and the WiX **code MSI** (`packaging/msi`, `tools/msi/build-msi.ps1`) install **application code only**. Stage/build scripts refuse `buffalo_l` / `*.onnx` in the payload (`tools/msi/assert-no-weights.py`). First real ingest does **not** download buffalo_l. `load_app` refuses until `semblon lab pack-accept` has pinned the local ONNX hashes. InsightFace's downloader is blocked on that path.
 
 ## Inventory (2026-09-19)
 

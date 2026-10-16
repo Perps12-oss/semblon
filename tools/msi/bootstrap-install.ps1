@@ -1,6 +1,6 @@
 # Post-MSI / first-run bootstrap: create .venv and install Semblon (code only).
-# Does NOT download or bundle buffalo_l. First real ingest may still pull weights
-# via InsightFace into %USERPROFILE%\.insightface\models\buffalo_l.
+# Does NOT download or bundle buffalo_l. Ingest refuses to load weights until
+# `semblon lab pack-accept` pins the local ONNX files.
 param(
     [Parameter(Mandatory = $true)]
     [string]$Root,

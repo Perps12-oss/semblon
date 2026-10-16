@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-from semblon.store import connect, init_db
+from semblon.store import connect, init_db, writer_lock
 from semblon.visual.engine import Analysis
 
 PROVIDER = "visual.region"
@@ -82,70 +82,71 @@ def persist_analysis(
     """Persist the hover slice. The owner map is derived and is not a column."""
     path = Path(store)
     conn = connect(path)
-    init_db(conn)
-    try:
-        persons_before = int(conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0])
-        faces_before = int(conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0])
-        face_emb_before = int(
-            conn.execute("SELECT COUNT(*) FROM embeddings WHERE modality='face'").fetchone()[0]
-        )
-        _replace_previous(conn, media_id=media_id, run_id=run_id, frame_id=frame_id)
-        observation_id = _ensure_observation(
-            conn, media_id=media_id, run_id=run_id, frame_id=frame_id, t_ms=t_ms
-        )
-        id_to_item: dict[int, str] = {}
-        for region in analysis.regions:
-            payload = region.to_payload()
-            payload["rows"] = analysis.rows.get(region.region_id, {})
-            payload["map_revision"] = analysis.revision
-            payload["frame_id"] = frame_id
-            x, y, bw, bh = region.bbox
-            item_id = uuid.uuid4().hex
-            conn.execute(
-                """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider,
-                   bbox_x1, bbox_y1, bbox_x2, bbox_y2, score, payload_json, face_id)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    item_id,
-                    observation_id,
-                    run_id,
-                    "object",
-                    PROVIDER,
-                    float(x),
-                    float(y),
-                    float(x + bw),
-                    float(y + bh),
-                    region.confidence,
-                    json.dumps(payload),
-                    None,
-                ),
+    with writer_lock():
+        init_db(conn)
+        try:
+            persons_before = int(conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0])
+            faces_before = int(conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0])
+            face_emb_before = int(
+                conn.execute("SELECT COUNT(*) FROM embeddings WHERE modality='face'").fetchone()[0]
             )
-            id_to_item[region.region_id] = item_id
-        for src, dst, kind, weight in analysis.edges:
-            if src not in id_to_item or dst not in id_to_item:
-                continue
-            if kind not in {"contains", "overlaps"}:
-                continue
-            conn.execute(
-                """INSERT INTO relationships(relationship_id, run_id, kind, src_item_id, dst_item_id,
-                   evidence_json, confirmed) VALUES (?,?,?,?,?,?,0)""",
-                (
-                    uuid.uuid4().hex,
-                    run_id,
-                    kind,
-                    id_to_item[src],
-                    id_to_item[dst],
-                    json.dumps({"weight": weight, "visual": True, "revision": analysis.revision}),
-                ),
+            _replace_previous(conn, media_id=media_id, run_id=run_id, frame_id=frame_id)
+            observation_id = _ensure_observation(
+                conn, media_id=media_id, run_id=run_id, frame_id=frame_id, t_ms=t_ms
             )
-        conn.commit()
-        persons_after = int(conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0])
-        faces_after = int(conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0])
-        face_emb_after = int(
-            conn.execute("SELECT COUNT(*) FROM embeddings WHERE modality='face'").fetchone()[0]
-        )
-    finally:
-        conn.close()
+            id_to_item: dict[int, str] = {}
+            for region in analysis.regions:
+                payload = region.to_payload()
+                payload["rows"] = analysis.rows.get(region.region_id, {})
+                payload["map_revision"] = analysis.revision
+                payload["frame_id"] = frame_id
+                x, y, bw, bh = region.bbox
+                item_id = uuid.uuid4().hex
+                conn.execute(
+                    """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider,
+                       bbox_x1, bbox_y1, bbox_x2, bbox_y2, score, payload_json, face_id)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        item_id,
+                        observation_id,
+                        run_id,
+                        "object",
+                        PROVIDER,
+                        float(x),
+                        float(y),
+                        float(x + bw),
+                        float(y + bh),
+                        region.confidence,
+                        json.dumps(payload),
+                        None,
+                    ),
+                )
+                id_to_item[region.region_id] = item_id
+            for src, dst, kind, weight in analysis.edges:
+                if src not in id_to_item or dst not in id_to_item:
+                    continue
+                if kind not in {"contains", "overlaps"}:
+                    continue
+                conn.execute(
+                    """INSERT INTO relationships(relationship_id, run_id, kind, src_item_id, dst_item_id,
+                       evidence_json, confirmed) VALUES (?,?,?,?,?,?,0)""",
+                    (
+                        uuid.uuid4().hex,
+                        run_id,
+                        kind,
+                        id_to_item[src],
+                        id_to_item[dst],
+                        json.dumps({"weight": weight, "visual": True, "revision": analysis.revision}),
+                    ),
+                )
+            conn.commit()
+            persons_after = int(conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0])
+            faces_after = int(conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0])
+            face_emb_after = int(
+                conn.execute("SELECT COUNT(*) FROM embeddings WHERE modality='face'").fetchone()[0]
+            )
+        finally:
+            conn.close()
     if persons_after != persons_before:
         raise RuntimeError("visual persist must not create persons")
     if faces_after != faces_before:

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -167,6 +170,102 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+SQL_IN_CHUNK = 500
+_WRITER = threading.RLock()
+
+# Biometric and library tables. schema_meta and schema_migrations stay.
+LIBRARY_TABLES = (
+    "eval_pairs",
+    "eval_sets",
+    "decisions",
+    "group_members",
+    "relationships",
+    "track_members",
+    "embeddings",
+    "observation_items",
+    "faces",
+    "cluster_person",
+    "clusters",
+    "tracks",
+    "observation_groups",
+    "observations",
+    "events",
+    "persons",
+    "media",
+    "runs",
+)
+
+
+@contextmanager
+def writer_lock():
+    """One SQLite writer at a time. Hold this across a short commit, not inference."""
+    _WRITER.acquire()
+    try:
+        yield
+    finally:
+        _WRITER.release()
+
+
+def _chunks(ids: list, size: int = SQL_IN_CHUNK):
+    for i in range(0, len(ids), size):
+        yield list(ids[i : i + size])
+
+
+def exec_in_chunks(conn, sql_prefix: str, ids: list, params_prefix: tuple = ()) -> None:
+    """Run a statement whose IN-list is appended. sql_prefix must not contain user text."""
+    for chunk in _chunks(ids):
+        marks = ",".join("?" * len(chunk))
+        conn.execute(f"{sql_prefix} ({marks})", (*params_prefix, *chunk))
+
+
+def rows_in_chunks(conn, sql_prefix: str, ids: list, params_prefix: tuple = ()) -> list:
+    rows = []
+    for chunk in _chunks(ids):
+        marks = ",".join("?" * len(chunk))
+        rows.extend(conn.execute(f"{sql_prefix} ({marks})", (*params_prefix, *chunk)).fetchall())
+    return rows
+
+
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (name,),
+    ).fetchone()
+    return row is not None
+
+
+def delete_observation_tree(conn: sqlite3.Connection, observation_id: str) -> None:
+    """Delete one observation and rows that reference it. No ON DELETE CASCADE."""
+    item_ids = [
+        r[0]
+        for r in conn.execute(
+            "SELECT item_id FROM observation_items WHERE observation_id=?",
+            (observation_id,),
+        ).fetchall()
+    ]
+    face_ids = [
+        r[0]
+        for r in conn.execute(
+            "SELECT face_id FROM faces WHERE observation_id=?",
+            (observation_id,),
+        ).fetchall()
+    ]
+    if item_ids:
+        exec_in_chunks(conn, "DELETE FROM group_members WHERE item_id IN", item_ids)
+        exec_in_chunks(conn, "DELETE FROM track_members WHERE item_id IN", item_ids)
+        exec_in_chunks(conn, "DELETE FROM embeddings WHERE item_id IN", item_ids)
+        exec_in_chunks(conn, "DELETE FROM relationships WHERE src_item_id IN", item_ids)
+        exec_in_chunks(conn, "DELETE FROM relationships WHERE dst_item_id IN", item_ids)
+        exec_in_chunks(conn, "DELETE FROM observation_items WHERE item_id IN", item_ids)
+    if face_ids:
+        if _table_exists(conn, "eval_pairs"):
+            exec_in_chunks(conn, "DELETE FROM eval_pairs WHERE face_a IN", face_ids)
+            exec_in_chunks(conn, "DELETE FROM eval_pairs WHERE face_b IN", face_ids)
+        exec_in_chunks(conn, "DELETE FROM decisions WHERE face_id IN", face_ids)
+        exec_in_chunks(conn, "DELETE FROM faces WHERE face_id IN", face_ids)
+    conn.execute("DELETE FROM observations WHERE observation_id=?", (observation_id,))
+
+
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version    INTEGER PRIMARY KEY,
@@ -305,7 +404,109 @@ def schema_version_int(conn: sqlite3.Connection) -> int:
         return 0
 
 
-def apply_migrations(conn: sqlite3.Connection) -> int:
+def _stamp_schema(conn: sqlite3.Connection, version: int, now: str) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('schema_version', ?)",
+        (str(version),),
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+        (version, now),
+    )
+
+
+def _migration_4_copy(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """CREATE TABLE decisions_new (
+             decision_id     TEXT PRIMARY KEY,
+             kind            TEXT NOT NULL CHECK (kind IN ('identify','merge','split','name','reject','note')),
+             face_id         TEXT REFERENCES faces(face_id),
+             person_id       TEXT REFERENCES persons(person_id),
+             cluster_id      TEXT REFERENCES clusters(cluster_id),
+             pack_id         TEXT NOT NULL,
+             score_top1      REAL,
+             score_top2      REAL,
+             margin          REAL,
+             policy_json     TEXT NOT NULL,
+             run_id          TEXT NOT NULL REFERENCES runs(run_id),
+             created_at      TEXT NOT NULL
+           )"""
+    )
+    conn.execute(
+        """INSERT INTO decisions_new(
+             decision_id, kind, face_id, person_id, cluster_id, pack_id,
+             score_top1, score_top2, margin, policy_json, run_id, created_at)
+           SELECT
+             decision_id, kind, face_id, person_id, cluster_id, pack_id,
+             score_top1, score_top2, margin, policy_json, run_id, created_at
+           FROM decisions"""
+    )
+    conn.execute("DROP TABLE decisions")
+    conn.execute("ALTER TABLE decisions_new RENAME TO decisions")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_decisions_run_kind ON decisions(run_id, kind)")
+
+
+def _apply_migration_4(conn: sqlite3.Connection, now: str, *, fail_after: str | None = None) -> None:
+    """Rebuild decisions in one transaction. A crash rolls back, or the next open finishes.
+
+    Python executescript() commits before the script, and SQLite used to leave
+    a dropped decisions table with the old schema version. This path does not.
+    ``fail_after='drop'`` is for the crash-resume test: it raises inside the
+    transaction so the caller can see the rollback.
+    """
+    conn.commit()
+    previous = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS schema_meta (
+                     key TEXT PRIMARY KEY, value TEXT NOT NULL)"""
+            )
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS schema_migrations (
+                     version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"""
+            )
+            has_old = _table_exists(conn, "decisions")
+            has_new = _table_exists(conn, "decisions_new")
+            if has_new and not has_old:
+                conn.execute("ALTER TABLE decisions_new RENAME TO decisions")
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_decisions_run_kind ON decisions(run_id, kind)"
+                )
+            elif has_old and has_new:
+                old_n = int(conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0])
+                new_n = int(conn.execute("SELECT COUNT(*) FROM decisions_new").fetchone()[0])
+                # An empty decisions table beside a populated decisions_new is the
+                # crash window after DROP, if a later open recreated decisions.
+                if old_n == 0 and new_n > 0:
+                    conn.execute("DROP TABLE decisions")
+                    conn.execute("ALTER TABLE decisions_new RENAME TO decisions")
+                    conn.execute(
+                        "CREATE INDEX IF NOT EXISTS ix_decisions_run_kind ON decisions(run_id, kind)"
+                    )
+                else:
+                    conn.execute("DROP TABLE decisions_new")
+                    _migration_4_copy(conn)
+            elif has_old:
+                _migration_4_copy(conn)
+            else:
+                raise sqlite3.OperationalError(
+                    "schema migration 4 found neither decisions nor decisions_new"
+                )
+            if fail_after == "drop":
+                raise RuntimeError("migration 4 interrupted after drop")
+            _stamp_schema(conn, 4, now)
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.isolation_level = previous
+
+
+def apply_migrations(conn: sqlite3.Connection, *, fail_after: str | None = None) -> int:
     """Apply pending schema migrations. Identity tables (faces/clusters/persons) are unchanged."""
     conn.executescript(
         """CREATE TABLE IF NOT EXISTS schema_meta (
@@ -330,21 +531,21 @@ def apply_migrations(conn: sqlite3.Connection) -> int:
     for version, sql in MIGRATIONS:
         if v >= version:
             continue
-        conn.executescript(sql)
-        conn.execute(
-            "INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('schema_version', ?)",
-            (str(version),),
-        )
-        conn.execute(
-            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
-            (version, now),
-        )
+        if version == 4:
+            _apply_migration_4(conn, now, fail_after=fail_after)
+        else:
+            conn.executescript(sql)
+            _stamp_schema(conn, version, now)
         v = version
     conn.commit()
     return v
 
 
 def init_db(conn: sqlite3.Connection) -> None:
+    # Rescue before DDL. CREATE TABLE IF NOT EXISTS decisions would otherwise
+    # invent an empty decisions table and hide the rows sitting in decisions_new.
+    if _table_exists(conn, "decisions_new") and not _table_exists(conn, "decisions"):
+        _apply_migration_4(conn, datetime.now(timezone.utc).isoformat())
     conn.executescript(DDL)
     apply_migrations(conn)
 
@@ -484,30 +685,11 @@ def integrity_report(store: Path) -> dict:
     }
 
 
-def restore_store(src: Path, dest: Path, *, force: bool = False) -> dict:
-    """Restore a backup onto dest. Refuses to overwrite unless force=True."""
-    src_path = Path(src)
-    dest_path = Path(dest)
-    if not src_path.is_file():
-        raise FileNotFoundError(src_path)
-    if dest_path.exists() and not force:
-        raise FileExistsError(dest_path)
-    dest_path.parent.mkdir(parents=True, exist_ok=True)
-    if force:
-        for p in (
-            dest_path,
-            Path(str(dest_path) + "-wal"),
-            Path(str(dest_path) + "-shm"),
-        ):
-            try:
-                if p.exists():
-                    p.unlink()
-            except OSError:
-                pass
-    src_conn = sqlite3.connect(str(src_path))
+def _backup_into(src: Path, dest: Path) -> None:
+    src_conn = sqlite3.connect(str(src))
     src_conn.execute("PRAGMA busy_timeout=5000")
     try:
-        dst_conn = sqlite3.connect(str(dest_path))
+        dst_conn = sqlite3.connect(str(dest))
         dst_conn.execute("PRAGMA busy_timeout=5000")
         try:
             src_conn.backup(dst_conn)
@@ -515,6 +697,45 @@ def restore_store(src: Path, dest: Path, *, force: bool = False) -> dict:
             dst_conn.close()
     finally:
         src_conn.close()
+
+
+def restore_store(src: Path, dest: Path, *, force: bool = False) -> dict:
+    """Restore a backup onto dest. The live file stays until the copy is complete."""
+    src_path = Path(src)
+    dest_path = Path(dest)
+    if not src_path.is_file():
+        raise FileNotFoundError(src_path)
+    if dest_path.exists() and not force:
+        raise FileExistsError(dest_path)
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest_path.with_name(dest_path.name + ".restore-tmp")
+    if tmp.exists():
+        tmp.unlink()
+    try:
+        _backup_into(src_path, tmp)
+    except Exception:
+        if tmp.exists():
+            tmp.unlink()
+        raise
+    if dest_path.exists():
+        try:
+            live = sqlite3.connect(str(dest_path))
+            live.execute("PRAGMA busy_timeout=5000")
+            try:
+                live.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            finally:
+                live.close()
+        except sqlite3.Error:
+            if tmp.exists():
+                tmp.unlink()
+            raise
+    os.replace(tmp, dest_path)
+    for sidecar in (Path(str(dest_path) + "-wal"), Path(str(dest_path) + "-shm")):
+        try:
+            if sidecar.exists():
+                sidecar.unlink()
+        except OSError:
+            pass
     return {
         "from": str(src_path.resolve()),
         "store": str(dest_path.resolve()),

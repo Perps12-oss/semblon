@@ -21,6 +21,7 @@ Ops: ping, status, submit_ingest, cancel, pause, unpause, result, shutdown.
 from __future__ import annotations
 
 import json
+import secrets
 import socket
 import threading
 import time
@@ -91,6 +92,7 @@ class IpcProbeServer:
         self._last_result: JobResult | None = None
         self._result_lock = threading.Lock()
         self._bound_port: int | None = None
+        self.token = secrets.token_hex(16)
 
     @property
     def bound_port(self) -> int | None:
@@ -251,6 +253,12 @@ class IpcProbeServer:
             if not isinstance(msg, dict):
                 return {"id": None, "ok": False, "error": {"type": "ProtocolError", "message": "request must be object"}}
             req_id = msg.get("id")
+            if not secrets.compare_digest(str(msg.get("token") or ""), self.token):
+                return {
+                    "id": req_id,
+                    "ok": False,
+                    "error": {"type": "AuthError", "message": "ipc probe token required"},
+                }
             op = msg.get("op")
             if not isinstance(op, str) or not op:
                 return {"id": req_id, "ok": False, "error": {"type": "ProtocolError", "message": "op required"}}
@@ -317,9 +325,10 @@ class IpcProbeServer:
 class IpcProbeClient:
     """Minimal external client for the probe. No Tk."""
 
-    def __init__(self, host: str = DEFAULT_HOST, port: int = 0):
+    def __init__(self, host: str = DEFAULT_HOST, port: int = 0, token: str | None = None):
         self.host = host
         self.port = int(port)
+        self.token = token or ""
         self._sock: socket.socket | None = None
         self._buf = b""
         self._lock = threading.Lock()
@@ -350,7 +359,7 @@ class IpcProbeClient:
     def request(self, op: str, *, req_id: Any = 1, timeout: float = 5.0, **params: Any) -> dict:
         if self._sock is None:
             raise RuntimeError("not connected")
-        payload = {"id": req_id, "op": op, **params}
+        payload = {"id": req_id, "op": op, "token": self.token, **params}
         line = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
         with self._lock:
             self._sock.sendall(line)

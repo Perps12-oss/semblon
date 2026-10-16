@@ -9,6 +9,7 @@ Find Similar (C) and search_similar (B) are separate stacks — never reused her
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
@@ -69,18 +70,48 @@ def scan_dirs_from_media(rows: list[dict]) -> list[Path]:
     return sorted(dirs, key=lambda d: str(d).lower())
 
 
+def folders_from_runs(store: Path) -> list[Path]:
+    """Folders recorded on runs. A skipped second copy still lives in one of these."""
+    con = connect(Path(store))
+    found: list[Path] = []
+    try:
+        rows = con.execute("SELECT config_json FROM runs").fetchall()
+    except Exception:
+        rows = []
+    finally:
+        con.close()
+    for row in rows:
+        raw = row["config_json"] if hasattr(row, "keys") else row[0]
+        try:
+            cfg = json.loads(raw or "{}")
+        except json.JSONDecodeError:
+            continue
+        folder = cfg.get("folder") if isinstance(cfg, dict) else None
+        if folder:
+            found.append(Path(str(folder)))
+    return found
+
+
+def _is_fs_root(directory: Path) -> bool:
+    try:
+        resolved = directory.resolve()
+    except OSError:
+        return True
+    return resolved.parent == resolved
+
+
 def candidate_files(rows: list[dict], dirs: list[Path]) -> list[Path]:
-    """Media paths plus sibling stills in those directories (not a full-drive walk)."""
+    """Media paths plus stills under those directories (not a filesystem-root walk)."""
     found: set[Path] = set()
     for row in rows:
         p = Path(str(row.get("path") or ""))
         if p.is_file():
             found.add(p.resolve())
-    for d in dirs:
+    for directory in dirs:
         try:
-            if not d.is_dir():
+            if not directory.is_dir() or _is_fs_root(directory):
                 continue
-            for child in d.iterdir():
+            for child in directory.rglob("*"):
                 if not child.is_file():
                     continue
                 if child.suffix.lower() not in STILL_EXT:
@@ -121,6 +152,9 @@ def find_exact_duplicate_groups(
     rows = library_media_rows(store)
     by_path = {str(Path(r["path"]).resolve()): r for r in rows if r.get("path")}
     dirs = scan_dirs_from_media(rows)
+    for extra in folders_from_runs(store):
+        if extra not in dirs:
+            dirs.append(extra)
     files = candidate_files(rows, dirs)
     if not files:
         return _empty_exact("EMPTY", "No photos found to scan for duplicates.")
@@ -138,15 +172,17 @@ def find_exact_duplicate_groups(
         key = str(path)
         media = by_path.get(key)
         digest = None
-        if media and media.get("sha256"):
-            digest = str(media["sha256"])
-        else:
+        if path.is_file():
             try:
                 digest = _sha256_file(path)
             except OSError:
                 continue
             except Exception:  # noqa: BLE001
                 continue
+        elif media and media.get("sha256"):
+            digest = str(media["sha256"])
+        else:
+            continue
         buckets[digest].append(
             {
                 "path": key,

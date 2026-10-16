@@ -1,6 +1,6 @@
 # One-time Windows install for this repository or MSI install root.
 # Creates .venv and installs Semblon editable.
-# Does not bundle buffalo_l weights (internal evaluation only; first ingest may download them).
+# Does not bundle buffalo_l weights. Ingest does not download them.
 param(
     [string]$Root = "",
     [string]$PythonLauncher = "py",
@@ -58,6 +58,13 @@ Exit-IfNativeFailed "pip install -r requirements.txt"
 # Product shell is PySide6 (`semblon shell`). The gui extra is required.
 & $VenvPy -m pip install -e ".[gui]"
 Exit-IfNativeFailed "pip install -e .[gui]"
+# insightface depends on opencv-python. Keep only the pinned headless build.
+# Uninstall can remove the shared cv2 package, so reinstall headless afterwards.
+& $VenvPy -m pip uninstall -y opencv-python opencv-contrib-python
+& $VenvPy -m pip install --force-reinstall --no-deps "opencv-python-headless==5.0.0.93"
+Exit-IfNativeFailed "reinstall opencv-python-headless"
+& $VenvPy (Join-Path $Root "tools\assert_one_opencv.py")
+Exit-IfNativeFailed "one opencv"
 
 & $VenvPy -c "import semblon, PySide6; print('import ok', semblon.__version__, 'PySide6', PySide6.__version__)"
 if ($LASTEXITCODE -ne 0) {

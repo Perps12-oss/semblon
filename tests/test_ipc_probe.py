@@ -21,7 +21,7 @@ def test_probe_refuses_non_loopback(tmp_path):
 def test_ping_status_and_unknown_op(tmp_path):
     with IpcProbeServer(tmp_path / "s.sqlite") as server:
         assert server.bound_port is not None
-        with IpcProbeClient(port=server.bound_port) as client:
+        with IpcProbeClient(port=server.bound_port, token=server.token) as client:
             ping = client.request("ping", req_id=1)
             assert ping["ok"] is True
             assert ping["protocol"] == PROTOCOL
@@ -58,7 +58,7 @@ def test_submit_progress_cancel_result(tmp_path, monkeypatch):
     folder.mkdir()
 
     with IpcProbeServer(tmp_path / "s.sqlite") as server:
-        with IpcProbeClient(port=server.bound_port) as client:
+        with IpcProbeClient(port=server.bound_port, token=server.token) as client:
             submit = client.request("submit_ingest", req_id=10, folder=str(folder))
             assert submit["ok"] is True
             assert submit["handle"]["folder"] == str(folder)
@@ -118,7 +118,7 @@ def test_pause_unpause_via_ipc(tmp_path, monkeypatch):
         folder = tmp_path / "photos"
         folder.mkdir()
 
-        with IpcProbeClient(port=server.bound_port) as client:
+        with IpcProbeClient(port=server.bound_port, token=server.token) as client:
             assert client.request("submit_ingest", req_id=20, folder=str(folder))["ok"] is True
             assert entered.wait(2)
             assert client.request("pause", req_id=21)["ok"] is True
@@ -148,7 +148,7 @@ def test_failed_result_via_ipc(tmp_path, monkeypatch):
     folder.mkdir()
 
     with IpcProbeServer(tmp_path / "s.sqlite") as server:
-        with IpcProbeClient(port=server.bound_port) as client:
+        with IpcProbeClient(port=server.bound_port, token=server.token) as client:
             assert client.request("submit_ingest", req_id=40, folder=str(folder))["ok"] is True
             deadline = time.monotonic() + 2
             while time.monotonic() < deadline:
@@ -174,7 +174,7 @@ def test_submit_resume_flag_and_json_error(tmp_path, monkeypatch):
     folder.mkdir()
 
     with IpcProbeServer(tmp_path / "s.sqlite") as server:
-        with IpcProbeClient(port=server.bound_port) as client:
+        with IpcProbeClient(port=server.bound_port, token=server.token) as client:
             ok = client.request("submit_ingest", req_id=30, folder=str(folder), resume=True)
             assert ok["ok"] is True
             deadline = time.monotonic() + 2

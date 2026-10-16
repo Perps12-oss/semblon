@@ -1,0 +1,30 @@
+# Owner-only. Does not run on push and does not download buffalo_l.
+name: facekit-owner
+on:
+  workflow_dispatch:
+
+jobs:
+  facekit:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime without a second OpenCV
+        run: |
+          python -m pip install -U pip
+          python -m pip install -r requirements.txt
+          python -m pip install -e .
+          python -m pip uninstall -y opencv-python opencv-contrib-python
+          python -m pip install --force-reinstall --no-deps opencv-python-headless==5.0.0.93
+          python tools/assert_one_opencv.py
+      - name: Require a pinned local pack
+        shell: pwsh
+        run: |
+          python -c "from semblon.engine import ModelPackError, assert_face_pack_ready
+          try:
+              rec = assert_face_pack_ready()
+          except ModelPackError as exc:
+              raise SystemExit('owner pack missing or unpinned: ' + str(exc))
+          print('pinned onnx files', len(rec))"

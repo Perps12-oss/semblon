@@ -52,7 +52,7 @@ from semblon.progress import (
     make_event,
 )
 from semblon.providers import FaceKitProvider
-from semblon.store import connect, init_db, stamp_unfinished_runs
+from semblon.store import connect, delete_observation_tree, init_db, stamp_unfinished_runs, writer_lock
 from semblon.temporal import (
     DEFAULT_SAMPLE_HZ,
     VIDEO_EXT,
@@ -206,6 +206,29 @@ def media_skip_reason(
     return None, media_id
 
 
+def _remember_path(conn, media_id: str | None, path: Path, mtime_ns: int, byte_size: int) -> bool:
+    """Point the stored row at a moved file. A second copy that still has the original stays put."""
+    if not media_id:
+        return False
+    row = conn.execute("SELECT path FROM media WHERE media_id=?", (media_id,)).fetchone()
+    if row is None:
+        return False
+    old = Path(str(row["path"]))
+    new = Path(path)
+    if old == new:
+        return False
+    try:
+        if old.is_file():
+            return False
+    except OSError:
+        return False
+    conn.execute(
+        "UPDATE media SET path=?, mtime_ns=?, byte_size=? WHERE media_id=?",
+        (str(new), int(mtime_ns), int(byte_size), media_id),
+    )
+    return True
+
+
 def video_sampling_complete(conn, media_id: str, *, run_id: str | None = None) -> bool:
     run_filter = " AND i.run_id=?" if run_id is not None else ""
     params = (media_id, VIDEO_COMPLETE_PROVIDER, run_id) if run_id is not None else (
@@ -319,20 +342,19 @@ def _header_pixels(data: bytes) -> int | None:
 
 
 def _hash_path(path: Path, index: int) -> dict:
-    """SHA-256 only. No decode, no embed, no SQLite."""
+    """One read: SHA-256 and the bytes persist will decode. No embed, no SQLite."""
     try:
-        st = path.stat()
-        if st.st_size > MAX_STILL_BYTES:
-            return {"index": index, "path": path, "outcome": "failed", "error": "too_large"}
-        digest = _sha256_file(path)
-    except OSError:
-        return {"index": index, "path": path, "outcome": "failed", "error": "hash"}
+        digest, data, mtime_ns, byte_size = _read_and_hash(path)
+    except OSError as exc:
+        error = "too_large" if "byte cap" in str(exc) else "hash"
+        return {"index": index, "path": path, "outcome": "failed", "error": error}
     return {
         "index": index,
         "path": path,
         "digest": digest,
-        "mtime_ns": getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
-        "byte_size": st.st_size,
+        "data": data,
+        "mtime_ns": mtime_ns,
+        "byte_size": byte_size,
         "outcome": "hashed",
     }
 
@@ -739,75 +761,62 @@ def ingest(
             nonlocal n_media, n_faces, n_ok, n_lq, n_rej, n_fail, dirty
             if want_cancel():
                 return
+            with writer_lock():
+                maybe_commit(force=True)
             img0 = _decode_bgr(data, path)
             if img0 is None:
                 n_fail += 1
                 tick(path, "failed", force=True)
                 return
             h, w = img0.shape[:2]
-            created_media = False
-            if media_id is None:
-                media_id = uuid.uuid4().hex
-                conn.execute(
-                    """INSERT INTO media(media_id, source_type, path, sha256, width, height,
-                       mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
-                    (media_id, "folder", str(path), digest, w, h, mtime_ns, byte_size),
-                )
-                created_media = True
-                n_media += 1
-                dirty += 1
-
-            obs_id = uuid.uuid4().hex
-            conn.execute(
-                "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
-                (obs_id, media_id, None, None, run_id),
-            )
-            dirty += 1
-
-            def _drop_failed_still() -> None:
-                nonlocal n_media, dirty
-                conn.execute("DELETE FROM faces WHERE observation_id=?", (obs_id,))
-                conn.execute("DELETE FROM observations WHERE observation_id=?", (obs_id,))
-                if created_media:
-                    left = conn.execute(
-                        "SELECT 1 FROM observations WHERE media_id=? LIMIT 1",
-                        (media_id,),
-                    ).fetchone()
-                    if left is None:
-                        conn.execute("DELETE FROM media WHERE media_id=?", (media_id,))
-                        n_media = max(0, n_media - 1)
-                dirty += 1
-                maybe_commit(force=True)
-
+            if want_cancel():
+                return
             try:
-                if want_cancel():
-                    _drop_failed_still()
-                    return
                 faces = embed_bgr(app, img0)
             except Exception:
-                _drop_failed_still()
                 n_fail += 1
                 tick(path, "failed", force=True)
                 return
+            if want_cancel():
+                return
 
-            nf, nok, nlq, nrej = _persist_faces(
-                conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
-            )
-            n_faces += nf
-            n_ok += nok
-            n_lq += nlq
-            n_rej += nrej
-            dirty += max(nf, 1)
-            if extra_observers:
-                observe_bgr(
-                    conn,
-                    observation_id=obs_id,
-                    run_id=run_id,
-                    img=img0,
-                    observers=extra_observers,
+            with writer_lock():
+                if media_id is None:
+                    media_id = uuid.uuid4().hex
+                    conn.execute(
+                        """INSERT INTO media(media_id, source_type, path, sha256, width, height,
+                           mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
+                        (media_id, "folder", str(path), digest, w, h, mtime_ns, byte_size),
+                    )
+                    n_media += 1
+                    dirty += 1
+                elif _remember_path(conn, media_id, path, mtime_ns, byte_size):
+                    dirty += 1
+
+                obs_id = uuid.uuid4().hex
+                conn.execute(
+                    "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                    (obs_id, media_id, None, None, run_id),
                 )
                 dirty += 1
-            maybe_commit()
+                nf, nok, nlq, nrej = _persist_faces(
+                    conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+                )
+                n_faces += nf
+                n_ok += nok
+                n_lq += nlq
+                n_rej += nrej
+                dirty += max(nf, 1)
+                if extra_observers:
+                    observe_bgr(
+                        conn,
+                        observation_id=obs_id,
+                        run_id=run_id,
+                        img=img0,
+                        observers=extra_observers,
+                    )
+                    dirty += 1
+                maybe_commit(force=True)
             tick(path, "processed")
 
         # --- stills: hash → skip → decode/embed ---
@@ -823,13 +832,15 @@ def ingest(
                     tick(path, "failed", force=True)
                     continue
                 reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
-                if reason == "seen":
-                    n_skip_seen += 1
-                    tick(path, "skipped_seen")
-                    continue
-                if reason == "same_run":
-                    n_skip_same += 1
-                    tick(path, "skipped_same_run")
+                if reason in {"seen", "same_run"}:
+                    if _remember_path(conn, media_id, path, mtime_ns, byte_size):
+                        dirty += 1
+                    if reason == "seen":
+                        n_skip_seen += 1
+                        tick(path, "skipped_seen")
+                    else:
+                        n_skip_same += 1
+                        tick(path, "skipped_same_run")
                     continue
                 persist_still(
                     path=path,
@@ -854,13 +865,15 @@ def ingest(
                     continue
                 digest = rec["digest"]
                 reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
-                if reason == "seen":
-                    n_skip_seen += 1
-                    tick(path, "skipped_seen")
-                    continue
-                if reason == "same_run":
-                    n_skip_same += 1
-                    tick(path, "skipped_same_run")
+                if reason in {"seen", "same_run"}:
+                    if _remember_path(conn, media_id, path, rec["mtime_ns"], rec["byte_size"]):
+                        dirty += 1
+                    if reason == "seen":
+                        n_skip_seen += 1
+                        tick(path, "skipped_seen")
+                    else:
+                        n_skip_same += 1
+                        tick(path, "skipped_same_run")
                     continue
                 persist_still(
                     path=path,
@@ -868,7 +881,7 @@ def ingest(
                     media_id=media_id,
                     mtime_ns=rec["mtime_ns"],
                     byte_size=rec["byte_size"],
-                    data=None,
+                    data=rec.get("data"),
                 )
                 if want_cancel():
                     cancelled = True
@@ -892,13 +905,15 @@ def ingest(
                 continue
 
             reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
-            if reason == "seen":
-                n_skip_seen += 1
-                tick(path, "skipped_seen")
-                continue
-            if reason == "same_run":
-                n_skip_same += 1
-                tick(path, "skipped_same_run")
+            if reason in {"seen", "same_run"}:
+                if _remember_path(conn, media_id, path, mtime_ns, byte_size):
+                    dirty += 1
+                if reason == "seen":
+                    n_skip_seen += 1
+                    tick(path, "skipped_seen")
+                else:
+                    n_skip_same += 1
+                    tick(path, "skipped_same_run")
                 continue
 
             width = height = None
@@ -915,8 +930,26 @@ def ingest(
                     if int(fh) * int(fw) > MAX_IMAGE_PIXELS:
                         frames_failed += 1
                         continue
-                    if width is None:
-                        height, width = img.shape[:2]
+                    existing = None
+                    if media_id is not None:
+                        row = conn.execute(
+                            """SELECT observation_id FROM observations
+                               WHERE media_id=? AND frame_id=? AND run_id=?""",
+                            (media_id, int(frame_id), run_id),
+                        ).fetchone()
+                        if row is not None:
+                            existing = row[0]
+                            have = conn.execute(
+                                "SELECT COUNT(*) FROM faces WHERE observation_id=?",
+                                (existing,),
+                            ).fetchone()[0]
+                            if have:
+                                frames_ok += 1
+                                continue
+                    with writer_lock():
+                        maybe_commit(force=True)
+                        if width is None:
+                            height, width = img.shape[:2]
                         if media_id is None:
                             media_id = uuid.uuid4().hex
                             conn.execute(
@@ -935,56 +968,46 @@ def ingest(
                             )
                             n_media += 1
                             dirty += 1
-                    obs_id = uuid.uuid4().hex
-                    inserted = False
-                    try:
-                        conn.execute(
-                            "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
-                            (obs_id, media_id, int(frame_id), int(t_ms), run_id),
-                        )
-                        inserted = True
-                        dirty += 1
-                    except sqlite3.IntegrityError:
-                        row = conn.execute(
-                            """SELECT observation_id FROM observations
-                               WHERE media_id=? AND frame_id=? AND run_id=?""",
-                            (media_id, int(frame_id), run_id),
-                        ).fetchone()
-                        if row is None:
-                            frames_failed += 1
-                            continue
-                        obs_id = row[0]
-                        have = conn.execute(
-                            "SELECT COUNT(*) FROM faces WHERE observation_id=?",
-                            (obs_id,),
-                        ).fetchone()[0]
-                        if have:
-                            frames_ok += 1
-                            continue
+                            maybe_commit(force=True)
+                        elif width is not None:
+                            conn.execute(
+                                "UPDATE media SET width=?, height=? WHERE media_id=? AND width IS NULL",
+                                (width, height, media_id),
+                            )
                     try:
                         faces = embed_bgr(app, img)
                     except Exception:
-                        conn.execute(
-                            "DELETE FROM observations WHERE observation_id=?",
-                            (obs_id,),
-                        )
+                        if existing is not None:
+                            with writer_lock():
+                                delete_observation_tree(conn, existing)
+                                maybe_commit(force=True)
                         frames_failed += 1
                         continue
-                    if not inserted:
-                        dirty += 1
-                    nf, nok, nlq, nrej = _persist_faces(
-                        conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
-                    )
-                    n_faces += nf
-                    n_ok += nok
-                    n_lq += nlq
-                    n_rej += nrej
-                    dirty += max(nf, 1)
-                    frames_ok += 1
-                    maybe_commit()
+                    with writer_lock():
+                        if existing is None:
+                            obs_id = uuid.uuid4().hex
+                            conn.execute(
+                                "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                                (obs_id, media_id, int(frame_id), int(t_ms), run_id),
+                            )
+                            dirty += 1
+                        else:
+                            obs_id = existing
+                            dirty += 1
+                        nf, nok, nlq, nrej = _persist_faces(
+                            conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+                        )
+                        n_faces += nf
+                        n_ok += nok
+                        n_lq += nlq
+                        n_rej += nrej
+                        dirty += max(nf, 1)
+                        frames_ok += 1
+                        maybe_commit(force=True)
             except VideoError:
                 n_fail += 1
-                maybe_commit(force=True)
+                with writer_lock():
+                    maybe_commit(force=True)
                 tick(path, "failed", force=True)
                 continue
 
@@ -997,17 +1020,6 @@ def ingest(
                 _mark_video_sampling_complete(
                     conn, media_id=media_id, run_id=run_id, frames=frames_sampled
                 )
-                dirty += 1
-
-            if width is None and media_id is None:
-                # No frames decoded — insert media row with null dims so hash skip works later.
-                media_id = uuid.uuid4().hex
-                conn.execute(
-                    """INSERT INTO media(media_id, source_type, path, sha256, width, height,
-                       mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
-                    (media_id, "video", str(path), digest, None, None, mtime_ns, byte_size),
-                )
-                n_media += 1
                 dirty += 1
 
             n_video_frames += frames_ok
