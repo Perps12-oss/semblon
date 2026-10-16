@@ -272,15 +272,15 @@ def live_capture(
         cap = factory(src)
         conn = connect(store)
         init_db(conn)
-        import insightface
+        import cv2
         import onnxruntime as ort
         from semblon.engine import discover_weight_hashes
-        from semblon.providers import FaceKitProvider
+        from semblon.identity_config import DET_SIZE, EXPECTED_FACE_DIM
+        from semblon.providers import YuNetSFaceProvider
         ep = select_execution_provider(prefer_gpu=prefer_gpu)
-        # Load first so a cold download is hashed into pack_id, not sha256:unhashed.
-        app = FaceKitProvider().load((640, 640), prefer_gpu=prefer_gpu).app
+        app = YuNetSFaceProvider().load(DET_SIZE, prefer_gpu=prefer_gpu).app
         pid = pack_id(
-            getattr(insightface, "__version__", "unknown"),
+            f"opencv-{cv2.__version__}",
             discover_weight_hashes(),
         )
         run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
@@ -307,7 +307,7 @@ def live_capture(
                 datetime.now(timezone.utc).isoformat(),
                 __version__,
                 pid,
-                512,
+                EXPECTED_FACE_DIM,
                 "l2",
                 json.dumps(config),
                 json.dumps(runtime),

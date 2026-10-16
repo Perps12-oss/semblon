@@ -10,12 +10,15 @@ from pathlib import Path
 import numpy as np
 
 from semblon.compare import CompareError, compare
+from semblon.identity_config import (
+    DEFAULT_EPS,
+    DEFAULT_MIN_SAMPLES,
+    METRIC,
+)
 from semblon.store import connect, init_db
 
-# Frozen by S1 golden 20260913T153515Z-1e915abe. Do not retune to beautify clusters.
-DEFAULT_EPS = 0.40  # distance = 1 - cosine; keep together only if sim >= 0.60
-DEFAULT_MIN_SAMPLES = 2
-METRIC = "1-dot"
+# Active YuNet+SFace defaults from identity_config (PROVISIONAL until Q-gate eval).
+# Historical buffalo_l S1 values: semblon.identity_buffalo_frozen — do not retune those.
 MAX_DBSCAN_FACES = 15000
 
 

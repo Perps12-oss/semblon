@@ -1,5 +1,7 @@
 # Semblon production status
 
+**Historical capability list.** As of 2026-10-16 the product contract is `docs/PRODUCT.md` and the evidence-backed capability status is `docs/BUILD-STATUS.md`. Keep this file as the 2026-09-22 record plus the 2026-10-05 shell correction. Do not treat its COMPLETE bullets as the current product matrix.
+
 **Production architecture:** COMPLETE — 2026-10-05. See `docs/ARCHITECTURE.md` and the CLOSED / OPEN split in `docs/COMPLETION-MATRIX.md`.
 
 **Date of the capability lists below:** 2026-09-22, plus the shell correction on 2026-10-05.  

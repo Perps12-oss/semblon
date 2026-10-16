@@ -2,7 +2,7 @@
 
 **Superseded 2026-10-05 by the completed PySide6 production migration.**
 
-**Current (2026-10-05):** production UI is PySide6 `semblon shell` → `Application`. The tables below are the 2026-09-27 inventory. Where they name Tk as the shipping path or `review.html` as an export the process writes, that line is historical.
+**Historical inventory.** Production UI is PySide6 `semblon shell` → `Application`. Capability status is `docs/BUILD-STATUS.md`. The tables below are the 2026-09-27 inventory. Where they name Tk as the shipping path or `review.html` as an export the process writes, that line is historical.
 
 **Date:** 2026-09-27. **Retest:** 2026-09-28 against `origin/main` `646d44b` and PR #112 (`cursor/gui-feature-registry-c466`, not merged).  
 **Source of the tables below:** `main` at `142e36f`, adjusted by the retest notes.  

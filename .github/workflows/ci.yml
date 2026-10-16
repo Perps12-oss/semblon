@@ -5,7 +5,10 @@ on:
   pull_request:
 
 jobs:
-  test:
+  # Matrix legs publish contexts like "test-matrix (windows-latest, 3.12)".
+  # Branch protection that still requires the exact name "test" needs the
+  # aggregate job below — otherwise a required check waits forever.
+  test-matrix:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -30,6 +33,13 @@ jobs:
           python -m pip uninstall -y opencv-python opencv-contrib-python
           python -m pip install --force-reinstall --no-deps opencv-python-headless==5.0.0.93
           python tools/assert_one_opencv.py
+      - name: Verify hash lock (Python 3.12 baseline)
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m pip install -U uv
+          uv pip compile requirements.txt --generate-hashes --python-version 3.12 --output-file requirements.lock.check.txt
+          python -c "from pathlib import Path; a=Path('requirements.lock.txt').read_text(encoding='utf-8').splitlines(); b=Path('requirements.lock.check.txt').read_text(encoding='utf-8').splitlines(); aa=[x for x in a if not x.startswith('#')]; bb=[x for x in b if not x.startswith('#')];
+          import sys; sys.exit(0 if aa==bb else 1)"
       - name: Pytest (no live InsightFace)
         if: runner.os == 'Windows'
         run: python -m pytest -q
@@ -41,3 +51,18 @@ jobs:
           python -m pip install pip-audit
           python -m pip freeze --exclude-editable > resolved-requirements.txt
           python -m pip_audit -r resolved-requirements.txt
+
+  # Republish the required check name "test". Always run so a failed matrix cannot
+  # skip this job (GitHub treats a skipped required check as success).
+  test:
+    name: test
+    needs: test-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every matrix leg passed
+        env:
+          MATRIX_RESULT: ${{ needs.test-matrix.result }}
+        run: |
+          echo "Tests matrix result: $MATRIX_RESULT"
+          [ "$MATRIX_RESULT" = "success" ] || exit 1

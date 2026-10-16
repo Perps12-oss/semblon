@@ -1,7 +1,17 @@
 # Owner-only. Does not run on push and does not download buffalo_l.
+#
+# Reproducible when the runner already has an accepted pack under the default
+# InsightFace home, or when workflow input pack_dir / env SEMBLON_FACE_PACK
+# points at a directory that contains the ONNX files + semblon-pack-pin.json.
 name: facekit-owner
 on:
   workflow_dispatch:
+    inputs:
+      pack_dir:
+        description: "Optional absolute pack directory (ONNX + semblon-pack-pin.json)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -24,12 +34,24 @@ jobs:
           python -m pip uninstall -y opencv-python opencv-contrib-python
           python -m pip install --force-reinstall --no-deps opencv-python-headless==5.0.0.93
           python tools/assert_one_opencv.py
-      - name: Require a pinned local pack
+      - name: Require a pinned local pack and write evidence
         shell: pwsh
+        env:
+          SEMBLON_FACE_PACK: ${{ inputs.pack_dir }}
         run: |
-          python -c "from semblon.engine import ModelPackError, assert_face_pack_ready
-          try:
-              rec = assert_face_pack_ready()
-          except ModelPackError as exc:
-              raise SystemExit('owner pack missing or unpinned: ' + str(exc))
-          print('pinned onnx files', len(rec))"
+          $ErrorActionPreference = "Stop"
+          $out = Join-Path $env:RUNNER_TEMP "facekit-owner-evidence.json"
+          if ($env:SEMBLON_FACE_PACK) {
+            python tools/facekit_owner_evidence.py --pack-dir $env:SEMBLON_FACE_PACK --out $out
+          } else {
+            python tools/facekit_owner_evidence.py --out $out
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Content $out
+      - name: Upload owner evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: facekit-owner-evidence
+          path: ${{ runner.temp }}/facekit-owner-evidence.json
+          if-no-files-found: ignore

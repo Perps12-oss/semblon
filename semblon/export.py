@@ -15,7 +15,8 @@ import sqlite3
 from pathlib import Path
 
 # Hypothesis — clusters with min_intra below this are REVIEW REQUIRED.
-STRONG_MIN_INTRA = 0.50
+# Active engine value (YuNet+SFace); buffalo_l historical: identity_buffalo_frozen.
+from semblon.identity_config import STRONG_MIN_INTRA
 
 
 class ExportError(ValueError):

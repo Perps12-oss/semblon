@@ -13,7 +13,14 @@ Semblon is one user on one Windows machine. The sensitive asset is the library s
 
 - Malware running as the same user.
 - A backup written into a folder that syncs. `backup` is a raw SQLite copy: names, paths, and embeddings.
-- A stolen disk. The store is plaintext. SQLCipher or a DPAPI-wrapped file is not implemented; adding it needs a design that keeps WAL and the existing library intact.
+- A stolen disk. The store is plaintext. SQLCipher or a DPAPI-wrapped file is not implemented.
+- Do **not** claim the store is encrypted. Product screen-capture title-prefix filtering is not a privacy boundary (`docs/decisions/2026-10-16-screen-capture-deferred.md`).
+
+## Encryption (DEFERRED — design only)
+
+Release decision: `docs/decisions/2026-10-16-store-encryption-deferred.md`.
+
+Before any implementation: key management/recovery, WAL/SHM handling, backup format, migration on disposable copies only, integrity verification, atomic replace, rollback. Never encrypt a live user library as an experiment.
 
 ## Erasure
 

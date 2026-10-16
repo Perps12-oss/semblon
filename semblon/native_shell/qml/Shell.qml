@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
-import QtMultimedia
 
 ApplicationWindow {
     id: window
@@ -2011,6 +2010,24 @@ ApplicationWindow {
                 cache: false
             }
 
+            Text {
+                objectName: "focusMissingNote"
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - 96
+                visible: focusActive
+                         && focusKindSafe !== "video"
+                         && shellReady
+                         && shellApi.focusFileMissing
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                color: tokenMuted
+                font.family: "Segoe UI"
+                font.pixelSize: 15
+                text: "This photo is missing from its stored path. "
+                      + "If you moved or renamed it, add that folder again so Semblon can reconnect it."
+            }
+
             Item {
                 id: observationLayer
                 objectName: "observationLayer"
@@ -2191,24 +2208,10 @@ ApplicationWindow {
                 z: 3
             }
 
-            // Playback is deferred. This output stays hidden so a non-working
-            // player is not shown. Remaining work: play focusUrl in a viewer
-            // that does not admit source_type=video to open_focus or DBSCAN.
-            VideoOutput {
-                id: videoOut
-                anchors.fill: parent
-                anchors.margins: 48
-                visible: false
-            }
-
-            MediaPlayer {
-                id: player
-                videoOutput: videoOut
-                audioOutput: AudioOutput {}
-                onMediaStatusChanged: {
-                }
-            }
-
+            // Playback is deferred. QtMultimedia is intentionally not imported:
+            // PySide6-Essentials (the declared GUI dep) does not ship it. When a
+            // video viewer lands, add a guarded optional import or a dedicated
+            // extras package — do not pull WebEngine via the PySide6 metapackage.
             Text {
                 objectName: "videoMissing"
                 visible: false
@@ -2421,7 +2424,7 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: if (shellReady) shellApi.openFocus(mediaId)
+                                    onClicked: if (shellReady) shellApi.openFocusInContext(mediaId)
                                 }
                             }
                         }
@@ -2466,8 +2469,6 @@ ApplicationWindow {
                 target: shellApi
                 function onFocusChanged() {
                     regionDrag.hasRect = false
-                    player.stop()
-                    player.source = ""
                 }
             }
         }

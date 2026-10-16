@@ -235,13 +235,13 @@ def test_naming_snapshots_together_relationships(tmp_path):
     assert n_rel >= 1
 
 
-def test_facekit_provider_load_is_ingest_boundary():
+def test_yunet_sface_provider_load_is_ingest_boundary():
     import inspect
 
     from semblon import ingest as ing
 
     src = inspect.getsource(ing.load_app)
-    assert "FaceKitProvider" in src
+    assert "YuNetSFaceProvider" in src
 
 
 def test_path_traversal_store_is_a_path(tmp_path):

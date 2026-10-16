@@ -53,8 +53,15 @@ if (-not (Test-Path $VenvPy)) {
 
 & $VenvPy -m pip install -U pip
 Exit-IfNativeFailed "pip upgrade"
-& $VenvPy -m pip install -r (Join-Path $Root "requirements.txt")
-Exit-IfNativeFailed "pip install -r requirements.txt"
+$Lock = Join-Path $Root "requirements.lock.txt"
+if (Test-Path $Lock) {
+    Write-Host "Installing from hash-verified lock: requirements.lock.txt"
+    & $VenvPy -m pip install --require-hashes -r $Lock
+    Exit-IfNativeFailed "pip install --require-hashes -r requirements.lock.txt"
+} else {
+    & $VenvPy -m pip install -r (Join-Path $Root "requirements.txt")
+    Exit-IfNativeFailed "pip install -r requirements.txt"
+}
 # Product shell is PySide6 (`semblon shell`). The gui extra is required.
 & $VenvPy -m pip install -e ".[gui]"
 Exit-IfNativeFailed "pip install -e .[gui]"

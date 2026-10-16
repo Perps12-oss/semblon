@@ -21,3 +21,8 @@ semblon/observatory/
 # Pytest temporary artifacts
 .pytest-tmp/
 .pytest_tmp/
+
+# Local offline wheels (not committed)
+wheelhouse/
+wheelhouse-*/
+

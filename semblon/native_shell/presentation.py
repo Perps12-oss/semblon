@@ -41,6 +41,8 @@ _SAFE_PRIMARY_EXACT = {
     "No groups yet.",
     "Groups could not be read.",
     "No photo for this group.",
+    "This photo is missing from its stored path. If you moved or renamed it, add that folder again so Semblon can reconnect it.",
+    "Opened photo. No date on file — time context unavailable.",
 }
 
 _SAFE_PRIMARY_PATTERNS = (
@@ -65,6 +67,7 @@ _SAFE_PRIMARY_PATTERNS = (
     re.compile(r"^Days: [^\n]+\.$"),
     re.compile(r"^Text search: [^\n]+\.$"),
     re.compile(r"^Similar: [^\n]+\.$"),
+    re.compile(r"^Similar \([^)]+\): [^\n]+\.$"),
     re.compile(r"^Named items: [^\n]+\.$"),
     re.compile(r"^Rescan: [^\n]+\.$"),
 )

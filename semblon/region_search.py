@@ -30,7 +30,11 @@ def _open_ro(store: Path) -> sqlite3.Connection:
 def crop_bgr(image_path: Path, x: int, y: int, w: int, h: int):
     import cv2
 
-    image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+    from semblon.temporal import _decode_still
+
+    image = _decode_still(Path(image_path))
+    if image is None:
+        image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
     if image is None:
         raise RegionError(f"could not read {image_path}")
     image = _apply_display_orientation(image_path, image)
@@ -197,6 +201,8 @@ def find_similar_region(
     )
     rec["query_pixels"] = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
     rec["wrote_embedding"] = False
+    # Product label: this door is colour histogram, never face or semantic search.
+    rec["similarity_basis"] = "Selected region (colour histogram)"
     return rec
 
 

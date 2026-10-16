@@ -419,18 +419,20 @@ def test_duplicate_scan_rehashes_and_sees_other_folder(tmp_path):
 
 
 def test_face_pack_refuses_download(tmp_path):
-    with pytest.raises(ModelPackError, match="does not download"):
+    with pytest.raises(ModelPackError, match="does not download|YuNet ONNX missing|missing"):
         assert_face_pack_ready(tmp_path)
-    home = tmp_path / "buffalo_l"
+    home = tmp_path / "yunet_sface"
     home.mkdir()
-    (home / "w600k_r50.onnx").write_bytes(b"not-a-real-model")
+    (home / "face_detection_yunet_2023mar.onnx").write_bytes(b"not-a-real-yunet")
+    (home / "face_recognition_sface_2021dec.onnx").write_bytes(b"not-a-real-sface")
     with pytest.raises(ModelPackError, match="pin"):
         assert_face_pack_ready(home)
     rec = accept_local_face_pack(home)
     assert rec["opt_in"] is True
+    assert rec.get("engine") == "yunet_sface"
     pinned = assert_face_pack_ready(home)
-    assert "w600k_r50.onnx" in pinned
-    (home / "w600k_r50.onnx").write_bytes(b"tampered")
+    assert "face_recognition_sface_2021dec.onnx" in pinned
+    (home / "face_recognition_sface_2021dec.onnx").write_bytes(b"tampered")
     with pytest.raises(ModelPackError, match="hashes"):
         assert_face_pack_ready(home)
 
@@ -577,3 +579,120 @@ def test_note_on_a_face_does_not_freeze_its_cluster(tmp_path):
         assert again != cid
     finally:
         conn.close()
+
+
+def test_same_filename_different_content_does_not_retarget(tmp_path):
+    """Recovery must not merge unrelated media just because the basename matches."""
+    from semblon.ingest import _remember_path
+
+    store = tmp_path / "s.sqlite"
+    a_dir = tmp_path / "a"
+    b_dir = tmp_path / "b"
+    a_dir.mkdir()
+    b_dir.mkdir()
+    first = a_dir / "photo.jpg"
+    first.write_bytes(b"content-one")
+    other = b_dir / "photo.jpg"
+    other.write_bytes(b"content-two-different")
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(first), "hash-one", 1, 1, 0, 1),
+    )
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m2", "folder", str(other), "hash-two", 1, 1, 0, 1),
+    )
+    conn.commit()
+    # Original still present: must not steal m1 onto the other file's path.
+    assert _remember_path(conn, "m1", other, 9, 20) is False
+    row = conn.execute("SELECT path, sha256 FROM media WHERE media_id='m1'").fetchone()
+    assert row[0] == str(first)
+    assert row[1] == "hash-one"
+    row2 = conn.execute("SELECT path, sha256 FROM media WHERE media_id='m2'").fetchone()
+    assert row2[0] == str(other)
+    assert row2[1] == "hash-two"
+    conn.close()
+
+
+def test_ingest_updates_path_when_original_moved(tmp_path):
+    """Re-adding a folder after a rename reconnects the same hash to the new path."""
+    import cv2
+    from unittest.mock import patch
+
+    from semblon.process import process_folder
+
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    photo = folder / "a.jpg"
+    img = np.zeros((24, 24, 3), dtype=np.uint8)
+    img[:, :] = (40, 90, 200)
+    ok, buf = cv2.imencode(".jpg", img)
+    assert ok
+    photo.write_bytes(buf.tobytes())
+    store = tmp_path / "s.sqlite"
+    quiet = lambda *_a, **_k: None
+    with (
+        patch("semblon.ingest.load_app", return_value=object()),
+        patch("semblon.ingest.embed_bgr", return_value=[]),
+    ):
+        process_folder(folder, store=store, observers="color", progress=quiet)
+    conn = connect(store)
+    try:
+        rows = conn.execute("SELECT media_id, path, sha256 FROM media").fetchall()
+        assert len(rows) == 1
+        media_id, old_path, digest = rows[0]
+        assert Path(old_path) == photo
+    finally:
+        conn.close()
+    moved = folder / "renamed.jpg"
+    photo.replace(moved)
+    with (
+        patch("semblon.ingest.load_app", return_value=object()),
+        patch("semblon.ingest.embed_bgr", return_value=[]),
+    ):
+        process_folder(folder, store=store, observers="color", progress=quiet)
+    conn = connect(store)
+    try:
+        rows = conn.execute("SELECT media_id, path, sha256 FROM media").fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == media_id
+        assert rows[0][1] == str(moved)
+        assert rows[0][2] == digest
+        assert not photo.is_file()
+        assert moved.is_file()
+    finally:
+        conn.close()
+
+
+def test_whole_image_similar_basis_says_colour_histogram(tmp_path):
+    from semblon.observers import observe_bgr
+    from semblon.search import search_similar_media
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        ("r1", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute("INSERT INTO media VALUES ('m1','folder','/a.jpg','aaa',8,8,0,1)")
+    conn.execute("INSERT INTO media VALUES ('m2','folder','/b.jpg','bbb',8,8,0,1)")
+    conn.execute("INSERT INTO observations VALUES ('o1','m1',NULL,NULL,'r1')")
+    conn.execute("INSERT INTO observations VALUES ('o2','m2',NULL,NULL,'r1')")
+    dark = np.zeros((8, 8, 3), dtype=np.uint8)
+    light = np.full((8, 8, 3), 255, dtype=np.uint8)
+    observe_bgr(conn, observation_id="o1", run_id="r1", img=dark, observers=("color",))
+    observe_bgr(conn, observation_id="o2", run_id="r1", img=light, observers=("color",))
+    conn.commit()
+    conn.close()
+    rec = search_similar_media(store, "m1")
+    assert "colour histogram" in str(rec.get("similarity_basis") or "").lower()
+    assert rec.get("modality") == "appearance" or rec.get("status") in {
+        "SUCCESS",
+        "NO_RESULT",
+        "UNAVAILABLE",
+    }

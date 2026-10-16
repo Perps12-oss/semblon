@@ -144,8 +144,9 @@ def run_profile(image: Path, out: Path) -> dict:
     out = validate_out_path(Path(out))
 
     import cv2
-    import insightface
     import onnxruntime as ort
+
+    from semblon.identity_config import DET_SIZE
 
     t0 = time.perf_counter()
     app = load_app()
@@ -162,7 +163,7 @@ def run_profile(image: Path, out: Path) -> dict:
     both_ms = (time.perf_counter() - t_det) * 1000
 
     hashes = discover_weight_hashes()
-    ifver = getattr(insightface, "__version__", "unknown")
+    eng_ver = f"opencv-{cv2.__version__}"
     rec = {
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "hostname": platform.node(),
@@ -174,11 +175,12 @@ def run_profile(image: Path, out: Path) -> dict:
         "python_arch": platform.architecture()[0],
         "ort_package": "onnxruntime",
         "ort_version": ort.__version__,
-        "insightface_version": ifver,
+        "insightface_version": None,
+        "identity_engine": "yunet_sface",
         "pack_family": PACK_FAMILY,
-        "pack_id": pack_id(ifver, hashes),
+        "pack_id": pack_id(eng_ver, hashes),
         "weight_files": hashes,
-        "det_size": [640, 640],
+        "det_size": list(DET_SIZE),
         "device": "cpu",
         "device_name": None,
         "workers": 1,
@@ -192,7 +194,7 @@ def run_profile(image: Path, out: Path) -> dict:
             "faces": len(faces),
             "dims": [f["dim"] for f in faces],
         },
-        "notes": "FACE-000 probe. detect_ms/embed_ms not split; see detect_embed_ms.",
+        "notes": "YuNet+SFace probe. detect_ms/embed_ms not split; see detect_embed_ms.",
     }
     if rec["arch"] == "x64" and rec["execution"] == "emulated":
         rec["notes"] += (

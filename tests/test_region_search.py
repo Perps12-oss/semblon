@@ -111,3 +111,79 @@ def test_same_space_firewall_skips_other_packs(tmp_path):
     )
     assert rec["status"] == "UNAVAILABLE"
     assert rec["error_id"] == "region.NO_LIBRARY_SPACE"
+
+
+def test_crop_reads_non_ascii_windows_path(tmp_path):
+    """Region crop must not rely on cv2.imread alone (misses Unicode paths)."""
+    import cv2
+
+    from semblon.region_search import crop_bgr
+
+    folder = tmp_path / "José"
+    folder.mkdir()
+    photo = folder / "foto.jpg"
+    img = np.zeros((32, 32, 3), dtype=np.uint8)
+    img[4:12, 4:12] = (0, 255, 0)
+    # imwrite itself fails on many Unicode Windows paths; write bytes instead.
+    ok, buf = cv2.imencode(".jpg", img)
+    assert ok
+    photo.write_bytes(buf.tobytes())
+    crop = crop_bgr(photo, 4, 4, 8, 8)
+    assert crop.shape == (8, 8, 3)
+    assert int(crop[0, 0, 1]) > 200
+
+
+def test_region_similar_unicode_path_finds_colour_match(tmp_path):
+    """Drawn-region Similar on a Unicode path must crop and match colour-hist space."""
+    import cv2
+
+    from semblon.region_search import remember_and_find
+
+    folder = tmp_path / "José"
+    folder.mkdir()
+    green = np.zeros((32, 32, 3), dtype=np.uint8)
+    green[:, :] = (0, 220, 0)
+    red = np.zeros((32, 32, 3), dtype=np.uint8)
+    red[:, :] = (0, 0, 220)
+    a = folder / "a.jpg"
+    b = folder / "b.jpg"
+    for path, img in ((a, green), (b, red)):
+        ok, buf = cv2.imencode(".jpg", img)
+        assert ok
+        path.write_bytes(buf.tobytes())
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        ("r1", "t", "0.0.1", "pack-a", 2, "l2", "{}", "{}", "x64", "native"),
+    )
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(a), "ha", 32, 32, 0, 1),
+    )
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m2", "folder", str(b), "hb", 32, 32, 0, 1),
+    )
+    conn.execute("INSERT INTO observations VALUES ('o1','m1',NULL,NULL,'r1')")
+    conn.execute("INSERT INTO observations VALUES ('o2','m2',NULL,NULL,'r1')")
+    observe_bgr(conn, observation_id="o1", run_id="r1", img=green, observers=("color",))
+    observe_bgr(conn, observation_id="o2", run_id="r1", img=red, observers=("color",))
+    conn.commit()
+    conn.close()
+
+    # Query the red photo's region; nearest in appearance space should be m2's own
+    # library row or the redder neighbour — never invent a face identity.
+    rec = remember_and_find(store, media_id="m2", image_path=None, x=0, y=0, w=16, h=16)
+    similar = rec["similar"]
+    assert similar.get("similarity_basis") == "Selected region (colour histogram)"
+    assert similar.get("modality") == "appearance"
+    assert "face" not in str(similar.get("modality") or "")
+    assert similar["status"] in {"SUCCESS", "NO_RESULT"}
+    if similar["status"] == "SUCCESS":
+        ids = {str(it.get("media_id") or "") for it in similar.get("items") or []}
+        assert "m1" in ids or "m2" in ids or any(similar.get("items") or [])

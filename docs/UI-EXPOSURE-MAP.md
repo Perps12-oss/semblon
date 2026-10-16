@@ -1,10 +1,12 @@
 # Semblon UI exposure map
 
-**Superseded 2026-10-05 by the completed PySide6 production migration.**
+**Superseded 2026-10-05 by the completed PySide6 production migration.** Product contract: `docs/PRODUCT.md`. Capability status: `docs/BUILD-STATUS.md`. Sections A–I below are the September 2026 inventory plus later notes. They are historical where they name Tk Home as the product door.
 
-**Current (2026-10-15):** one production UI, PySide6 `semblon shell` → `Application`. Tk Home, review-ui, and canvas are retired. `review.html` is retired. The September 2026 shell rule below is historical.
+**Current production exposure (2026-10-16), source-read at `079d88ba`:** one production UI, PySide6 `semblon shell` → `Application`. Tk Home, review-ui, and canvas are retired. `review.html` is retired.
 
-**Production window (2026-10-15):** the left nav is Library, People, Search, Add folder, and Settings. The right archive sidebar is the only library filter: All / Photos / Videos, years, days, folders, and Moments in Advanced. People shows face crops; Focus shows observation boxes; Advanced Activity lists history. Video tiles are labeled and do not open. Playback is not implemented.
+The left nav in `semblon/native_shell/qml/Shell.qml` is Library, People, Search, Add folder, and Settings. Archive browse (media kind, folders, moments, similar) lives in that left column; see `docs/TIMELINE-VIEW.md`. The 2026-10-15 sentence that called a right-hand archive sidebar the only library filter is out of date.
+
+People shows face crops. Focus opens stills (`source_type=folder`), shows observation boxes, and offers whole-image Similar, a drawn region, and Ask photo. Advanced Activity lists history. Video tiles are labeled and do not open. Playback is not implemented. Saved albums are an honest deferred empty state.
 
 **Date:** 2026-09-25  
 **Rule:** Backend capability does not dictate navigation. Product intent dictates navigation.  
@@ -229,7 +231,9 @@ When adding UI, update this file’s class for the surface in the same PR.
 
 ---
 
-## I. Five-repo product synthesis (2026-10-03)
+## I. Five-repo product synthesis (2026-10-03) — historical
+
+**Historical.** The landed/deferred table below describes a Tk Home pass. It is not the 2026-10-16 build status. Use `docs/BUILD-STATUS.md`.
 
 **Final state claim:** Product synthesis complete; some capabilities deliberately deferred.
 

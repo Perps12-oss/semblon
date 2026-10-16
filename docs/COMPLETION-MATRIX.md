@@ -1,7 +1,9 @@
-# Semblon completion matrix (authoritative current state)
+# Semblon completion matrix (architecture closed / open)
+
+**Product contract:** `docs/PRODUCT.md`. **Programme completion tracker (12 issues, Gates A/B/C):** `docs/BUILD-STATUS.md`. This file remains the architecture ledger only. Do not treat `docs/ROADMAP.md` as a status SoT. Rows that say Find is out of V1, or that name Tk Home as the product door, are historical against the 2026-10-16 shell.
 
 **Date:** 2026-10-05 (architecture baseline). Earlier rows retain their original dates.  
-**Authority:** `docs/ARCHITECTURE.md` (production shell) · `docs/SEM-ARCH-V1.4.md` (planned work) · this matrix (closed vs open).  
+**Authority:** `docs/ARCHITECTURE.md` (production shell) · `docs/SEM-ARCH-V1.4.md` (engineering planned work) · this matrix (architecture closed vs open).  
 **UI exposure classes:** `docs/UI-EXPOSURE-MAP.md` is a historical inventory plus a 2026-10-05 banner. Do not treat its September shell rule as current.  
 **Do not** treat older freeze audits as current blockers without checking this file.
 
@@ -31,14 +33,14 @@ These are product and engineering gaps. They are not permission to reopen the sh
 | ITEM | STATE | NOTES |
 |---|---|---|
 | Field + Focus experience | **LANDED on branch** | Native shell at `43eafe5`. Matrix date remains 2026-10-05; this row was stale. |
-| Find | **OUT OF V1** | Not a second query path. Lens remains `Application.query_media`. Region Similar remains `Application.remember_and_find_region`. |
+| Find | **Historical row — see `docs/BUILD-STATUS.md`** | The shell now has people search, text search, whole-image Similar, and region Similar. This row recorded the migration rule against a second query stack. Lens remains `Application.query_media`. Region Similar remains `Application.remember_and_find_region`. |
 | People / Decision / Appearance / Time as lenses | **LANDED on branch** | Same session. Time is the mtime lens. People writes only through `review.py`. |
 | Remaining production UX and polish | **OPEN** | Windows product, not another prototype |
 | Eventual Tk retirement | **COMPLETE** | `home`, `review-ui`, and `canvas` CLI clients removed; production UI is `semblon shell` only |
 | Whole-machine stress testing | **OPEN** | Owner Windows. Not a second architecture |
 | PERF ARM64 OpenCV load | **BLOCKED** | See the ledger below. Not a shell decision |
 | MSI `wix build` / sign | **PARTIAL** | Engineering source exists. Owner Windows build |
-| buffalo_l redistribution | **UNAVAILABLE** | Licence. Do not fake |
+| Identity ONNX redistribution (YuNet/SFace; buffalo_l historical) | **UNAVAILABLE** | Licence gate L. Do not fake |
 
 ## Capability ledger
 
@@ -59,7 +61,7 @@ The table below is the longer capability ledger (identity, APP-1, packaging). Wh
 | PERF ARM64 OpenCV | Load hang; PE/timed probes shipped | `docs/PERF-P1-ARM64.md`; `semblon/opencv_probe.py`; `tools/_perf_p1_load_cv2.py` | Owner Windows ARM64: `tools\perf_p1_arm64_repro.ps1`; fix/replace `opencv_geometry500.dll`; then P0 timing | **BLOCKED** (native load) · probe **COMPLETE** |
 | Multi-worker / scale | Hash workers hardened; default **1**; harness `default_gate` | `docs/PERF-WORKERS-HARNESS.md`; ingest worker tests | Raise default only after owner Windows `default_gate.verdict=PASS` + separate PR | **COMPLETE** (default=1) |
 | MSI code (no weights) | WiX project + stage/build/bootstrap + docs/tests | `packaging/msi/`, `tools/msi/`, `docs/PACKAGING.md` | Owner: `wix` + `tools\msi\build-msi.ps1`; smoke checklist | **PARTIAL** — engineering complete; Windows `wix build`/sign not run here |
-| buffalo_l redistribution | Legal | `docs/licenses.md` | Pack licence — do not fake | **UNAVAILABLE** |
+| Identity ONNX redistribution | Legal | `docs/licenses.md`, `docs/IDENTITY-PACK.md` | YuNet/SFace BYO; MSI fail-closed | **UNAVAILABLE** |
 
 ## Production shell — current (2026-10-05)
 

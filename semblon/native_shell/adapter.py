@@ -172,12 +172,26 @@ class ArchiveAdapter:
             except (TypeError, ValueError):
                 score = 0.0
             items.append({"media_id": media_id, "score": score})
+        # Default whole-image / region doors use colour-histogram appearance, not semantics.
+        basis_label = "colour histogram" if basis in {"whole", "region"} else basis
         if status == "UNAVAILABLE":
             reason = str(rec.get("reason") or "Similar search could not run.")
-            return Result("unavailable", f"Similar: {reason}", {"basis": basis, "items": []})
+            return Result(
+                "unavailable",
+                f"Similar ({basis_label}): {reason}",
+                {"basis": basis, "engine": "color-hist", "items": []},
+            )
         if not items:
-            return Result("empty", "Similar: no similar images found yet.", {"basis": basis, "items": []})
-        return Result("ready", f"Similar: {len(items)} matches.", {"basis": basis, "items": items[:8]})
+            return Result(
+                "empty",
+                f"Similar ({basis_label}): no similar images found yet.",
+                {"basis": basis, "engine": "color-hist", "items": []},
+            )
+        return Result(
+            "ready",
+            f"Similar ({basis_label}): {len(items)} colour matches.",
+            {"basis": basis, "engine": "color-hist", "items": items[:8]},
+        )
 
     def review_counts(self) -> Result:
         try:

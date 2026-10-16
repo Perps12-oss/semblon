@@ -1,18 +1,17 @@
 # Semblon runtime (CPU). Python >=3.11,<3.15. Match pyproject.toml.
-# Pins are the FACE-000 lab wheels. They do not change pack_id or stored embeddings.
+# Identity: YuNet + SFace via OpenCV DNN (BYO ONNX). insightface/buffalo_l retired.
 # Native arch only: ARM64 Windows → ARM64 Python + this file, not x64.
 # Install from repo root: pip install -r requirements.txt
 # Then install Semblon itself with the extras you need, for example: pip install -e ".[gui]"
 # Optional feature stacks live in requirements-optional.txt and pyproject extras.
-insightface==2.0
 onnxruntime==1.30.0
 opencv-python-headless==5.0.0.93
 numpy==2.4.6; python_version < "3.12"
 numpy==2.5.3; python_version >= "3.12"
 pillow==12.3.0
-# insightface imports these. They are pinned here so pip-audit sees them.
-# Do not install opencv-python; install scripts uninstall it if insightface pulls it.
 onnx==1.23.2
+# SciPy 1.18.1 requires Python >=3.12 (PyPI 2026-10-16). Keep 3.11 via 1.17.1.
+# Policy: docs/decisions/2026-10-16-python-support-policy.md
 scipy==1.17.1; python_version < "3.12"
 scipy==1.18.1; python_version >= "3.12"
 scikit-image==0.26.0

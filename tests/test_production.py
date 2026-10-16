@@ -29,14 +29,16 @@ def test_watchdog_stall_vs_progress():
     assert wd.classify(now=wd.last_monotonic + 1.0) == "stalled"
 
 
-def test_facekit_provider_is_cpu_only():
-    info = FaceKitProvider.info
+def test_yunet_sface_provider_is_cpu_only():
+    info = FaceKitProvider.info  # alias of YuNetSFaceProvider
     assert info.modality == "face"
     assert info.device == "cpu"
-    assert info.execution_provider == "CPUExecutionProvider"
+    assert info.name == "yunet_sface"
+    assert info.execution_provider == "OpenCV_DNN_CPU"
     w = weights_status()
     assert w["bundled"] is False
     assert w["redistributable"] is False
+    assert w["engine"] == "yunet_sface"
 
 
 def test_integrity_and_interrupted_stamp(tmp_path):
