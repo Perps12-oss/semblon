@@ -60,7 +60,9 @@ def test_cli_exposes_shell_as_the_only_gui_command():
 
 
 def test_tokens_match_the_blueprint_dark_contract():
-    assert DARK["bg0"] == "#0b0c0e"
+    assert DARK["bg0"] == "#0a0b10"
+    assert DARK["bg1"] == "#151820"
+    assert DARK["bg2"] == "#22252d"
     assert DARK["accent"] == "#4f8cff"
     assert DARK["review"] == "#a15cf5"
     assert cell_size("comfortable") == 220

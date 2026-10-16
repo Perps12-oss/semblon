@@ -3,17 +3,24 @@
 Dark values are the blueprint contract. Light values are derived from them
 for the existing ``light`` atmosphere id. Named atmospheres stay persisted
 in appearance.json; this module does not invent a second theme stack.
+
+Elevation planes (Phase 1–2 media-first):
+  bg0 — L0 canvas (deep cool slate floor)
+  bg1 — L1 chrome (nav / panels)
+  bg2 — L2 content wells (calendar cells, Field tiles)
+  bg3 — lifted hover / segment pill
 """
 
 from __future__ import annotations
 
 DARK = {
-    "bg0": "#0b0c0e",
-    "bg1": "#131417",
-    "bg2": "#1b1d21",
-    "bg3": "#24272c",
-    "border1": "#2a2d33",
-    "border2": "#3a3e45",
+    # Phase 2 atmosphere: cool slate-blue charcoal (not flat mica grey).
+    "bg0": "#0a0b10",
+    "bg1": "#151820",
+    "bg2": "#22252d",
+    "bg3": "#2c303a",
+    "border1": "#2a2f3a",
+    "border2": "#3a4150",
     "text1": "#f2f3f5",
     "text2": "#a8adb7",
     "text3": "#6b7280",

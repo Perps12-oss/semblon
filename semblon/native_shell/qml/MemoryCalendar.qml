@@ -4,6 +4,8 @@ Item {
     id: root
     objectName: "memoryCalendar"
     Accessible.name: "Memory calendar"
+    // Day grid must not paint outside this item into the Field below.
+    clip: true
 
     property var shellApi: null
     property bool shellReady: false
@@ -37,8 +39,6 @@ Item {
     property string hoverGeneration: ""
 
     readonly property int cellCount: cells && cells.length ? cells.length : 0
-    readonly property real cellW: Math.max(48, (width - 14) / 7)
-    readonly property real cellH: Math.max(56, Math.min(108, (height - 64) / Math.max(1, Math.ceil(cellCount / 7))))
     readonly property int monthMediaCount: {
         var n = 0
         if (!cells) return 0
@@ -48,6 +48,12 @@ Item {
         }
         return n
     }
+    // Title + weekdays + optional empty-month line + Column spacings.
+    readonly property real chromeHeight: 32 + 8 + 18 + 8
+        + (cellCount > 0 && monthMediaCount === 0 ? 20 + 8 : 0)
+    readonly property real cellW: Math.max(48, (width - 14) / 7)
+    readonly property real cellH: Math.max(48, Math.min(108,
+        (height - chromeHeight) / Math.max(1, Math.ceil(cellCount / 7))))
 
     readonly property var weekdayLabels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -144,11 +150,12 @@ Item {
                 objectName: "calendarTitle"
                 text: root.title || ""
                 color: tokenText
-                font.family: "Segoe UI"
-                font.pixelSize: 22
+                font.family: "Segoe UI Variable"
+                font.pixelSize: 24
                 font.weight: Font.DemiBold
                 verticalAlignment: Text.AlignVCenter
                 height: 32
+                opacity: 0.92
             }
 
             Text {
@@ -257,23 +264,91 @@ Item {
                     property bool inMonth: cell ? !!cell.inMonth : false
                     property int count: cell ? Number(cell.count || 0) : 0
                     property string thumbId: cell ? String(cell.thumbId || "") : ""
+                    property bool hasMedia: thumbId !== "" || count > 0
                     property bool selected: root.isSelected(dayKey)
                     property bool focused: root.focusIndex === index
                     property bool isToday: cell ? !!cell.isToday : false
                     width: root.cellW
                     height: root.cellH
                     objectName: "calendarDay_" + dayKey
-                    opacity: inMonth ? 1 : 0.38
+                    opacity: inMonth ? 1 : 0.42
                     Accessible.name: cell && cell.accessibleName ? cell.accessibleName : dayKey
 
+                    // Soft under-shadow for media tiles (print-on-desk feel).
                     Rectangle {
+                        anchors.fill: daySurface
+                        anchors.margins: -2
+                        anchors.topMargin: 0
+                        radius: 10
+                        color: "#80000000"
+                        visible: dayCell.hasMedia
+                        z: 0
+                    }
+
+                    Rectangle {
+                        id: daySurface
                         anchors.fill: parent
                         anchors.margins: 1
                         radius: 8
-                        color: tokenBg2
-                        border.width: selected || focused || isToday ? 2 : 1
-                        border.color: selected ? tokenAccent : (focused ? tokenText : (isToday ? tokenMuted : tokenBorder))
+                        z: 1
                         clip: true
+                        border.width: selected ? 2 : 1
+                        border.color: selected
+                                     ? tokenAccent
+                                     : (dayHover.containsMouse
+                                        ? (dayCell.hasMedia ? Qt.rgba(1, 1, 1, 0.28) : tokenAccent)
+                                        : (focused ? tokenText : (isToday ? tokenMuted : "transparent")))
+
+                        // Empty ghost: elevated card gradient; media wells stay flat under the photo.
+                        gradient: Gradient {
+                            GradientStop {
+                                position: 0.0
+                                color: dayCell.hasMedia
+                                       ? tokenBg2
+                                       : (dayHover.containsMouse ? Qt.lighter(tokenBg2, 1.18) : "#18181b")
+                            }
+                            GradientStop {
+                                position: 1.0
+                                color: dayCell.hasMedia
+                                       ? tokenBg2
+                                       : (dayHover.containsMouse ? Qt.lighter(tokenBg2, 1.08) : "#1c1c21")
+                            }
+                        }
+
+                        // Dashed ghost border for empty reserved days.
+                        Canvas {
+                            anchors.fill: parent
+                            visible: !dayCell.hasMedia && !selected
+                            onPaint: {
+                                var ctx = getContext("2d")
+                                ctx.reset()
+                                var inset = 1.5
+                                ctx.strokeStyle = dayHover.containsMouse
+                                    ? String(tokenAccent)
+                                    : "rgba(255,255,255,0.08)"
+                                ctx.lineWidth = 1
+                                ctx.setLineDash(dayHover.containsMouse ? [] : [3, 3])
+                                ctx.beginPath()
+                                var r = 7
+                                var x = inset, y = inset
+                                var w = width - inset * 2, h = height - inset * 2
+                                ctx.moveTo(x + r, y)
+                                ctx.lineTo(x + w - r, y)
+                                ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+                                ctx.lineTo(x + w, y + h - r)
+                                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+                                ctx.lineTo(x + r, y + h)
+                                ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+                                ctx.lineTo(x, y + r)
+                                ctx.quadraticCurveTo(x, y, x + r, y)
+                                ctx.stroke()
+                            }
+                            Connections {
+                                target: dayHover
+                                function onContainsMouseChanged() { requestPaint() }
+                            }
+                            Component.onCompleted: requestPaint()
+                        }
 
                         Image {
                             anchors.fill: parent
@@ -282,55 +357,65 @@ Item {
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
                             cache: true
-                            opacity: 0.88
                         }
 
+                        // Bottom readability gradient for date + count on media.
                         Rectangle {
                             anchors.left: parent.left
                             anchors.right: parent.right
-                            anchors.top: parent.top
-                            height: 26
+                            anchors.bottom: parent.bottom
+                            height: Math.max(28, parent.height * 0.42)
                             visible: thumbId !== ""
-                            color: "#99000000"
+                            z: 2
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: "#00000000" }
+                                GradientStop { position: 0.45; color: "#66000000" }
+                                GradientStop { position: 1.0; color: "#B3000000" }
+                            }
                         }
 
                         Text {
                             anchors.left: parent.left
-                            anchors.top: parent.top
-                            anchors.margins: 6
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: 8
+                            anchors.bottomMargin: 7
                             text: cell ? String(cell.dayNum) : ""
                             color: thumbId !== "" ? "#ffffff" : (inMonth ? tokenText : tokenFaint)
-                            font.family: "Segoe UI"
-                            font.pixelSize: 13
-                            font.weight: Font.DemiBold
-                            z: 2
+                            font.family: "Segoe UI Variable"
+                            font.pixelSize: thumbId !== "" ? 16 : 15
+                            font.weight: Font.Bold
+                            z: 3
                         }
 
                         Rectangle {
                             visible: count > 0
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
-                            anchors.margins: 5
-                            width: Math.max(22, countLabel.implicitWidth + 10)
+                            anchors.margins: 6
+                            width: Math.max(24, countLabel.implicitWidth + 12)
                             height: 18
-                            radius: 4
-                            color: tokenAccentDim
-                            z: 2
+                            radius: 9
+                            color: "#2A2C31"
+                            border.color: Qt.rgba(1, 1, 1, 0.06)
+                            border.width: 1
+                            z: 3
                             Text {
                                 id: countLabel
                                 anchors.centerIn: parent
                                 text: root.countText(cell)
-                                color: tokenText
+                                color: "#E1E3E6"
                                 font.family: "Segoe UI"
                                 font.pixelSize: 10
-                                font.weight: Font.DemiBold
+                                font.weight: Font.Medium
                             }
                         }
 
                         MouseArea {
+                            id: dayHover
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
+                            z: 4
                             onEntered: {
                                 root.focusIndex = index
                                 root.armHover(

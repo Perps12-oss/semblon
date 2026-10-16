@@ -3,7 +3,7 @@ import QtQuick
 Item {
     id: root
     objectName: "timelineHero"
-    height: 100
+    height: 112
     Accessible.name: "Memory timeline"
 
     property var shellApi: null
@@ -62,6 +62,13 @@ Item {
         if (shellReady && shellApi)
             return shellApi.monthEndDay(monthLabel) || (String(monthLabel) + "-28")
         return String(monthLabel) + "-28"
+    }
+
+    function monthTick(monthLabel) {
+        var m = Number(String(monthLabel || "").slice(5, 7))
+        var names = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        return (m >= 1 && m <= 12) ? names[m] : ""
     }
 
     function cancelDrag() {
@@ -167,7 +174,7 @@ Item {
                     property real share: yearCount > 0 ? Math.max(0.08, 1.0 / yearCount) : 0.5
                     property var monthList: []
                     width: Math.max(56, (yearRow.width - Math.max(0, root.yearCount - 1) * yearRow.spacing) * share)
-                    height: 80
+                    height: 92
                     objectName: "timelineYear_" + yearLabel
                     Accessible.name: "Year " + yearLabel + ", " + String(yearData.count) + " photos"
 
@@ -181,19 +188,21 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         radius: 6
-                        color: root.isYearSelected(yearLabel) || root.focusYear === yearLabel ? tokenAccentDim : "transparent"
+                        color: root.isYearSelected(yearLabel) || root.focusYear === yearLabel
+                               ? Qt.rgba(tokenAccent.r, tokenAccent.g, tokenAccent.b, 0.14)
+                               : "transparent"
                         border.color: root.focusYear === yearLabel ? tokenText : (root.isYearSelected(yearLabel) ? tokenAccent : tokenBorder)
-                        border.width: root.focusYear === yearLabel || root.isYearSelected(yearLabel) ? 2 : 0
+                        border.width: root.focusYear === yearLabel || root.isYearSelected(yearLabel) ? 1 : 0
 
                         Column {
                             anchors.fill: parent
                             anchors.margins: 6
-                            spacing: 4
+                            spacing: 3
 
                             Text {
                                 text: yearLabel
                                 color: root.isYearSelected(yearLabel) ? tokenAccent : tokenText
-                                font.family: "Segoe UI"
+                                font.family: "Segoe UI Variable"
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
                             }
@@ -201,7 +210,7 @@ Item {
                             Row {
                                 id: monthBars
                                 width: parent.width
-                                height: 40
+                                height: 48
                                 spacing: 2
 
                                 Repeater {
@@ -210,19 +219,47 @@ Item {
                                         property var monthData: modelData
                                         property string monthLabel: monthData ? String(monthData.label) : String(index)
                                         property real mShare: Math.max(0.04, Number((monthData && monthData.share) || 0))
+                                        property real fill: Math.max(0.08, Number((monthData && monthData.share) || 0))
+                                        property bool activeMonth: root.isMonthSelected(monthLabel) || root.focusMonth === monthLabel
                                         width: Math.max(4, (monthBars.width - Math.max(0, yearBlock.monthList.length - 1) * monthBars.spacing) * mShare)
                                         height: parent.height
                                         objectName: "timelineMonth_" + monthLabel
                                         Accessible.name: (monthData && monthData.accessibleName) || monthLabel
 
+                                        // Recessed track
                                         Rectangle {
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.bottom: tickLabel.top
+                                            anchors.bottomMargin: 2
+                                            height: 28
+                                            radius: 3
+                                            color: "#14151a"
+                                            border.color: Qt.rgba(1, 1, 1, 0.04)
+                                            border.width: 1
+
+                                            Rectangle {
+                                                anchors.bottom: parent.bottom
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                width: Math.max(2, parent.width - 2)
+                                                height: Math.max(3, (parent.height - 2) * fill)
+                                                radius: 2
+                                                color: activeMonth ? tokenAccent : Qt.lighter(tokenAccent, 1.05)
+                                                opacity: activeMonth ? 1 : 0.72
+                                            }
+                                        }
+
+                                        Text {
+                                            id: tickLabel
                                             anchors.bottom: parent.bottom
                                             anchors.horizontalCenter: parent.horizontalCenter
-                                            width: Math.max(2, parent.width - 1)
-                                            height: Math.max(4, parent.height * Math.max(0.12, Number((monthData && monthData.share) || 0)))
-                                            radius: 2
-                                            color: root.isMonthSelected(monthLabel) || root.focusMonth === monthLabel ? tokenAccent : tokenMuted
-                                            opacity: root.isMonthSelected(monthLabel) ? 1 : 0.8
+                                            width: parent.width
+                                            horizontalAlignment: Text.AlignHCenter
+                                            text: width >= 18 ? root.monthTick(monthLabel) : root.monthTick(monthLabel).charAt(0)
+                                            color: activeMonth ? tokenAccent : tokenFaint
+                                            font.family: "Segoe UI"
+                                            font.pixelSize: 8
+                                            elide: Text.ElideRight
                                         }
 
                                         MouseArea {
@@ -256,7 +293,6 @@ Item {
                                                 }
                                                 var a = root.dragStartDay
                                                 var b = root.monthEnd(monthLabel)
-                                                // If released on same month as press start month, treat as month click.
                                                 if (a.slice(0, 7) === monthLabel)
                                                     root.monthClicked(monthLabel)
                                                 else

@@ -179,6 +179,9 @@ ApplicationWindow {
         width: sidebarCollapsed ? 56 : 260
         color: tokenBg1
         z: 10
+        // Phase 2: chrome reads slightly elevated over the cool canvas.
+        border.color: Qt.rgba(1, 1, 1, 0.04)
+        border.width: 0
 
         Behavior on width {
             NumberAnimation { duration: motion; easing.type: Easing.OutCubic }
@@ -189,7 +192,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             width: 1
-            color: tokenBorder
+            color: Qt.rgba(1, 1, 1, 0.06)
         }
 
         Column {
@@ -274,73 +277,54 @@ ApplicationWindow {
                     property string navLabel: ""
                     property string navIcon: ""
                     property string navCall: ""
+                    readonly property bool navSelected: {
+                        if (navId === "people")
+                            return peopleVisible
+                        if (navId === "settings")
+                            return shellReady && shellApi.settingsOpen
+                        if (navId === "library")
+                            return !peopleVisible && !(shellReady && shellApi.settingsOpen) && !focusActive
+                        return false
+                    }
                     anchors.fill: parent
                     radius: 8
-                    color: navArea.containsMouse ? tokenBg3 : "transparent"
+                    color: navSelected
+                           ? Qt.rgba(1, 1, 1, 0.08)
+                           : (navArea.containsMouse ? Qt.rgba(1, 1, 1, 0.04) : "transparent")
                     objectName: navId === "people" ? "peopleButton" :
-                                navId === "settings" ? "settingsButton" : ""
-                    onNavIconChanged: navIconCanvas.requestPaint()
+                                navId === "settings" ? "settingsButton" :
+                                (navId === "library" ? "libraryButton" : "")
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.topMargin: 6
+                        anchors.bottomMargin: 6
+                        width: 3
+                        radius: 1.5
+                        color: tokenAccent
+                        visible: navSelected
+                    }
 
                     Row {
                         anchors.left: parent.left
-                        anchors.leftMargin: sidebarCollapsed ? 6 : 8
+                        anchors.leftMargin: sidebarCollapsed ? 6 : 10
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 12
 
-                        Canvas {
-                            id: navIconCanvas
+                        DuotoneIcon {
                             width: 18
                             height: 18
-                            onPaint: {
-                                var ctx = getContext("2d")
-                                ctx.reset()
-                                ctx.strokeStyle = navArea.containsMouse ? tokenText : tokenMuted
-                                ctx.lineWidth = 1.4
-                                ctx.lineCap = "round"
-                                ctx.lineJoin = "round"
-                                var ic = navIcon
-                                if (ic === "grid") {
-                                    ctx.strokeRect(2, 2, 6, 6)
-                                    ctx.strokeRect(10, 2, 6, 6)
-                                    ctx.strokeRect(2, 10, 6, 6)
-                                    ctx.strokeRect(10, 10, 6, 6)
-                                } else if (ic === "people") {
-                                    ctx.beginPath()
-                                    ctx.arc(9, 6, 3, 0, 6.28)
-                                    ctx.stroke()
-                                    ctx.beginPath()
-                                    ctx.moveTo(3, 16)
-                                    ctx.quadraticCurveTo(9, 11, 15, 16)
-                                    ctx.stroke()
-                                } else if (ic === "search") {
-                                    ctx.beginPath()
-                                    ctx.arc(8, 8, 5, 0, 6.28)
-                                    ctx.stroke()
-                                    ctx.beginPath()
-                                    ctx.moveTo(12, 12)
-                                    ctx.lineTo(16, 16)
-                                    ctx.stroke()
-                                } else if (ic === "plus") {
-                                    ctx.beginPath()
-                                    ctx.moveTo(9, 3); ctx.lineTo(9, 15)
-                                    ctx.moveTo(3, 9); ctx.lineTo(15, 9)
-                                    ctx.stroke()
-                                } else if (ic === "gear") {
-                                    ctx.beginPath()
-                                    ctx.arc(9, 9, 4, 0, 6.28)
-                                    ctx.stroke()
-                                    ctx.beginPath()
-                                    ctx.arc(9, 9, 7, 0, 6.28)
-                                    ctx.stroke()
-                                }
-                            }
-                            Component.onCompleted: requestPaint()
+                            icon: navIcon
+                            fillColor: (navSelected || navArea.containsMouse) ? tokenAccent : tokenMuted
+                            cutoutColor: tokenBg1
                         }
 
                         Text {
                             visible: !sidebarCollapsed
                             text: navLabel
-                            color: navArea.containsMouse ? tokenText : tokenMuted
+                            color: (navSelected || navArea.containsMouse) ? tokenText : tokenMuted
                             font.family: "Segoe UI"
                             font.pixelSize: 13
                             anchors.verticalCenter: parent.verticalCenter
@@ -376,7 +360,7 @@ ApplicationWindow {
                 width: parent.width
                 height: 36
                 sourceComponent: navEntry
-                onLoaded: window.bindNav(item, "library", "Library", "grid", "wordmark")
+                onLoaded: window.bindNav(item, "library", "Library", "library", "wordmark")
             }
             Loader {
                 width: parent.width
@@ -394,13 +378,13 @@ ApplicationWindow {
                 width: parent.width
                 height: 36
                 sourceComponent: navEntry
-                onLoaded: window.bindNav(item, "add", "Add folder", "plus", "addFolder")
+                onLoaded: window.bindNav(item, "add", "Add folder", "addFolder", "addFolder")
             }
             Loader {
                 width: parent.width
                 height: 36
                 sourceComponent: navEntry
-                onLoaded: window.bindNav(item, "settings", "Settings", "gear", "toggleSettings")
+                onLoaded: window.bindNav(item, "settings", "Settings", "settings", "toggleSettings")
             }
 
             Item { width: 1; height: 12 }
@@ -508,6 +492,7 @@ ApplicationWindow {
                 shellApi: window.shellApi
                 shellReady: window.shellReady
                 advancedMode: window.advancedModeSafe
+                tokenBg0: window.tokenBg
                 tokenBg1: window.tokenBg1
                 tokenBg2: window.tokenBg2
                 tokenBg3: window.tokenBg3
@@ -1479,124 +1464,146 @@ ApplicationWindow {
             }
         }
 
-        TimelineLandscape {
-            id: timelineHero
+        // Single archive column: header (timeline+calendar) then Field. No z-overlap.
+        Item {
+            id: archivePane
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.leftMargin: 22
-            anchors.rightMargin: 22
-            anchors.topMargin: 12
-            visible: !emptySafe && !peopleVisible && !focusActive
-            z: 2
-            shellApi: window.shellApi
-            shellReady: window.shellReady
-            yearModel: window.shellReady ? window.shellApi.timelineDensity : []
-            loading: window.timelineLoadingSafe
-            scopeKind: window.shellReady ? window.shellApi.scopeKind : ""
-            scopeLabel: window.shellReady ? window.shellApi.scopeLabel : ""
-            tokenBg: window.tokenBg
-            tokenBg2: window.tokenBg2
-            tokenAccent: window.tokenAccent
-            tokenAccentDim: window.tokenAccentDim
-            tokenText: window.tokenText
-            tokenMuted: window.tokenMuted
-            tokenFaint: window.tokenFaint
-            tokenBorder: window.tokenBorder
-            motion: window.motion
-            onYearClicked: (label) => { if (window.shellReady) window.shellApi.selectYear(label) }
-            onMonthClicked: (label) => { if (window.shellReady) window.shellApi.selectMonth(label) }
-            onRangeSelected: (startDay, endDay) => { if (window.shellReady) window.shellApi.selectRange(startDay, endDay) }
-        }
-
-        MemoryCalendar {
-            id: memoryCalendar
-            anchors.left: timelineHero.left
-            anchors.right: timelineHero.right
-            anchors.top: timelineHero.bottom
-            anchors.topMargin: 8
-            height: Math.max(260, Math.min(420, Math.floor((parent.height - timelineHero.height - 120) * 0.52)))
-            visible: !emptySafe && !peopleVisible && !focusActive
-            z: 2
-            shellApi: window.shellApi
-            shellReady: window.shellReady
-            cells: window.shellReady ? window.shellApi.calendarCells : []
-            title: window.shellReady ? window.shellApi.calendarTitle : ""
-            scopeKind: window.shellReady ? window.shellApi.scopeKind : ""
-            scopeLabel: window.shellReady ? window.shellApi.scopeLabel : ""
-            tokenBg: window.tokenBg
-            tokenBg1: window.tokenBg1
-            tokenBg2: window.tokenBg2
-            tokenAccent: window.tokenAccent
-            tokenAccentDim: window.tokenAccentDim
-            tokenText: window.tokenText
-            tokenMuted: window.tokenMuted
-            tokenFaint: window.tokenFaint
-            tokenBorder: window.tokenBorder
-            motion: window.motion
-            onDayClicked: (day) => { if (window.shellReady) window.shellApi.selectDay(day) }
-            onPrevMonth: { if (window.shellReady) window.shellApi.calendarPrevMonth() }
-            onNextMonth: { if (window.shellReady) window.shellApi.calendarNextMonth() }
-            onGoHome: { if (window.shellReady) window.shellApi.calendarGoHome() }
-        }
-
-        Text {
-            id: stickyHeader
-            objectName: "stickyHeader"
-            anchors.left: timelineHero.left
-            anchors.right: timelineHero.right
-            anchors.top: memoryCalendar.bottom
-            anchors.topMargin: 8
-            visible: !emptySafe && !peopleVisible && !focusActive && fieldSectionsActiveSafe && stickyHeadingSafe !== ""
-            z: 2
-            text: stickyHeadingSafe
-            color: tokenText
-            font.family: "Segoe UI"
-            font.pixelSize: 14
-            font.weight: Font.DemiBold
-        }
-
-        Text {
-            id: zeroResultFilter
-            objectName: "zeroResultFilter"
-            anchors.left: timelineHero.left
-            anchors.right: timelineHero.right
-            anchors.top: stickyHeader.visible ? stickyHeader.bottom : memoryCalendar.bottom
-            anchors.topMargin: 12
-            visible: !emptySafe && !peopleVisible && !focusActive && timeScopeActiveSafe && grid.count === 0
-            z: 2
-            text: "No media found for this selection. Clear Filter"
-            color: tokenAccent
-            font.family: "Segoe UI"
-            font.pixelSize: 13
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: if (shellReady) shellApi.clearScope()
-            }
-        }
-
-        ListView {
-            id: fieldSectionsView
-            objectName: "fieldSections"
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: zeroResultFilter.visible
-                ? zeroResultFilter.bottom
-                : (stickyHeader.visible ? stickyHeader.bottom : memoryCalendar.bottom)
             anchors.bottom: parent.bottom
             anchors.leftMargin: 22
             anchors.rightMargin: 22
-            anchors.topMargin: 8
+            anchors.topMargin: 12
             anchors.bottomMargin: 12
-            visible: !emptySafe && fieldSectionsActiveSafe
-            opacity: !focusActive ? 1 : 0
-            clip: true
-            spacing: 14
-            boundsBehavior: Flickable.StopAtBounds
-            model: shellReady ? shellApi.fieldSections : []
-            enabled: !focusActive
-            Behavior on opacity { NumberAnimation { duration: window.motion } }
+            visible: !emptySafe && !peopleVisible && !focusActive
+
+            // Soft center lift (Phase 2 atmosphere) — edges stay on canvas floor.
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: -8
+                width: parent.width * 0.92
+                height: Math.min(parent.height * 0.62, 520)
+                radius: width
+                color: Qt.lighter(tokenBg, 1.35)
+                opacity: 0.22
+                z: 0
+            }
+
+            Item {
+                id: archiveHeaderBand
+                objectName: "archiveHeaderBand"
+                z: 1
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: headerColumn.height
+
+                Column {
+                    id: headerColumn
+                    width: parent.width
+                    spacing: 8
+
+                    TimelineLandscape {
+                        id: timelineHero
+                        width: parent.width
+                        shellApi: window.shellApi
+                        shellReady: window.shellReady
+                        yearModel: window.shellReady ? window.shellApi.timelineDensity : []
+                        loading: window.timelineLoadingSafe
+                        scopeKind: window.shellReady ? window.shellApi.scopeKind : ""
+                        scopeLabel: window.shellReady ? window.shellApi.scopeLabel : ""
+                        tokenBg: window.tokenBg
+                        tokenBg2: window.tokenBg2
+                        tokenAccent: window.tokenAccent
+                        tokenAccentDim: window.tokenAccentDim
+                        tokenText: window.tokenText
+                        tokenMuted: window.tokenMuted
+                        tokenFaint: window.tokenFaint
+                        tokenBorder: window.tokenBorder
+                        motion: window.motion
+                        onYearClicked: (label) => { if (window.shellReady) window.shellApi.selectYear(label) }
+                        onMonthClicked: (label) => { if (window.shellReady) window.shellApi.selectMonth(label) }
+                        onRangeSelected: (startDay, endDay) => { if (window.shellReady) window.shellApi.selectRange(startDay, endDay) }
+                    }
+
+                    MemoryCalendar {
+                        id: memoryCalendar
+                        width: parent.width
+                        height: Math.max(240, Math.min(380, Math.floor((archivePane.height - timelineHero.height - 160) * 0.48)))
+                        shellApi: window.shellApi
+                        shellReady: window.shellReady
+                        cells: window.shellReady ? window.shellApi.calendarCells : []
+                        title: window.shellReady ? window.shellApi.calendarTitle : ""
+                        scopeKind: window.shellReady ? window.shellApi.scopeKind : ""
+                        scopeLabel: window.shellReady ? window.shellApi.scopeLabel : ""
+                        tokenBg: window.tokenBg
+                        tokenBg1: window.tokenBg1
+                        tokenBg2: window.tokenBg2
+                        tokenAccent: window.tokenAccent
+                        tokenAccentDim: window.tokenAccentDim
+                        tokenText: window.tokenText
+                        tokenMuted: window.tokenMuted
+                        tokenFaint: window.tokenFaint
+                        tokenBorder: window.tokenBorder
+                        motion: window.motion
+                        onDayClicked: (day) => { if (window.shellReady) window.shellApi.selectDay(day) }
+                        onPrevMonth: { if (window.shellReady) window.shellApi.calendarPrevMonth() }
+                        onNextMonth: { if (window.shellReady) window.shellApi.calendarNextMonth() }
+                        onGoHome: { if (window.shellReady) window.shellApi.calendarGoHome() }
+                    }
+
+                    Text {
+                        id: stickyHeader
+                        objectName: "stickyHeader"
+                        width: parent.width
+                        visible: fieldSectionsActiveSafe && stickyHeadingSafe !== ""
+                        text: stickyHeadingSafe
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        id: zeroResultFilter
+                        objectName: "zeroResultFilter"
+                        width: parent.width
+                        visible: timeScopeActiveSafe && grid.count === 0
+                        text: "No media found for this selection. Clear Filter"
+                        color: tokenAccent
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.clearScope()
+                        }
+                    }
+                }
+            }
+
+            Item {
+                id: fieldViewport
+                objectName: "fieldViewport"
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: archiveHeaderBand.bottom
+                anchors.bottom: parent.bottom
+                anchors.topMargin: 8
+                clip: true
+                z: 1
+
+            ListView {
+                id: fieldSectionsView
+                objectName: "fieldSections"
+                anchors.fill: parent
+                visible: fieldSectionsActiveSafe
+                clip: true
+                spacing: 14
+                boundsBehavior: Flickable.StopAtBounds
+                model: shellReady ? shellApi.fieldSections : []
+                enabled: !focusActive
 
             delegate: Column {
                 id: sectionCol
@@ -1631,7 +1638,9 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 anchors.margins: 6
                                 color: tokenBg2
-                                radius: 2
+                                radius: 4
+                                border.width: sectionTile.containsMouse ? 1 : 0
+                                border.color: Qt.rgba(1, 1, 1, 0.2)
 
                                 Image {
                                     anchors.fill: parent
@@ -1645,9 +1654,10 @@ ApplicationWindow {
                                 Rectangle {
                                     anchors.fill: parent
                                     color: "transparent"
-                                    border.width: sectionTile.containsMouse ? 1 : 0
+                                    border.width: sectionTile.containsMouse ? 2 : 0
                                     border.color: tokenAccent
-                                    radius: 2
+                                    radius: 4
+                                    opacity: sectionTile.containsMouse ? 0.85 : 0
                                 }
 
                                 MouseArea {
@@ -1704,43 +1714,38 @@ ApplicationWindow {
                         fieldSectionsView.contentY = 0
                 }
             }
-        }
+            }
 
-        GridView {
-            id: grid
-            objectName: "fieldGrid"
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: zeroResultFilter.visible
-                ? zeroResultFilter.bottom
-                : (stickyHeader.visible ? stickyHeader.bottom : memoryCalendar.bottom)
-            anchors.bottom: parent.bottom
-            anchors.leftMargin: 22
-            anchors.rightMargin: 22
-            anchors.topMargin: 8
-            anchors.bottomMargin: 12
-            visible: !emptySafe && !fieldSectionsActiveSafe
-            opacity: !focusActive ? 1 : 0
-            cellWidth: shellReady ? shellApi.cellSize : 160
-            cellHeight: shellReady ? shellApi.cellSize : 160
-            cacheBuffer: 400
-            boundsBehavior: Flickable.StopAtBounds
-            model: archiveModel
-            currentIndex: 0
-            enabled: !focusActive && !fieldSectionsActiveSafe
-            keyNavigationEnabled: !focusActive && !fieldSectionsActiveSafe
-            highlightFollowsCurrentItem: false
-            Behavior on opacity { NumberAnimation { duration: window.motion } }
+            GridView {
+                id: grid
+                objectName: "fieldGrid"
+                anchors.fill: parent
+                visible: !fieldSectionsActiveSafe
+                clip: true
+                cellWidth: shellReady ? shellApi.cellSize : 160
+                cellHeight: shellReady ? shellApi.cellSize : 160
+                cacheBuffer: 400
+                boundsBehavior: Flickable.StopAtBounds
+                model: archiveModel
+                currentIndex: 0
+                enabled: !focusActive && !fieldSectionsActiveSafe
+                keyNavigationEnabled: !focusActive && !fieldSectionsActiveSafe
+                highlightFollowsCurrentItem: false
 
             delegate: Item {
                 width: grid.cellWidth
                 height: grid.cellHeight
+                readonly property bool tileSelected: grid.currentIndex === index
 
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 6
                     color: tokenBg2
-                    radius: 2
+                    radius: 4
+                    border.width: tileSelected ? 2 : (tile.containsMouse ? 1 : 0)
+                    border.color: tileSelected
+                                 ? tokenAccent
+                                 : (tile.containsMouse ? Qt.rgba(1, 1, 1, 0.2) : "transparent")
 
                     Image {
                         anchors.fill: parent
@@ -1761,18 +1766,11 @@ ApplicationWindow {
                         font.pixelSize: 13
                     }
 
-                    Rectangle {
-                        anchors.fill: parent
-                        color: "transparent"
-                        border.width: tile.containsMouse || grid.currentIndex === index ? 1 : 0
-                        border.color: grid.currentIndex === index ? tokenAccent : tokenBorder
-                        radius: 2
-                    }
-
                     MouseArea {
                         id: tile
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             if (!shellReady)
                                 return
@@ -1812,6 +1810,8 @@ ApplicationWindow {
                     if (!focusActive)
                         grid.contentY = 0
                 }
+            }
+            }
             }
         }
 
