@@ -769,15 +769,11 @@ def ingest(
                 tick(path, "failed", force=True)
                 return
             h, w = img0.shape[:2]
-            if want_cancel():
-                return
             try:
                 faces = embed_bgr(app, img0)
             except Exception:
                 n_fail += 1
                 tick(path, "failed", force=True)
-                return
-            if want_cancel():
                 return
 
             with writer_lock():
