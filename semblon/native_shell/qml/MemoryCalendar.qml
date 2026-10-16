@@ -317,6 +317,7 @@ Item {
 
                         // Dashed ghost border for empty reserved days.
                         Canvas {
+                            id: ghostBorder
                             anchors.fill: parent
                             visible: !dayCell.hasMedia && !selected
                             onPaint: {
@@ -345,9 +346,9 @@ Item {
                             }
                             Connections {
                                 target: dayHover
-                                function onContainsMouseChanged() { requestPaint() }
+                                function onContainsMouseChanged() { ghostBorder.requestPaint() }
                             }
-                            Component.onCompleted: requestPaint()
+                            Component.onCompleted: ghostBorder.requestPaint()
                         }
 
                         Image {
