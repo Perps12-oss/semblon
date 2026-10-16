@@ -34,6 +34,7 @@ sam2 = [
 ]
 optional = [
   "PySide6-Essentials==6.12.0",
+  "PySide6-Addons==6.12.0",
   "pytesseract",
   "open-clip-torch",
   "torch>=2.5.1",
