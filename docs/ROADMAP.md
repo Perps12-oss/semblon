@@ -15,7 +15,7 @@ This file lists the product-completion sequence. It does not redefine the vision
 | 3 | Recover the context — Similar hit → day + surrounding photos | **VERIFIED** | Issue 11. Same-day neighbours in Field; other days excluded; missing-date honest. |
 | 4 | Keep and organise discoveries | **DEFERRED** | No album schema (product decision). |
 | 5 | Trust and release | **IN PROGRESS** / Gate C **BLOCKED** | YuNet+SFace runtime landed (buffalo_l retired from deps). Still need: L PASS or permanent BYO ship stance, Q Semblon eval, native ARM64, GHA green, Authenticode cert, lockfile refresh without insightface. |
-| 6 | Face → archive discovery | **IN PROGRESS** (slices A–C) | A–C: face similar, hypothesis desk + handoff, named person → days → Time. Plan: `docs/decisions/2026-10-16-yunet-sface-discovery-plan.md`. Slices D–E remain. |
+| 6 | Face → archive discovery | **IN PROGRESS** (slices A–D) | A–D: face similar, review handoff, person→Time, unified results basis labels. Plan: `docs/decisions/2026-10-16-yunet-sface-discovery-plan.md`. Slice E (OCR/objects) remains. |
 
 ## Pass verdict
 

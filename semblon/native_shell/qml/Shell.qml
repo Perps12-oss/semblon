@@ -2474,8 +2474,12 @@ ApplicationWindow {
                 objectName: "similarNote"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
-                anchors.bottomMargin: 28
-                visible: similarStateSafe === "empty" || similarStateSafe === "unavailable"
+                // Sit above the strip when ready so the basis label stays visible.
+                anchors.bottomMargin: similarStrip.visible ? 108 : 28
+                visible: (similarStateSafe === "empty"
+                          || similarStateSafe === "unavailable"
+                          || similarStateSafe === "ready")
+                         && similarNoteSafe !== ""
                 text: similarNoteSafe
                 color: tokenMuted
                 font.family: "Segoe UI"

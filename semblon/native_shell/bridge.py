@@ -107,6 +107,8 @@ class ShellBridge(QObject):
         self._similar = SimilarStripModel()
         self._similar_state = "idle"
         self._similar_note = ""
+        self._similar_basis = ""
+        self._similar_basis_label = ""
         self._point_source = ""
         self._people = PeopleModel()
         self._people_open = False
@@ -828,6 +830,16 @@ class ShellBridge(QObject):
     def similarNote(self) -> str:
         return self._similar_note
 
+    @Property(str, notify=similarChanged)
+    def similarBasis(self) -> str:
+        """Door key: whole | region | face. Empty when idle."""
+        return self._similar_basis
+
+    @Property(str, notify=similarChanged)
+    def similarBasisLabel(self) -> str:
+        """User-facing basis for the open results strip (distinct per door)."""
+        return self._similar_basis_label
+
     @Property(int, notify=similarChanged)
     def similarCount(self) -> int:
         return self._similar.rowCount()
@@ -844,13 +856,44 @@ class ShellBridge(QObject):
         self._similar.set_rows([])
         self._similar_state = "idle"
         self._similar_note = ""
+        self._similar_basis = ""
+        self._similar_basis_label = ""
         self.similarChanged.emit()
 
-    def _publish_similar(self, state: str, note: str, rows: list[tuple[str, float]]) -> None:
+    def _publish_similar(
+        self,
+        state: str,
+        note: str,
+        rows: list[tuple[str, float]],
+        *,
+        basis: str = "",
+        basis_label: str = "",
+    ) -> None:
         self._similar.set_rows(rows)
         self._similar_state = state
         self._similar_note = present_message(self._mode, note, fallback="Similar search could not run.")
+        self._similar_basis = str(basis or "")
+        self._similar_basis_label = str(basis_label or "")
         self.similarChanged.emit()
+
+    def _publish_similar_result(self, result) -> None:
+        """Shared Focus strip publish for whole / region / face doors."""
+        rows = [
+            (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
+            for item in (result.data.get("items") or [])
+            if item.get("media_id")
+        ]
+        state = result.state if result.state in {"ready", "empty", "unavailable"} else "unavailable"
+        note = result.message if result.message else "Similar search could not run."
+        self._result_text = ""
+        self.resultChanged.emit()
+        self._publish_similar(
+            state,
+            note,
+            rows,
+            basis=str(result.data.get("basis") or ""),
+            basis_label=str(result.data.get("basis_label") or ""),
+        )
 
     def _clear_query(self) -> None:
         self._region_norm = None
@@ -2108,16 +2151,7 @@ class ShellBridge(QObject):
             self._publish_similar("unavailable", "Open a photo first.", [])
             return
         result = self._safe_call(lambda: self._adapter.similar_media(media_id))
-        rows = [
-            (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
-            for item in (result.data.get("items") or [])
-            if item.get("media_id")
-        ]
-        state = result.state if result.state in {"ready", "empty", "unavailable"} else "unavailable"
-        note = result.message if result.message else "Similar search could not run."
-        self._result_text = ""
-        self.resultChanged.emit()
-        self._publish_similar(state, note, rows)
+        self._publish_similar_result(result)
 
     @Slot(str)
     def findSimilarFaces(self, face_id: str = "") -> None:
@@ -2127,16 +2161,7 @@ class ShellBridge(QObject):
             self._publish_similar("unavailable", "Select a face on the photo first.", [])
             return
         result = self._safe_call(lambda: self._adapter.similar_faces(fid))
-        rows = [
-            (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
-            for item in (result.data.get("items") or [])
-            if item.get("media_id")
-        ]
-        state = result.state if result.state in {"ready", "empty", "unavailable"} else "unavailable"
-        note = result.message if result.message else "Similar search could not run."
-        self._result_text = ""
-        self.resultChanged.emit()
-        self._publish_similar(state, note, rows)
+        self._publish_similar_result(result)
 
     @Slot()
     def findSimilar(self) -> None:
@@ -2155,11 +2180,16 @@ class ShellBridge(QObject):
         except Exception:  # noqa: BLE001 — honest failure, no invented matches
             self._result_text = ""
             self.resultChanged.emit()
-            self._publish_similar("unavailable", "Similar search could not run.", [])
+            self._publish_similar(
+                "unavailable",
+                "Similar (selected region · colour histogram): Similar search could not run.",
+                [],
+                basis="region",
+                basis_label="selected region · colour histogram",
+            )
             return
-        self._result_text = ""
-        self.resultChanged.emit()
-        self._publish_similar(*_strip_from(rec))
+        result = self._safe_call(lambda: self._adapter.similar_region(rec))
+        self._publish_similar_result(result)
 
     @Slot()
     def pauseJob(self) -> None:
@@ -2314,35 +2344,3 @@ def _ask_lines(lines, mode: str) -> str:
         kept.append(text)
     return "\n".join(kept) or "Nothing was searched."
 
-
-def _strip_from(rec: dict) -> tuple[str, str, list[tuple[str, float]]]:
-    """Strip payload only. No provider, item id, or score text."""
-    similar = rec.get("similar") or {}
-    status = similar.get("status")
-    items = list(similar.get("items") or [])
-    if status == "SUCCESS" and items:
-        rows: list[tuple[str, float]] = []
-        for item in items[:8]:
-            media_id = str(item.get("media_id") or "")
-            if not media_id:
-                continue
-            try:
-                score = float(item.get("score") or 0.0)
-            except (TypeError, ValueError):
-                score = 0.0
-            rows.append((media_id, score))
-        if rows:
-            return "ready", "Similar (colour histogram): region colour matches.", rows
-    if status == "UNAVAILABLE":
-        return "unavailable", _unavailable_note(similar), []
-    return "empty", "Similar (colour histogram): no similar images found yet.", []
-
-
-def _unavailable_note(similar: dict) -> str:
-    reason = str(similar.get("reason") or "")
-    lowered = reason.lower()
-    if "embedding" in lowered or "pack" in lowered or "space" in lowered:
-        return "Similar search needs photos that have already been looked at."
-    if reason and "sqlite" not in lowered and "traceback" not in lowered:
-        return reason
-    return "Similar search could not run."

@@ -166,6 +166,18 @@ class ArchiveAdapter:
         rec = search_similar_faces(self.store, face_id)
         return self._similar_result(rec, basis="face")
 
+    def similar_region(self, rec: dict) -> Result:
+        """Region door → same Focus strip chrome as whole/face. Colour histogram only."""
+        similar = dict((rec or {}).get("similar") or {})
+        if str(similar.get("status") or "") == "UNAVAILABLE":
+            reason = str(similar.get("reason") or "")
+            lowered = reason.lower()
+            if "embedding" in lowered or "pack" in lowered or "space" in lowered:
+                similar["reason"] = "Similar search needs photos that have already been looked at."
+            elif "sqlite" in lowered or "traceback" in lowered or not reason.strip():
+                similar["reason"] = "Similar search could not run."
+        return self._similar_result(similar, basis="region")
+
     def _similar_result(self, rec: dict, *, basis: str) -> Result:
         status = str(rec.get("status") or "")
         items = []
@@ -183,29 +195,32 @@ class ArchiveAdapter:
             engine = "face-embed"
             empty_msg = f"Similar ({basis_label}): no similar faces found yet."
             ready_msg = f"Similar ({basis_label}): {len(items)} face matches."
-        else:
-            # Whole-image / region doors use colour-histogram appearance, not semantics.
-            basis_label = "colour histogram" if basis in {"whole", "region"} else basis
+        elif basis == "region":
+            # Region door is colour histogram on the drawn box — not face identity.
+            basis_label = "selected region · colour histogram"
             engine = "color-hist"
             empty_msg = f"Similar ({basis_label}): no similar images found yet."
             ready_msg = f"Similar ({basis_label}): {len(items)} colour matches."
+        else:
+            # Whole-image door uses colour-histogram appearance, not semantics.
+            basis_label = "whole photo · colour histogram"
+            engine = "color-hist"
+            empty_msg = f"Similar ({basis_label}): no similar images found yet."
+            ready_msg = f"Similar ({basis_label}): {len(items)} colour matches."
+        meta = {"basis": basis, "basis_label": basis_label, "engine": engine, "items": []}
         if status == "UNAVAILABLE":
             reason = str(rec.get("reason") or "Similar search could not run.")
             return Result(
                 "unavailable",
                 f"Similar ({basis_label}): {reason}",
-                {"basis": basis, "engine": engine, "items": []},
+                {**meta, "items": []},
             )
         if not items:
-            return Result(
-                "empty",
-                empty_msg,
-                {"basis": basis, "engine": engine, "items": []},
-            )
+            return Result("empty", empty_msg, meta)
         return Result(
             "ready",
             ready_msg,
-            {"basis": basis, "engine": engine, "items": items[:8]},
+            {**meta, "items": items[:8]},
         )
 
     def review_counts(self) -> Result:

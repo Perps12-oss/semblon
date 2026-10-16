@@ -7,10 +7,10 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-16 (discovery slices A–C) |
+| Evidence date | 2026-10-16 (discovery slices A–D) |
 | Branch | `grok/yunet-sface-discovery-plan` |
 | Parent HEAD | (see git log on branch) |
-| Working tree at evidence | Slice C person → days → Time; pytest below |
+| Working tree at evidence | Slice D unified results basis labels; pytest below |
 
 ## Status vocabulary
 
@@ -75,7 +75,8 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 |---|---|
 | `pytest tests/test_similar_faces.py` + adapter honesty | **7 passed** (slice A) |
 | `pytest tests/test_discovery_slice_b.py` + People desk tests | **7 passed** (slice B) |
-| `pytest tests/test_discovery_slice_c.py` | **3 passed** (`--basetemp=.pytest-tmp-slice-c`) |
+| `pytest tests/test_discovery_slice_c.py` | **3 passed** (slice C) |
+| `pytest tests/test_discovery_slice_d.py` + region/Gate A Similar | **7 passed** (`--basetemp=.pytest-tmp-slice-d*`) |
 | Live user database | **not modified** |
 
 ### Tests covering Gate A (unchanged)
@@ -108,7 +109,13 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 1. Named People row → `personId` + `memory.history` → day chips (newest first) and **Browse in Time**.
 2. Day chip / Browse → close People → `openFocusInContext` (Gate A archive-wide day neighbours). Honest empty if no dated stills.
 3. No person-only Field filter; no auto-name.
-4. Plan/ROADMAP: milestone 6 IN PROGRESS (A–C); D–E not started.
+
+## Behaviour landed — discovery slice D
+
+1. Whole / region / face Similar all publish through shared adapter + Focus strip (`similarBasis` / `similarBasisLabel`).
+2. Ready-state basis note visible above the strip (not only empty/unavailable).
+3. Distinct labels: whole photo · colour histogram · selected region · colour histogram · face embedding.
+4. Plan/ROADMAP: milestone 6 IN PROGRESS (A–D); E not started.
 
 ## Capability notes
 
@@ -116,6 +123,7 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 - Focus face Similar is face embedding (same pack); not a name; not auto-assign.
 - People desk groups are hypotheses until Name; Name remains the only person-create path.
 - Named person → Time uses archive day scope (neighbours may include other people that day).
+- Results chrome is one strip; basis labels stay distinct per door.
 - Pack gate unchanged. ARM64 OpenCV load remains BLOCKED historically (`docs/PERF-P1-ARM64.md`).
 - Identity runtime is YuNet + SFace (`opencv/yunet_sface`); buffalo_l retired from deps (BYO historical only).
 
