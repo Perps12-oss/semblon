@@ -104,6 +104,8 @@ class ArchiveAdapter:
             return self._search_people(text)
         if key == "text":
             return self._search_text(text)
+        if key == "object":
+            return self._search_object(text)
         if key == "whole":
             return Result(
                 "unavailable",
@@ -142,16 +144,80 @@ class ArchiveAdapter:
         except SearchError as exc:
             raise AdapterError("search.TEXT", str(exc)) from exc
         status = str(rec.get("status") or "")
+        basis = str(rec.get("similarity_basis") or "Text in photos (OCR substring)")
+        media_ids = [str(m) for m in (rec.get("media_ids") or []) if m]
         if status == "UNAVAILABLE":
-            reason = str(rec.get("reason") or "Text search is not available yet.")
-            return Result("unavailable", f"Text search: {reason}", {"mode": "text"})
+            reason = str(rec.get("reason") or "Text in photos is not available yet.")
+            return Result(
+                "unavailable",
+                f"Text search: {reason}",
+                {
+                    "mode": "text",
+                    "media_ids": [],
+                    "basis": "text",
+                    "basis_label": basis,
+                    "note": "Text in photos — not a person.",
+                },
+            )
         items = list(rec.get("items") or [])
         if status == "NO_RESULT" or not items:
-            return Result("empty", "Text search: nothing matched.", {"mode": "text", "count": 0})
+            return Result(
+                "empty",
+                "Text search: nothing matched.",
+                {
+                    "mode": "text",
+                    "count": 0,
+                    "media_ids": [],
+                    "basis": "text",
+                    "basis_label": basis,
+                    "note": "Text in photos — not a person.",
+                },
+            )
         return Result(
             "ready",
-            f"Text search: {len(items)} matches.",
-            {"mode": "text", "count": len(items), "items": items[:20]},
+            f"Text search: {len(media_ids) or len(items)} photos with matching text.",
+            {
+                "mode": "text",
+                "count": len(media_ids) or len(items),
+                "items": items[:20],
+                "media_ids": media_ids,
+                "basis": "text",
+                "basis_label": basis,
+                "note": "Text in photos — not a person.",
+            },
+        )
+
+    def _search_object(self, query: str) -> Result:
+        from semblon.search import SearchError, search_object
+
+        try:
+            rec = search_object(self.store, query)
+        except SearchError as exc:
+            raise AdapterError("search.OBJECT", str(exc)) from exc
+        status = str(rec.get("status") or "")
+        basis = str(rec.get("similarity_basis") or "COCO object detection (NanoDet)")
+        media_ids = [str(m) for m in (rec.get("media_ids") or []) if m]
+        meta = {
+            "mode": "object",
+            "media_ids": media_ids,
+            "basis": "object",
+            "basis_label": basis,
+            "note": "Object labels are not a person.",
+        }
+        if status == "UNAVAILABLE":
+            reason = str(rec.get("reason") or "Object search needs a NanoDet pack.")
+            return Result("unavailable", f"Object search: {reason}", {**meta, "media_ids": []})
+        items = list(rec.get("items") or [])
+        if status == "NO_RESULT" or not items:
+            return Result(
+                "empty",
+                "Object search: nothing matched.",
+                {**meta, "count": 0, "media_ids": []},
+            )
+        return Result(
+            "ready",
+            f"Object search: {len(media_ids) or len(items)} photos with matching objects.",
+            {**meta, "count": len(media_ids) or len(items), "items": items[:20]},
         )
 
     def similar_media(self, media_id: str) -> Result:
@@ -422,7 +488,8 @@ class ArchiveAdapter:
         saved = save_search_mode(key, self.store)
         label = {
             "people": "named people",
-            "text": "text read from photos",
+            "text": "text in photos — not a person",
+            "object": "objects in photos — not a person",
             "whole": "the whole photo",
             "region": "a region you draw",
         }[saved]
@@ -434,7 +501,8 @@ class ArchiveAdapter:
         key = load_search_mode(self.store)
         labels = {
             "people": "Search looks at named people.",
-            "text": "Search looks at text read from photos.",
+            "text": "Search looks at text in photos — not a person.",
+            "object": "Search looks at objects in photos — not a person.",
             "whole": "Search looks at the whole photo.",
             "region": "Search looks at a region you draw.",
         }

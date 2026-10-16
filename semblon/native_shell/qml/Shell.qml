@@ -83,8 +83,8 @@ ApplicationWindow {
     readonly property color tokenFaint: shellReady ? shellApi.text3 : "#6b7280"
     readonly property color tokenAccentDim: shellReady ? shellApi.accentDim : "#2b4d8f"
     readonly property color tokenDanger: shellReady ? shellApi.dangerColor : "#e5484d"
-    readonly property var primarySettingCalls: ["cycleDensity", "libraryHealth", "showActivity", "modePeople", "modeText", "rescan", "resetDefaults"]
-    readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Rescan", "Reset defaults"]
+    readonly property var primarySettingCalls: ["cycleDensity", "libraryHealth", "showActivity", "modePeople", "modeText", "modeObject", "rescan", "resetDefaults"]
+    readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Search objects", "Rescan", "Reset defaults"]
     readonly property var advancedSettingCalls: ["scanDuplicates", "showCapabilities", "gpuAuto", "gpuOff", "namedItems", "knowledgePack", "installModel"]
     readonly property var advancedSettingLabels: ["Duplicates", "Capabilities", "GPU auto", "GPU off", "Named items", "Knowledge pack", "Install model"]
     font.family: "Segoe UI"
@@ -101,6 +101,7 @@ ApplicationWindow {
         else if (call === "gpuOff") shellApi.setGpuPreference("off")
         else if (call === "modePeople") shellApi.setSearchMode("people")
         else if (call === "modeText") shellApi.setSearchMode("text")
+        else if (call === "modeObject") shellApi.setSearchMode("object")
         else if (call === "rescan") shellApi.rescanFolder()
         else if (call === "namedItems") shellApi.openNamedItems()
         else if (call === "knowledgePack") shellApi.chooseKnowledgePack()
@@ -832,9 +833,9 @@ ApplicationWindow {
                     font.pixelSize: 12
                     font.family: "Segoe UI"
                 }
-                Repeater {
+                    Repeater {
                     objectName: "primarySettingsRepeater"
-                    model: 7
+                    model: 8
                     delegate: Rectangle {
                         Component.onCompleted: objectName = "setting_" + primarySettingCalls[index]
                         width: parent.width
@@ -1021,10 +1022,17 @@ ApplicationWindow {
                         objectName: "unresolvedLine"
                         width: parent.width
                         text: shellReady ? shellApi.unresolvedText : ""
-                        color: tokenReview
+                        color: unresolvedHit.containsMouse ? tokenText : tokenReview
                         font.family: "Segoe UI"
                         font.pixelSize: 13
                         wrapMode: Text.WordWrap
+                        MouseArea {
+                            id: unresolvedHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.openUnresolvedInbox()
+                        }
                     }
 
                     Text {
@@ -1254,6 +1262,21 @@ ApplicationWindow {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: if (shellReady) shellApi.browseSelectedPersonInTime()
+                                        }
+                                    }
+
+                                    Text {
+                                        objectName: "showPersonOnly"
+                                        text: "Show only this person"
+                                        color: personOnlyHit.containsMouse ? tokenText : tokenAccent
+                                        font.pixelSize: 14
+                                        MouseArea {
+                                            id: personOnlyHit
+                                            anchors.fill: parent
+                                            anchors.margins: -4
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.showSelectedPersonOnly()
                                         }
                                     }
                                 }

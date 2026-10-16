@@ -20,6 +20,7 @@ from semblon.store import connect, init_db
 APPEARANCE_PACK = "appearance/rgb8@1"
 APPEARANCE_DIM = 24
 OBJECT_PROVIDER = "opencv-contour"
+NANODET_PROVIDER = "opencv-zoo-nanodet"
 CLIP_PACK = "clip/openclip-vitb32@1"
 CLIP_MODEL = "ViT-B-32"
 CLIP_PRETRAINED = "openai"
@@ -200,12 +201,21 @@ def contour_objects(img, *, min_area: int = 400, max_regions: int = 8) -> list[d
     return out
 
 
+def probe_nanodet_status() -> tuple[bool, str | None]:
+    """True when BYO NanoDet pack is ready. Contours alone are not detector search."""
+    from semblon.object_pack import probe_nanodet_status as _probe
+
+    return _probe()
+
+
 def optional_status() -> dict:
     """Honest availability of extra providers. Missing extras are not a crash.
 
     Status matches what the call path needs, not a bare import:
     OCR needs the tesseract binary; CLIP needs open_clip+torch+local weights;
-    pose needs mediapipe.solutions.pose. Never downloads CLIP weights.
+    pose needs mediapipe.solutions.pose; NanoDet needs a BYO ONNX pack.
+    Never downloads CLIP or NanoDet weights. Contour regions stay available
+    without NanoDet but are not COCO object search.
     """
     notes: dict[str, str] = {}
     ocr, ocr_note = probe_ocr_status()
@@ -217,10 +227,14 @@ def optional_status() -> dict:
     pose, pose_note = probe_pose_status()
     if pose_note:
         notes["pose"] = pose_note
+    nanodet, nanodet_note = probe_nanodet_status()
+    if nanodet_note:
+        notes["nanodet"] = nanodet_note
     return {
         "facekit": True,
         "appearance": True,
-        "object": True,
+        "object": True,  # contour region discovery (not COCO labels)
+        "nanodet": nanodet,
         "ocr": ocr,
         "clip": clip,
         "pose": pose,
@@ -541,6 +555,7 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
         )
         counts["appearance"] += 1
     if "object" in wanted:
+        # Contour regions — geometry only; never claim COCO labels.
         for obj in contour_objects(img):
             persist_item(
                 conn,
@@ -548,11 +563,51 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
                 run_id=run_id,
                 kind="object",
                 provider=OBJECT_PROVIDER,
-                payload={"class": obj["class"]},
+                payload={"class": obj["class"], "label": "region", "source": "contour"},
                 bbox=obj["bbox"],
                 score=obj["score"],
             )
             counts["object"] += 1
+        # NanoDet COCO labels when BYO pack is ready; fail closed otherwise.
+        nanodet_ready, _nanodet_note = probe_nanodet_status()
+        if nanodet_ready:
+            try:
+                from semblon.object_nanodet import detect_objects
+
+                for obj in detect_objects(img):
+                    persist_item(
+                        conn,
+                        observation_id=observation_id,
+                        run_id=run_id,
+                        kind="object",
+                        provider=NANODET_PROVIDER,
+                        payload={
+                            "class": obj["class"],
+                            "label": obj["label"],
+                            "class_id": obj["class_id"],
+                            "source": "nanodet",
+                            "identity": "not facekit",
+                        },
+                        bbox=obj["bbox"],
+                        score=obj["score"],
+                    )
+                    counts["object"] += 1
+            except Exception as exc:  # noqa: BLE001 — observation must not crash ingest
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="object",
+                    provider=NANODET_PROVIDER,
+                    payload={
+                        "error": str(exc)[:500],
+                        "contract_status": "UNAVAILABLE",
+                        "identity": "not facekit",
+                    },
+                    score=0.0,
+                )
+        # Missing pack: no NanoDet rows. search_object probes the pack and reports UNAVAILABLE.
+        # Contour regions above remain honest geometry, not detector labels.
     if "text" in wanted or "ocr" in wanted:
         paused = _circuit_paused("ocr")
         if paused is not None:

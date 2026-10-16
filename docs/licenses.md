@@ -24,6 +24,22 @@ Unresolved before L PASS:
 3. Record local SHA-256 after owner download; keep copies of LICENSE files with the release NOTICE plan.
 4. Decide whether MSI may ever bundle (separate product approval) or remain permanent BYO.
 
+## Object detection (NanoDet BYO)
+
+| Component | Role | Licence note | Redistribute in MSI? |
+|---|---|---|---|
+| NanoDet ONNX (`object_detection_nanodet_2022nov.onnx`) | COCO-80 detector | Zoo directory claims **Apache-2.0** ([LICENSE](https://github.com/opencv/opencv_zoo/blob/main/models/object_detection_nanodet/LICENSE)) | **no until L PASS** — BYO |
+| Contour regions (`opencv-contour`) | geometry only | OpenCV runtime | code path yes; **not** detector labels |
+
+**Gate L status (objects):** **OPEN / BYO only.** Exact SHA-256 unrecorded until owner download evidence in `docs/OBJECT-PACK.md`. MSI `assert-no-weights.py` refuses `.onnx` and NanoDet names.
+
+## OCR (Tesseract BYO)
+
+| Component | Role | Licence note | Redistribute? |
+|---|---|---|---|
+| Tesseract binary | OCR | Apache-2.0 (upstream) | **OS/BYO** — not MSI-bundled unless separately approved |
+| pytesseract | optional Python bridge | Apache-2.0 | code dep optional |
+
 ## Other inventory
 
 | Component | Role | Licence note | Redistribute? |

@@ -488,7 +488,12 @@ def main(argv: list[str] | None = None) -> int:
     srch.add_argument(
         "--text",
         default=None,
-        help="substring over OCR observation payloads (not identity; no new columns)",
+        help="substring over OCR observation payloads (text in photos — not a person)",
+    )
+    srch.add_argument(
+        "--object",
+        default=None,
+        help="substring over NanoDet COCO labels (objects — not a person; BYO pack)",
     )
 
     wat = sub.add_parser("watch", help="poll a folder and ingest incrementally (cancellable)")
@@ -1220,6 +1225,7 @@ def main(argv: list[str] | None = None) -> int:
         from semblon.search import (
             SearchError,
             search_face,
+            search_object,
             search_people,
             search_person,
             search_similar,
@@ -1243,10 +1249,12 @@ def main(argv: list[str] | None = None) -> int:
                 rec = search_similar(args.store, args.similar)
             elif args.text is not None:
                 rec = search_text(args.store, args.text)
+            elif getattr(args, "object", None) is not None:
+                rec = search_object(args.store, args.object)
             else:
                 print(
                     "search requires --people, --person, --face, --similar-face, "
-                    "--similar, or --text",
+                    "--similar, --text, or --object",
                     file=sys.stderr,
                 )
                 return 2
