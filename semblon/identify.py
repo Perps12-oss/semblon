@@ -354,7 +354,6 @@ def identify_run(
                 verdict=verdict,
                 threshold=threshold,
                 source="face",
-                cluster_id=face["cluster_id"],
             )
             results.append(
                 {

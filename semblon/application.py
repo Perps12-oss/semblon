@@ -207,6 +207,19 @@ class Application:
     def cancel_job(self) -> None:
         self.engine.cancel()
 
+    def shutdown(self, timeout: float = 30.0) -> None:
+        self.engine.shutdown(timeout=timeout)
+
+    def erase_person(self, person_id: str) -> dict:
+        from semblon.erasure import delete_person
+
+        return delete_person(self.store, person_id)
+
+    def wipe_library(self) -> dict:
+        from semblon.erasure import wipe_library
+
+        return wipe_library(self.store)
+
     def control_states(self, *, resume_ready: bool = False) -> dict[str, str]:
         return home_control_states(
             job_running=self.busy,

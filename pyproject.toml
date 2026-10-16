@@ -11,11 +11,17 @@ dependencies = [
   "numpy==2.4.6; python_version < '3.12'",
   "numpy==2.5.3; python_version >= '3.12'",
   "pillow==12.3.0",
+  "onnx==1.23.2",
+  "scipy==1.17.1; python_version < '3.12'",
+  "scipy==1.18.1; python_version >= '3.12'",
+  "scikit-image==0.26.0",
+  "requests==2.34.2",
+  "tqdm==4.70.1",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "PySide6>=6.6"]
-gui = ["PySide6>=6.6"]  # forward shell (`semblon shell`)
+dev = ["pytest==9.1.1", "PySide6-Essentials==6.12.0", "PySide6-Addons==6.12.0"]
+gui = ["PySide6-Essentials==6.12.0", "PySide6-Addons==6.12.0"]  # forward shell (`semblon shell`); not the WebEngine metapackage
 ocr = ["pytesseract"]
 clip = ["open-clip-torch", "torch>=2.5.1"]
 naming = ["open-clip-torch", "torch>=2.5.1", "transformers"]
@@ -27,7 +33,8 @@ sam2 = [
   "torchvision>=0.20.1",
 ]
 optional = [
-  "PySide6>=6.6",
+  "PySide6-Essentials==6.12.0",
+  "PySide6-Addons==6.12.0",
   "pytesseract",
   "open-clip-torch",
   "torch>=2.5.1",

@@ -20,6 +20,9 @@ from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
+    from semblon.logging_setup import configure_logging
+
+    configure_logging()
     p = argparse.ArgumentParser(prog="semblon")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -75,6 +78,10 @@ def main(argv: list[str] | None = None) -> int:
     integ = lab_sub.add_parser("integrity", help="read-only store integrity report")
     integ.add_argument("--store", required=True, type=Path)
     mods = lab_sub.add_parser("models", help="report local buffalo_l weights (does not download)")
+    lab_sub.add_parser(
+        "pack-accept",
+        help="pin local buffalo_l ONNX hashes (does not download)",
+    )
     lab_sub.add_parser("providers", help="list observation providers and availability")
     vu = lab_sub.add_parser(
         "visual-understand",
@@ -346,6 +353,18 @@ def main(argv: list[str] | None = None) -> int:
     ident.add_argument("--image", default=None, type=Path, help="new still; not enrolled")
     ident.add_argument("--threshold", type=float, default=None)
 
+    erase = sub.add_parser("erase", help="delete a person or the whole library index")
+    erase_sub = erase.add_subparsers(dest="erasecmd", required=True)
+    erase_person = erase_sub.add_parser("person", help="delete one person and their face templates")
+    erase_person.add_argument("--store", required=True, type=Path)
+    erase_person.add_argument("--person", required=True)
+    erase_library = erase_sub.add_parser(
+        "library",
+        help="delete library rows (not original files, not Reset prefs)",
+    )
+    erase_library.add_argument("--store", required=True, type=Path)
+    erase_library.add_argument("--yes", action="store_true", help="required")
+
     box = sub.add_parser("inbox", help="FACE-005 KNOWN/UNKNOWN/REVIEW_REQUIRED/REJECTED")
     box.add_argument("--run", required=True)
     box.add_argument("--store", required=True, type=Path)
@@ -563,6 +582,36 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(weights_status(), indent=2))
         return 0
 
+    if args.cmd == "lab" and args.labcmd == "pack-accept":
+        from semblon.engine import ModelPackError, accept_local_face_pack
+
+        try:
+            rec = accept_local_face_pack()
+        except ModelPackError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
+    if args.cmd == "erase":
+        from semblon.erasure import ErasureError, delete_person, wipe_library
+
+        try:
+            if args.erasecmd == "person":
+                rec = delete_person(args.store, args.person)
+            elif args.erasecmd == "library":
+                if not args.yes:
+                    print("erase library requires --yes", file=sys.stderr)
+                    return 2
+                rec = wipe_library(args.store)
+            else:
+                return 2
+        except ErasureError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0
+
     if args.cmd == "lab" and args.labcmd == "providers":
         from semblon.engine import select_execution_provider
         from semblon.observers import optional_status, probe_ocr_status
@@ -739,8 +788,9 @@ def main(argv: list[str] | None = None) -> int:
                     "protocol": "semblon-ipc-probe/1",
                     "host": args.host,
                     "port": bound,
+                    "token": server.token,
                     "store": str(store),
-                    "note": "R2 probe only; send JSON-lines; shutdown op or Ctrl+C",
+                    "note": "R2 lab probe only; send the token on every line; shutdown op or Ctrl+C",
                 },
                 indent=2,
             ),

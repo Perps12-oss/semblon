@@ -264,9 +264,126 @@ def format_execution_status_lines() -> list[str]:
     return lines
 
 
+class ModelPackError(RuntimeError):
+    """Local face-pack refusal. Semblon does not download buffalo_l."""
+
+
+PACK_OPT_IN = "SEMBLON_ALLOW_FACE_PACK"
+PACK_PIN_NAME = "semblon-pack-pin.json"
+
+
+def face_pack_dir(root: Path | None = None) -> Path:
+    if root is not None:
+        return Path(root)
+    return Path.home() / ".insightface" / "models" / "buffalo_l"
+
+
+def assert_single_opencv() -> None:
+    """Two cv2 builds in one process is a Windows access-violation setup."""
+    from importlib.metadata import distributions
+
+    names = set()
+    for dist in distributions():
+        label = dist.metadata.get("Name")
+        if label:
+            names.add(label.lower())
+    extras = [name for name in ("opencv-python", "opencv-contrib-python") if name in names]
+    if extras and "opencv-python-headless" in names:
+        raise ModelPackError(
+            "opencv-python is installed beside opencv-python-headless. "
+            "Uninstall opencv-python so only the headless build remains."
+        )
+
+
+def _read_pack_pin(path: Path) -> dict[str, str]:
+    import json
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ModelPackError(f"face pack pin is unreadable: {path.name}") from exc
+    files = payload.get("files") if isinstance(payload, dict) else None
+    if not isinstance(files, dict) or not files or not payload.get("opt_in"):
+        raise ModelPackError(
+            "face pack is not opted in. Run: semblon lab pack-accept"
+        )
+    return {str(name): str(digest).lower() for name, digest in files.items()}
+
+
+def assert_face_pack_ready(root: Path | None = None) -> dict[str, str]:
+    """Refuse to load buffalo_l unless a local pin matches every ONNX file.
+
+    Missing weights are an error. This function does not download them.
+    """
+    if os.environ.get(PACK_OPT_IN) == "0":
+        raise ModelPackError(f"{PACK_OPT_IN}=0; face pack load refused")
+    home = face_pack_dir(root)
+    onnx = sorted(home.glob("*.onnx")) if home.is_dir() else []
+    if not onnx:
+        raise ModelPackError(
+            "buffalo_l weights are not installed. Semblon does not download them. "
+            "Place the ONNX files locally, then run: semblon lab pack-accept"
+        )
+    pin_path = home / PACK_PIN_NAME
+    if not pin_path.is_file():
+        raise ModelPackError(
+            "buffalo_l has no local pin. Semblon does not download weights. "
+            "Run: semblon lab pack-accept"
+        )
+    expected = _read_pack_pin(pin_path)
+    actual = {path.name: _sha256_file(path) for path in onnx}
+    if actual != expected:
+        raise ModelPackError("buffalo_l ONNX hashes do not match the pinned set")
+    return actual
+
+
+def accept_local_face_pack(root: Path | None = None) -> dict:
+    """Record hashes of ONNX files already on disk. Does not download."""
+    import json
+
+    home = face_pack_dir(root)
+    onnx = sorted(home.glob("*.onnx")) if home.is_dir() else []
+    if not onnx:
+        raise ModelPackError(
+            "no local ONNX files to pin. Semblon does not download buffalo_l."
+        )
+    files = {path.name: _sha256_file(path) for path in onnx}
+    pin = {"opt_in": True, "files": files}
+    dest = home / PACK_PIN_NAME
+    dest.write_text(json.dumps(pin, indent=2, sort_keys=True), encoding="utf-8")
+    return {"opt_in": True, "files": len(files), "pin": dest.name}
+
+
+def _block_weight_download() -> None:
+    """InsightFace's loader downloads when the pack directory is missing."""
+    import insightface.utils.storage as storage
+
+    def _download(sub_dir, name, force=False, root="~/.insightface"):
+        dest = Path(root).expanduser() / sub_dir / name
+        if dest.is_dir() and any(dest.glob("*.onnx")) and not force:
+            return str(dest)
+        raise ModelPackError("Semblon does not download buffalo_l weights")
+
+    def _download_onnx(sub_dir, model_file, force=False, root="~/.insightface", download_zip=False):
+        del download_zip
+        dest = Path(root).expanduser() / sub_dir / model_file
+        if dest.is_file() and not force:
+            return str(dest)
+        raise ModelPackError("Semblon does not download buffalo_l weights")
+
+    storage.download = _download
+    storage.ensure_available = lambda sub_dir, name, root="~/.insightface": _download(
+        sub_dir, name, False, root
+    )
+    storage.download_onnx = _download_onnx
+
+
 def load_app(det_size: tuple[int, int] = (640, 640), *, prefer_gpu: bool = False):
     from insightface.app import FaceAnalysis
 
+    assert_single_opencv()
+    assert_face_pack_ready()
+    _block_weight_download()
     sel = select_execution_provider(prefer_gpu=prefer_gpu)
     providers = [sel["chosen"]]
     if sel["chosen"] != "CPUExecutionProvider":

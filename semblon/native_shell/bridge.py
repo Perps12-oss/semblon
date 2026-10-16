@@ -167,6 +167,10 @@ class ShellBridge(QObject):
         self._reload_editorial()
 
     def shutdown(self) -> None:
+        jobs = getattr(self, "_jobs", None)
+        engine = getattr(jobs, "engine", None) if jobs is not None else None
+        if engine is not None and hasattr(engine, "shutdown"):
+            engine.shutdown()
         timer = getattr(self, "_timer", None)
         if timer is not None:
             try:

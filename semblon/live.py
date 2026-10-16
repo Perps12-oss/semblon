@@ -187,35 +187,33 @@ def _apply_retention(
     if not obs_ids:
         return 0
 
-    obs_q = ",".join("?" * len(obs_ids))
-    face_rows = conn.execute(
-        f"SELECT face_id FROM faces WHERE observation_id IN ({obs_q})",
-        obs_ids,
-    ).fetchall()
+    from semblon.store import exec_in_chunks, rows_in_chunks
+
+    face_rows = rows_in_chunks(
+        conn, "SELECT face_id FROM faces WHERE observation_id IN", obs_ids
+    )
     face_ids = [r["face_id"] for r in face_rows]
     if face_ids:
-        fq = ",".join("?" * len(face_ids))
-        conn.execute(
-            f"DELETE FROM decisions WHERE run_id=? AND face_id IN ({fq})",
-            (run_id, *face_ids),
+        exec_in_chunks(
+            conn,
+            "DELETE FROM decisions WHERE run_id=? AND face_id IN",
+            face_ids,
+            (run_id,),
         )
 
-    item_rows = conn.execute(
-        f"SELECT item_id FROM observation_items WHERE observation_id IN ({obs_q})",
-        obs_ids,
-    ).fetchall()
+    item_rows = rows_in_chunks(
+        conn, "SELECT item_id FROM observation_items WHERE observation_id IN", obs_ids
+    )
     item_ids = [r["item_id"] for r in item_rows]
     if item_ids:
-        iq = ",".join("?" * len(item_ids))
-        conn.execute(f"DELETE FROM track_members WHERE item_id IN ({iq})", item_ids)
-        conn.execute(f"DELETE FROM embeddings WHERE item_id IN ({iq})", item_ids)
-        conn.execute(f"DELETE FROM observation_items WHERE item_id IN ({iq})", item_ids)
+        exec_in_chunks(conn, "DELETE FROM track_members WHERE item_id IN", item_ids)
+        exec_in_chunks(conn, "DELETE FROM embeddings WHERE item_id IN", item_ids)
+        exec_in_chunks(conn, "DELETE FROM observation_items WHERE item_id IN", item_ids)
 
     if face_ids:
-        fq = ",".join("?" * len(face_ids))
-        conn.execute(f"DELETE FROM faces WHERE face_id IN ({fq})", face_ids)
+        exec_in_chunks(conn, "DELETE FROM faces WHERE face_id IN", face_ids)
 
-    conn.execute(f"DELETE FROM observations WHERE observation_id IN ({obs_q})", obs_ids)
+    exec_in_chunks(conn, "DELETE FROM observations WHERE observation_id IN", obs_ids)
     return len(obs_ids)
 
 

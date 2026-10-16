@@ -40,6 +40,8 @@ if exist "%VENV_PY%" (
     echo   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
     exit /b 1
   )
+  "%VENV_PY%" -m pip uninstall -y opencv-python opencv-contrib-python
+  "%VENV_PY%" -m pip install --force-reinstall --no-deps "opencv-python-headless==5.0.0.93"
   "%VENV_PY%" -c "import semblon" >nul 2>&1
   if errorlevel 1 (
     echo Semblon still not importable after reinstall. Run:
@@ -88,6 +90,8 @@ if exist "%ALT_PY%" (
     echo Reinstall failed. Run tools\install-windows.ps1 from the checkout root.
     exit /b 1
   )
+  "%ALT_PY%" -m pip uninstall -y opencv-python opencv-contrib-python
+  "%ALT_PY%" -m pip install --force-reinstall --no-deps "opencv-python-headless==5.0.0.93"
   "%ALT_PY%" -c "import semblon" >nul 2>&1
   if errorlevel 1 (
     echo Semblon still not importable after reinstall.

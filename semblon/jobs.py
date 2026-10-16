@@ -143,6 +143,28 @@ class JobEngine:
         with self._lock:
             return self._current
 
+    def shutdown(self, timeout: float = 30.0) -> None:
+        """Cancel in-flight writers and join them. Call before the process exits."""
+        if getattr(self, "_shut_down", False):
+            return
+        self._shut_down = True
+        self.cancel()
+        self.cancel_visual()
+        threads: list[threading.Thread] = []
+        with self._lock:
+            if self._thread is not None:
+                threads.append(self._thread)
+        with self._visual_lock:
+            if self._visual_thread is not None:
+                threads.append(self._visual_thread)
+        deadline = time.monotonic() + max(0.0, float(timeout))
+        for thread in threads:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            if thread.is_alive():
+                thread.join(remaining)
+
     def cancel(self) -> None:
         with self._lock:
             if self._current is None:
@@ -183,7 +205,7 @@ class JobEngine:
         thread = threading.Thread(
             target=self._run_submitted,
             args=(handle, on_event, on_done, observers, prefer_gpu, open_review, bool(reprocess)),
-            daemon=True,
+            daemon=False,
             name="semblon-job-ingest",
         )
         with self._lock:
@@ -225,7 +247,7 @@ class JobEngine:
         thread = threading.Thread(
             target=self._run_visual_regions,
             args=(handle, run_id, on_event, on_done, nouns, score_fn, config, view_w, view_h),
-            daemon=True,
+            daemon=False,
             name="semblon-job-visual-regions",
         )
         with self._lock:
@@ -367,7 +389,7 @@ class JobEngine:
                     on_progress,
                     on_done,
                 ),
-                daemon=True,
+                daemon=False,
                 name="semblon-job-visual",
             )
             self._visual_thread = thread

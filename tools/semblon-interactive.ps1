@@ -33,6 +33,8 @@ function Repair-SemblonInstall {
     if ($LASTEXITCODE -ne 0) {
         return $false
     }
+    & $PythonExe -m pip uninstall -y opencv-python opencv-contrib-python
+    & $PythonExe -m pip install --force-reinstall --no-deps "opencv-python-headless==5.0.0.93"
     return (Test-SemblonImport -PythonExe $PythonExe)
 }
 

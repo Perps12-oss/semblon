@@ -525,12 +525,8 @@ def process_folder(
                 if prior != ingest_run_id:
                     _drop_empty_run(store_path, ingest_run_id)
                 run_id = prior
-                clu = {
-                    "clusters": 0,
-                    "clustered": 0,
-                    "unassigned": 0,
-                    "note": "no new faces; reused prior run for review",
-                }
+                clu = _cluster_record_from_run(store_path, prior)
+                clu["note"] = "no new faces; reused prior run for review"
             else:
                 clu = None
         else:

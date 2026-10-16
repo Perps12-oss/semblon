@@ -70,4 +70,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
 
 - MSI = application **code** + launchers.
 - buffalo_l redistribution = **UNAVAILABLE** (`docs/licenses.md`).
-- First ingest may download buffalo_l via InsightFace into `%USERPROFILE%\.insightface\models\buffalo_l`.
+- First ingest does not download buffalo_l. Pin a local pack with `semblon lab pack-accept`.

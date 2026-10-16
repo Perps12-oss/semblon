@@ -14,7 +14,7 @@ semblon.cmd shell
 
 The installer runs `pip install -e ".[gui]"` so PySide6 is present. Double-click `semblon.cmd` opens the PySide6 archive (`semblon shell`).
 
-Does not bundle model weights. First real ingest may download buffalo_l into `%USERPROFILE%\.insightface\models\buffalo_l` via InsightFace.
+Does not bundle model weights. Ingest does not download buffalo_l. `semblon lab pack-accept` pins ONNX files that are already on disk.
 
 Check weights without downloading:
 

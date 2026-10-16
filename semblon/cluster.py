@@ -60,17 +60,26 @@ def _strategy(eps: float, min_samples: int) -> str:
     return f"dbscan:eps={eps}:min_samples={min_samples}:metric={METRIC}"
 
 
-def _review_locks(conn, run_id: str) -> tuple[set[str], set[str]]:
-    """Faces and clusters covered by human decisions. Re-cluster must not move these.
+# Human corrections only. identify is a machine verdict; note is commentary.
+# Neither may freeze a cluster or split the rest of the run onto a new id.
+_LOCK_KINDS = ("merge", "split", "name", "reject")
 
-    Auto clusters are computed and replaceable. A merge/split/ignore decision
-    is durable: decisions.cluster_id REFERENCES clusters(cluster_id) with no
-    ON DELETE CASCADE. That FK is the guard — do not DELETE every cluster
-    for a run after a review decision exists.
+
+def _review_locks(conn, run_id: str) -> tuple[set[str], set[str]]:
+    """Faces and clusters covered by human review. Re-cluster must not move these.
+
+    Auto clusters are computed and replaceable. A merge/split/name/reject
+    decision is durable: decisions.cluster_id REFERENCES clusters(cluster_id)
+    with no ON DELETE CASCADE. identify and note rows are not locks; they are
+    detached before an unlocked cluster is deleted.
     """
     faces: set[str] = set()
     clusters: set[str] = set()
-    for d in conn.execute("SELECT * FROM decisions WHERE run_id=?", (run_id,)):
+    kind_marks = ",".join("?" * len(_LOCK_KINDS))
+    for d in conn.execute(
+        f"SELECT * FROM decisions WHERE run_id=? AND kind IN ({kind_marks})",
+        (run_id, *_LOCK_KINDS),
+    ):
         if d["cluster_id"]:
             clusters.add(d["cluster_id"])
         if d["face_id"]:
@@ -138,6 +147,19 @@ def _clear_unprotected_clusters(conn, run_id: str, locked_faces: set[str], locke
         conn.executemany(
             "INSERT OR IGNORE INTO tmp_drop_clusters(cluster_id) VALUES (?)",
             ((cid,) for cid in drop),
+        )
+        conn.execute(
+            """
+            UPDATE decisions
+            SET policy_json = CASE
+                  WHEN json_valid(policy_json)
+                  THEN json_set(policy_json, '$.former_cluster_id', cluster_id)
+                  ELSE policy_json
+                END,
+                cluster_id = NULL
+            WHERE kind IN ('identify', 'note')
+              AND cluster_id IN (SELECT cluster_id FROM tmp_drop_clusters)
+            """
         )
         conn.execute(
             "DELETE FROM cluster_person WHERE cluster_id IN (SELECT cluster_id FROM tmp_drop_clusters)"

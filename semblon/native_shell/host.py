@@ -20,6 +20,9 @@ QML = Path(__file__).resolve().parent / "qml" / "Shell.qml"
 
 def build_shell(store: Path | None = None, app: QApplication | None = None):
     """Return (qapp, engine). Root object is the archive window."""
+    from semblon.engine import assert_single_opencv
+
+    assert_single_opencv()
     qapp = app or QApplication.instance() or QApplication([])
     qapp.setApplicationName("Semblon")
     qapp.setOrganizationName("Semblon")
