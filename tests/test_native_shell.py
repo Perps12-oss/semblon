@@ -183,6 +183,46 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     shutdown_shell(engine)
 
 
+def test_open_focus_in_context_scopes_day_when_mtime_exists(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QImage
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell, shutdown_shell
+    from semblon.store import connect, init_db
+
+    photo = tmp_path / "shot.png"
+    image = QImage(32, 32, QImage.Format.Format_RGB32)
+    image.fill(Qt.GlobalColor.darkBlue)
+    assert image.save(str(photo))
+    # 2024-06-15 12:00:00 UTC in ns
+    mtime_ns = 1_718_452_800_000_000_000
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    try:
+        init_db(conn)
+        conn.execute(
+            "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+            ("m1", "folder", str(photo), "h1", 32, 32, mtime_ns, 1),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    app.processEvents()
+    bridge = engine._semblon_bridge
+    bridge.openFocusInContext("m1")
+    app.processEvents()
+    assert bridge.focusId == "m1"
+    assert bridge.scopeKind == "day"
+    assert bridge.scopeLabel == "2024-06-15"
+    shutdown_shell(engine)
+
+
 def test_shell_ask_and_similar_use_application_media_id(tmp_path, monkeypatch):
     pytest.importorskip("PySide6")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")

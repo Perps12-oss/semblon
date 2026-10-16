@@ -912,6 +912,22 @@ class ShellBridge(QObject):
         self.focusChanged.emit()
         self.diagnosticsChanged.emit()
 
+    @Slot(str)
+    def openFocusInContext(self, media_id: str) -> None:
+        """Open a search/similar hit and scope Time to its day when mtime exists."""
+        item = self._jobs.media(media_id)
+        if item is None or item.source_type != "folder":
+            return
+        day = item.day
+        self.openFocus(media_id)
+        if day:
+            # Scope neighbours without inventing a date when mtime is missing.
+            if len(day) >= 7:
+                self._sync_calendar_month(day[:7])
+            self._select_scope("day", day)
+        else:
+            self._set_result("Opened photo. No date on file — time context unavailable.")
+
     @Slot(int)
     def openIndex(self, index: int) -> None:
         rows = self._jobs.archive_window(index, 1)
@@ -2072,10 +2088,10 @@ def _strip_from(rec: dict) -> tuple[str, str, list[tuple[str, float]]]:
                 score = 0.0
             rows.append((media_id, score))
         if rows:
-            return "ready", "", rows
+            return "ready", "Similar (colour histogram): region colour matches.", rows
     if status == "UNAVAILABLE":
         return "unavailable", _unavailable_note(similar), []
-    return "empty", "No similar images found yet.", []
+    return "empty", "Similar (colour histogram): no similar images found yet.", []
 
 
 def _unavailable_note(similar: dict) -> str:

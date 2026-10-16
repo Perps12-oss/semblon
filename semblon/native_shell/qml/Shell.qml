@@ -2421,7 +2421,7 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: if (shellReady) shellApi.openFocus(mediaId)
+                                    onClicked: if (shellReady) shellApi.openFocusInContext(mediaId)
                                 }
                             }
                         }

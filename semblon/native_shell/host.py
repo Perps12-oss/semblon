@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+# Env style must be set before any Qt Quick Controls registration (Linux CI).
+os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 
 from PySide6.QtCore import QCoreApplication, QEvent, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
@@ -18,15 +22,26 @@ from semblon.process import default_store_path
 QML = Path(__file__).resolve().parent / "qml" / "Shell.qml"
 
 
+def _ensure_quick_style() -> None:
+    """Basic style before Controls QML loads. Safe to call more than once."""
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
+    try:
+        QQuickStyle.setStyle("Basic")
+    except RuntimeError:
+        # Already registered after a prior load in this process; env covers new engines.
+        pass
+
+
 def build_shell(store: Path | None = None, app: QApplication | None = None):
     """Return (qapp, engine). Root object is the archive window."""
     from semblon.engine import assert_single_opencv
 
     assert_single_opencv()
+    _ensure_quick_style()
     qapp = app or QApplication.instance() or QApplication([])
     qapp.setApplicationName("Semblon")
     qapp.setOrganizationName("Semblon")
-    QQuickStyle.setStyle("Basic")
+    _ensure_quick_style()
     path = Path(store) if store is not None else default_store_path()
     jobs = Application(path)
     model = ArchiveModel(jobs)

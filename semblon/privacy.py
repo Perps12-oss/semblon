@@ -1,4 +1,9 @@
-"""Screen-selection privacy. A blocked window is not captured."""
+"""Lab capture convenience filter — not a security boundary.
+
+Windows whose titles start with ``semblon`` are skipped for lab capture.
+That does not stop other apps, renamed windows, or OS-level capture APIs.
+Product screen-capture UI is deferred; see docs/decisions/2026-10-16-screen-capture-deferred.md.
+"""
 
 from __future__ import annotations
 

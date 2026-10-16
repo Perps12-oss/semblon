@@ -9,9 +9,8 @@
 |---|---|
 | Evidence date | 2026-10-16 (programme execution) |
 | Branch | `grok/product-truth` |
-| HEAD | `079d88ba` — *Close the ship-audit holes that change identity or drop the library.* |
-| Working tree at baseline | Dirty docs/`AGENTS.md`; untracked pytest-tmp / `.venv-312` preserved |
-| CI lead (not re-run here yet) | GHA `38902434196` failed: `scipy==1.18.1` unsatisfiable on Python 3.11; Ubuntu 3.12 shell-frontend failures |
+| HEAD | `6d4f7c36` — *Freeze the product contract and measure the build against it.* (includes earlier product-truth docs + python support policy) |
+| Working tree | Programme implementation changes **uncommitted**; pytest-tmp / `.venv-312` / `wheelhouse-completion/` local only; **not pushed** |
 
 ## Status vocabulary
 
@@ -24,64 +23,81 @@
 | VERIFIED | All defined acceptance criteria pass with recorded evidence |
 | DEFERRED | Explicit documented product decision excludes the item from this release |
 
-Code presence, a written plan, or an unre-run unit test does **not** establish VERIFIED.
-
 ## Gates
 
 | Gate | Meaning | Status |
 |---|---|---|
-| A — Core product | E2E visual-memory journey, archive continuity, context where metadata permits | IN PROGRESS |
-| B — Engineering baseline | Supported CI, lock, identity path explicit, retired surfaces, honest safety/privacy claims | IN PROGRESS |
-| C — Release | Offline clean install + intended assets + **signed** installer | BLOCKED (cert + redistribution) |
+| A — Core product | E2E visual-memory journey, archive continuity, context where metadata permits | IN PROGRESS (continuity + context + unicode crop evidenced locally; full visible Windows journey not re-run) |
+| B — Engineering baseline | Supported CI, lock, identity path, retired surfaces, honest safety/privacy | IN PROGRESS (lock generated; CI green not yet evidenced on this push; 3.14 shell still risky) |
+| C — Release | Offline clean install + intended assets + **signed** installer | BLOCKED (no WiX on this machine; no Authenticode cert; buffalo_l redistribution UNAVAILABLE) |
+
+## Dual verdict
+
+| Verdict | Value |
+|---|---|
+| **1. Product and engineering completion** | **NOT COMPLETE** — Gates A/B unmet (CI matrix not green in this environment; Gate A lacks full visible-shell journey evidence) |
+| **2. Release readiness** | **NOT READY** — Gate C blocked: signing credentials absent, WiX absent here, identity redistribution UNAVAILABLE |
+
+Deferred without blocking unrelated work: **02** encryption, **08** product capture UI.
 
 ## Twelve-item programme
 
-| ID | Priority | Status | Dependencies | Locations | Acceptance (summary) | Evidence / remaining |
-|---|---|---|---|---|---|---|
-| 01 Windows crash / Python matrix | P0 | IN PROGRESS | Support policy before pins | `.github/workflows/ci.yml`, `pyproject.toml`, `requirements.txt`, `semblon/engine.py`, `tools/assert_one_opencv.py` | Advertised supported Pythons pass Windows tests; AV fixed or evidence-based exclusion | CI install broken on 3.11 (`scipy==1.18.1`). Dual-OpenCV guard present. Win 3.14 AV not freshly dumped |
-| 02 Encrypted store | P2 | DEFERRED | Design only | `docs/THREAT-MODEL.md` | Tested encryption **or** explicit deferral with threat/WAL/migration design | Store is plaintext. Deferred for this release after design expansion. No live DB experiments |
-| 03 Signed offline MSI | P1 | IMPLEMENTED (eng) / BLOCKED (sign) | Lock (05); cert for Gate C | `packaging/msi/`, `tools/msi/`, `docs/PACKAGING.md` | Offline install works; signing verified **or** signing BLOCKED | Engineering present. Unsigned repro ≠ signed release. Cert unavailable → signing BLOCKED |
-| 04 Identity engine / pack | P0 | IMPLEMENTED (local) / BLOCKED (redistribute) | Licence | `semblon/engine.py`, `docs/licenses.md` | Documented engine; offline ingest; hash pin; no silent download; redistribute only if legal | `pack-accept` + no-download. buffalo_l redistribution UNAVAILABLE. Local pack ≠ redistributable |
-| 05 Hashed dependency lock | P1 | NOT STARTED | Python support policy | `requirements*.txt`, `pyproject.toml` | Hash-verified lock installs; CI detects drift | Exact pins exist; no `--hash=` lock yet |
-| 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | Accepted pack on runner | `.github/workflows/facekit-owner.yml` | Workflow passes with recorded env **or** BLOCKED with prerequisites | Workflow exists; stock GHA has no pack |
-| 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED / hygiene IN PROGRESS | None | CLI, `review_chrome/`, `tools/s8_toolkit_spike/`, docs | No retired UI as production; dead refs cleaned; shell tests pass | CLI is `shell` only. Empty `semblon/review_chrome/`. Doc drift. s8 research kept |
-| 08 Screen-capture privacy | P1 | DEFERRED (product UI) | Scope decision | `semblon/privacy.py`, lab capture | Accurate limits; exclusions if product feature; else defer | Title-prefix is not a security boundary. Product UI deferred; lab retained |
-| 09 Visual-memory search | P0 | IN PROGRESS | Continuity helpful | `region_search.py`, `search.py`, Focus QML | E2E shell journey; unicode paths; honest mode label; regressions | Default match is colour histogram. Region uses `cv2.imread` (unicode gap) |
-| 10 Archive continuity | P0 | IMPLEMENTED | None | `ingest._remember_path`, duplicates, integrity | Fresh move/rename/dup/missing evidence; no filename-only merge | Tests exist; **not VERIFIED until re-run on HEAD** |
-| 11 Contextual discovery | P1 | IN PROGRESS | Search hits (09) | Time lens, Shell.qml | Hit → day/neighbours; honest missing metadata | Time browse exists; search→context not wired |
-| 12 Unified experience + docs | P0/P1 | IN PROGRESS | 09–11 | Shell Primary/Advanced, PRODUCT/UI docs | Coherent journey; consistent terms; tracker matches repo | Shell Primary/Advanced present; docs still contradict in places |
+| ID | Priority | Status | Evidence / remaining |
+|---|---|---|---|
+| 01 Win crash / Python matrix | P0 | IN PROGRESS | Policy recorded (`docs/decisions/2026-10-16-python-support-policy.md`). SciPy markers applied. Dual OpenCV refuse works. Local 3.14 shell hit `0xc0000139` with mixed PySide6 installs during `build_shell`; non-shell tests passed after single headless OpenCV. **CI matrix green not evidenced this run.** |
+| 02 Encrypted store | P2 | DEFERRED | Design + decision: `docs/decisions/2026-10-16-store-encryption-deferred.md`, `docs/THREAT-MODEL.md`. Store remains plaintext. No live DB experiments. |
+| 03 Signed offline MSI | P1 | IMPLEMENTED (eng) / BLOCKED (sign+WiX) | Wheelhouse downloaded from lock (`wheelhouse-completion/`, 25 wheels). `wix` not on PATH. Signing BLOCKED — no cert. Unsigned wheelhouse ≠ signed release. |
+| 04 Identity engine / pack | P0 | IMPLEMENTED (local) / BLOCKED (redistribute) | Decision: `docs/decisions/2026-10-16-identity-engine-redistribution.md`. `test_face_pack_refuses_download` passed. Licence UNAVAILABLE. |
+| 05 Hashed dependency lock | P1 | IMPLEMENTED | `requirements.lock.txt` via `uv pip compile --generate-hashes --python-version 3.12`. CI drift check added for 3.12. Installer prefers `--require-hashes` when lock present. Lock still lists `opencv-python` (insightface dep); install scripts uninstall it. InsightFace **wheel** is `2.0` (METADATA Version 2.0); a dirty venv may report `__version__` 2.1 until reinstalled from lock. **Not VERIFIED** until CI lock step + clean install pass. |
+| 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | Docs: `docs/FACEKIT-OWNER.md`. Workflow unchanged. No owner pack on this machine — run not green. |
+| 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Empty `semblon/review_chrome/` removed. CLI remains `shell` only. s8 research retained. Entry tests pass. |
+| 08 Screen-capture privacy | P1 | DEFERRED | Decision: `docs/decisions/2026-10-16-screen-capture-deferred.md`. Module docstring corrected. Title-prefix ≠ security. |
+| 09 Visual-memory search | P0 | IN PROGRESS | Region crop uses `_decode_still` (unicode). UI notes say colour histogram. `test_crop_reads_non_ascii_windows_path` passed. Full visible archive journey not re-run. |
+| 10 Archive continuity | P0 | VERIFIED (unit) | Re-run on HEAD: move/rename, duplicate scan, same-filename/different-content, missing-original integrity — **passed** (see verification log). |
+| 11 Contextual discovery | P1 | IMPLEMENTED | `openFocusInContext` scopes day when mtime exists; QML similar thumbs use it. `test_open_focus_in_context_scopes_day_when_mtime_exists` passed. |
+| 12 Unified experience + docs | P0/P1 | IN PROGRESS | Tracker/ledger/roadmap roles fixed. Histogram honesty in similar notes. Full Primary journey Windows visible pass not recorded. |
 
 ## Python support policy
 
-**Status:** pending evidence inventory (do not edit pins until recorded below).
+See `docs/decisions/2026-10-16-python-support-policy.md`.
 
-Target advertised range today: `requires-python = ">=3.11,<3.15"` with CI matrix 3.11–3.14. Known conflict: `scipy==1.18.1` requires Python ≥3.12. Policy and markers will be filled in Phase 2 before pin changes.
+| Policy | Value |
+|---|---|
+| Advertised / CI | 3.11–3.14 (`>=3.11,<3.15`) |
+| Primary lock baseline | 3.12 |
+| SciPy | `1.17.1` if `<3.12`; `1.18.1` if `>=3.12` |
 
-## Dual verdict (updated at programme end)
+## Verification log (commands actually run)
 
-| Verdict | Value | Notes |
-|---|---|---|
-| Product and engineering completion | NOT COMPLETE | Gates A/B unmet at baseline |
-| Release readiness | NOT READY | Gate C blocked (signing + redistribution) |
+Environment: Windows ARM64 host; x64 Python 3.12 (`.venv-312`) and x64 Python 3.14 (emulated).
 
-## Verification log
+| Command | Result |
+|---|---|
+| PyPI `requires_python` inventory for pinned deps | Recorded in decision 2026-10-16-python-support-policy |
+| `uv pip compile requirements.txt --generate-hashes --python-version 3.12 -o requirements.lock.txt` | exit 0; lock written |
+| `pip download -r requirements.lock.txt -d wheelhouse-completion --require-hashes` | exit 0; 25 wheels |
+| `.venv-312` pytest (ship audit continuity + region unicode + shell context + frontend + entry) | **55 passed** (`--basetemp=.pytest-tmp-completion4`) |
+| Continuity subset re-check | **4 passed** |
+| `py -3.14` non-shell continuity/unicode/cli help | **3 passed**; shell fixture **ERROR** + fatal `0xc0000139` in `build_shell` with polluted PySide mix |
+| `wix --version` | not found |
+| FaceKit owner workflow live run | **not run** (no pack) |
+| Full CI matrix GHA after pin fix | **not run** from this agent |
+| Signed MSI | **not run** (no cert) |
+| Live user database | **not modified** |
 
-Commands, environments, and results are appended here as they are executed. Distiguish **run** vs **not run**.
+## Capability notes
 
-### Baseline (2026-10-16)
-
-- Git: `grok/product-truth` @ `079d88ba`
-- Prior CI: `gh run view 38902434196` — failure (scipy on 3.11; Ubuntu shell errors). Not a fresh local suite pass.
-- Pytest: not re-run for this baseline document rewrite.
-
-## Capability notes (non-authoritative detail)
-
-Useful source-read detail from the earlier inventory (status vocabulary above supersedes any `INTEGRATED` wording):
-
-- Default Similar / region match is colour histogram, not semantic / face identity.
-- `openFocus` stills only (`source_type=folder`); video playback DEFERRED.
+- Default Similar / region match is colour histogram (`color-hist`), not semantic / face identity.
 - Pack gate: `assert_face_pack_ready` / `semblon lab pack-accept`; MSI asserts no weights.
-- ARM64 OpenCV load remains BLOCKED per `docs/PERF-P1-ARM64.md` (not Gate C signing, but platform note).
+- ARM64 OpenCV load remains historically BLOCKED per `docs/PERF-P1-ARM64.md`.
+
+## Outstanding blockers (exact)
+
+1. Green supported CI matrix after SciPy markers (especially 3.11 install + Linux QQuickStyle — mitigated in `host.py`/`conftest.py`, needs GHA evidence).
+2. Clean PySide6-only 3.14 Windows shell confirmation (or evidence-based 3.14 shell exclusion).
+3. Owner FaceKit pack for issue 06 VERIFIED.
+4. buffalo_l redistribution licence for Gate C identity assets.
+5. WiX + Authenticode certificate for signed MSI (Gate C).
 
 ## What this file will not absorb
 

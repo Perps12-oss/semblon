@@ -111,3 +111,23 @@ def test_same_space_firewall_skips_other_packs(tmp_path):
     )
     assert rec["status"] == "UNAVAILABLE"
     assert rec["error_id"] == "region.NO_LIBRARY_SPACE"
+
+
+def test_crop_reads_non_ascii_windows_path(tmp_path):
+    """Region crop must not rely on cv2.imread alone (misses Unicode paths)."""
+    import cv2
+
+    from semblon.region_search import crop_bgr
+
+    folder = tmp_path / "José"
+    folder.mkdir()
+    photo = folder / "foto.jpg"
+    img = np.zeros((32, 32, 3), dtype=np.uint8)
+    img[4:12, 4:12] = (0, 255, 0)
+    # imwrite itself fails on many Unicode Windows paths; write bytes instead.
+    ok, buf = cv2.imencode(".jpg", img)
+    assert ok
+    photo.write_bytes(buf.tobytes())
+    crop = crop_bgr(photo, 4, 4, 8, 8)
+    assert crop.shape == (8, 8, 3)
+    assert int(crop[0, 0, 1]) > 200

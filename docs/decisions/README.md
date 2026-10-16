@@ -4,6 +4,10 @@ Material product and architecture decisions, plus superseded statements. The cur
 
 | Date | Record | Status |
 |---|---|---|
+| 2026-10-16 | [Python support policy](2026-10-16-python-support-policy.md) | Current |
+| 2026-10-16 | [Identity engine redistribution](2026-10-16-identity-engine-redistribution.md) | Current |
+| 2026-10-16 | [Store encryption deferred](2026-10-16-store-encryption-deferred.md) | Current |
+| 2026-10-16 | [Screen-capture UI deferred](2026-10-16-screen-capture-deferred.md) | Current |
 | 2026-10-16 | [Four documentation layers](2026-10-16-product-truth-layers.md) | Current |
 | 2026-09-12 | [v1 product brief](2026-09-12-v1-product-brief.md) | Historical. Identity rules kept. Face-first CLI and “Find is not a V1 capability” are not the contract. |
 | 2026-10-05 | `docs/ARCHITECTURE.md` | Current for the production shell. Migration complete. |

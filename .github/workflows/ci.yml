@@ -30,6 +30,13 @@ jobs:
           python -m pip uninstall -y opencv-python opencv-contrib-python
           python -m pip install --force-reinstall --no-deps opencv-python-headless==5.0.0.93
           python tools/assert_one_opencv.py
+      - name: Verify hash lock (Python 3.12 baseline)
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m pip install -U uv
+          uv pip compile requirements.txt --generate-hashes --python-version 3.12 --output-file requirements.lock.check.txt
+          python -c "from pathlib import Path; a=Path('requirements.lock.txt').read_text(encoding='utf-8').splitlines(); b=Path('requirements.lock.check.txt').read_text(encoding='utf-8').splitlines(); aa=[x for x in a if not x.startswith('#')]; bb=[x for x in b if not x.startswith('#')];
+          import sys; sys.exit(0 if aa==bb else 1)"
       - name: Pytest (no live InsightFace)
         if: runner.os == 'Windows'
         run: python -m pytest -q

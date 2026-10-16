@@ -573,3 +573,38 @@ def test_note_on_a_face_does_not_freeze_its_cluster(tmp_path):
         assert again != cid
     finally:
         conn.close()
+
+
+def test_same_filename_different_content_does_not_retarget(tmp_path):
+    """Recovery must not merge unrelated media just because the basename matches."""
+    from semblon.ingest import _remember_path
+
+    store = tmp_path / "s.sqlite"
+    a_dir = tmp_path / "a"
+    b_dir = tmp_path / "b"
+    a_dir.mkdir()
+    b_dir.mkdir()
+    first = a_dir / "photo.jpg"
+    first.write_bytes(b"content-one")
+    other = b_dir / "photo.jpg"
+    other.write_bytes(b"content-two-different")
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(first), "hash-one", 1, 1, 0, 1),
+    )
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m2", "folder", str(other), "hash-two", 1, 1, 0, 1),
+    )
+    conn.commit()
+    # Original still present: must not steal m1 onto the other file's path.
+    assert _remember_path(conn, "m1", other, 9, 20) is False
+    row = conn.execute("SELECT path, sha256 FROM media WHERE media_id='m1'").fetchone()
+    assert row[0] == str(first)
+    assert row[1] == "hash-one"
+    row2 = conn.execute("SELECT path, sha256 FROM media WHERE media_id='m2'").fetchone()
+    assert row2[0] == str(other)
+    assert row2[1] == "hash-two"
+    conn.close()
