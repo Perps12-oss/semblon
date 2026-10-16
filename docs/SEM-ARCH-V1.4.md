@@ -1,15 +1,15 @@
-# SEM-ARCH V1.4 — Reconciled architecture and roadmap authority
+# SEM-ARCH V1.4 — Engineering planned work
 
-**Status:** AUTHORITATIVE planned-work source. Production shell baseline: `docs/ARCHITECTURE.md` (**COMPLETE** 2026-10-05).  
-**Date:** 2026-09-21. Shell baseline recorded 2026-10-05.
+**Status:** engineering planned-work source. It is not the product contract. Production shell baseline: `docs/ARCHITECTURE.md` (**COMPLETE** 2026-10-05).  
+**Date:** 2026-09-21. Shell baseline recorded 2026-10-05. Product-truth split recorded 2026-10-16.
 
-This file replaces stale or duplicated roadmap interpretations.
+Product completion outcomes live in `docs/ROADMAP.md`. Current capability evidence lives in `docs/BUILD-STATUS.md`. This file does not redefine `docs/PRODUCT.md`.
 
-- `docs/PRODUCT.md` remains the product contract (frozen v1 + production amendments).
+- `docs/PRODUCT.md` is the product contract.
 - `docs/CONTRACTS.md` remains schema / CLI / runtime authority.
 - `docs/FACE-GATES.md` remains the closed FACE-002→005 validation index.
 
-No second north star is allowed.
+No second product contract and no second architecture north star.
 
 ---
 
@@ -428,12 +428,13 @@ PERF: ARM64 + workers + provider + scale
 
 ## K) Governance and document precedence
 
-1. `docs/ARCHITECTURE.md` is the production architecture baseline (**COMPLETE** 2026-10-05). It closes the shell. It does not replace the frozen product contract, the schema, or this file's gate record.
-2. This file remains the planned-work and gate authority. It is not permission to reopen the shell, restore Tk Home, or resurrect `review.html`.
-3. `docs/COMPLETION-MATRIX.md` is the closed-vs-open status matrix.
-4. `docs/PRODUCT.md` and `docs/CONTRACTS.md` remain product and schema authority.
-5. FACE gate docs remain closed validation evidence, not active work tickets.
-6. Where an older section of this file names Tk Home as the production GUI, calls Qt optional, or tells you to keep `review.html`, the 2026-10-05 baseline wins.
+1. `docs/PRODUCT.md` is the product contract. `docs/BUILD-STATUS.md` is the evidence-backed build. `docs/ROADMAP.md` is the product-completion sequence. None of them reopens the shell.
+2. `docs/ARCHITECTURE.md` is the production architecture baseline (**COMPLETE** 2026-10-05). It closes the shell. It does not replace the product contract, the schema, or this file's gate record.
+3. This file remains the engineering planned-work and gate authority. It is not permission to reopen the shell, restore Tk Home, or resurrect `review.html`.
+4. `docs/COMPLETION-MATRIX.md` is the architecture closed-vs-open ledger, not the product capability matrix.
+5. `docs/CONTRACTS.md` remains schema and runtime authority.
+6. FACE gate docs remain closed validation evidence, not active work tickets.
+7. Where an older section of this file names Tk Home as the production GUI, calls Qt optional, or tells you to keep `review.html`, the 2026-10-05 baseline wins.
 
 Do not resurrect Tk Home as the product door, `review.html`, `review_chrome`, `lens_home`, `native_shell/window.py`, or a parallel application/storage path. The production architecture is PySide6 → Application.
 
@@ -443,6 +444,7 @@ Do not resurrect Tk Home as the product door, `review.html`, `review_chrome`, `l
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.13 | 2026-10-16 | Product contract, build status, and product roadmap are separate documents. This file stays engineering planned work. |
 | V1.4.12 | 2026-10-05 | Production shell baseline closed: PySide6 → Application. `review.html` retired. Tk legacy only. Precedence points at `docs/ARCHITECTURE.md` for the shell. |
 | V1.4.11 | 2026-09-22 | Retire superseded parallel docs (historical SEM-ARCH / maturity / audit / verify playbook); COMPLETION-MATRIX is status authority. |
 | V1.4.9 | 2026-09-22 | APP-1 C.3 **VERIFIED ON WINDOWS** (owner live evidence); APP-1 **CLOSED**; next = deepen native shell. |

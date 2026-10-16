@@ -5,9 +5,9 @@ description: Semblon product and planned-work guard. Use on any Semblon code, CL
 
 # Semblon observe
 
-Folder-first, local-first. Faces are the first mature capability, not the centre. Still photographs in, conservative groups out, human names people.
+Local-first visual memory (`docs/PRODUCT.md`). Faces are one capability, not the centre. Still photographs in, conservative groups out, human names people.
 
-North star / planned work: `docs/SEM-ARCH-V1.4.md`.
+Product status: `docs/BUILD-STATUS.md`. Product completion: `docs/ROADMAP.md`. Engineering planned work: `docs/SEM-ARCH-V1.4.md`. Do not rewrite the product contract to match an incomplete feature.
 
 ## Invariants
 
@@ -20,7 +20,7 @@ North star / planned work: `docs/SEM-ARCH-V1.4.md`.
 
 ## Queue
 
-Planned work is `docs/SEM-ARCH-V1.4.md`. Completion matrix: `docs/COMPLETION-MATRIX.md` (APP-1 **CLOSED**; production GUI = tk Home **COMPLETE**; workers path **COMPLETE** default=1; MSI engineering **PARTIAL**; ARM64 OpenCV load **BLOCKED** / probe **COMPLETE**). FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue. Identify vs named persons, never clusters. STRONG is not a person until `name`. Incremental ingest + inbox and S6 memory are on `main`. Time/place must not change identity scores. Sampled video is holdout evidence (`docs/S7A.md`), not a second identity engine. S8 toolkit spike is presentation-only (`docs/S8-TOOLKIT.md`).
+Engineering planned work is `docs/SEM-ARCH-V1.4.md`. Architecture ledger: `docs/COMPLETION-MATRIX.md` (APP-1 **CLOSED**; production GUI = PySide6 `semblon shell`; workers path **COMPLETE** default=1; MSI engineering **PARTIAL**; ARM64 OpenCV load **BLOCKED** / probe **COMPLETE**). Product capability status is `docs/BUILD-STATUS.md`, not this sentence. FACE-002 → FACE-005 is a closed validation index (`docs/FACE-GATES.md`), not the queue. Identify vs named persons, never clusters. STRONG is not a person until `name`. Incremental ingest + inbox and S6 memory are on `main`. Time/place must not change identity scores. Sampled video is holdout evidence (`docs/S7A.md`), not a second identity engine. S8 toolkit spike is presentation-only (`docs/S8-TOOLKIT.md`).
 
 Do not print precision without `--eval-set confirmatory`.
 

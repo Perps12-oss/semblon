@@ -4,7 +4,7 @@
 **Branch:** `grok/frontend-blueprint-v3`  
 **Status:** stack locked to the existing production shell. Candidate web stacks are rejected.
 
-This file is the blueprint annotation. It does not replace `docs/ARCHITECTURE.md`, `docs/SHELL-IA.md`, or `docs/COMPLETION-MATRIX.md`.
+This file is a historical blueprint annotation (2026-10-09). It does not replace `docs/PRODUCT.md`, `docs/BUILD-STATUS.md`, or `docs/ARCHITECTURE.md`. `docs/SHELL-IA.md` is the retired Tk lock.
 
 ## §1.1 Stack lock
 

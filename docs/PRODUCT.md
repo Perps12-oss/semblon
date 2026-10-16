@@ -1,76 +1,74 @@
-# Semblon — Product brief (frozen 2026-09-12)
+# Semblon — product contract
 
-Semblon v1 is a **personal, local-first** Windows CLI. One user. No cloud. No ACC. No GUI required.
+**Status:** enduring contract. Implementation gaps do not amend this file.  
+**Evidence date of the split:** 2026-10-16.  
+**What exists today:** `docs/BUILD-STATUS.md`.  
+**What closes the gap:** `docs/ROADMAP.md`.  
+**Why the wording changed:** `docs/decisions/2026-10-16-product-truth-layers.md`.
 
-**Successful day:** drop a folder of stills → conservative face groups → review and name people you care about → those people become a gallery for later identification.
+Semblon is a local-first visual memory you can look into. It lets one person explore their own visual archive and rediscover images through appearance, regions, people, time, and other signals that are actually available. Faces are one capability, not the product identity. Uncertain identity remains uncertain. Processing and capability availability are represented honestly.
 
-The long-term north star is `docs/SEM-ARCH-V1.4.md`. It does **not** redefine this v1. Folder-first, face-first, local-first remains the current product. Future observers, spaces, sources, and integrations stay out until this file is explicitly amended.
+## Who it is for
 
-## v1 in
+One person. One Windows machine. Their files stay where they are. SQLite and the original files are authoritative. There is no cloud account, no shared library, and no ACC.
 
-- Folders of still photographs (~10k first target; do not design *only* for 10k)
-- Command ingest (no folder watcher)
-- Detect → filter → embed → compare → cluster
-- HTML contact sheets (artifact, not a web app)
-- CLI `merge` / `split` / `name`
-- Persons only after review
-- Files stay where they are; SQLite + originals authoritative
-- Optional export folders as views
-- Unknown is valid
-- Windows ARM64 native and Windows x64 native first-class
-- x64-on-ARM64 = `emulated` only
-- buffalo_l for internal evaluation only
+Windows x64 native and Windows ARM64 native are both first-class. x64-on-ARM64 is emulated, and the product says so.
 
-## v1 out
+## Principles
 
-Public lookup · live CCTV · USB webcam · video files · ACC · mobile · multi-user · sharing · CustomTkinter · FastAPI · folder watcher (v1 “watchdog”) · automatic identity
+1. The archive is the product. People, time, appearance, text, and other signals are lenses on that same archive.
+2. Unknown is a valid result. A false merge is worse than a false split. A wrong identity is worse than unknown.
+3. A cluster, a track, a hypothesis, a review decision, and a named person are different things. Naming is a human act.
+4. A missing model, a missing file, and an empty match are different outcomes. The product says which one happened.
+5. Optional models stay optional. Colour, contours, text, and semantics do not silently become identity.
+6. Local-first includes honest offline behaviour. Semblon does not fetch identity weights on first use.
 
-v1 **out** “watchdog” means **folder watcher**, not `semblon/watchdog.py` (stall detector). Home constructs `Watchdog` and may show `stalled` on status without killing the job.
+## Intended workflows
 
-## v1 ship test
+These are the product, including where the build is still short of them. Shortfalls are recorded in `docs/BUILD-STATUS.md`. They do not shrink this list.
 
-A folder of stills can be ingested reproducibly; faces detected/embedded/grouped conservatively; groups reviewed and corrected; people named; reviewed gallery persisted locally for later identification.
+1. **Enter the archive.** Add a folder. See an honest empty state, then a thumbnail grid. Open a photo and inspect it. File references survive moves and renames.
+2. **Find by appearance.** From a photo, or from a region drawn on it, find other images that look related. The result says what kind of match it is.
+3. **Recover the context.** From a result, reach the date, the surrounding photos, and the related moments.
+4. **Keep and organise discoveries.** Save a useful result, return to it, and organise it without losing where it came from.
+5. **Trust the library.** Review people when that is useful. Correct a decision. Erase a person or the library without deleting the original files. Install and run on a clean Windows machine with a signed, versioned package.
 
-## Later (not v1)
+Identity review, when used, follows `cluster → review → person → name`. A cluster id is never a person id.
 
-| Version | What |
+## Privacy
+
+The library holds paths, display names, and biometric templates. That is special-category data for this one user.
+
+- Originals are not deleted by reset, person erase, or library wipe.
+- Erase is explicit. The archive does not expire on its own.
+- Backups are copies of the store. A synced folder is not a private store.
+- Encryption at rest is part of the trust requirement for a non-author install. Until it exists, the threat model says the store is plaintext. See `docs/THREAT-MODEL.md`.
+
+## What success is
+
+A person can add their own photos, browse them, find related images by appearance and region, recover the time around a find, keep that find, and trust that identity stayed uncertain until they named someone. Every signal that is not installed says so. The same archive is still there after a move, a correction, or an erase.
+
+## Out of the product
+
+Public lookup, live CCTV as a product, a shared or multi-user library, mobile, automatic identity, and a second identity engine. Folder watching is not the Add folder action. Research tools (`tools/s8_toolkit_spike`, the Live overlay) are not the product shell.
+
+## Architecture that serves this contract
+
+The production UI is the PySide6 archive (`semblon shell`) on `Application`. That choice is closed in `docs/ARCHITECTURE.md`. This contract does not reopen it.
+
+FaceKit / InsightFace is the only identity engine. `pack_id` includes weight hashes. Geometry, colour, objects, and semantics do not vote on identity. Identity thresholds stay frozen (`docs/S1-GOLDEN.md`).
+
+Schema and runtime contracts stay in `docs/CONTRACTS.md`. Engineering planned work stays in `docs/SEM-ARCH-V1.4.md`. Neither file redefines this contract.
+
+## How documents stay apart
+
+| Document | Job |
 |---|---|
-| v2 | USB webcam: detect → track → selective embed → identify vs persons → known/unknown (log; optional prompt to name; never force ID) |
-| later | RTSP, video files, explicit click-to-lookup, ACC as **client** of standalone Semblon, licensed pack if anyone else gets a copy |
-
-## Recorded validation (2026-09-16)
-
-Status only. Does **not** amend v1 in/out.
-
-FACE-002 → FACE-003 → FACE-004 → FACE-005 is recorded in `docs/FACE-GATES.md`. Live evidence: 90-still S1 dump; 22 confirmatory pairs; FAR 0/11, FRR 1/11 at frozen 0.60. “~10k first target” above is a design target, not a completed run. ARM64 OpenCV binary is proven (`0xaa64`) and not consumed by Semblon. x64 native FACE-000 is unverified (no x64 PC). Incremental ingest + inbox already exist (1.1).
-
-## Loop (do not invert)
-
-`cluster → review → person → name`  
-Never `cluster = person`.
-
-## Production application (amended 2026-09-19)
-
-This amendment does **not** erase frozen v1. It records what the shipping application actually is after production engineering.
-
-**Level 1 — identity contract (immutable):** unknown is valid; cluster ≠ person; STRONG ≠ person; no silent auto-identity; native vs emulated is labelled honestly.
-
-**Level 2 — production capabilities (shipping):** `process` / `home` / `review-ui` (KEEP GUI; v1 still “no GUI required”); incremental ingest; backup/restore; integrity report (orphans + `PRAGMA integrity_check`; missing originals counted, do not fail `ok`); cooperative cancel (GUI + SIGINT at file boundaries); FaceKit CPU **recorded** in `runtime_json` (ingest still `load_app()`); evidence-based `search` of named persons (RO) / identify; S7a sampled video + S7b derived tracks; S6 memory; portable CI without weight download.
-
-**Home shell IA (LOCKED 2026-10-02, legacy Tk client):** Model D — Memory-first Stage dissolve (`docs/SHELL-IA.md`). Capability Stage → Memory Canvas → contextual discovery. No permanent MAIN sidebar. Faces remain a capability, not product centre. Does not amend Level 1 identity. External feature/UX precedent map: `docs/REFERENCE-STACK.md` (companion only; does not amend this contract).
-
-Stall watchdog (`semblon/watchdog.py`) is **wired on Home** status (`stalled` ≠ killed). It does not kill jobs. Folder watcher remains v1 **out**.
-
-**Level 3 — experimental / unavailable:** GPU when no EP is present; buffalo_l redistribution; MSI with bundled weights; 10k live library (harness exists); optional OCR/CLIP/MediaPipe extras when not installed.
-
-## Production UI (amended 2026-10-05)
-
-This amendment does **not** erase frozen v1 or the 2026-09-19 amendment. It records the closed shell.
-
-The production UI is the PySide6 archive (`semblon shell`) → `Application`. Identity contract is unchanged. Tk `home`, `review-ui`, and `canvas` are retired. `review.html` is retired. No production Review page replaces it. Baseline: `docs/ARCHITECTURE.md`. What is still open (polish, Windows product pass) is `docs/COMPLETION-MATRIX.md`. Find is not a V1 capability.
-
-## Full-stack acceleration (2026-09-19)
-
-The freeze boundary is kept as the identity contract. The architecture is expanded **in parallel**: observation-table write-through (docs call this “schema v2”; store counter `SCHEMA_VERSION=4`), folder `watch`, `live` sources, Canvas, modality-scoped search, GPU detection, configurable workers, migration engine. Extra observers (color/object always; OCR/CLIP/pose if installed) **must not** vote on identity.
-
-Video files remain **out of frozen v1** and **in KEEP** as sampled holdout evidence. That is not a second identity engine.
+| `docs/PRODUCT.md` | This contract |
+| `docs/BUILD-STATUS.md` | What the checkout actually does, with evidence |
+| `docs/ROADMAP.md` | Ordered outcomes that close the gap |
+| `docs/decisions/` | Why direction changed, and the text that used to be current |
+| `docs/ARCHITECTURE.md` | Closed production architecture |
+| `docs/SHELL-IA.md` | Historical Tk Home information architecture |
+| `docs/TIMELINE-VIEW.md` | Current production shell chrome |
+| `docs/UI-EXPOSURE-MAP.md` | Exposure inventory; historical sections are marked |

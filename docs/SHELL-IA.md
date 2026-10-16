@@ -1,8 +1,10 @@
-# Semblon shell information architecture — LOCKED
+# Semblon shell information architecture — LOCKED for retired Tk Home
+
+**Historical for the production shell (2026-10-16).** Current production chrome is `docs/TIMELINE-VIEW.md`: left nav (Library, People, Search, Add folder, Settings), density timeline, calendar, and field. Product status is `docs/BUILD-STATUS.md`. Do not treat Model D as a second product definition, and do not start a new sidebar-versus-stage migration.
 
 **Superseded 2026-10-05 as the production shell IA** by the completed PySide6 migration (`docs/ARCHITECTURE.md`).
 
-This document still locks Model D for the **legacy Tk Home client only**. It is not the production shell. New production UI work is Field + Focus on `semblon shell`, not another Model D implementation and not a permanent MAIN sidebar.
+This document still locks Model D for the **legacy Tk Home client only**. It is not the production shell. New production UI work stays on `semblon shell` and the timeline contract above, not another Model D implementation.
 
 **Status:** LOCKED (2026-10-02) for Tk Home  
 **Model:** **D — Memory-first Stage dissolve**  

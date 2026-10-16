@@ -98,7 +98,7 @@ The objective is a simple, intentional, polished Windows product—not another a
 
 Future architectural changes must be justified by an actual product or engineering requirement rather than reopening decisions already closed by this migration.
 
-Qt Find is not implemented. Do not invent it as part of reopening the shell.
+The migration constraint was: do not invent a second Find stack in order to reopen the shell. Product search now exists on `semblon shell` (people, text, whole-image Similar, region Similar). What those searches actually compare is `docs/BUILD-STATUS.md`. That does not reopen this architecture.
 
 ## Do not resurrect
 
@@ -110,12 +110,15 @@ This baseline closes the shell. It does not replace the frozen product contract 
 
 | File | Job |
 |---|---|
-| `docs/PRODUCT.md` | Frozen product contract + amendments |
+| `docs/PRODUCT.md` | Enduring product contract |
+| `docs/BUILD-STATUS.md` | Evidence-backed capability status |
+| `docs/ROADMAP.md` | Product-completion sequence |
+| `docs/decisions/` | Superseded statements and why they changed |
 | `docs/CONTRACTS.md` | Schema / CLI / runtime authority |
-| `docs/SEM-ARCH-V1.4.md` | Planned-work authority; current shell points here |
-| `docs/COMPLETION-MATRIX.md` | What is closed vs still open |
+| `docs/SEM-ARCH-V1.4.md` | Engineering planned work. Not a second product contract |
+| `docs/COMPLETION-MATRIX.md` | Architecture closed vs open |
 | `docs/APPLICATION_API.md` | Façade commands |
-| `docs/PRODUCTION-STATUS.md` | Capability classification |
+| `docs/PRODUCTION-STATUS.md` | Historical capability list (2026-09-22 / 2026-10-05) |
 | `docs/FACE-GATES.md` | Closed FACE validation index |
 | `docs/R3-BRIEF.md` | Visual/interaction contract (does not choose a second shell) |
 | `docs/REFERENCE-STACK.md` | Feature/UX reference stack (does not override this baseline) |

@@ -1,7 +1,9 @@
-# Semblon completion matrix (authoritative current state)
+# Semblon completion matrix (architecture closed / open)
+
+**Product contract:** `docs/PRODUCT.md`. **Programme completion tracker (12 issues, Gates A/B/C):** `docs/BUILD-STATUS.md`. This file remains the architecture ledger only. Do not treat `docs/ROADMAP.md` as a status SoT. Rows that say Find is out of V1, or that name Tk Home as the product door, are historical against the 2026-10-16 shell.
 
 **Date:** 2026-10-05 (architecture baseline). Earlier rows retain their original dates.  
-**Authority:** `docs/ARCHITECTURE.md` (production shell) · `docs/SEM-ARCH-V1.4.md` (planned work) · this matrix (closed vs open).  
+**Authority:** `docs/ARCHITECTURE.md` (production shell) · `docs/SEM-ARCH-V1.4.md` (engineering planned work) · this matrix (architecture closed vs open).  
 **UI exposure classes:** `docs/UI-EXPOSURE-MAP.md` is a historical inventory plus a 2026-10-05 banner. Do not treat its September shell rule as current.  
 **Do not** treat older freeze audits as current blockers without checking this file.
 
@@ -31,7 +33,7 @@ These are product and engineering gaps. They are not permission to reopen the sh
 | ITEM | STATE | NOTES |
 |---|---|---|
 | Field + Focus experience | **LANDED on branch** | Native shell at `43eafe5`. Matrix date remains 2026-10-05; this row was stale. |
-| Find | **OUT OF V1** | Not a second query path. Lens remains `Application.query_media`. Region Similar remains `Application.remember_and_find_region`. |
+| Find | **Historical row — see `docs/BUILD-STATUS.md`** | The shell now has people search, text search, whole-image Similar, and region Similar. This row recorded the migration rule against a second query stack. Lens remains `Application.query_media`. Region Similar remains `Application.remember_and_find_region`. |
 | People / Decision / Appearance / Time as lenses | **LANDED on branch** | Same session. Time is the mtime lens. People writes only through `review.py`. |
 | Remaining production UX and polish | **OPEN** | Windows product, not another prototype |
 | Eventual Tk retirement | **COMPLETE** | `home`, `review-ui`, and `canvas` CLI clients removed; production UI is `semblon shell` only |

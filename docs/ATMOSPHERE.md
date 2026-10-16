@@ -1,6 +1,6 @@
 # Semblon Atmosphere & Motion System
 
-**Superseded 2026-10-05 as the production visual system.** This contract is the legacy Tk Home / Canvas palette. It is not the PySide6 shell. Production architecture: `docs/ARCHITECTURE.md`.
+**Superseded 2026-10-05 as the production visual system.** This contract is the legacy Tk Home / Canvas palette. It is not the PySide6 shell. Production chrome: `docs/TIMELINE-VIEW.md`. Architecture: `docs/ARCHITECTURE.md`.
 
 Product contract for visual identity on the existing Tk Home / Canvas architecture.
 Opaque Tk — no Windows Mica/Acrylic APIs. “Mica Dark” is a palette atmosphere.
