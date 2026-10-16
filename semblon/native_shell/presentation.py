@@ -42,6 +42,9 @@ _SAFE_PRIMARY_EXACT = {
     "No groups yet.",
     "Groups could not be read.",
     "No photo for this group.",
+    "Groups are hypotheses until you name them. A group is not a person.",
+    "Opened the candidate group for this face.",
+    "No candidate group for this face yet.",
     "This photo is missing from its stored path. If you moved or renamed it, add that folder again so Semblon can reconnect it.",
     "Opened photo. No date on file — time context unavailable.",
 }
@@ -141,3 +144,33 @@ def summarize_people_results(names: list[str], total: int, mode: str) -> str:
     if total <= 3:
         return f"Found: {preview}."
     return f"Found {total} matches. Top results: {preview}."
+
+
+def group_list_title(*, named: bool, names: list[str], kind: str, band: str) -> str:
+    """Primary list title. Named persons keep their name; others stay hypotheses."""
+    if named:
+        for name in names or []:
+            text = str(name or "").strip()
+            if text:
+                return text
+        return "Named person"
+    kind = str(kind or "").strip().lower()
+    band = str(band or "").strip().lower()
+    if kind == "unassigned":
+        return "Unassigned face"
+    if band == "strong":
+        return "Strong candidate group"
+    return "Candidate group"
+
+
+def group_band_label(*, named: bool, kind: str, band: str) -> str:
+    """Secondary honesty line for a board row."""
+    if named:
+        return "Named person"
+    kind = str(kind or "").strip().lower()
+    band = str(band or "").strip().lower()
+    if kind == "unassigned":
+        return "Single face — name to confirm"
+    if band == "strong":
+        return "Strong candidate — name to confirm"
+    return "Needs review — name to confirm"

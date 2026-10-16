@@ -1085,6 +1085,18 @@ class ShellBridge(QObject):
             return ""
         return str(row.get("kind") or "")
 
+    @Property(str, notify=peopleChanged)
+    def selectedBandLabel(self) -> str:
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return ""
+        return str(row.get("bandLabel") or "")
+
+    @Property(bool, notify=focusChanged)
+    def canReviewFaceGroup(self) -> bool:
+        """True when the Focus face maps to a candidate group or unassigned face on the board."""
+        return self._subject_for_face(self._selected_observation) is not None
+
     @Property(bool, notify=peopleChanged)
     def canNameSelected(self) -> bool:
         return self.selectedKind in {"cluster", "track", "unassigned"}
@@ -1125,6 +1137,42 @@ class ShellBridge(QObject):
     def openPeople(self) -> None:
         self._refresh_people()
         self._people_open = True
+        self.peopleChanged.emit()
+
+    @Slot(str)
+    def reviewFaceGroup(self, face_id: str = "") -> None:
+        """Leave Focus and open the People desk on the candidate group for this face."""
+        fid = str(face_id or self._selected_observation or "").strip()
+        subject = self._subject_for_face(fid)
+        if not subject:
+            self._set_result("No candidate group for this face yet.")
+            return
+        if self._session.focus_id:
+            self._session.escape()
+            self._clear_query()
+            self._clear_focus_boxes()
+            self.focusChanged.emit()
+            self.diagnosticsChanged.emit()
+            self.lensChanged.emit()
+        self._refresh_people()
+        self._people_open = True
+        row = self._people.row(subject)
+        self._selected_subject = subject if row else ""
+        self._evidence_id = str(row["mediaId"]) if row else ""
+        self._merge_target_subject = ""
+        self._split_faces = []
+        if row:
+            self._people_note = present_message(
+                self._mode,
+                "Opened the candidate group for this face.",
+                fallback="Opened the candidate group for this face.",
+            )
+        else:
+            self._people_note = present_message(
+                self._mode,
+                "That group is no longer here.",
+                fallback="That group is no longer here.",
+            )
         self.peopleChanged.emit()
 
     @Slot()
@@ -1206,7 +1254,35 @@ class ShellBridge(QObject):
                     }
         return None
 
+    def _subject_for_face(self, face_id: str) -> str | None:
+        """Board subject (cluster_id or unassigned face_id) for a Focus face. Read-only."""
+        fid = str(face_id or "").strip()
+        if not fid:
+            return None
+        for box in self._focus_boxes:
+            if str(box.get("id") or "") == fid and str(box.get("kind") or "") != "face":
+                return None
+        try:
+            board = self._jobs.board()
+        except Exception:
+            return None
+        for item in board.get("items") or []:
+            if item.get("kind") == "track":
+                continue
+            members = item.get("members") or []
+            for member in members:
+                if str(member.get("face_id") or "") != fid:
+                    continue
+                kind = str(item.get("kind") or "cluster")
+                if kind == "unassigned":
+                    return str(item.get("face_id") or fid)
+                subject = str(item.get("cluster_id") or "")
+                return subject or None
+        return None
+
     def _refresh_people(self) -> None:
+        from semblon.native_shell.presentation import group_band_label, group_list_title
+
         rows = []
         try:
             board = self._jobs.board()
@@ -1225,19 +1301,24 @@ class ShellBridge(QObject):
             if members:
                 media_id = str(members[0].get("media_id") or "")
                 face_id = str(members[0].get("face_id") or "")
-            names = item.get("person_names") or []
+            names = [str(n) for n in (item.get("person_names") or []) if n]
             subject = str(item.get("cluster_id") or item.get("face_id") or "")
             if not subject:
                 continue
+            kind = str(item.get("kind") or "cluster")
+            band = str(item.get("band") or ("unassigned" if kind == "unassigned" else "review"))
+            named = bool(item.get("named"))
             rows.append(
                 {
                     "subject": subject,
-                    "title": names[0] if names else "Unnamed",
+                    "title": group_list_title(named=named, names=names, kind=kind, band=band),
                     "count": int(item.get("face_count") or 0),
-                    "named": bool(item.get("named")),
+                    "named": named,
                     "mediaId": media_id,
                     "faceId": face_id,
-                    "kind": str(item.get("kind") or "cluster"),
+                    "kind": kind,
+                    "band": band,
+                    "bandLabel": group_band_label(named=named, kind=kind, band=band),
                     "members": list(members),
                 }
             )

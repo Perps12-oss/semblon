@@ -996,6 +996,16 @@ ApplicationWindow {
                     }
 
                     Text {
+                        objectName: "peopleHypothesisNote"
+                        width: parent.width
+                        text: "Groups are hypotheses until you name them. A group is not a person."
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
                         objectName: "reviewCounts"
                         width: parent.width
                         text: shellReady ? shellApi.reviewCountText : ""
@@ -1040,7 +1050,7 @@ ApplicationWindow {
                                 spacing: 12
 
                                 Text {
-                                    text: "Groups"
+                                    text: "Candidate groups"
                                     color: tokenText
                                     font.pixelSize: 16
                                     font.family: "Segoe UI"
@@ -1059,10 +1069,10 @@ ApplicationWindow {
                                         radius: 8
                                         color: named
                                                 ? ((shellReady && shell.selectedSubject === subject) ? tokenAccentDim : tokenBg2)
-                                                : tokenBg3
+                                                : (band === "strong" ? tokenBg2 : tokenBg3)
                                         border.color: named
                                                 ? ((shellReady && shell.selectedSubject === subject) ? tokenAccent : tokenBorder)
-                                                : tokenReview
+                                                : (band === "strong" ? tokenAccent : tokenReview)
                                         border.width: 1
 
                                         Row {
@@ -1104,9 +1114,10 @@ ApplicationWindow {
                                                 }
                                                 Text {
                                                     width: parent.width
-                                                    text: faceCount + (faceCount === 1 ? " face" : " faces")
+                                                    text: bandLabel + " · " + faceCount + (faceCount === 1 ? " face" : " faces")
                                                     color: tokenMuted
                                                     font.pixelSize: 12
+                                                    elide: Text.ElideRight
                                                 }
                                             }
                                         }
@@ -1144,17 +1155,19 @@ ApplicationWindow {
                                         spacing: 2
 
                                         Text {
-                                            text: selectedTitleSafe !== "" ? selectedTitleSafe : "Select a group"
-                                                                                        color: tokenText
+                                            text: selectedTitleSafe !== "" ? selectedTitleSafe : "Select a candidate group"
+                                            color: tokenText
                                             font.pixelSize: 20
                                             font.family: "Segoe UI Variable"
                                             font.weight: Font.DemiBold
                                             elide: Text.ElideRight
                                         }
                                         Text {
-                                              text: shellReady && shell.selectedSubject !== ""
-                                                  ? (selectedCountSafe + (selectedCountSafe === 1 ? " face" : " faces"))
-                                                  : "Choose a group to review evidence, merge, name, note, or split faces."
+                                            text: shellReady && shell.selectedSubject !== ""
+                                                  ? ((shellApi.selectedBandLabel || "") + " · "
+                                                     + selectedCountSafe
+                                                     + (selectedCountSafe === 1 ? " face" : " faces"))
+                                                  : "Choose a candidate group to review evidence, merge, name, note, or split faces. Name confirms a person."
                                             color: tokenMuted
                                             font.pixelSize: 13
                                             wrapMode: Text.WordWrap
@@ -2280,6 +2293,32 @@ ApplicationWindow {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: if (shellReady) shellApi.findSimilarWhole()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "reviewFaceGroupAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && selectedObservationSafe !== "" && shellApi.canReviewFaceGroup
+                    radius: 6
+                    color: reviewGroupHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Review this group"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: reviewGroupHit
+                        objectName: "reviewFaceGroupHit"
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady) shellApi.reviewFaceGroup(selectedObservationSafe)
                     }
                 }
 

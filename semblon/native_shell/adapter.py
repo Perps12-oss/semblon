@@ -217,11 +217,13 @@ class ArchiveAdapter:
                 return Result("empty", "Review counts: no reviewed run yet.", {"counts": {}})
             return Result("unavailable", "Review counts: groups could not be read.", {})
         counts = dict(board.get("counts") or {})
-        unnamed = int(counts.get("clusters") or 0)
         named = int(counts.get("named_persons") or 0)
+        review = int(counts.get("review_required") or 0)
+        strong = int(counts.get("strong") or 0)
         unassigned = int(counts.get("unassigned") or 0)
         message = (
-            f"Review counts: {named} named, {unnamed} groups, {unassigned} unassigned."
+            f"Review counts: {named} named, {review} need review, "
+            f"{strong} strong candidates, {unassigned} unassigned."
         )
         return Result("ready", message, {"counts": counts})
 

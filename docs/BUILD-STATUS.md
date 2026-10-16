@@ -7,10 +7,10 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-16 (discovery slice A — face → similar photos) |
+| Evidence date | 2026-10-16 (discovery slices A–B) |
 | Branch | `grok/yunet-sface-discovery-plan` |
 | Parent HEAD | (see git log on branch) |
-| Working tree at evidence | Slice A implementation; pytest below |
+| Working tree at evidence | Slice B hypothesis UX + Focus→People handoff; pytest below |
 
 ## Status vocabulary
 
@@ -69,12 +69,12 @@ Deferred without blocking unrelated work: **02** encryption, **08** product capt
 
 ## Verification log (commands actually run)
 
-Environment: Windows ARM64 host; `.venv-312` for slice A.
+Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 
 | Command | Result |
 |---|---|
-| `pytest tests/test_similar_faces.py` + adapter honesty | **7 passed** (`--basetemp=.pytest-tmp-slice-a`) |
-| `pytest tests/test_native_shell.py -k observation` | **1 passed** (Focus face select still works with face-similar door) |
+| `pytest tests/test_similar_faces.py` + adapter honesty | **7 passed** (slice A) |
+| `pytest tests/test_discovery_slice_b.py` + People desk tests | **7 passed** (`--basetemp=.pytest-tmp-slice-b`) |
 | Live user database | **not modified** |
 
 ### Tests covering Gate A (unchanged)
@@ -95,12 +95,19 @@ Environment: Windows ARM64 host; `.venv-312` for slice A.
 1. Domain: `search_similar_faces(store, face_id)` — same-`pack_id` `compare()`, best score per other media, provisional threshold from `identity_config.DEFAULT_THRESHOLD`, no decisions / no `person_id` writes.
 2. Shell: Focus face box click → `findSimilarFaces` → results strip with `Similar (face embedding): …` (engine `face-embed`). Whole-image / region Similar stay colour histogram.
 3. CLI: `semblon search --similar-face FACE --store …` (lab/read-only).
-4. Plan/ROADMAP: milestone 6 IN PROGRESS (slice A); B–E not started.
+
+## Behaviour landed — discovery slice B
+
+1. People desk: board `band` plumbed; titles “Candidate group” / “Strong candidate group” / named; honesty note that groups ≠ persons; review counts include need-review / strong.
+2. Focus: “Review this group” when selected face maps to a board subject → leaves Focus, opens People, selects that group. No auto-name.
+3. Q thresholds unchanged (still provisional in `identity_config.py`).
+4. Plan/ROADMAP: milestone 6 IN PROGRESS (A–B); C–E not started.
 
 ## Capability notes
 
 - Default whole/region Similar is colour histogram (`appearance/rgb8@1`), not semantic / face identity.
 - Focus face Similar is face embedding (same pack); not a name; not auto-assign.
+- People desk groups are hypotheses until Name; Name remains the only person-create path.
 - Pack gate unchanged. ARM64 OpenCV load remains BLOCKED historically (`docs/PERF-P1-ARM64.md`).
 - Identity runtime is YuNet + SFace (`opencv/yunet_sface`); buffalo_l retired from deps (BYO historical only).
 
