@@ -143,10 +143,12 @@ _GROUP_NAMED = Qt.ItemDataRole.UserRole + 4
 _GROUP_MEDIA = Qt.ItemDataRole.UserRole + 5
 _GROUP_FACE = Qt.ItemDataRole.UserRole + 6
 _GROUP_KIND = Qt.ItemDataRole.UserRole + 7
+_GROUP_BAND = Qt.ItemDataRole.UserRole + 8
+_GROUP_BAND_LABEL = Qt.ItemDataRole.UserRole + 9
 
 
 class PeopleModel(QAbstractListModel):
-    """Unnamed and named groups from the existing review board. Not a second archive."""
+    """Candidate groups and named persons from the review board. Not a second archive."""
 
     def __init__(self):
         super().__init__()
@@ -166,6 +168,8 @@ class PeopleModel(QAbstractListModel):
             _GROUP_MEDIA: b"mediaId",
             _GROUP_FACE: b"faceId",
             _GROUP_KIND: b"kind",
+            _GROUP_BAND: b"band",
+            _GROUP_BAND_LABEL: b"bandLabel",
         }
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
@@ -186,6 +190,10 @@ class PeopleModel(QAbstractListModel):
             return row["faceId"]
         if role == _GROUP_KIND:
             return row["kind"]
+        if role == _GROUP_BAND:
+            return row.get("band") or ""
+        if role == _GROUP_BAND_LABEL:
+            return row.get("bandLabel") or ""
         return None
 
     def set_rows(self, rows: list[dict]) -> None:

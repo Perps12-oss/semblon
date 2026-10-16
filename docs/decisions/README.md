@@ -7,7 +7,8 @@ Material product and architecture decisions, plus superseded statements. The cur
 | 2026-10-16 | [Python support policy](2026-10-16-python-support-policy.md) | Current |
 | 2026-10-16 | [Identity engine redistribution](2026-10-16-identity-engine-redistribution.md) | Current |
 | 2026-10-16 | [Identity engine evaluation (YuNet / AuraFace)](2026-10-16-identity-engine-evaluation.md) | Current — **NO ENGINE CHANGE APPROVED** (production) |
-| 2026-10-16 | [Identity stack eval order (YuNet + SFace first)](2026-10-16-identity-stack-eval-order.md) | Current — isolated eval authorised; not cutover |
+| 2026-10-16 | [Identity stack eval order (YuNet + SFace first)](2026-10-16-identity-stack-eval-order.md) | Current — runtime on `main`; L/Q release gates still open |
+| 2026-10-16 | [YuNet + SFace discovery plan](2026-10-16-yunet-sface-discovery-plan.md) | Current — **PLAN ONLY** |
 | 2026-10-16 | [Store encryption deferred](2026-10-16-store-encryption-deferred.md) | Current |
 | 2026-10-16 | [Screen-capture UI deferred](2026-10-16-screen-capture-deferred.md) | Current |
 | 2026-10-16 | [Four documentation layers](2026-10-16-product-truth-layers.md) | Current |

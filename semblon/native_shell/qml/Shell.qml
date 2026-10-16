@@ -60,6 +60,8 @@ ApplicationWindow {
     readonly property bool canRuleOutSelectedSafe: shellReady && shellApi.canRuleOutSelected
     readonly property bool canMergeClusterSafe: shellReady && shellApi.canMergeCluster
     readonly property bool canSplitClusterSafe: shellReady && shellApi.canSplitCluster
+    readonly property var personDaysSafe: shellReady ? shellApi.personDays : []
+    readonly property bool canBrowsePersonTimeSafe: shellReady && shellApi.canBrowsePersonTime
     readonly property bool activityOpenSafe: shellReady && shellApi.activityOpen
     readonly property var activityRowsSafe: shellReady ? shellApi.activityRows : []
     readonly property var focusBoxesSafe: shellReady ? shellApi.focusObservationBoxes : []
@@ -996,6 +998,16 @@ ApplicationWindow {
                     }
 
                     Text {
+                        objectName: "peopleHypothesisNote"
+                        width: parent.width
+                        text: "Groups are hypotheses until you name them. A group is not a person."
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Text {
                         objectName: "reviewCounts"
                         width: parent.width
                         text: shellReady ? shellApi.reviewCountText : ""
@@ -1040,7 +1052,7 @@ ApplicationWindow {
                                 spacing: 12
 
                                 Text {
-                                    text: "Groups"
+                                    text: "Candidate groups"
                                     color: tokenText
                                     font.pixelSize: 16
                                     font.family: "Segoe UI"
@@ -1059,10 +1071,10 @@ ApplicationWindow {
                                         radius: 8
                                         color: named
                                                 ? ((shellReady && shell.selectedSubject === subject) ? tokenAccentDim : tokenBg2)
-                                                : tokenBg3
+                                                : (band === "strong" ? tokenBg2 : tokenBg3)
                                         border.color: named
                                                 ? ((shellReady && shell.selectedSubject === subject) ? tokenAccent : tokenBorder)
-                                                : tokenReview
+                                                : (band === "strong" ? tokenAccent : tokenReview)
                                         border.width: 1
 
                                         Row {
@@ -1104,9 +1116,10 @@ ApplicationWindow {
                                                 }
                                                 Text {
                                                     width: parent.width
-                                                    text: faceCount + (faceCount === 1 ? " face" : " faces")
+                                                    text: bandLabel + " · " + faceCount + (faceCount === 1 ? " face" : " faces")
                                                     color: tokenMuted
                                                     font.pixelSize: 12
+                                                    elide: Text.ElideRight
                                                 }
                                             }
                                         }
@@ -1144,17 +1157,19 @@ ApplicationWindow {
                                         spacing: 2
 
                                         Text {
-                                            text: selectedTitleSafe !== "" ? selectedTitleSafe : "Select a group"
-                                                                                        color: tokenText
+                                            text: selectedTitleSafe !== "" ? selectedTitleSafe : "Select a candidate group"
+                                            color: tokenText
                                             font.pixelSize: 20
                                             font.family: "Segoe UI Variable"
                                             font.weight: Font.DemiBold
                                             elide: Text.ElideRight
                                         }
                                         Text {
-                                              text: shellReady && shell.selectedSubject !== ""
-                                                  ? (selectedCountSafe + (selectedCountSafe === 1 ? " face" : " faces"))
-                                                  : "Choose a group to review evidence, merge, name, note, or split faces."
+                                            text: shellReady && shell.selectedSubject !== ""
+                                                  ? ((shellApi.selectedBandLabel || "") + " · "
+                                                     + selectedCountSafe
+                                                     + (selectedCountSafe === 1 ? " face" : " faces"))
+                                                  : "Choose a candidate group to review evidence, merge, name, note, or split faces. Name confirms a person."
                                             color: tokenMuted
                                             font.pixelSize: 13
                                             wrapMode: Text.WordWrap
@@ -1175,6 +1190,70 @@ ApplicationWindow {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: if (shellReady) shellApi.openEvidence(shellApi.evidenceId)
+                                        }
+                                    }
+                                }
+
+                                Column {
+                                    objectName: "personTimePanel"
+                                    width: parent.width
+                                    spacing: 8
+                                    visible: canBrowsePersonTimeSafe
+
+                                    Text {
+                                        text: "This person's days"
+                                        color: tokenText
+                                        font.pixelSize: 14
+                                        font.family: "Segoe UI"
+                                    }
+
+                                    Flow {
+                                        objectName: "personDayChips"
+                                        width: parent.width
+                                        spacing: 8
+
+                                        Repeater {
+                                            model: personDaysSafe
+                                            delegate: Rectangle {
+                                                property var dayRow: modelData
+                                                height: 28
+                                                width: dayChipLabel.implicitWidth + 16
+                                                radius: 6
+                                                color: dayChipHit.containsMouse ? tokenAccentDim : tokenBg2
+                                                border.color: tokenAccent
+                                                border.width: 1
+
+                                                Text {
+                                                    id: dayChipLabel
+                                                    anchors.centerIn: parent
+                                                    text: (dayRow.day || "") + " · " + (dayRow.count || 0)
+                                                    color: tokenText
+                                                    font.family: "Segoe UI"
+                                                    font.pixelSize: 12
+                                                }
+                                                MouseArea {
+                                                    id: dayChipHit
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: if (shellReady) shellApi.openPersonDay(dayRow.day || "")
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        objectName: "browsePersonTime"
+                                        text: "Browse in Time"
+                                        color: browseTimeHit.containsMouse ? tokenText : tokenAccent
+                                        font.pixelSize: 14
+                                        MouseArea {
+                                            id: browseTimeHit
+                                            anchors.fill: parent
+                                            anchors.margins: -4
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.browseSelectedPersonInTime()
                                         }
                                     }
                                 }
@@ -2284,6 +2363,32 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    objectName: "reviewFaceGroupAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && selectedObservationSafe !== "" && shellApi.canReviewFaceGroup
+                    radius: 6
+                    color: reviewGroupHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Review this group"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: reviewGroupHit
+                        objectName: "reviewFaceGroupHit"
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady) shellApi.reviewFaceGroup(selectedObservationSafe)
+                    }
+                }
+
+                Rectangle {
                     width: parent.width
                     height: 32
                     visible: primaryModeSafe
@@ -2369,8 +2474,12 @@ ApplicationWindow {
                 objectName: "similarNote"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
-                anchors.bottomMargin: 28
-                visible: similarStateSafe === "empty" || similarStateSafe === "unavailable"
+                // Sit above the strip when ready so the basis label stays visible.
+                anchors.bottomMargin: similarStrip.visible ? 108 : 28
+                visible: (similarStateSafe === "empty"
+                          || similarStateSafe === "unavailable"
+                          || similarStateSafe === "ready")
+                         && similarNoteSafe !== ""
                 text: similarNoteSafe
                 color: tokenMuted
                 font.family: "Segoe UI"

@@ -1018,7 +1018,8 @@ def test_people_split_uses_visual_face_selection_and_merge_target(tmp_path, monk
     assert root.findChild(QObject, "mergeTargetFlow") is not None
     bridge.openPeople()
     bridge.selectGroup("c1")
-    assert bridge.selectedTitle == "Unnamed"
+    assert bridge.selectedTitle == "Candidate group"
+    assert bridge.selectedBandLabel.startswith("Needs review")
     assert bridge.selectedCount == 3
     assert len(bridge.selectedMembers) == 3
     assert bridge.faceThumb("f1") == "image://face/f1"

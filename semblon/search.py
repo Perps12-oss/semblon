@@ -1,8 +1,9 @@
 """Evidence-based retrieval over owned memory. Not a vector database.
 
 Person search is named-entity lookup. Face search is identify vs persons.
-Similarity is not identity. OCR text search is payload substring lookup.
-Search does not write the store.
+Face→similar photos ranks other stills by same-pack face embedding (not a name).
+Whole-image / region Similar stay non-identity spaces. OCR text is payload
+substring lookup. Search does not write the store.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from semblon.compare import CompareError, compare_space
+from semblon.compare import CompareError, compare, compare_space
 from semblon.identify import IdentifyError, identify_face
 from semblon.memory import MemoryError, history
 
@@ -105,6 +106,158 @@ def search_face(store: Path, run_id: str, face_id: str) -> dict:
         "identify": ident,
         "why": "identify vs named persons only; does not auto-assign person_id",
         "note": "similarity is not identity; search does not write decisions",
+    }
+
+
+_FACE_SIMILAR_BASIS = "Face (embedding · same pack)"
+_FACE_SIMILAR_NOTE = (
+    "Face similarity is not a name. Semblon does not auto-assign a person."
+)
+
+
+def search_similar_faces(
+    store: Path,
+    face_id: str,
+    *,
+    limit: int = 10,
+    threshold: float | None = None,
+) -> dict:
+    """Rank other photos by same-pack face embedding. Not identify; no writes.
+
+    Uses compare() (pack_id + dim). Cross-pack rows are skipped. Scores below
+    the provisional identity_config threshold are excluded (prefer false split).
+    Best face score wins per media_id. Seed media is excluded.
+    """
+    from semblon.identity_config import DEFAULT_THRESHOLD
+
+    fid = (face_id or "").strip()
+    thr = DEFAULT_THRESHOLD if threshold is None else float(threshold)
+    empty = {
+        "kind": "similar_faces",
+        "query": face_id,
+        "count": 0,
+        "items": [],
+        "media_ids": [],
+        "modality": "face",
+        "threshold": thr,
+        "similarity_basis": _FACE_SIMILAR_BASIS,
+        "note": _FACE_SIMILAR_NOTE,
+    }
+    if not fid:
+        return {
+            **empty,
+            "status": "UNAVAILABLE",
+            "model_state": "MISSING",
+            "provider_state": "FAILED",
+            "reason": "Select a face on the photo first.",
+            "error_id": "similar_faces.NO_FACE",
+            "pack_id": None,
+        }
+    conn = _open_ro(store)
+    try:
+        seed = conn.execute(
+            """SELECT f.face_id, f.embedding, f.embedding_pack, f.embedding_dim,
+                      f.status, f.run_id, o.media_id
+               FROM faces f
+               JOIN observations o ON o.observation_id = f.observation_id
+               WHERE f.face_id=?""",
+            (fid,),
+        ).fetchone()
+        if seed is None:
+            return {
+                **empty,
+                "query": fid,
+                "status": "UNAVAILABLE",
+                "model_state": "MISSING",
+                "provider_state": "FAILED",
+                "reason": "That face is not in this library.",
+                "error_id": "similar_faces.UNKNOWN_FACE",
+                "pack_id": None,
+            }
+        if seed["status"] != "ok" or seed["embedding"] is None:
+            return {
+                **empty,
+                "query": fid,
+                "status": "UNAVAILABLE",
+                "model_state": "MISSING",
+                "provider_state": "FAILED",
+                "reason": "This face has no usable embedding yet. Nothing was searched.",
+                "error_id": "similar_faces.NO_EMBEDDING",
+                "pack_id": seed["embedding_pack"],
+                "seed_media_id": seed["media_id"],
+            }
+        pack_id = str(seed["embedding_pack"] or "")
+        dim = int(seed["embedding_dim"])
+        seed_media = str(seed["media_id"] or "")
+        others = conn.execute(
+            """SELECT f.face_id, f.embedding, f.embedding_pack, f.embedding_dim,
+                      o.media_id
+               FROM faces f
+               JOIN observations o ON o.observation_id = f.observation_id
+               WHERE f.face_id != ?
+                 AND f.status = 'ok'
+                 AND f.embedding IS NOT NULL
+                 AND f.embedding_pack = ?""",
+            (fid, pack_id),
+        ).fetchall()
+        best_by_media: dict[str, dict] = {}
+        for row in others:
+            mid = str(row["media_id"] or "")
+            if not mid or mid == seed_media:
+                continue
+            try:
+                score = compare(
+                    pack_id,
+                    dim,
+                    seed["embedding"],
+                    str(row["embedding_pack"] or ""),
+                    int(row["embedding_dim"]),
+                    row["embedding"],
+                )
+            except CompareError:
+                continue
+            if score < thr:
+                continue
+            prev = best_by_media.get(mid)
+            if prev is None or score > prev["score"]:
+                best_by_media[mid] = {
+                    "media_id": mid,
+                    "face_id": str(row["face_id"]),
+                    "score": float(score),
+                    "why": "same pack face embedding; not a named person",
+                }
+    finally:
+        conn.close()
+    items = sorted(best_by_media.values(), key=lambda x: -x["score"])[: max(0, int(limit))]
+    if not items:
+        return {
+            **empty,
+            "query": fid,
+            "seed_media_id": seed_media,
+            "pack_id": pack_id,
+            "status": "NO_RESULT",
+            "model_state": "AVAILABLE",
+            "provider_state": "READY",
+            "reason": "No other photos matched this face at the current threshold.",
+            "error_id": None,
+        }
+    return {
+        "kind": "similar_faces",
+        "query": fid,
+        "seed_media_id": seed_media,
+        "pack_id": pack_id,
+        "modality": "face",
+        "threshold": thr,
+        "count": len(items),
+        "items": items,
+        "media_ids": [it["media_id"] for it in items],
+        "status": "SUCCESS",
+        "model_state": "AVAILABLE",
+        "provider_state": "READY",
+        "reason": "Ranked other photos by face embedding (same pack only).",
+        "error_id": None,
+        "similarity_basis": _FACE_SIMILAR_BASIS,
+        "note": _FACE_SIMILAR_NOTE,
     }
 
 

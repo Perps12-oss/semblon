@@ -107,6 +107,8 @@ class ShellBridge(QObject):
         self._similar = SimilarStripModel()
         self._similar_state = "idle"
         self._similar_note = ""
+        self._similar_basis = ""
+        self._similar_basis_label = ""
         self._point_source = ""
         self._people = PeopleModel()
         self._people_open = False
@@ -115,6 +117,7 @@ class ShellBridge(QObject):
         self._evidence_id = ""
         self._merge_target_subject = ""
         self._split_faces: list[str] = []
+        self._person_days: list[dict] = []
         self._focus_boxes: list[dict] = []
         self._selected_observation = ""
         self._activity_rows: list[dict] = []
@@ -307,6 +310,8 @@ class ShellBridge(QObject):
             if str(box.get("id") or "") == wanted:
                 self._selected_observation = wanted
                 self.focusChanged.emit()
+                if str(box.get("kind") or "") == "face":
+                    self.findSimilarFaces(wanted)
                 return
 
     @Property(float, notify=focusChanged)
@@ -825,6 +830,16 @@ class ShellBridge(QObject):
     def similarNote(self) -> str:
         return self._similar_note
 
+    @Property(str, notify=similarChanged)
+    def similarBasis(self) -> str:
+        """Door key: whole | region | face. Empty when idle."""
+        return self._similar_basis
+
+    @Property(str, notify=similarChanged)
+    def similarBasisLabel(self) -> str:
+        """User-facing basis for the open results strip (distinct per door)."""
+        return self._similar_basis_label
+
     @Property(int, notify=similarChanged)
     def similarCount(self) -> int:
         return self._similar.rowCount()
@@ -841,13 +856,44 @@ class ShellBridge(QObject):
         self._similar.set_rows([])
         self._similar_state = "idle"
         self._similar_note = ""
+        self._similar_basis = ""
+        self._similar_basis_label = ""
         self.similarChanged.emit()
 
-    def _publish_similar(self, state: str, note: str, rows: list[tuple[str, float]]) -> None:
+    def _publish_similar(
+        self,
+        state: str,
+        note: str,
+        rows: list[tuple[str, float]],
+        *,
+        basis: str = "",
+        basis_label: str = "",
+    ) -> None:
         self._similar.set_rows(rows)
         self._similar_state = state
         self._similar_note = present_message(self._mode, note, fallback="Similar search could not run.")
+        self._similar_basis = str(basis or "")
+        self._similar_basis_label = str(basis_label or "")
         self.similarChanged.emit()
+
+    def _publish_similar_result(self, result) -> None:
+        """Shared Focus strip publish for whole / region / face doors."""
+        rows = [
+            (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
+            for item in (result.data.get("items") or [])
+            if item.get("media_id")
+        ]
+        state = result.state if result.state in {"ready", "empty", "unavailable"} else "unavailable"
+        note = result.message if result.message else "Similar search could not run."
+        self._result_text = ""
+        self.resultChanged.emit()
+        self._publish_similar(
+            state,
+            note,
+            rows,
+            basis=str(result.data.get("basis") or ""),
+            basis_label=str(result.data.get("basis_label") or ""),
+        )
 
     def _clear_query(self) -> None:
         self._region_norm = None
@@ -856,7 +902,7 @@ class ShellBridge(QObject):
         self._clear_similar()
 
     def _load_focus_boxes(self, media_id: str) -> None:
-        """Non-identity observation outlines for the open still. Never stamps identity."""
+        """Observation outlines for the open still. Face click → face-similar; never stamps identity."""
         from semblon.canvas_data import overlay_boxes
 
         self._selected_observation = ""
@@ -1083,6 +1129,34 @@ class ShellBridge(QObject):
             return ""
         return str(row.get("kind") or "")
 
+    @Property(str, notify=peopleChanged)
+    def selectedBandLabel(self) -> str:
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return ""
+        return str(row.get("bandLabel") or "")
+
+    @Property(str, notify=peopleChanged)
+    def selectedPersonId(self) -> str:
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return ""
+        return str(row.get("personId") or "")
+
+    @Property("QVariantList", notify=peopleChanged)
+    def personDays(self):
+        """Dated days for the selected named person (newest first). Not identity."""
+        return list(self._person_days)
+
+    @Property(bool, notify=peopleChanged)
+    def canBrowsePersonTime(self) -> bool:
+        return bool(self._person_days)
+
+    @Property(bool, notify=focusChanged)
+    def canReviewFaceGroup(self) -> bool:
+        """True when the Focus face maps to a candidate group or unassigned face on the board."""
+        return self._subject_for_face(self._selected_observation) is not None
+
     @Property(bool, notify=peopleChanged)
     def canNameSelected(self) -> bool:
         return self.selectedKind in {"cluster", "track", "unassigned"}
@@ -1125,6 +1199,42 @@ class ShellBridge(QObject):
         self._people_open = True
         self.peopleChanged.emit()
 
+    @Slot(str)
+    def reviewFaceGroup(self, face_id: str = "") -> None:
+        """Leave Focus and open the People desk on the candidate group for this face."""
+        fid = str(face_id or self._selected_observation or "").strip()
+        subject = self._subject_for_face(fid)
+        if not subject:
+            self._set_result("No candidate group for this face yet.")
+            return
+        if self._session.focus_id:
+            self._session.escape()
+            self._clear_query()
+            self._clear_focus_boxes()
+            self.focusChanged.emit()
+            self.diagnosticsChanged.emit()
+            self.lensChanged.emit()
+        self._refresh_people()
+        self._people_open = True
+        row = self._people.row(subject)
+        self._selected_subject = subject if row else ""
+        self._evidence_id = str(row["mediaId"]) if row else ""
+        self._merge_target_subject = ""
+        self._split_faces = []
+        if row:
+            self._people_note = present_message(
+                self._mode,
+                "Opened the candidate group for this face.",
+                fallback="Opened the candidate group for this face.",
+            )
+        else:
+            self._people_note = present_message(
+                self._mode,
+                "That group is no longer here.",
+                fallback="That group is no longer here.",
+            )
+        self.peopleChanged.emit()
+
     @Slot()
     def closePeople(self) -> None:
         self._people_open = False
@@ -1132,6 +1242,7 @@ class ShellBridge(QObject):
         self._evidence_id = ""
         self._merge_target_subject = ""
         self._split_faces = []
+        self._person_days = []
         self.peopleChanged.emit()
 
     @Slot(str)
@@ -1143,7 +1254,48 @@ class ShellBridge(QObject):
             self._people_note = "That group is no longer here."
         self._merge_target_subject = ""
         self._split_faces = []
+        self._reload_person_days()
         self.peopleChanged.emit()
+
+    @Slot()
+    def browseSelectedPersonInTime(self) -> None:
+        """Named person → newest dated day in Field/Focus. Archive day neighbours."""
+        if not self._person_days:
+            self._people_note = present_message(
+                self._mode,
+                "No dated photos for this person yet.",
+                fallback="No dated photos for this person yet.",
+            )
+            self.peopleChanged.emit()
+            return
+        self.openPersonDay(str(self._person_days[0].get("day") or ""))
+
+    @Slot(str)
+    def openPersonDay(self, day: str) -> None:
+        """Open a representative still for this person's day with Gate A day scope."""
+        wanted = str(day or "").strip()
+        hit = next((row for row in self._person_days if str(row.get("day") or "") == wanted), None)
+        if hit is None:
+            self._people_note = present_message(
+                self._mode,
+                "No dated photos for this person yet.",
+                fallback="No dated photos for this person yet.",
+            )
+            self.peopleChanged.emit()
+            return
+        media_id = str(hit.get("mediaId") or "").strip()
+        if not media_id:
+            self._people_note = present_message(
+                self._mode,
+                "No dated photos for this person yet.",
+                fallback="No dated photos for this person yet.",
+            )
+            self.peopleChanged.emit()
+            return
+        self.closePeople()
+        self.openFocusInContext(media_id)
+        if self._session.focus_id and self._scope_kind == "day":
+            self._set_result("Opened this person in Time.")
 
     @Slot(str)
     def selectMergeTarget(self, subject: str) -> None:
@@ -1204,7 +1356,80 @@ class ShellBridge(QObject):
                     }
         return None
 
+    def _subject_for_face(self, face_id: str) -> str | None:
+        """Board subject (cluster_id or unassigned face_id) for a Focus face. Read-only."""
+        fid = str(face_id or "").strip()
+        if not fid:
+            return None
+        for box in self._focus_boxes:
+            if str(box.get("id") or "") == fid and str(box.get("kind") or "") != "face":
+                return None
+        try:
+            board = self._jobs.board()
+        except Exception:
+            return None
+        for item in board.get("items") or []:
+            if item.get("kind") == "track":
+                continue
+            members = item.get("members") or []
+            for member in members:
+                if str(member.get("face_id") or "") != fid:
+                    continue
+                kind = str(item.get("kind") or "cluster")
+                if kind == "unassigned":
+                    return str(item.get("face_id") or fid)
+                subject = str(item.get("cluster_id") or "")
+                return subject or None
+        return None
+
+    def _reload_person_days(self) -> None:
+        """Rebuild day chips for the selected named person from memory.history."""
+        self._person_days = []
+        row = self._people.row(self._selected_subject)
+        if not row or not row.get("named"):
+            return
+        person_id = str(row.get("personId") or "").strip()
+        if not person_id:
+            for member in row.get("members") or []:
+                person_id = str(member.get("person_id") or "").strip()
+                if person_id:
+                    break
+        if not person_id:
+            return
+        self._person_days = self._person_days_for(person_id)
+
+    def _person_days_for(self, person_id: str) -> list[dict]:
+        """Unique calendar days with a folder still to open. Newest first."""
+        from semblon.memory import MemoryError, history
+
+        pid = str(person_id or "").strip()
+        if not pid:
+            return []
+        try:
+            rec = history(self._jobs.store, person=pid)
+        except MemoryError:
+            return []
+        by_day: dict[str, dict] = {}
+        for item in rec.get("items") or []:
+            if str(item.get("source_type") or "") != "folder":
+                continue
+            when = str(item.get("when") or "")
+            day = when[:10] if len(when) >= 10 and when[4:5] == "-" else ""
+            media_id = str(item.get("media_id") or "").strip()
+            if not day or not media_id:
+                continue
+            prev = by_day.get(day)
+            if prev is None:
+                by_day[day] = {"day": day, "mediaId": media_id, "count": 1}
+            else:
+                prev["count"] = int(prev.get("count") or 0) + 1
+                # history items are oldest→newest; keep the latest still for that day
+                prev["mediaId"] = media_id
+        return sorted(by_day.values(), key=lambda row: str(row.get("day") or ""), reverse=True)
+
     def _refresh_people(self) -> None:
+        from semblon.native_shell.presentation import group_band_label, group_list_title
+
         rows = []
         try:
             board = self._jobs.board()
@@ -1223,19 +1448,31 @@ class ShellBridge(QObject):
             if members:
                 media_id = str(members[0].get("media_id") or "")
                 face_id = str(members[0].get("face_id") or "")
-            names = item.get("person_names") or []
+            names = [str(n) for n in (item.get("person_names") or []) if n]
             subject = str(item.get("cluster_id") or item.get("face_id") or "")
             if not subject:
                 continue
+            kind = str(item.get("kind") or "cluster")
+            band = str(item.get("band") or ("unassigned" if kind == "unassigned" else "review"))
+            named = bool(item.get("named"))
+            person_id = ""
+            for member in members:
+                pid = str(member.get("person_id") or "").strip()
+                if pid:
+                    person_id = pid
+                    break
             rows.append(
                 {
                     "subject": subject,
-                    "title": names[0] if names else "Unnamed",
+                    "title": group_list_title(named=named, names=names, kind=kind, band=band),
                     "count": int(item.get("face_count") or 0),
-                    "named": bool(item.get("named")),
+                    "named": named,
                     "mediaId": media_id,
                     "faceId": face_id,
-                    "kind": str(item.get("kind") or "cluster"),
+                    "personId": person_id,
+                    "kind": kind,
+                    "band": band,
+                    "bandLabel": group_band_label(named=named, kind=kind, band=band),
                     "members": list(members),
                 }
             )
@@ -1248,6 +1485,9 @@ class ShellBridge(QObject):
             self._people_note = "That group is no longer here."
             self._merge_target_subject = ""
             self._split_faces = []
+            self._person_days = []
+        else:
+            self._reload_person_days()
 
     @Slot()
     def escape(self) -> None:
@@ -1911,16 +2151,17 @@ class ShellBridge(QObject):
             self._publish_similar("unavailable", "Open a photo first.", [])
             return
         result = self._safe_call(lambda: self._adapter.similar_media(media_id))
-        rows = [
-            (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
-            for item in (result.data.get("items") or [])
-            if item.get("media_id")
-        ]
-        state = result.state if result.state in {"ready", "empty", "unavailable"} else "unavailable"
-        note = result.message if result.message else "Similar search could not run."
-        self._result_text = ""
-        self.resultChanged.emit()
-        self._publish_similar(state, note, rows)
+        self._publish_similar_result(result)
+
+    @Slot(str)
+    def findSimilarFaces(self, face_id: str = "") -> None:
+        """Focus face → ranked same-pack face hits. Not colour-histogram Similar; no auto-name."""
+        fid = str(face_id or self._selected_observation or "").strip()
+        if not fid:
+            self._publish_similar("unavailable", "Select a face on the photo first.", [])
+            return
+        result = self._safe_call(lambda: self._adapter.similar_faces(fid))
+        self._publish_similar_result(result)
 
     @Slot()
     def findSimilar(self) -> None:
@@ -1939,11 +2180,16 @@ class ShellBridge(QObject):
         except Exception:  # noqa: BLE001 — honest failure, no invented matches
             self._result_text = ""
             self.resultChanged.emit()
-            self._publish_similar("unavailable", "Similar search could not run.", [])
+            self._publish_similar(
+                "unavailable",
+                "Similar (selected region · colour histogram): Similar search could not run.",
+                [],
+                basis="region",
+                basis_label="selected region · colour histogram",
+            )
             return
-        self._result_text = ""
-        self.resultChanged.emit()
-        self._publish_similar(*_strip_from(rec))
+        result = self._safe_call(lambda: self._adapter.similar_region(rec))
+        self._publish_similar_result(result)
 
     @Slot()
     def pauseJob(self) -> None:
@@ -2098,35 +2344,3 @@ def _ask_lines(lines, mode: str) -> str:
         kept.append(text)
     return "\n".join(kept) or "Nothing was searched."
 
-
-def _strip_from(rec: dict) -> tuple[str, str, list[tuple[str, float]]]:
-    """Strip payload only. No provider, item id, or score text."""
-    similar = rec.get("similar") or {}
-    status = similar.get("status")
-    items = list(similar.get("items") or [])
-    if status == "SUCCESS" and items:
-        rows: list[tuple[str, float]] = []
-        for item in items[:8]:
-            media_id = str(item.get("media_id") or "")
-            if not media_id:
-                continue
-            try:
-                score = float(item.get("score") or 0.0)
-            except (TypeError, ValueError):
-                score = 0.0
-            rows.append((media_id, score))
-        if rows:
-            return "ready", "Similar (colour histogram): region colour matches.", rows
-    if status == "UNAVAILABLE":
-        return "unavailable", _unavailable_note(similar), []
-    return "empty", "Similar (colour histogram): no similar images found yet.", []
-
-
-def _unavailable_note(similar: dict) -> str:
-    reason = str(similar.get("reason") or "")
-    lowered = reason.lower()
-    if "embedding" in lowered or "pack" in lowered or "space" in lowered:
-        return "Similar search needs photos that have already been looked at."
-    if reason and "sqlite" not in lowered and "traceback" not in lowered:
-        return reason
-    return "Similar search could not run."
