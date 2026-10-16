@@ -64,22 +64,22 @@ def test_read_bgr_decodes_when_imread_cannot(tmp_path):
     assert out.shape[:2] == (8, 8)
 
 
-def test_read_bgr_video_seeks_frame():
+def test_read_bgr_video_grabs_to_frame():
     fake = np.ones((20, 20, 3), dtype=np.uint8) * 7
 
     class Cap:
         def __init__(self, *_a, **_k):
-            self.pos = None
+            self.pos = 0
 
         def isOpened(self):
             return True
 
-        def set(self, _prop, value):
-            self.pos = value
+        def grab(self):
+            self.pos += 1
             return True
 
         def read(self):
-            assert self.pos == 42.0
+            assert self.pos == 42
             return True, fake
 
         def release(self):

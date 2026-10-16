@@ -300,7 +300,11 @@ def test_windows_video_open_tries_extended_path(tmp_path):
         calls.append(str(name))
         return _Cap(name)
 
-    with patch("semblon.temporal.os.name", "nt"), patch("semblon.temporal.cv2.VideoCapture", side_effect=_open):
+    with (
+        patch("semblon.temporal.os.name", "nt"),
+        patch("semblon.temporal.Path.resolve", return_value=r"C:\Users\José\clip.mp4"),
+        patch("semblon.temporal.cv2.VideoCapture", side_effect=_open),
+    ):
         cap = open_video(path)
     assert cap.isOpened()
     assert any(item.startswith("\\\\?\\") for item in calls)

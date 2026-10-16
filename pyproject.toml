@@ -19,8 +19,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1", "PySide6-Essentials==6.12.0"]
-gui = ["PySide6-Essentials==6.12.0"]  # forward shell (`semblon shell`); not the WebEngine metapackage
+dev = ["pytest==9.1.1", "PySide6-Essentials==6.12.0", "PySide6-Addons==6.12.0"]
+gui = ["PySide6-Essentials==6.12.0", "PySide6-Addons==6.12.0"]  # forward shell (`semblon shell`); not the WebEngine metapackage
 ocr = ["pytesseract"]
 clip = ["open-clip-torch", "torch>=2.5.1"]
 naming = ["open-clip-torch", "torch>=2.5.1", "transformers"]
@@ -33,6 +33,7 @@ sam2 = [
 ]
 optional = [
   "PySide6-Essentials==6.12.0",
+  "PySide6-Addons==6.12.0",
   "pytesseract",
   "open-clip-torch",
   "torch>=2.5.1",

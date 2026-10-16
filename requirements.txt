@@ -10,8 +10,11 @@ numpy==2.4.6; python_version < "3.12"
 numpy==2.5.3; python_version >= "3.12"
 pillow==12.3.0
 onnx==1.23.2
+<<<<<<< HEAD
 # SciPy 1.18.1 requires Python >=3.12 (PyPI 2026-10-16). Keep 3.11 via 1.17.1.
 # Policy: docs/decisions/2026-10-16-python-support-policy.md
+=======
+>>>>>>> origin/main
 scipy==1.17.1; python_version < "3.12"
 scipy==1.18.1; python_version >= "3.12"
 scikit-image==0.26.0
