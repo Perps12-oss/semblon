@@ -22,7 +22,7 @@ KINDS = (
     "genuine",
 )
 CONFIRMATORY = "confirmatory_hard"
-# Same keep-together boundary as cluster (eps=0.40 on 1-dot). Do not retune.
+# Keep-together boundary tracks active cluster DEFAULT_EPS (SFace provisional).
 DEFAULT_THRESHOLD = round(1.0 - DEFAULT_EPS, 2)
 HARD_NEAR = STRONG_MIN_INTRA
 MIN_SAME = 10

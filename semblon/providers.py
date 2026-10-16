@@ -1,15 +1,16 @@
-"""ObservationProvider boundary. FaceKit is the only identity provider.
+"""ObservationProvider boundary. YuNet + SFace is the production identity provider.
 
-CPU is the default record. GPU is only claimed when ORT lists CUDA /
-DirectML / TensorRT (Azure is not GPU; present ≠ proven usable).
-No second detector. load() does not silent-swap FaceKit.
+CPU OpenCV DNN is the default record. No InsightFace / buffalo_l.
+No second detector. load() does not silent-swap engines.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
-from semblon.engine import embed_bgr, load_app, select_execution_provider
+from semblon.engine import embed_bgr, face_pack_dir, load_app, select_execution_provider
+from semblon.identity_config import PACK_FAMILY, PROVIDER_NAME
 
 
 @dataclass(frozen=True)
@@ -21,31 +22,35 @@ class ProviderInfo:
     pack_family: str
 
 
-class FaceKitProvider:
-    """First ObservationProvider. Identity embeddings stay FaceKit-only."""
+class YuNetSFaceProvider:
+    """Production identity ObservationProvider (YuNet detect + SFace embed)."""
 
     info = ProviderInfo(
-        name="facekit",
+        name=PROVIDER_NAME,
         modality="face",
         device="cpu",
-        execution_provider="CPUExecutionProvider",
-        pack_family="insightface/buffalo_l",
+        execution_provider="OpenCV_DNN_CPU",
+        pack_family=PACK_FAMILY,
     )
 
     def __init__(self):
         self._app = None
         self._runtime: dict | None = None
 
-    def load(self, det_size: tuple[int, int] = (640, 640), *, prefer_gpu: bool = False):
-        self._app = load_app(det_size, prefer_gpu=prefer_gpu)
+    def load(self, det_size: tuple[int, int] | None = None, *, prefer_gpu: bool = False):
+        from semblon.identity_config import DET_SIZE
+
+        size = det_size if det_size is not None else DET_SIZE
+        self._app = load_app(size, prefer_gpu=prefer_gpu)
         sel = getattr(self._app, "_semblon_ep", None) or select_execution_provider(
             prefer_gpu=prefer_gpu
         )
         self._runtime = {
             "provider": self.info.name,
             "modality": self.info.modality,
-            "device": sel.get("device", "cpu"),
-            "execution_provider": sel.get("chosen", "CPUExecutionProvider"),
+            "device": "cpu",
+            "execution_provider": self.info.execution_provider,
+            "ort_reported_ep": sel.get("chosen", "CPUExecutionProvider"),
             "pack_family": self.info.pack_family,
             "note": sel.get("note"),
         }
@@ -54,7 +59,7 @@ class FaceKitProvider:
     @property
     def app(self):
         if self._app is None:
-            raise RuntimeError("FaceKitProvider.load() has not run")
+            raise RuntimeError("YuNetSFaceProvider.load() has not run")
         return self._app
 
     def observe_bgr(self, img) -> list[dict]:
@@ -73,17 +78,24 @@ class FaceKitProvider:
         }
 
 
-def weights_status() -> dict:
-    """Where buffalo_l lives. Does not download. Does not bundle."""
-    from pathlib import Path
+# Backward-compatible name for tests that still import FaceKitProvider.
+FaceKitProvider = YuNetSFaceProvider
 
-    root = Path.home() / ".insightface" / "models" / "buffalo_l"
+
+def weights_status() -> dict:
+    """Where YuNet + SFace live. Does not download. Does not bundle."""
+    root = face_pack_dir()
     present = sorted(p.name for p in root.glob("*.onnx")) if root.is_dir() else []
     return {
         "dir": str(root),
         "present": present,
         "onnx_count": len(present),
+        "engine": "yunet_sface",
+        "pack_family": PACK_FAMILY,
         "bundled": False,
         "redistributable": False,
-        "note": "internal evaluation only; first ingest may download via InsightFace",
+        "note": (
+            "BYO OpenCV Zoo YuNet + SFace. Semblon does not download or MSI-bundle "
+            "weights until licence gate L PASS. See docs/IDENTITY-PACK.md."
+        ),
     }

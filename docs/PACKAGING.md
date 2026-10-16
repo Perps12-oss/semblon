@@ -2,7 +2,7 @@
 
 **Engineering:** checkout install via `tools/install-windows.ps1`, or per-user **code MSI** via `packaging/msi` (WiX).  
 **Verification:** HUMAN VERIFICATION REQUIRED for clean-machine UX (`packaging/msi/smoke-checklist.md`).  
-**Redistribution of buffalo_l:** **UNAVAILABLE** pending pack licence — never bundled in MSI/installer.
+**Redistribution of identity ONNX (YuNet/SFace or buffalo_l):** **UNAVAILABLE** until licence gate L PASS — never bundled in MSI/installer (BYO only).
 
 ## Supported install (code) — checkout
 
@@ -14,7 +14,7 @@ semblon.cmd shell
 
 The installer runs `pip install -e ".[gui]"` so PySide6 is present. Double-click `semblon.cmd` opens the PySide6 archive (`semblon shell`).
 
-Does not bundle model weights. Ingest does not download buffalo_l. `semblon lab pack-accept` pins ONNX files that are already on disk.
+Does not bundle model weights. Ingest does not download YuNet/SFace. `semblon lab pack-accept` pins ONNX files that are already on disk (`docs/IDENTITY-PACK.md`).
 
 Check weights without downloading:
 

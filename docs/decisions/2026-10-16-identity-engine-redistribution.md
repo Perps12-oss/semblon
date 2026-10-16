@@ -6,10 +6,10 @@
 
 ## Decision
 
-1. **Keep** FaceKit / InsightFace with `buffalo_l` as the identity engine for product ingest and review.
-2. **Do not** bundle `buffalo_l` ONNX weights in the installer until a separate redistribution licence exists (`docs/licenses.md`: UNAVAILABLE).
-3. **Operational path:** owner (or lab) places weights locally and pins them with `semblon lab pack-accept`. Product ingest refuses unpinned packs and does not download weights.
-4. **Do not** silently switch to YuNet + SFace. An alternative engine requires an owner-provided representative eval set, a recorded accuracy trade-off, and an explicit follow-up decision — not this release.
+1. **Production identity runtime** is YuNet + SFace (`docs/IDENTITY-PACK.md`). FaceKit / `buffalo_l` is retired from dependencies and ingest.
+2. **Do not** bundle YuNet/SFace (or buffalo_l) ONNX weights in the installer until licence gate **L PASS** (`docs/licenses.md`: BYO / MSI fail-closed).
+3. **Operational path:** owner places Zoo ONNX files under `~/.semblon/models/yunet_sface` and pins with `semblon lab pack-accept`. Ingest refuses unpinned packs and does not download weights.
+4. Historical buffalo_l S1 constants remain in `semblon/identity_buffalo_frozen.py` for old stores; they must not control the SFace engine.
 
 ## Non-negotiables
 
@@ -40,3 +40,11 @@
 1. Obtain written redistribution rights for the exact weight files (version + hashes), **or**
 2. Keep BYO permanently and document that commercial redistribution of weights is never offered, **or**
 3. Supply an authorized alternative pack and complete the eval gate before switching engines (separate decision; not this release).
+
+## Related evaluation (non-committing)
+
+Candidate friction and four-gate clearance live in  
+`docs/decisions/2026-10-16-identity-engine-evaluation.md`.  
+Evaluation **order** (YuNet + SFace first, isolated only) lives in  
+`docs/decisions/2026-10-16-identity-stack-eval-order.md`.  
+Neither amends this BYO / redistribution stance; production cutover remains unapproved.

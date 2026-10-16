@@ -1,4 +1,4 @@
-"""InsightFace pack loader. FACE-000 only — one image detect + embed."""
+"""YuNet + SFace identity pack loader. Local ONNX only — Semblon never downloads."""
 
 from __future__ import annotations
 
@@ -13,6 +13,38 @@ import cv2
 import numpy as np
 
 from semblon import ADAPTER_VERSION
+from semblon.identity_config import (
+    DET_SCORE_MIN,
+    DET_SIZE,
+    EXPECTED_FACE_DIM,
+    NMS_THRESHOLD,
+    PACK_FAMILY,
+    SFACE_ONNX,
+    TOP_K,
+    YUNET_ONNX_FALLBACK,
+    YUNET_ONNX_PREFERRED,
+)
+
+# Re-export for callers that imported PACK_FAMILY from engine.
+__all__ = [
+    "PACK_FAMILY",
+    "EXPECTED_FACE_DIM",
+    "ModelPackError",
+    "FaceSession",
+    "load_app",
+    "embed_bgr",
+    "embed_image",
+    "assert_face_pack_ready",
+    "accept_local_face_pack",
+    "face_pack_dir",
+    "discover_weight_hashes",
+    "pack_id",
+    "current_identity_space",
+    "identity_space_mismatch",
+    "select_execution_provider",
+    "process_arch",
+    "process_execution",
+]
 
 
 def process_arch() -> str:
@@ -32,11 +64,7 @@ def process_arch() -> str:
 
 
 def process_execution() -> str:
-    """native vs emulated. x64 Python on ARM64 Windows is always emulated.
-
-    An x64 process often sees PROCESSOR_ARCHITECTURE=AMD64 even on ARM64 OS.
-    platform.machine() on recent Windows ARM64 reports arm64 for that case.
-    """
+    """native vs emulated. x64 Python on ARM64 Windows is always emulated."""
     arch = process_arch()
     machine = platform.machine().lower()
     env_arch = os.environ.get("PROCESSOR_ARCHITECTURE", "").upper()
@@ -52,10 +80,7 @@ def process_execution() -> str:
         return "native"
     return "unknown"
 
-PACK_FAMILY = "insightface/buffalo_l"
 
-# ORT EPs Semblon may treat as GPU when prefer_gpu and listed.
-# AzureExecutionProvider is NOT GPU (common on Windows ARM64 ORT wheels).
 GPU_EP_NAMES: tuple[str, ...] = (
     "CUDAExecutionProvider",
     "DmlExecutionProvider",
@@ -72,8 +97,17 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def face_pack_dir(root: Path | None = None) -> Path:
+    if root is not None:
+        return Path(root)
+    env = (os.environ.get("SEMBLON_FACE_PACK") or os.environ.get("FACEKIT_PACK_DIR") or "").strip()
+    if env:
+        return Path(env)
+    return Path.home() / ".semblon" / "models" / "yunet_sface"
+
+
 def discover_weight_hashes(root: Path | None = None) -> dict[str, str]:
-    home = Path(root) if root else Path.home() / ".insightface" / "models" / "buffalo_l"
+    home = face_pack_dir(root)
     out: dict[str, str] = {}
     if not home.is_dir():
         return out
@@ -82,32 +116,28 @@ def discover_weight_hashes(root: Path | None = None) -> dict[str, str]:
     return out
 
 
-def pack_id(insightface_version: str, weight_hashes: dict[str, str]) -> str:
-    """Content-address pack. Digest stays 16 hex (frozen identity key — do not widen).
-
-    Empty hashes → sha256:unhashed. Callers that load models must re-hash after
-    download; never treat two unhashed packs as proven-equal weights.
-    """
+def pack_id(engine_version: str, weight_hashes: dict[str, str]) -> str:
+    """Content-address pack. Digest stays 16 hex (frozen identity key — do not widen)."""
     if not weight_hashes:
         digest = "unhashed"
     else:
         blob = "".join(f"{k}:{v};" for k, v in sorted(weight_hashes.items()))
         digest = hashlib.sha256(blob.encode()).hexdigest()[:16]
-    return f"{PACK_FAMILY}@{insightface_version}/adapter-{ADAPTER_VERSION}/sha256:{digest}"
+    return f"{PACK_FAMILY}@{engine_version}/adapter-{ADAPTER_VERSION}/sha256:{digest}"
 
 
 def current_identity_space() -> dict:
-    """Live FaceKit space. Digest width stays 16 hex. Call after weights are loaded."""
-    import insightface
+    """Live YuNet+SFace space. Digest width stays 16 hex. Call after weights are loaded."""
     import onnxruntime as ort
 
-    ifver = getattr(insightface, "__version__", "unknown")
     hashes = discover_weight_hashes()
+    eng_ver = f"opencv-{getattr(cv2, '__version__', 'unknown')}"
     return {
-        "pack_id": pack_id(ifver, hashes),
+        "pack_id": pack_id(eng_ver, hashes),
         "ort_version": getattr(ort, "__version__", None),
         "opencv_version": getattr(cv2, "__version__", None),
-        "insightface_version": ifver,
+        "insightface_version": None,
+        "identity_engine": "yunet_sface",
         "weights_present": bool(hashes),
     }
 
@@ -119,12 +149,7 @@ def identity_space_mismatch(
     *,
     live: dict | None = None,
 ) -> str | None:
-    """Why resume or identify must refuse this run, or None when the space matches.
-
-    Stored ort_version and opencv_version are checked only when the run recorded
-    them. Older rows without those fields still match on pack_id alone.
-    An unhashed live pack does not match a content-addressed run pack.
-    """
+    """Why resume or identify must refuse this run, or None when the space matches."""
     space = live if live is not None else current_identity_space()
     live_pack = str(space.get("pack_id") or "")
     stored_pack = str(run_pack or "")
@@ -160,14 +185,7 @@ def onnx_providers() -> list[str]:
 
 
 def select_execution_provider(*, prefer_gpu: bool = True) -> dict:
-    """Pick an ORT EP for FaceKit load. Present ≠ proven usable.
-
-    Product honesty:
-    - CUDA / DirectML / TensorRT listed + prefer_gpu → may choose that GPU EP.
-    - Otherwise CPU — never claim GPU.
-    - AzureExecutionProvider is never treated as GPU.
-    - Does not swap the FaceKit / InsightFace identity pack.
-    """
+    """Honest EP listing. YuNet/SFace use OpenCV DNN; ORT is still reported for runtime honesty."""
     available = onnx_providers()
     gpu_eps = [p for p in GPU_EP_NAMES if p in available]
     azure_listed = [p for p in NON_GPU_ACCEL_PROVIDERS if p in available]
@@ -176,7 +194,6 @@ def select_execution_provider(*, prefer_gpu: bool = True) -> dict:
     if prefer_gpu and gpu_eps:
         chosen = gpu_eps[0]
         gpu = True
-    # Prefer CPU over Azure / unknown non-GPU accel when falling back.
     if chosen not in available:
         if "CPUExecutionProvider" in available:
             chosen = "CPUExecutionProvider"
@@ -202,52 +219,45 @@ def select_execution_provider(*, prefer_gpu: bool = True) -> dict:
         "arch": process_arch(),
         "execution": process_execution(),
         "note": (
-            "GPU means CUDA/DirectML/TensorRT is listed by ORT; not a smoke test. "
-            "Azure is not GPU. InsightFace ctx_id=-1 (CPU pre/post). "
-            "FaceKit remains the only identity engine."
+            "Identity inference uses OpenCV FaceDetectorYN + FaceRecognizerSF (CPU DNN). "
+            "ORT GPU listing does not swap the YuNet/SFace pack."
         ),
     }
 
 
 def product_prefer_gpu() -> bool:
-    """Product path: prefer GPU only when ORT lists CUDA/DirectML/TensorRT.
-
-    Absent → False (CPU). Listed ≠ smoke-tested; Settings must say so.
-    """
     return bool(select_execution_provider(prefer_gpu=True)["gpu"])
 
 
 def gpu_product_status() -> dict:
-    """Honest Settings / CLI GPU copy. Never invent a GPU when no EP is listed."""
     rec = select_execution_provider(prefer_gpu=True)
     prefer = bool(rec["gpu"])
     if prefer:
         copy = (
-            f"GPU EP listed: {rec['chosen']}. Product ingest/live prefers GPU. "
-            "Listed ≠ proven usable (driver/device may still fail)."
+            f"GPU EP listed: {rec['chosen']}. Identity path remains OpenCV DNN CPU "
+            "unless a future decision wires DNN CUDA. Listed ≠ proven usable."
         )
     else:
         azure_note = ""
         if rec.get("azure_listed"):
             azure_note = " AzureExecutionProvider is listed but is not GPU."
         copy = (
-            "No CUDA/DirectML/TensorRT EP listed. Product ingest/live stays CPU."
-            f"{azure_note} Do not claim GPU acceleration on this machine."
+            "No CUDA/DirectML/TensorRT EP listed. Identity path is OpenCV DNN CPU."
+            f"{azure_note}"
         )
     return {
         **rec,
         "prefer_gpu": prefer,
-        "product_path": "prefer_gpu" if prefer else "cpu",
+        "product_path": "opencv_dnn_cpu",
         "copy": copy,
     }
 
 
 def format_execution_status_lines() -> list[str]:
-    """Home Settings lines: FaceKit + honest EP/GPU + native/emulated."""
     st = gpu_product_status()
     lines = [
-        "Provider: FaceKit (InsightFace buffalo_l) — identity engine unchanged",
-        f"Device: {st['device']}  EP: {st['chosen']}  gpu={st['gpu']}",
+        "Provider: YuNet + SFace (OpenCV Zoo) — FaceKit/buffalo_l retired from production",
+        f"Device: {st['device']}  reported_ORT_EP: {st['chosen']}  gpu={st['gpu']}",
         f"Product path: {st['product_path']} (prefer_gpu={st['prefer_gpu']})",
         f"Process: arch={st['arch']} execution={st['execution']}",
         f"ORT providers: {', '.join(st['available']) or '(none)'}",
@@ -265,17 +275,11 @@ def format_execution_status_lines() -> list[str]:
 
 
 class ModelPackError(RuntimeError):
-    """Local face-pack refusal. Semblon does not download buffalo_l."""
+    """Local face-pack refusal. Semblon does not download identity weights."""
 
 
 PACK_OPT_IN = "SEMBLON_ALLOW_FACE_PACK"
 PACK_PIN_NAME = "semblon-pack-pin.json"
-
-
-def face_pack_dir(root: Path | None = None) -> Path:
-    if root is not None:
-        return Path(root)
-    return Path.home() / ".insightface" / "models" / "buffalo_l"
 
 
 def assert_single_opencv() -> None:
@@ -296,8 +300,6 @@ def assert_single_opencv() -> None:
 
 
 def _read_pack_pin(path: Path) -> dict[str, str]:
-    import json
-
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -310,115 +312,207 @@ def _read_pack_pin(path: Path) -> dict[str, str]:
     return {str(name): str(digest).lower() for name, digest in files.items()}
 
 
+def _resolve_yunet_path(home: Path) -> Path:
+    preferred = home / YUNET_ONNX_PREFERRED
+    fallback = home / YUNET_ONNX_FALLBACK
+    if preferred.is_file():
+        return preferred
+    if fallback.is_file():
+        return fallback
+    raise ModelPackError(
+        "YuNet ONNX missing. Place "
+        f"{YUNET_ONNX_PREFERRED} or {YUNET_ONNX_FALLBACK} under {home}, "
+        "then run: semblon lab pack-accept. Semblon does not download weights. "
+        "See docs/IDENTITY-PACK.md."
+    )
+
+
+def _resolve_sface_path(home: Path) -> Path:
+    path = home / SFACE_ONNX
+    if path.is_file():
+        return path
+    raise ModelPackError(
+        f"SFace ONNX missing ({SFACE_ONNX}). Place it under {home}, "
+        "then run: semblon lab pack-accept. Semblon does not download weights. "
+        "See docs/IDENTITY-PACK.md."
+    )
+
+
 def assert_face_pack_ready(root: Path | None = None) -> dict[str, str]:
-    """Refuse to load buffalo_l unless a local pin matches every ONNX file.
+    """Refuse to load unless YuNet + SFace ONNX files are present and pinned.
 
     Missing weights are an error. This function does not download them.
     """
     if os.environ.get(PACK_OPT_IN) == "0":
         raise ModelPackError(f"{PACK_OPT_IN}=0; face pack load refused")
     home = face_pack_dir(root)
+    yunet = _resolve_yunet_path(home)
+    sface = _resolve_sface_path(home)
+    required = {yunet.name, sface.name}
     onnx = sorted(home.glob("*.onnx")) if home.is_dir() else []
-    if not onnx:
+    names = {p.name for p in onnx}
+    if not required.issubset(names):
+        missing = ", ".join(sorted(required - names))
         raise ModelPackError(
-            "buffalo_l weights are not installed. Semblon does not download them. "
-            "Place the ONNX files locally, then run: semblon lab pack-accept"
+            f"YuNet+SFace pack incomplete (missing {missing}). "
+            "Semblon does not download weights. See docs/IDENTITY-PACK.md, "
+            "then: semblon lab pack-accept"
         )
     pin_path = home / PACK_PIN_NAME
     if not pin_path.is_file():
         raise ModelPackError(
-            "buffalo_l has no local pin. Semblon does not download weights. "
+            "face pack has no local pin. Semblon does not download weights. "
             "Run: semblon lab pack-accept"
         )
     expected = _read_pack_pin(pin_path)
-    actual = {path.name: _sha256_file(path) for path in onnx}
-    if actual != expected:
-        raise ModelPackError("buffalo_l ONNX hashes do not match the pinned set")
+    actual = {path.name: _sha256_file(path) for path in onnx if path.name in required}
+    # Pin may include only required files, or all onnx in the directory.
+    for name, digest in actual.items():
+        if name not in expected:
+            raise ModelPackError(
+                f"face pack pin missing {name}. Re-run: semblon lab pack-accept"
+            )
+        if expected[name] != digest:
+            raise ModelPackError("YuNet/SFace ONNX hashes do not match the pinned set")
+    for name in expected:
+        if name.endswith(".onnx") and name not in actual and name in required:
+            raise ModelPackError(f"pinned ONNX missing on disk: {name}")
     return actual
 
 
 def accept_local_face_pack(root: Path | None = None) -> dict:
-    """Record hashes of ONNX files already on disk. Does not download."""
-    import json
-
+    """Record hashes of required YuNet + SFace ONNX files. Does not download."""
     home = face_pack_dir(root)
-    onnx = sorted(home.glob("*.onnx")) if home.is_dir() else []
-    if not onnx:
-        raise ModelPackError(
-            "no local ONNX files to pin. Semblon does not download buffalo_l."
-        )
-    files = {path.name: _sha256_file(path) for path in onnx}
-    pin = {"opt_in": True, "files": files}
+    yunet = _resolve_yunet_path(home)
+    sface = _resolve_sface_path(home)
+    files = {
+        yunet.name: _sha256_file(yunet),
+        sface.name: _sha256_file(sface),
+    }
+    pin = {
+        "opt_in": True,
+        "engine": "yunet_sface",
+        "pack_family": PACK_FAMILY,
+        "files": files,
+    }
     dest = home / PACK_PIN_NAME
+    dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(pin, indent=2, sort_keys=True), encoding="utf-8")
-    return {"opt_in": True, "files": len(files), "pin": dest.name}
+    return {
+        "opt_in": True,
+        "engine": "yunet_sface",
+        "files": len(files),
+        "pin": dest.name,
+        "dir": str(home),
+    }
 
 
-def _block_weight_download() -> None:
-    """InsightFace's loader downloads when the pack directory is missing."""
-    import insightface.utils.storage as storage
+class FaceSession:
+    """OpenCV YuNet detector + SFace recogniser. Replaces InsightFace FaceAnalysis."""
 
-    def _download(sub_dir, name, force=False, root="~/.insightface"):
-        dest = Path(root).expanduser() / sub_dir / name
-        if dest.is_dir() and any(dest.glob("*.onnx")) and not force:
-            return str(dest)
-        raise ModelPackError("Semblon does not download buffalo_l weights")
+    def __init__(
+        self,
+        detector: cv2.FaceDetectorYN,
+        recognizer: cv2.FaceRecognizerSF,
+        *,
+        det_size: tuple[int, int],
+        yunet_path: Path,
+        sface_path: Path,
+    ):
+        self.detector = detector
+        self.recognizer = recognizer
+        self.det_size = det_size
+        self.yunet_path = yunet_path
+        self.sface_path = sface_path
+        self._semblon_ep: dict | None = None
 
-    def _download_onnx(sub_dir, model_file, force=False, root="~/.insightface", download_zip=False):
-        del download_zip
-        dest = Path(root).expanduser() / sub_dir / model_file
-        if dest.is_file() and not force:
-            return str(dest)
-        raise ModelPackError("Semblon does not download buffalo_l weights")
-
-    storage.download = _download
-    storage.ensure_available = lambda sub_dir, name, root="~/.insightface": _download(
-        sub_dir, name, False, root
-    )
-    storage.download_onnx = _download_onnx
+    def get(self, img: np.ndarray) -> list:
+        """Compatibility shim: unused by embed_bgr; kept for rare callers."""
+        return embed_bgr(self, img)
 
 
-def load_app(det_size: tuple[int, int] = (640, 640), *, prefer_gpu: bool = False):
-    from insightface.app import FaceAnalysis
-
+def load_app(det_size: tuple[int, int] = DET_SIZE, *, prefer_gpu: bool = False) -> FaceSession:
+    """Load pinned YuNet + SFace. OpenCV DNN path is CPU; prefer_gpu is recorded only."""
     assert_single_opencv()
-    assert_face_pack_ready()
-    _block_weight_download()
-    sel = select_execution_provider(prefer_gpu=prefer_gpu)
-    providers = [sel["chosen"]]
-    if sel["chosen"] != "CPUExecutionProvider":
-        providers.append("CPUExecutionProvider")
-    app = FaceAnalysis(name="buffalo_l", providers=providers)
-    # InsightFace ctx_id=-1 = CPU for its own path; ORT still uses `providers`.
-    app.prepare(ctx_id=-1, det_size=det_size)
-    app._semblon_ep = sel  # type: ignore[attr-defined]
-    return app
+    home = face_pack_dir()
+    assert_face_pack_ready(home)
+    yunet = _resolve_yunet_path(home)
+    sface = _resolve_sface_path(home)
+    w, h = int(det_size[0]), int(det_size[1])
+    try:
+        detector = cv2.FaceDetectorYN.create(
+            str(yunet),
+            "",
+            (w, h),
+            float(DET_SCORE_MIN),
+            float(NMS_THRESHOLD),
+            int(TOP_K),
+        )
+        recognizer = cv2.FaceRecognizerSF.create(str(sface), "")
+    except cv2.error as exc:
+        raise ModelPackError(
+            f"failed to load YuNet/SFace ONNX via OpenCV: {exc}. "
+            "Confirm the exact Zoo files and a working opencv-python-headless build."
+        ) from exc
+    session = FaceSession(
+        detector,
+        recognizer,
+        det_size=(w, h),
+        yunet_path=yunet,
+        sface_path=sface,
+    )
+    session._semblon_ep = select_execution_provider(prefer_gpu=prefer_gpu)
+    return session
 
 
-EXPECTED_FACE_DIM = 512
+def _l2_normalize(vec: np.ndarray) -> np.ndarray:
+    out = np.asarray(vec, dtype=np.float32).reshape(-1)
+    norm = float(np.linalg.norm(out))
+    if norm <= 0.0:
+        raise ValueError("SFace feature has zero norm")
+    return out / norm
 
 
-def embed_bgr(app, img) -> list[dict]:
-    """FaceKit detect+embed on a BGR array. Same pack path as stills. No disk write."""
+def embed_bgr(app: FaceSession, img) -> list[dict]:
+    """YuNet detect + SFace alignCrop/feature on a BGR array. No disk write."""
     if app is None:
-        raise ValueError("FaceAnalysis app is None")
+        raise ValueError("FaceSession app is None")
     if img is None or getattr(img, "size", 0) == 0:
         raise FileNotFoundError("cannot decode empty image")
-    faces = app.get(img)
-    rows = []
-    for f in faces:
-        vec = np.asarray(f.normed_embedding, dtype=np.float32)
+    if not isinstance(app, FaceSession):
+        # Tests sometimes pass a dummy object and patch this function entirely.
+        raise TypeError("embed_bgr expects a FaceSession from load_app()")
+
+    height, width = img.shape[:2]
+    app.detector.setInputSize((int(width), int(height)))
+    _retval, faces = app.detector.detect(img)
+    rows: list[dict] = []
+    if faces is None:
+        return rows
+    for face in faces:
+        face = np.asarray(face, dtype=np.float32).reshape(-1)
+        if face.size < 15:
+            continue
+        x, y, w, h = float(face[0]), float(face[1]), float(face[2]), float(face[3])
+        score = float(face[14]) if face.size > 14 else float(face[-1])
+        try:
+            aligned = app.recognizer.alignCrop(img, face)
+            feat = app.recognizer.feature(aligned)
+        except cv2.error:
+            continue
+        vec = _l2_normalize(np.asarray(feat, dtype=np.float32))
         dim = int(vec.size)
         if dim != EXPECTED_FACE_DIM:
-            raise ValueError(f"unexpected face embedding dim={dim}; expected {EXPECTED_FACE_DIM}")
-        x1, y1, x2, y2 = [float(v) for v in f.bbox]
-        w, h = int(x2 - x1), int(y2 - y1)
+            raise ValueError(
+                f"unexpected face embedding dim={dim}; expected {EXPECTED_FACE_DIM}"
+            )
+        x1, y1, x2, y2 = x, y, x + w, y + h
         rows.append(
             {
                 "bbox": (x1, y1, x2, y2),
-                "det_score": float(f.det_score),
-                "face_w": w,
-                "face_h": h,
+                "det_score": score,
+                "face_w": int(w),
+                "face_h": int(h),
                 "dim": dim,
                 "embedding": vec,
             }
@@ -426,7 +520,7 @@ def embed_bgr(app, img) -> list[dict]:
     return rows
 
 
-def embed_image(app, path: Path) -> list[dict]:
+def embed_image(app: FaceSession, path: Path) -> list[dict]:
     img = cv2.imread(str(path))
     if img is None:
         raise FileNotFoundError(f"cannot decode {path}")

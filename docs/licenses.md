@@ -1,26 +1,39 @@
 # SEMBLON — Licence record
 
-InsightFace code is typically MIT. buffalo_l weights often research/non-commercial.
-FACE-000–003 = internal evaluation only. Not commercial permission.
-Shipping weights needs a separate licence/pack decision. Fallback: YuNet + SFace.
-Do not block FACE-000 on that decision.
-Do not bundle buffalo_l into a frozen installer until that decision exists. `tools/install-windows.ps1` and the WiX **code MSI** (`packaging/msi`, `tools/msi/build-msi.ps1`) install **application code only**. Stage/build scripts refuse `buffalo_l` / `*.onnx` in the payload (`tools/msi/assert-no-weights.py`). First real ingest does **not** download buffalo_l. `load_app` refuses until `semblon lab pack-accept` has pinned the local ONNX hashes. InsightFace's downloader is blocked on that path.
+## Identity engine (2026-10-16 cutover)
 
-## Inventory (2026-09-19)
+Production identity path: **YuNet** (detect) + **SFace** (recognise) via OpenCV Zoo ONNX files.  
+InsightFace **code** and **buffalo_l weights** are **retired from the production runtime** (historical docs/S1 evidence only).
+
+| Component | Role | Licence note | Redistribute in MSI? |
+|---|---|---|---|
+| YuNet ONNX (`face_detection_yunet_*.onnx`) | detector | Zoo directory claims **MIT** ([LICENSE](https://github.com/opencv/opencv_zoo/blob/main/models/face_detection_yunet/LICENSE)) | **no until L PASS** — BYO |
+| SFace ONNX (`face_recognition_sface_2021dec.onnx`) | recogniser | Zoo directory claims **Apache-2.0** ([LICENSE](https://github.com/opencv/opencv_zoo/blob/main/models/face_recognition_sface/LICENSE)) | **no until L PASS** — BYO |
+| OpenCV / opencv-python-headless | runtime | Apache-2.0 (library) | code dep yes; **does not clear model weights** |
+| buffalo_l ONNX | retired | research/non-commercial (historical) | **no** |
+| insightface Python package | retired from deps | typically MIT **code**; weights separate | **not a runtime dep** |
+
+**Gate L status:** **OPEN / BYO only.** Source-directory licence labels are recorded; commercial redistribution of the exact weight bytes is **not** claimed until legal sign-off files local SHA-256 pins + NOTICE packaging. The code MSI / WiX path (`packaging/msi`, `tools/msi/assert-no-weights.py`) fails closed on any `.onnx`.
+
+Exact install + hashes: `docs/IDENTITY-PACK.md`. Evaluation order: `docs/decisions/2026-10-16-identity-stack-eval-order.md`.
+
+Unresolved before L PASS:
+
+1. Confirm SFace Apache-2.0 text applies to the **exact** `face_recognition_sface_2021dec.onnx` bytes at a pinned Zoo commit (not only the directory README).
+2. Confirm YuNet MIT applies to the chosen `2023mar` / `2026may` file at that commit.
+3. Record local SHA-256 after owner download; keep copies of LICENSE files with the release NOTICE plan.
+4. Decide whether MSI may ever bundle (separate product approval) or remain permanent BYO.
+
+## Other inventory
 
 | Component | Role | Licence note | Redistribute? |
 |---|---|---|---|
 | Semblon application code | product | repository licence | yes (code) |
-| numpy / opencv-python-headless / onnxruntime | runtime | typical Apache/MIT/BSD — confirm at release | code deps yes |
-| insightface | identity engine | typically MIT **code**; weights separate | code yes; **weights no** until pack licence |
-| buffalo_l ONNX | identity weights | often research/non-commercial | **no** |
+| numpy / onnxruntime | runtime | typical Apache/MIT/BSD — confirm at release | code deps yes |
 | pytest | dev | MIT | not shipped |
-| PySide6 | production UI extra `.[gui]` (`semblon shell`). Windows installer installs it. S8 spike stays research | LGPL. Not required for the headless engine or the legacy Tk clients | required on the production install path; not a headless dependency |
-| OpenCV local visual understanding | open-vocab VisualSegment default provider | already a Semblon runtime dep | yes (code path) |
-| open_clip / CLIP weights | optional concept ranking | model licences separate; Semblon does not bundle | **no weights** |
-| SAM 2 (`SAM-2` 1.0 from `facebookresearch/sam2`) | optional class-agnostic spatial discovery | code Apache-2.0; checkpoints are Meta weights, not Semblon redistribution | **no checkpoints** |
-| SAM3 | not integrated | verify before any pack decision | **no** |
+| PySide6 | production UI extra `.[gui]` | LGPL | required on production install path |
+| OpenCV local visual understanding | open-vocab VisualSegment | already a runtime dep | yes (code path) |
+| open_clip / CLIP weights | optional | model licences separate; Semblon does not bundle | **no weights** |
+| SAM 2 | optional | code Apache-2.0; checkpoints not redistributed | **no checkpoints** |
 
-Future candidates (MediaPipe, CLIP/successors, other packs) need a separate code **and** model licence check before they enter the plan as more than a name. A licence veto beats a technically attractive model.
-
-PySide6 / Qt 6: **LGPL**. Dynamic link from extra `.[gui]`. That extra is the production shell (`semblon shell`). The Windows installer installs it. It is not a headless-engine dependency. The S8 spike remains research. Do not statically link Qt without a separate licence pass. See `docs/ARCHITECTURE.md`, `docs/S8-TOOLKIT.md`.
+A licence veto beats a technically attractive model. FACE-000–005 historical buffalo_l runs are not commercial permission for that pack.

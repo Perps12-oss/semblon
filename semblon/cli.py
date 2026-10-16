@@ -77,10 +77,28 @@ def main(argv: list[str] | None = None) -> int:
     rst.add_argument("--force", action="store_true")
     integ = lab_sub.add_parser("integrity", help="read-only store integrity report")
     integ.add_argument("--store", required=True, type=Path)
-    mods = lab_sub.add_parser("models", help="report local buffalo_l weights (does not download)")
+    mods = lab_sub.add_parser(
+        "models",
+        help="report local YuNet+SFace weights (does not download)",
+    )
     lab_sub.add_parser(
         "pack-accept",
-        help="pin local buffalo_l ONNX hashes (does not download)",
+        help="pin local YuNet+SFace ONNX hashes (does not download)",
+    )
+    reemb = lab_sub.add_parser(
+        "reembed",
+        help="re-detect/embed stills with active YuNet+SFace pack (preserves persons/decisions)",
+    )
+    reemb.add_argument("--store", required=True, type=Path)
+    reemb.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="ignore checkpoint and restart progress tracking",
+    )
+    reemb.add_argument(
+        "--keep-clusters",
+        action="store_true",
+        help="do not clear cluster_id / cluster_person before rewrite",
     )
     lab_sub.add_parser("providers", help="list observation providers and availability")
     vu = lab_sub.add_parser(
@@ -307,7 +325,12 @@ def main(argv: list[str] | None = None) -> int:
     clu = sub.add_parser("cluster", help="DBSCAN on ok faces for a run")
     clu.add_argument("--run", required=True)
     clu.add_argument("--store", required=True, type=Path)
-    clu.add_argument("--eps", type=float, default=None, help="DBSCAN eps on 1-cosine (default 0.40)")
+    clu.add_argument(
+        "--eps",
+        type=float,
+        default=None,
+        help="DBSCAN eps on 1-cosine (default from identity_config; provisional for SFace)",
+    )
     clu.add_argument("--min-samples", type=int, default=None)
 
     exp = sub.add_parser("export", help="person view folders; originals stay put")
@@ -592,6 +615,21 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         print(json.dumps(rec, indent=2))
         return 0
+
+    if args.cmd == "lab" and args.labcmd == "reembed":
+        from semblon.reembed import ReembedError, reembed_stills
+
+        try:
+            rec = reembed_stills(
+                args.store,
+                resume=not args.no_resume,
+                clear_clusters=not args.keep_clusters,
+            )
+        except ReembedError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(json.dumps(rec, indent=2))
+        return 0 if rec.get("status") == "SUCCESS" else 3
 
     if args.cmd == "erase":
         from semblon.erasure import ErasureError, delete_person, wipe_library

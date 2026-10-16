@@ -40,7 +40,7 @@ These are product and engineering gaps. They are not permission to reopen the sh
 | Whole-machine stress testing | **OPEN** | Owner Windows. Not a second architecture |
 | PERF ARM64 OpenCV load | **BLOCKED** | See the ledger below. Not a shell decision |
 | MSI `wix build` / sign | **PARTIAL** | Engineering source exists. Owner Windows build |
-| buffalo_l redistribution | **UNAVAILABLE** | Licence. Do not fake |
+| Identity ONNX redistribution (YuNet/SFace; buffalo_l historical) | **UNAVAILABLE** | Licence gate L. Do not fake |
 
 ## Capability ledger
 
@@ -61,7 +61,7 @@ The table below is the longer capability ledger (identity, APP-1, packaging). Wh
 | PERF ARM64 OpenCV | Load hang; PE/timed probes shipped | `docs/PERF-P1-ARM64.md`; `semblon/opencv_probe.py`; `tools/_perf_p1_load_cv2.py` | Owner Windows ARM64: `tools\perf_p1_arm64_repro.ps1`; fix/replace `opencv_geometry500.dll`; then P0 timing | **BLOCKED** (native load) · probe **COMPLETE** |
 | Multi-worker / scale | Hash workers hardened; default **1**; harness `default_gate` | `docs/PERF-WORKERS-HARNESS.md`; ingest worker tests | Raise default only after owner Windows `default_gate.verdict=PASS` + separate PR | **COMPLETE** (default=1) |
 | MSI code (no weights) | WiX project + stage/build/bootstrap + docs/tests | `packaging/msi/`, `tools/msi/`, `docs/PACKAGING.md` | Owner: `wix` + `tools\msi\build-msi.ps1`; smoke checklist | **PARTIAL** — engineering complete; Windows `wix build`/sign not run here |
-| buffalo_l redistribution | Legal | `docs/licenses.md` | Pack licence — do not fake | **UNAVAILABLE** |
+| Identity ONNX redistribution | Legal | `docs/licenses.md`, `docs/IDENTITY-PACK.md` | YuNet/SFace BYO; MSI fail-closed | **UNAVAILABLE** |
 
 ## Production shell — current (2026-10-05)
 

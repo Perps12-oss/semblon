@@ -1,10 +1,9 @@
 """Ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster.
 
-Pipeline: one-pass discover → bounded hash → skip → decode/embed (one FaceAnalysis) →
+Pipeline: one-pass discover → bounded hash → skip → decode/embed (YuNet + SFace) →
 batched SQLite writer. Video frames stream; never materialize all samples.
 Opt-in --workers > 1 parallelizes hashing only (product default 1; cap MAX_WORKERS).
 No --batch until batched inference exists.
-Does not change detection/quality thresholds or pack/provider.
 """
 
 from __future__ import annotations
@@ -51,7 +50,13 @@ from semblon.progress import (
     emit,
     make_event,
 )
-from semblon.providers import FaceKitProvider
+from semblon.identity_config import (
+    CLUSTER_MIN_SIDE,
+    DET_SCORE_MIN,
+    DET_SIZE,
+    EXPECTED_FACE_DIM,
+)
+from semblon.providers import YuNetSFaceProvider
 from semblon.store import connect, delete_observation_tree, init_db, stamp_unfinished_runs, writer_lock
 from semblon.temporal import (
     DEFAULT_SAMPLE_HZ,
@@ -59,6 +64,9 @@ from semblon.temporal import (
     VideoError,
     iter_sampled_frames,
 )
+
+# Tests and older imports may still say FaceKitProvider.
+FaceKitProvider = YuNetSFaceProvider
 
 CancelCallback = Callable[[], bool] | None
 
@@ -97,14 +105,9 @@ STILL_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 # Refuse a still before the full decode. Caps are resource limits, not identity.
 MAX_STILL_BYTES = 256 * 1024 * 1024
 MAX_IMAGE_PIXELS = 80_000_000
-DET_SCORE_MIN = 0.60
-CLUSTER_MIN_SIDE = 80
-DET_SIZE = (640, 640)
-
-
 def load_app(det_size=DET_SIZE, *, prefer_gpu: bool = False):
-    """FaceKit provider boundary. Tests may monkeypatch this name."""
-    return FaceKitProvider().load(det_size, prefer_gpu=prefer_gpu).app
+    """YuNet+SFace provider boundary. Tests may monkeypatch this name."""
+    return YuNetSFaceProvider().load(det_size, prefer_gpu=prefer_gpu).app
 
 
 def size_band(w: int, h: int) -> str:
@@ -549,19 +552,17 @@ def ingest(
             pass
 
     try:
-        import insightface
         import onnxruntime as ort
 
         hashes = discover_weight_hashes()
-        ifver = getattr(insightface, "__version__", "unknown")
+        eng_ver = f"opencv-{cv2.__version__}"
 
         ep = select_execution_provider(prefer_gpu=prefer_gpu)
         t_load = time.perf_counter()
         app = load_app(DET_SIZE, prefer_gpu=prefer_gpu)
         load_s = time.perf_counter() - t_load
-        # Re-hash after load so first-run download is captured in pack_id.
         hashes = discover_weight_hashes() or hashes
-        pid = pack_id(ifver, hashes)
+        pid = pack_id(eng_ver, hashes)
 
         runtime = {
             "recorded_at": datetime.now(timezone.utc).isoformat(),
@@ -574,17 +575,19 @@ def ingest(
             "python_arch": platform.architecture()[0],
             "ort_package": "onnxruntime",
             "ort_version": ort.__version__,
-            "insightface_version": ifver,
+            "insightface_version": None,
+            "identity_engine": "yunet_sface",
             "opencv_version": cv2.__version__,
             "pack_family": PACK_FAMILY,
             "pack_id": pid,
             "det_size": list(DET_SIZE),
-            "device": ep["device"],
-            "execution_provider": ep["chosen"],
-            "gpu": ep["gpu"],
+            "device": "cpu",
+            "execution_provider": YuNetSFaceProvider.info.execution_provider,
+            "ort_reported_ep": ep["chosen"],
+            "gpu": False,
             "onnx_providers": ep["available"],
-            "provider": FaceKitProvider.info.name,
-            "modality": FaceKitProvider.info.modality,
+            "provider": YuNetSFaceProvider.info.name,
+            "modality": YuNetSFaceProvider.info.modality,
             "workers": int(workers),
             "observers": list(observer_list),
             "model_load_s": round(load_s, 3),
@@ -636,7 +639,7 @@ def ingest(
                     datetime.now(timezone.utc).isoformat(),
                     __version__,
                     pid,
-                    512,
+                    EXPECTED_FACE_DIM,
                     "l2",
                     json.dumps(config),
                     json.dumps(runtime),

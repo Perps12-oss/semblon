@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Refuse MSI stage/build if buffalo_l or ONNX weight artifacts are present."""
+"""Refuse MSI stage/build if identity weight artifacts are present.
+
+buffalo_l remains forbidden. YuNet/SFace ONNX are also forbidden in the MSI
+until licence gate L PASS authorises bundling (fail closed — BYO only).
+"""
 
 from __future__ import annotations
 
@@ -9,7 +13,8 @@ import sys
 from pathlib import Path
 
 FORBIDDEN_RE = re.compile(
-    r"(buffalo_l|\.insightface|antelopev2|w600k_r50|\.onnx$)",
+    r"(buffalo_l|\.insightface|antelopev2|w600k_r50|"
+    r"yunet_sface|face_detection_yunet|face_recognition_sface|\.onnx$)",
     re.IGNORECASE,
 )
 
@@ -45,9 +50,12 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSED: weight/cache artifacts must not ship in MSI:", file=sys.stderr)
         for h in all_hits:
             print(f"  {h}", file=sys.stderr)
-        print("buffalo_l redistribution is UNAVAILABLE — docs/licenses.md", file=sys.stderr)
+        print(
+            "Identity weights must not ship in MSI until L PASS — docs/licenses.md, docs/IDENTITY-PACK.md",
+            file=sys.stderr,
+        )
         return 2
-    print("assert-no-weights: OK (no buffalo_l / .onnx in scanned paths)")
+    print("assert-no-weights: OK (no buffalo_l / YuNet / SFace / .onnx in scanned paths)")
     return 0
 
 

@@ -415,18 +415,20 @@ def test_duplicate_scan_rehashes_and_sees_other_folder(tmp_path):
 
 
 def test_face_pack_refuses_download(tmp_path):
-    with pytest.raises(ModelPackError, match="does not download"):
+    with pytest.raises(ModelPackError, match="does not download|YuNet ONNX missing|missing"):
         assert_face_pack_ready(tmp_path)
-    home = tmp_path / "buffalo_l"
+    home = tmp_path / "yunet_sface"
     home.mkdir()
-    (home / "w600k_r50.onnx").write_bytes(b"not-a-real-model")
+    (home / "face_detection_yunet_2023mar.onnx").write_bytes(b"not-a-real-yunet")
+    (home / "face_recognition_sface_2021dec.onnx").write_bytes(b"not-a-real-sface")
     with pytest.raises(ModelPackError, match="pin"):
         assert_face_pack_ready(home)
     rec = accept_local_face_pack(home)
     assert rec["opt_in"] is True
+    assert rec.get("engine") == "yunet_sface"
     pinned = assert_face_pack_ready(home)
-    assert "w600k_r50.onnx" in pinned
-    (home / "w600k_r50.onnx").write_bytes(b"tampered")
+    assert "face_recognition_sface_2021dec.onnx" in pinned
+    (home / "face_recognition_sface_2021dec.onnx").write_bytes(b"tampered")
     with pytest.raises(ModelPackError, match="hashes"):
         assert_face_pack_ready(home)
 

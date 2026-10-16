@@ -5,7 +5,6 @@ description = "Local face intelligence — folder-first observation engine"
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
 dependencies = [
-  "insightface==2.0",
   "onnxruntime==1.30.0",
   "opencv-python-headless==5.0.0.93",
   "numpy==2.4.6; python_version < '3.12'",

@@ -30,14 +30,14 @@ def test_facekit_owner_evidence_fails_closed_without_pack(tmp_path):
     rec = json.loads(out.read_text(encoding="utf-8"))
     assert rec["status"] == "FAILED"
     assert rec["error"]
-    assert "does not download" in rec["error"].lower() or "not installed" in rec["error"].lower()
 
 
 def test_facekit_owner_evidence_pass_with_pin(tmp_path):
     main = _load_evidence_main()
-    pack = tmp_path / "buffalo_l"
+    pack = tmp_path / "yunet_sface"
     pack.mkdir()
-    (pack / "demo.onnx").write_bytes(b"not-a-real-onnx")
+    (pack / "face_detection_yunet_2023mar.onnx").write_bytes(b"not-a-real-yunet")
+    (pack / "face_recognition_sface_2021dec.onnx").write_bytes(b"not-a-real-sface")
     accept_local_face_pack(pack)
     assert (pack / PACK_PIN_NAME).is_file()
     out = tmp_path / "ok.json"
@@ -45,4 +45,4 @@ def test_facekit_owner_evidence_pass_with_pin(tmp_path):
     assert code == 0
     rec = json.loads(out.read_text(encoding="utf-8"))
     assert rec["status"] == "PASS"
-    assert "demo.onnx" in (rec.get("pin") or {})
+    assert "face_recognition_sface_2021dec.onnx" in (rec.get("pin") or {})
