@@ -42,11 +42,14 @@ Output: `packaging\msi\dist\Semblon-<version>-code.msi`
 
 First launch bootstraps `.venv` when `.semblon-msi-install` is present (`tools/msi/bootstrap-install.ps1`). Requires `py -3.12` on the machine.
 
-Optional sign:
+Optional sign (local):
 
 ```text
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\msi\build-msi.ps1 -SignThumbprint <cert-sha1>
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\msi\build-msi.ps1 -SignPfxPath path\to\cert.pfx -SignPfxPassword <secret>
 ```
+
+Optional CI: `.github/workflows/msi-release.yml` (`workflow_dispatch`). Builds the code MSI on `windows-latest`. Signs only when repository secret `CODE_SIGNING_PFX_BASE64` is set (plus `CODE_SIGNING_PFX_PASSWORD`). Without those secrets the job still uploads an **unsigned** engineering MSI — that is not Gate C.
 
 Details: `packaging/msi/README.md`. Smoke: `packaging/msi/smoke-checklist.md`.
 

@@ -364,6 +364,9 @@ def test_video_focus_stays_closed(shell, tmp_path):
     ).read_text(encoding="utf-8")
     assert 'text: "Video"' in qml
     assert "player.source = shellApi.focusUrl" not in qml
+    # PySide6-Essentials does not ship QtMultimedia; import must stay out.
+    assert "import QtMultimedia" not in qml
+    assert "MediaPlayer {" not in qml
 
 
 def test_moments_facet_available_in_primary(shell):

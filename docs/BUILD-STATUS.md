@@ -7,9 +7,9 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-16 (Gate A completion pass) |
+| Evidence date | 2026-10-16 (Gate B blocker-resolution pass) |
 | Branch | `grok/product-truth` |
-| Parent HEAD | `f9e495bc` — *Advance the completion programme…* |
+| Parent HEAD | `f1ba34af` — *Complete Gate A…* |
 | Working tree at evidence | Changes for this pass committed with this document update |
 
 ## Status vocabulary
@@ -28,16 +28,16 @@
 | Gate | Meaning | Status |
 |---|---|---|
 | A — Core product | Archive continuity, Similar honesty, context where metadata permits | **VERIFIED** (offscreen production shell + unit). Visible desktop `SEMBLON_VISIBLE_SHELL=1` not required for these acceptance criteria; optional residual. |
-| B — Engineering baseline | Supported CI, lock, identity path, honest safety/privacy | **IN PROGRESS** — lock + pins present; GHA matrix green not evidenced from this agent |
-| C — Release | Offline clean install + intended assets + **signed** installer | **BLOCKED** — no WiX here; no Authenticode cert; buffalo_l redistribution UNAVAILABLE |
+| B — Engineering baseline | Supported CI, lock, identity path, honest safety/privacy | **IN PROGRESS** — clean 3.14 local evidence + CI aggregate job landed; **GHA matrix green not yet evidenced from this agent**; FaceKit owner pack run still outstanding |
+| C — Release | Offline clean install + intended assets + **signed** installer | **BLOCKED** — WiX workflow exists (`msi-release`, unsigned unless secrets); no Authenticode cert provisioned here; buffalo_l redistribution **UNAVAILABLE** (BYO stance recorded) |
 
 ## Dual verdict
 
 | Verdict | Value |
 |---|---|
-| **1. Product and engineering completion** | **NOT COMPLETE** — Gate A done; Gate B still open (CI evidence); Gate C blocked |
+| **1. Product and engineering completion** | **NOT COMPLETE** — Gate A done; Gate B still open (needs GHA green + owner pack evidence); Gate C blocked |
 | **2. Release readiness** | **NOT READY** — Gate C blocked |
-| **3. This roadmap pass (milestones 1–3)** | **COMPLETE** — acceptance evidenced below |
+| **3. This roadmap pass (milestones 1–3)** | **COMPLETE** — acceptance evidenced (prior Gate A pass) |
 
 Deferred without blocking unrelated work: **02** encryption, **08** product capture UI, milestone **4** albums.
 
@@ -45,12 +45,12 @@ Deferred without blocking unrelated work: **02** encryption, **08** product capt
 
 | ID | Priority | Status | Evidence / remaining |
 |---|---|---|---|
-| 01 Win crash / Python matrix | P0 | IN PROGRESS | SciPy markers + policy. 3.14 shell still risky when stacking shells. **CI green not evidenced this run.** |
+| 01 Win crash / Python matrix | P0 | IN PROGRESS | SciPy markers + policy. Clean 3.14 venv: nonshell **31 passed**, shell Focus + Gate A journey **2 passed** after dropping `QtMultimedia` (Essentials). **CI matrix green not evidenced this run** — aggregate job `test` republishes required context. |
 | 02 Encrypted store | P2 | DEFERRED | Decision recorded. |
-| 03 Signed offline MSI | P1 | IMPLEMENTED (eng) / BLOCKED (sign+WiX) | Lock/wheelhouse exist. No WiX/cert here. |
-| 04 Identity engine / pack | P0 | IMPLEMENTED (local) / BLOCKED (redistribute) | Pack refuse path. Licence UNAVAILABLE. |
-| 05 Hashed dependency lock | P1 | IMPLEMENTED | `requirements.lock.txt` present. Not VERIFIED until CI lock + clean install. |
-| 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | No owner pack here. |
+| 03 Signed offline MSI | P1 | IMPLEMENTED (eng) / BLOCKED (cert) | `tools/msi/build-msi.ps1` + `.github/workflows/msi-release.yml` (WiX v4/v5 via `dotnet tool wix`). Signs only when `CODE_SIGNING_PFX_*` secrets set; unsigned upload is engineering-only. |
+| 04 Identity engine / pack | P0 | IMPLEMENTED (local BYO) / BLOCKED (redistribute) | Pack refuse + pin. Commercial redistribution UNAVAILABLE. Decision: `docs/decisions/2026-10-16-identity-engine-redistribution.md` (BYO; no AuraFace/DeepFace swap). |
+| 05 Hashed dependency lock | P1 | IMPLEMENTED | `requirements.lock.txt` present. Not VERIFIED until CI lock step + clean install evidence from GHA. |
+| 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | `tools/facekit_owner_evidence.py` + `.github/workflows/facekit-owner.yml` + `docs/FACEKIT-OWNER.md`. No owner pack on this machine — evidence JSON not PASS. |
 | 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Unchanged. |
 | 08 Screen-capture privacy | P1 | DEFERRED | Decision unchanged. |
 | 09 Visual-memory search | P0 | **VERIFIED** (honesty + Unicode + firewall) | Colour-histogram labels end-to-end; Unicode folder region Similar; whole-image note; face modality refused by design. **Not** a semantic-search quality claim. |
@@ -58,25 +58,28 @@ Deferred without blocking unrelated work: **02** encryption, **08** product capt
 | 11 Contextual discovery | P1 | **VERIFIED** | `openFocusInContext` day scope includes same-day neighbours and excludes other days; missing-date honest. |
 | 12 Unified experience + docs | P0/P1 | **VERIFIED** (milestones 1–3) | Gate A journey + ROADMAP sync. Milestones 4–5 / Gates B–C remain. |
 
-## Behaviour landed this completion pass
+## Behaviour landed this blocker-resolution pass
 
-1. Missing original Focus (`focusFileMissing`, QML note, primary-safe copy).
-2. Honest colour-histogram Similar labels (search, region, presentation allowlist).
-3. Context without inventing a date; day scope neighbours from archive Field.
-4. Gate A journey test: Unicode ingest → Similar note → day neighbours → missing → rename reconnect.
+1. CI: matrix job renamed `test-matrix`; aggregate job `name: test` with `if: always()` fails closed on matrix result.
+2. Clean Python 3.14 venv evidence under `docs/evidence/clean-314-*` (nonshell + shell after Essentials QML fix).
+3. Shell.qml: removed `import QtMultimedia` / MediaPlayer stubs so Essentials-only installs load.
+4. FaceKit owner evidence helper + workflow_dispatch job (no download).
+5. buffalo_l: explicit BYO / no redistribution decision (keep FaceKit; do not swap engines).
+6. MSI release workflow: optional Authenticode via secrets; unsigned when absent.
 
 ## Verification log (commands actually run)
 
-Environment: Windows ARM64 host; x64 Python 3.12 (`.venv-312`).
+Environment: Windows ARM64 host; clean `py -3.14` venv for 3.14 evidence; `.venv-312` for prior Gate A.
 
 | Command | Result |
 |---|---|
-| `pytest -q` ship_audit + region_search + near_duplicates + integrity + Gate A Focus/Similar/context + drawn-region + `test_windows_journey_…` `--basetemp=.pytest-tmp-complete1` | **37 passed** |
-| `pytest -q tests/test_native_shell.py::test_gate_a_archive_similar_and_context_journey` | **1 passed** (also included above) |
-| Full CI matrix / FaceKit owner / WiX / signed MSI / `SEMBLON_VISIBLE_SHELL=1` | **not run** |
+| Clean 3.14: nonshell pytest subset | **31 passed** — `docs/evidence/clean-314-pytest-nonshell.txt` |
+| Clean 3.14: shell Focus + Gate A journey (after QML fix) | **2 passed** — `docs/evidence/clean-314-pytest-shell*.txt` |
+| Pre-fix QML load under Essentials | **failed** on `QtMultimedia` — `docs/evidence/clean-314-qml-load-before-fix.txt` |
+| GHA CI matrix / FaceKit owner with real pack / WiX signed MSI | **not run** (no GHA evidence; no owner pack; no cert) |
 | Live user database | **not modified** |
 
-### Tests covering Gate A
+### Tests covering Gate A (unchanged)
 
 | Test | Covers |
 |---|---|
@@ -93,14 +96,15 @@ Environment: Windows ARM64 host; x64 Python 3.12 (`.venv-312`).
 
 - Default Similar is colour histogram (`appearance/rgb8@1`), not semantic / face identity.
 - Pack gate unchanged. ARM64 OpenCV load remains BLOCKED historically (`docs/PERF-P1-ARM64.md`).
+- Identity engine remains FaceKit / InsightFace only; buffalo_l is BYO, not bundled.
 
 ## Outstanding blockers (exact)
 
-1. GHA CI matrix green after SciPy markers (Gate B).
-2. Clean 3.14 Windows shell confirmation or evidence-based exclusion (Gate B).
-3. Owner FaceKit pack run (issue 06).
-4. buffalo_l redistribution licence (Gate C).
-5. WiX + Authenticode certificate (Gate C).
+1. **GHA CI matrix green** (Gate B) — aggregate `test` job landed; remote green not evidenced here.
+2. **FaceKit owner pack run** (issue 06) — helper/workflow ready; needs real pack → PASS evidence JSON.
+3. **buffalo_l redistribution licence** (Gate C) — BYO decision recorded; commercial redistribute still UNAVAILABLE.
+4. **Authenticode certificate** (Gate C) — signing path in `msi-release.yml`; secrets not provisioned.
+5. WiX owner run on a machine with WiX + (optional) cert — workflow exists; not executed here.
 
 ## What this file will not absorb
 

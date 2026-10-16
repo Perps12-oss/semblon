@@ -25,6 +25,18 @@
 | Legally redistributable bundled assets | BLOCKED — licence |
 | MSI contains weights | Forbidden until licence |
 
-## Unblock
+## Commercial ship stance (2026-10-16)
 
-Obtain written redistribution rights for the exact weight files (version + hashes), or supply an authorized alternative pack and complete the eval gate before switching engines.
+**Chosen path until a redistribution licence exists: bring-your-own pack.**
+
+- Semblon code MSI / checkout install may ship.
+- `buffalo_l` ONNX files are **not** bundled.
+- The operator places weights locally and pins them with `semblon lab pack-accept`.
+- InsightFace research-only model-zoo terms are treated as **blocking redistribution**, not blocking local personal use with BYO weights.
+- Swapping to YuNet/SFace/AuraFace/DeepFace is **out of scope** here. FaceKit remains the only identity engine until an explicit eval + decision.
+
+## Unblock (Gate C identity assets)
+
+1. Obtain written redistribution rights for the exact weight files (version + hashes), **or**
+2. Keep BYO permanently and document that commercial redistribution of weights is never offered, **or**
+3. Supply an authorized alternative pack and complete the eval gate before switching engines (separate decision; not this release).

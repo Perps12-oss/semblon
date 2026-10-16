@@ -1,0 +1,68 @@
+# Optional Windows MSI build + Authenticode sign.
+# Does not run on push. Does not bundle buffalo_l.
+#
+# Secrets (all optional — build can succeed unsigned):
+#   CODE_SIGNING_PFX_BASE64  — base64 of a .pfx
+#   CODE_SIGNING_PFX_PASSWORD
+name: msi-release
+on:
+  workflow_dispatch:
+
+jobs:
+  msi:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install WiX
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix
+          wix --version
+      - name: Stage and build code MSI
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\msi\build-msi.ps1
+      - name: Sign MSI when a certificate secret is present
+        if: ${{ secrets.CODE_SIGNING_PFX_BASE64 != '' }}
+        shell: pwsh
+        env:
+          CODE_SIGNING_PFX_BASE64: ${{ secrets.CODE_SIGNING_PFX_BASE64 }}
+          CODE_SIGNING_PFX_PASSWORD: ${{ secrets.CODE_SIGNING_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $msi = Get-ChildItem -Path packaging\msi\dist\Semblon-*-code.msi | Select-Object -First 1
+          if (-not $msi) { throw "MSI not found under packaging\msi\dist" }
+          $pfx = Join-Path $env:RUNNER_TEMP "semblon-sign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CODE_SIGNING_PFX_BASE64))
+          $signTool = Get-Command signtool -ErrorAction SilentlyContinue
+          if (-not $signTool) {
+            $candidates = @(
+              "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe",
+              "${env:ProgramFiles(x86)}\Microsoft SDKs\ClickOnce\SignTool\signtool.exe"
+            )
+            $found = Get-ChildItem -Path $candidates -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $found) { throw "signtool not found; install Windows SDK signing tools on the runner" }
+            $signToolPath = $found.FullName
+          } else {
+            $signToolPath = $signTool.Source
+          }
+          & $signToolPath sign /f $pfx /p $env:CODE_SIGNING_PFX_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d "Semblon Installer" $msi.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $signToolPath verify /pa /v $msi.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item -Force $pfx -ErrorAction SilentlyContinue
+      - name: Record unsigned when no certificate
+        if: ${{ secrets.CODE_SIGNING_PFX_BASE64 == '' }}
+        shell: pwsh
+        run: |
+          Write-Host "CODE_SIGNING_PFX_BASE64 empty — MSI left unsigned (engineering build only)."
+          Get-ChildItem packaging\msi\dist\Semblon-*-code.msi | ForEach-Object { $_.FullName }
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: semblon-code-msi
+          path: packaging/msi/dist/Semblon-*-code.msi
+          if-no-files-found: error

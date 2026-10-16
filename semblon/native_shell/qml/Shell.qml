@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
-import QtMultimedia
 
 ApplicationWindow {
     id: window
@@ -2209,24 +2208,10 @@ ApplicationWindow {
                 z: 3
             }
 
-            // Playback is deferred. This output stays hidden so a non-working
-            // player is not shown. Remaining work: play focusUrl in a viewer
-            // that does not admit source_type=video to open_focus or DBSCAN.
-            VideoOutput {
-                id: videoOut
-                anchors.fill: parent
-                anchors.margins: 48
-                visible: false
-            }
-
-            MediaPlayer {
-                id: player
-                videoOutput: videoOut
-                audioOutput: AudioOutput {}
-                onMediaStatusChanged: {
-                }
-            }
-
+            // Playback is deferred. QtMultimedia is intentionally not imported:
+            // PySide6-Essentials (the declared GUI dep) does not ship it. When a
+            // video viewer lands, add a guarded optional import or a dedicated
+            // extras package — do not pull WebEngine via the PySide6 metapackage.
             Text {
                 objectName: "videoMissing"
                 visible: false
@@ -2484,8 +2469,6 @@ ApplicationWindow {
                 target: shellApi
                 function onFocusChanged() {
                     regionDrag.hasRect = false
-                    player.stop()
-                    player.source = ""
                 }
             }
         }

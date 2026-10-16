@@ -14,6 +14,8 @@ param(
     [string]$Configuration = "Release",
     [string]$OutDir = "",
     [string]$SignThumbprint = "",
+    [string]$SignPfxPath = "",
+    [string]$SignPfxPassword = "",
     [string]$WixExe = "wix",
     [switch]$SkipStage
 )
@@ -94,15 +96,35 @@ Write-Host "==> post-build weight scan of MSI adjacent payload"
 & $Python (Join-Path $RepoRoot "tools\msi\assert-no-weights.py") $Payload
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-if ($SignThumbprint) {
-    $SignTool = Get-Command signtool -ErrorAction SilentlyContinue
-    if (-not $SignTool) {
-        Write-Error "signtool not found; install Windows SDK signing tools."
+function Resolve-SignTool {
+    $cmd = Get-Command signtool -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $candidates = @(
+        "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe",
+        "${env:ProgramFiles(x86)}\Microsoft SDKs\ClickOnce\SignTool\signtool.exe"
+    )
+    $found = Get-ChildItem -Path $candidates -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { return $found.FullName }
+    Write-Error "signtool not found; install Windows SDK signing tools."
+}
+
+if ($SignPfxPath) {
+    if (-not (Test-Path -LiteralPath $SignPfxPath)) {
+        Write-Error "SignPfxPath not found: $SignPfxPath"
     }
-    Write-Host "==> signtool sign"
-    & signtool sign /sha1 $SignThumbprint /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $MsiPath
+    $SignToolPath = Resolve-SignTool
+    Write-Host "==> signtool sign (pfx)"
+    & $SignToolPath sign /f $SignPfxPath /p $SignPfxPassword /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d "Semblon Installer" $MsiPath
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & signtool verify /pa $MsiPath
+    & $SignToolPath verify /pa /v $MsiPath
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+elseif ($SignThumbprint) {
+    $SignToolPath = Resolve-SignTool
+    Write-Host "==> signtool sign (thumbprint)"
+    & $SignToolPath sign /sha1 $SignThumbprint /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d "Semblon Installer" $MsiPath
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & $SignToolPath verify /pa /v $MsiPath
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
