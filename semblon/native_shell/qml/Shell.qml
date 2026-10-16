@@ -60,6 +60,8 @@ ApplicationWindow {
     readonly property bool canRuleOutSelectedSafe: shellReady && shellApi.canRuleOutSelected
     readonly property bool canMergeClusterSafe: shellReady && shellApi.canMergeCluster
     readonly property bool canSplitClusterSafe: shellReady && shellApi.canSplitCluster
+    readonly property var personDaysSafe: shellReady ? shellApi.personDays : []
+    readonly property bool canBrowsePersonTimeSafe: shellReady && shellApi.canBrowsePersonTime
     readonly property bool activityOpenSafe: shellReady && shellApi.activityOpen
     readonly property var activityRowsSafe: shellReady ? shellApi.activityRows : []
     readonly property var focusBoxesSafe: shellReady ? shellApi.focusObservationBoxes : []
@@ -1188,6 +1190,70 @@ ApplicationWindow {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: if (shellReady) shellApi.openEvidence(shellApi.evidenceId)
+                                        }
+                                    }
+                                }
+
+                                Column {
+                                    objectName: "personTimePanel"
+                                    width: parent.width
+                                    spacing: 8
+                                    visible: canBrowsePersonTimeSafe
+
+                                    Text {
+                                        text: "This person's days"
+                                        color: tokenText
+                                        font.pixelSize: 14
+                                        font.family: "Segoe UI"
+                                    }
+
+                                    Flow {
+                                        objectName: "personDayChips"
+                                        width: parent.width
+                                        spacing: 8
+
+                                        Repeater {
+                                            model: personDaysSafe
+                                            delegate: Rectangle {
+                                                property var dayRow: modelData
+                                                height: 28
+                                                width: dayChipLabel.implicitWidth + 16
+                                                radius: 6
+                                                color: dayChipHit.containsMouse ? tokenAccentDim : tokenBg2
+                                                border.color: tokenAccent
+                                                border.width: 1
+
+                                                Text {
+                                                    id: dayChipLabel
+                                                    anchors.centerIn: parent
+                                                    text: (dayRow.day || "") + " · " + (dayRow.count || 0)
+                                                    color: tokenText
+                                                    font.family: "Segoe UI"
+                                                    font.pixelSize: 12
+                                                }
+                                                MouseArea {
+                                                    id: dayChipHit
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: if (shellReady) shellApi.openPersonDay(dayRow.day || "")
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        objectName: "browsePersonTime"
+                                        text: "Browse in Time"
+                                        color: browseTimeHit.containsMouse ? tokenText : tokenAccent
+                                        font.pixelSize: 14
+                                        MouseArea {
+                                            id: browseTimeHit
+                                            anchors.fill: parent
+                                            anchors.margins: -4
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (shellReady) shellApi.browseSelectedPersonInTime()
                                         }
                                     }
                                 }

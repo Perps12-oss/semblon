@@ -115,6 +115,7 @@ class ShellBridge(QObject):
         self._evidence_id = ""
         self._merge_target_subject = ""
         self._split_faces: list[str] = []
+        self._person_days: list[dict] = []
         self._focus_boxes: list[dict] = []
         self._selected_observation = ""
         self._activity_rows: list[dict] = []
@@ -1092,6 +1093,22 @@ class ShellBridge(QObject):
             return ""
         return str(row.get("bandLabel") or "")
 
+    @Property(str, notify=peopleChanged)
+    def selectedPersonId(self) -> str:
+        row = self._people.row(self._selected_subject)
+        if not row:
+            return ""
+        return str(row.get("personId") or "")
+
+    @Property("QVariantList", notify=peopleChanged)
+    def personDays(self):
+        """Dated days for the selected named person (newest first). Not identity."""
+        return list(self._person_days)
+
+    @Property(bool, notify=peopleChanged)
+    def canBrowsePersonTime(self) -> bool:
+        return bool(self._person_days)
+
     @Property(bool, notify=focusChanged)
     def canReviewFaceGroup(self) -> bool:
         """True when the Focus face maps to a candidate group or unassigned face on the board."""
@@ -1182,6 +1199,7 @@ class ShellBridge(QObject):
         self._evidence_id = ""
         self._merge_target_subject = ""
         self._split_faces = []
+        self._person_days = []
         self.peopleChanged.emit()
 
     @Slot(str)
@@ -1193,7 +1211,48 @@ class ShellBridge(QObject):
             self._people_note = "That group is no longer here."
         self._merge_target_subject = ""
         self._split_faces = []
+        self._reload_person_days()
         self.peopleChanged.emit()
+
+    @Slot()
+    def browseSelectedPersonInTime(self) -> None:
+        """Named person → newest dated day in Field/Focus. Archive day neighbours."""
+        if not self._person_days:
+            self._people_note = present_message(
+                self._mode,
+                "No dated photos for this person yet.",
+                fallback="No dated photos for this person yet.",
+            )
+            self.peopleChanged.emit()
+            return
+        self.openPersonDay(str(self._person_days[0].get("day") or ""))
+
+    @Slot(str)
+    def openPersonDay(self, day: str) -> None:
+        """Open a representative still for this person's day with Gate A day scope."""
+        wanted = str(day or "").strip()
+        hit = next((row for row in self._person_days if str(row.get("day") or "") == wanted), None)
+        if hit is None:
+            self._people_note = present_message(
+                self._mode,
+                "No dated photos for this person yet.",
+                fallback="No dated photos for this person yet.",
+            )
+            self.peopleChanged.emit()
+            return
+        media_id = str(hit.get("mediaId") or "").strip()
+        if not media_id:
+            self._people_note = present_message(
+                self._mode,
+                "No dated photos for this person yet.",
+                fallback="No dated photos for this person yet.",
+            )
+            self.peopleChanged.emit()
+            return
+        self.closePeople()
+        self.openFocusInContext(media_id)
+        if self._session.focus_id and self._scope_kind == "day":
+            self._set_result("Opened this person in Time.")
 
     @Slot(str)
     def selectMergeTarget(self, subject: str) -> None:
@@ -1280,6 +1339,51 @@ class ShellBridge(QObject):
                 return subject or None
         return None
 
+    def _reload_person_days(self) -> None:
+        """Rebuild day chips for the selected named person from memory.history."""
+        self._person_days = []
+        row = self._people.row(self._selected_subject)
+        if not row or not row.get("named"):
+            return
+        person_id = str(row.get("personId") or "").strip()
+        if not person_id:
+            for member in row.get("members") or []:
+                person_id = str(member.get("person_id") or "").strip()
+                if person_id:
+                    break
+        if not person_id:
+            return
+        self._person_days = self._person_days_for(person_id)
+
+    def _person_days_for(self, person_id: str) -> list[dict]:
+        """Unique calendar days with a folder still to open. Newest first."""
+        from semblon.memory import MemoryError, history
+
+        pid = str(person_id or "").strip()
+        if not pid:
+            return []
+        try:
+            rec = history(self._jobs.store, person=pid)
+        except MemoryError:
+            return []
+        by_day: dict[str, dict] = {}
+        for item in rec.get("items") or []:
+            if str(item.get("source_type") or "") != "folder":
+                continue
+            when = str(item.get("when") or "")
+            day = when[:10] if len(when) >= 10 and when[4:5] == "-" else ""
+            media_id = str(item.get("media_id") or "").strip()
+            if not day or not media_id:
+                continue
+            prev = by_day.get(day)
+            if prev is None:
+                by_day[day] = {"day": day, "mediaId": media_id, "count": 1}
+            else:
+                prev["count"] = int(prev.get("count") or 0) + 1
+                # history items are oldest→newest; keep the latest still for that day
+                prev["mediaId"] = media_id
+        return sorted(by_day.values(), key=lambda row: str(row.get("day") or ""), reverse=True)
+
     def _refresh_people(self) -> None:
         from semblon.native_shell.presentation import group_band_label, group_list_title
 
@@ -1308,6 +1412,12 @@ class ShellBridge(QObject):
             kind = str(item.get("kind") or "cluster")
             band = str(item.get("band") or ("unassigned" if kind == "unassigned" else "review"))
             named = bool(item.get("named"))
+            person_id = ""
+            for member in members:
+                pid = str(member.get("person_id") or "").strip()
+                if pid:
+                    person_id = pid
+                    break
             rows.append(
                 {
                     "subject": subject,
@@ -1316,6 +1426,7 @@ class ShellBridge(QObject):
                     "named": named,
                     "mediaId": media_id,
                     "faceId": face_id,
+                    "personId": person_id,
                     "kind": kind,
                     "band": band,
                     "bandLabel": group_band_label(named=named, kind=kind, band=band),
@@ -1331,6 +1442,9 @@ class ShellBridge(QObject):
             self._people_note = "That group is no longer here."
             self._merge_target_subject = ""
             self._split_faces = []
+            self._person_days = []
+        else:
+            self._reload_person_days()
 
     @Slot()
     def escape(self) -> None:

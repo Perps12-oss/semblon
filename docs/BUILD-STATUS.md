@@ -7,10 +7,10 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-16 (discovery slices A–B) |
+| Evidence date | 2026-10-16 (discovery slices A–C) |
 | Branch | `grok/yunet-sface-discovery-plan` |
 | Parent HEAD | (see git log on branch) |
-| Working tree at evidence | Slice B hypothesis UX + Focus→People handoff; pytest below |
+| Working tree at evidence | Slice C person → days → Time; pytest below |
 
 ## Status vocabulary
 
@@ -74,7 +74,8 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 | Command | Result |
 |---|---|
 | `pytest tests/test_similar_faces.py` + adapter honesty | **7 passed** (slice A) |
-| `pytest tests/test_discovery_slice_b.py` + People desk tests | **7 passed** (`--basetemp=.pytest-tmp-slice-b`) |
+| `pytest tests/test_discovery_slice_b.py` + People desk tests | **7 passed** (slice B) |
+| `pytest tests/test_discovery_slice_c.py` | **3 passed** (`--basetemp=.pytest-tmp-slice-c`) |
 | Live user database | **not modified** |
 
 ### Tests covering Gate A (unchanged)
@@ -101,13 +102,20 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 1. People desk: board `band` plumbed; titles “Candidate group” / “Strong candidate group” / named; honesty note that groups ≠ persons; review counts include need-review / strong.
 2. Focus: “Review this group” when selected face maps to a board subject → leaves Focus, opens People, selects that group. No auto-name.
 3. Q thresholds unchanged (still provisional in `identity_config.py`).
-4. Plan/ROADMAP: milestone 6 IN PROGRESS (A–B); C–E not started.
+
+## Behaviour landed — discovery slice C
+
+1. Named People row → `personId` + `memory.history` → day chips (newest first) and **Browse in Time**.
+2. Day chip / Browse → close People → `openFocusInContext` (Gate A archive-wide day neighbours). Honest empty if no dated stills.
+3. No person-only Field filter; no auto-name.
+4. Plan/ROADMAP: milestone 6 IN PROGRESS (A–C); D–E not started.
 
 ## Capability notes
 
 - Default whole/region Similar is colour histogram (`appearance/rgb8@1`), not semantic / face identity.
 - Focus face Similar is face embedding (same pack); not a name; not auto-assign.
 - People desk groups are hypotheses until Name; Name remains the only person-create path.
+- Named person → Time uses archive day scope (neighbours may include other people that day).
 - Pack gate unchanged. ARM64 OpenCV load remains BLOCKED historically (`docs/PERF-P1-ARM64.md`).
 - Identity runtime is YuNet + SFace (`opencv/yunet_sface`); buffalo_l retired from deps (BYO historical only).
 

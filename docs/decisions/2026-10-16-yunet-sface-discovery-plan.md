@@ -1,11 +1,11 @@
 # Plan: Unlock YuNet + SFace for archive discovery (not a People dashboard)
 
 **Date:** 2026-10-16  
-**Status:** Current — plan + **slices A–B authorised**  
+**Status:** Current — plan + **slices A–C authorised**  
 **Branch:** `grok/yunet-sface-discovery-plan`  
 **Related:** `docs/IDENTITY-PACK.md`, `docs/decisions/2026-10-16-identity-stack-eval-order.md`, `docs/PRODUCT.md`, `docs/ROADMAP.md`, `docs/BUILD-STATUS.md`  
 
-**Code:** slices A–B land separately; evidence in `docs/BUILD-STATUS.md`. Slices C–E still need approval.
+**Code:** slices A–C land separately; evidence in `docs/BUILD-STATUS.md`. Slices D–E still need approval.
 
 ---
 
@@ -182,6 +182,8 @@ Any production threshold change needs Semblon corpus evidence (false merge / fal
 
 **Slice A — approved and implemented** (Focus face → same-pack similar photos; honest face-embedding label; no auto-name).
 
-**Slice B — approved and implemented** (People desk hypothesis bands + Focus → Review this group; Name confirms; no auto-name; no Q retune). Evidence: `docs/BUILD-STATUS.md`.
+**Slice B — approved and implemented** (People desk hypothesis bands + Focus → Review this group; Name confirms; no auto-name; no Q retune).
 
-Next concrete slice (needs approval): **C — Person → context** (named person → photos → day neighbours).
+**Slice C — approved and implemented** (named person → day chips + Browse in Time → Gate A day neighbours; no person-only Field filter). Evidence: `docs/BUILD-STATUS.md`.
+
+Next concrete slice (needs approval): **D — Unified results experience** (face / histogram / region share results chrome with distinct basis labels).

@@ -45,6 +45,8 @@ _SAFE_PRIMARY_EXACT = {
     "Groups are hypotheses until you name them. A group is not a person.",
     "Opened the candidate group for this face.",
     "No candidate group for this face yet.",
+    "No dated photos for this person yet.",
+    "Opened this person in Time.",
     "This photo is missing from its stored path. If you moved or renamed it, add that folder again so Semblon can reconnect it.",
     "Opened photo. No date on file — time context unavailable.",
 }
