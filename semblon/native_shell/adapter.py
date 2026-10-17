@@ -93,7 +93,13 @@ class ArchiveAdapter:
             return Result("empty", f"{label}: nothing to group yet.", {"facet": key, "buckets": []})
         return Result("ready", f"{label}: {len(slim)} groups.", {"facet": key, "buckets": slim})
 
-    def search(self, mode: str, query: str) -> Result:
+    def search(
+        self,
+        mode: str,
+        query: str,
+        *,
+        within_media_ids: list[str] | None = None,
+    ) -> Result:
         key = str(mode or "people").strip().lower()
         text = str(query or "").strip()
         if key not in SEARCH_MODES:
@@ -103,9 +109,9 @@ class ArchiveAdapter:
         if key == "people":
             return self._search_people(text)
         if key == "text":
-            return self._search_text(text)
+            return self._search_text(text, within_media_ids=within_media_ids)
         if key == "object":
-            return self._search_object(text)
+            return self._search_object(text, within_media_ids=within_media_ids)
         if key == "whole":
             return Result(
                 "unavailable",
@@ -136,11 +142,13 @@ class ArchiveAdapter:
             message = f"Found {len(names)} matches. Top results: {preview}."
         return Result("ready", message, {"mode": "people", "names": names, "count": len(names)})
 
-    def _search_text(self, query: str) -> Result:
+    def _search_text(
+        self, query: str, *, within_media_ids: list[str] | None = None
+    ) -> Result:
         from semblon.search import SearchError, search_text
 
         try:
-            rec = search_text(self.store, query)
+            rec = search_text(self.store, query, within_media_ids=within_media_ids)
         except SearchError as exc:
             raise AdapterError("search.TEXT", str(exc)) from exc
         status = str(rec.get("status") or "")
@@ -187,11 +195,13 @@ class ArchiveAdapter:
             },
         )
 
-    def _search_object(self, query: str) -> Result:
+    def _search_object(
+        self, query: str, *, within_media_ids: list[str] | None = None
+    ) -> Result:
         from semblon.search import SearchError, search_object
 
         try:
-            rec = search_object(self.store, query)
+            rec = search_object(self.store, query, within_media_ids=within_media_ids)
         except SearchError as exc:
             raise AdapterError("search.OBJECT", str(exc)) from exc
         status = str(rec.get("status") or "")

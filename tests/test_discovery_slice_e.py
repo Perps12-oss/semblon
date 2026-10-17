@@ -83,6 +83,30 @@ def test_nanodet_probe_rejects_lfs_pointer(tmp_path, monkeypatch):
     assert "lfs" in note.lower() or "truncated" in note.lower()
 
 
+def test_nanodet_probe_requires_pin_and_known_hash(tmp_path, monkeypatch):
+    import hashlib
+
+    from semblon import object_pack
+
+    root = tmp_path / "nanodet"
+    root.mkdir()
+    blob = b"1" * 4096
+    digest = hashlib.sha256(blob).hexdigest()
+    (root / WEIGHT_NAME).write_bytes(blob)
+    monkeypatch.setenv("SEMBLON_OBJECT_PACK", str(root))
+    monkeypatch.setitem(object_pack.KNOWN_SHA256, WEIGHT_NAME, digest)
+    ok, note = probe_nanodet_status()
+    assert ok is False
+    assert note is not None
+    assert "pin" in note.lower()
+    (root / "semblon-object-pack-pin.json").write_text(
+        json.dumps({"sha256": digest}), encoding="utf-8"
+    )
+    ok2, note2 = probe_nanodet_status()
+    assert ok2 is True
+    assert note2 is None
+
+
 def test_search_object_unavailable_without_pack(tmp_path, monkeypatch):
     store = tmp_path / "s.sqlite"
     _seed(store).close()
@@ -98,11 +122,6 @@ def test_search_object_unavailable_without_pack(tmp_path, monkeypatch):
 def test_search_object_matches_nanodet_labels_not_contours(tmp_path, monkeypatch):
     store = tmp_path / "s.sqlite"
     _seed(store).close()
-    pack = tmp_path / "pack"
-    pack.mkdir()
-    # Large enough to pass size gate; probe will still need hash/pin OK without KNOWN_SHA256.
-    (pack / WEIGHT_NAME).write_bytes(b"0" * 2048)
-    monkeypatch.setenv("SEMBLON_OBJECT_PACK", str(pack))
     conn = connect(store)
     init_db(conn)
     # Contour-style row must not match object search.
@@ -133,11 +152,33 @@ def test_search_object_matches_nanodet_labels_not_contours(tmp_path, monkeypatch
     with patch("semblon.object_pack.probe_nanodet_status", return_value=(True, None)):
         hit = search_object(store, "dog")
         miss = search_object(store, "bicycle")
+        scoped = search_object(store, "dog", within_media_ids=["m2"])
     assert hit["status"] == "SUCCESS"
     assert hit["media_ids"] == ["m1"]
     assert hit["items"][0]["label"] == "dog"
     assert "not a person" in hit["items"][0]["why"]
     assert miss["status"] == "NO_RESULT"
+    assert scoped["status"] == "UNAVAILABLE" or scoped["count"] == 0
+
+
+def test_search_text_respects_field_scope(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    conn = connect(store)
+    init_db(conn)
+    img = np.ones((12, 12, 3), dtype=np.uint8)
+    with patch("semblon.observers.ocr_image", return_value={"text": "HELLO SEMBLON", "score": 1.0}):
+        observe_bgr(conn, observation_id="o1", run_id="r1", img=img, observers=("text",))
+    with patch("semblon.observers.ocr_image", return_value={"text": "OTHER TEXT", "score": 1.0}):
+        observe_bgr(conn, observation_id="o2", run_id="r1", img=img, observers=("text",))
+    conn.commit()
+    conn.close()
+    all_hits = search_text(store, "semblon")
+    assert all_hits["media_ids"] == ["m1"]
+    scoped_miss = search_text(store, "semblon", within_media_ids=["m2"])
+    assert scoped_miss["count"] == 0
+    assert scoped_miss["status"] in {"NO_RESULT", "UNAVAILABLE"}
+    assert "Field" in scoped_miss.get("similarity_basis", "") or scoped_miss["count"] == 0
 
 
 def test_observe_keeps_contours_separate_from_nanodet(tmp_path, monkeypatch):

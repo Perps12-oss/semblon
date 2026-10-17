@@ -56,6 +56,12 @@ class ArchiveModel(QAbstractListModel):
         self._cache_start = -1
         self.endResetModel()
 
+    def media_ids(self) -> list[str] | None:
+        """Current Field id list, or None when showing the full archive window."""
+        if self._ids is None:
+            return None
+        return list(self._ids)
+
     def rowCount(self, parent=QModelIndex()) -> int:  # noqa: N802
         if parent.isValid():
             return 0

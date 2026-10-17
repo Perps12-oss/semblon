@@ -18,11 +18,10 @@ PIN_NAME = "semblon-object-pack-pin.json"
 PROVIDER = "opencv-zoo-nanodet"
 PACK_FAMILY = "opencv/nanodet"
 
-# Owner-machine pin after download. Empty until recorded — probe still accepts
-# a present ONNX + pin that either omits sha256 or matches when set.
-# Do not treat a directory Apache-2.0 claim as MSI bundling clearance.
+# Owner-machine hash after BYO download 2026-10-16 (opencv_zoo main raw).
+# Directory Apache-2.0 claim ≠ MSI bundling clearance — see docs/OBJECT-PACK.md.
 KNOWN_SHA256: dict[str, str] = {
-    # Filled when owner records download evidence in docs/OBJECT-PACK.md
+    WEIGHT_NAME: "4b82da9944b88577175ee23a459dce2e26e6e4be573def65b1055dc2d9720186",
 }
 
 
@@ -52,7 +51,7 @@ def pin_path(root: Path | None = None) -> Path:
 
 
 def probe_nanodet_status(root: Path | None = None) -> tuple[bool, str | None]:
-    """True only when BYO NanoDet pack is present and pin/hash checks pass."""
+    """True only when BYO NanoDet pack is present, pinned, and hash-verified."""
     home = object_pack_dir(root)
     onnx = home / WEIGHT_NAME
     if not onnx.is_file():
@@ -63,26 +62,30 @@ def probe_nanodet_status(root: Path | None = None) -> tuple[bool, str | None]:
         )
     if onnx.stat().st_size < 1024:
         return False, "unavailable: NanoDet ONNX looks like a Git LFS pointer or truncated file"
-    digest = _sha256_file(onnx)
-    expected = KNOWN_SHA256.get(WEIGHT_NAME)
+    digest = _sha256_file(onnx).lower()
+    expected = KNOWN_SHA256.get(WEIGHT_NAME, "").lower()
     pin = home / PIN_NAME
-    pin_data: dict = {}
-    if pin.is_file():
-        try:
-            pin_data = json.loads(pin.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return False, "unavailable: NanoDet pack pin is unreadable"
-        if not isinstance(pin_data, dict):
-            return False, "unavailable: NanoDet pack pin is invalid"
-        pin_sha = str(pin_data.get("sha256") or pin_data.get(WEIGHT_NAME) or "").strip().lower()
-        if pin_sha and pin_sha != digest:
-            return False, "unavailable: NanoDet ONNX SHA-256 does not match pack pin"
-        if expected and pin_sha and pin_sha != expected.lower():
-            return False, "unavailable: NanoDet pin SHA-256 is not the documented artifact"
-    elif expected and digest != expected.lower():
+    if not pin.is_file():
         return False, (
-            "unavailable: NanoDet ONNX SHA-256 does not match the documented artifact "
-            f"(add {PIN_NAME} or replace the file)"
+            f"unavailable: NanoDet pack pin missing ({PIN_NAME}). "
+            "Record sha256 beside the ONNX — docs/OBJECT-PACK.md."
+        )
+    try:
+        raw = pin.read_text(encoding="utf-8-sig")
+        pin_data = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return False, "unavailable: NanoDet pack pin is unreadable"
+    if not isinstance(pin_data, dict):
+        return False, "unavailable: NanoDet pack pin is invalid"
+    pin_sha = str(pin_data.get("sha256") or pin_data.get(WEIGHT_NAME) or "").strip().lower()
+    if not pin_sha:
+        return False, "unavailable: NanoDet pack pin has no sha256"
+    if pin_sha != digest:
+        return False, "unavailable: NanoDet ONNX SHA-256 does not match pack pin"
+    if expected and digest != expected:
+        return False, (
+            "unavailable: NanoDet ONNX SHA-256 is not the documented artifact "
+            f"(expected {expected[:16]}…)"
         )
     return True, None
 

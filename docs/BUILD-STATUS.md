@@ -118,9 +118,9 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 
 ## Behaviour landed — discovery slice E (OCR / objects BYO)
 
-1. `search_text` joins `media_id`, returns `media_ids` + basis “Text in photos (OCR substring)”; shell text mode sets Field. Label: text in photos — not a person. Tesseract remains OS/BYO.
-2. NanoDet BYO pack (`docs/OBJECT-PACK.md`): probe, observe when ready, `search_object` / CLI `--object` / shell Search objects. Contours stay `opencv-contour` / `region` and are not object-search hits. MSI still fail-closed on `.onnx` (L OPEN).
-3. People desk: tracks listed as “Track (not a person)”; unresolved line opens inbox; Focus → People prefers named person when face already named.
+1. `search_text` joins `media_id`, returns `media_ids` + basis “Text in photos (OCR substring)”; respects active Field via `within_media_ids`; shell text mode sets Field. Label: text in photos — not a person. Tesseract OS/BYO (present on this machine).
+2. NanoDet BYO pack (`docs/OBJECT-PACK.md`): pin + SHA required; OpenCV DNN postprocess matches 3-level ONNX layout; observe when ready; `search_object` / CLI `--object` / shell Search objects. Live detect evidenced (person/couch). Contours stay `opencv-contour` / `region`. MSI fail-closed on `.onnx` (L OPEN — not bundled).
+3. People desk: tracks “Track (not a person)”; unresolved → inbox; person-only Field filter; Focus → People prefers named person when face already named. Offscreen tests in `test_ae_shell_programme.py`.
 
 ## Capability notes
 

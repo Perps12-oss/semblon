@@ -601,19 +601,27 @@ def _text_evidence(payload: dict) -> str:
     return "ignore"
 
 
-def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
+def search_text(
+    store: Path,
+    query: str,
+    *,
+    limit: int = 50,
+    within_media_ids: list[str] | set[str] | None = None,
+) -> dict:
     """Substring lookup over OCR observation_items payloads. Not identity.
 
     No new columns. Reads ``kind='text'`` payload_json only. Does not write
     the store and never touches faces.person_id or face embeddings.
 
-    A library with no completed read is UNAVAILABLE, not an empty match.
-    A completed read with no hit is NO_RESULT. SUCCESS requires items.
+    When ``within_media_ids`` is set (active Field / day / person scope), only
+    those media rows can match. A library with no completed read is UNAVAILABLE,
+    not an empty match. A completed read with no hit is NO_RESULT.
     """
     q = (query or "").strip()
     if not q:
         raise SearchError("text query is empty")
     q_lower = q.lower()
+    scope = {str(m).strip() for m in (within_media_ids or []) if str(m).strip()} or None
     conn = _open_ro(store)
     try:
         rows = conn.execute(
@@ -649,10 +657,12 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
         if kind != "evidence":
             continue
         saw_evidence = True
+        mid = str(r["media_id"] or "").strip()
+        if scope is not None and mid not in scope:
+            continue
         text = payload.get("text")
         if not isinstance(text, str) or q_lower not in text.lower():
             continue
-        mid = str(r["media_id"] or "").strip()
         items.append(
             {
                 "item_id": r["item_id"],
@@ -672,6 +682,8 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
             break
     note = "Text in photos — not a person."
     basis = "Text in photos (OCR substring)"
+    if scope is not None:
+        basis = f"{basis} · current Field"
     if items:
         return {
             "kind": "text",
@@ -688,6 +700,11 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
             "note": note,
         }
     if saw_evidence or saw_ran:
+        reason = (
+            "No text matched in the current Field."
+            if scope is not None
+            else "No text matched in your photos."
+        )
         return {
             "kind": "text",
             "query": q,
@@ -697,7 +714,7 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
             "status": "NO_RESULT",
             "model_state": "AVAILABLE",
             "provider_state": "READY",
-            "reason": "No text matched in your photos.",
+            "reason": reason,
             "error_id": None,
             "similarity_basis": basis,
             "note": note,
@@ -744,7 +761,13 @@ _OBJECT_SEARCH_NOTE = "Object labels are not identity. Contour regions are not d
 _NANODET_PROVIDER = "opencv-zoo-nanodet"
 
 
-def search_object(store: Path, query: str, *, limit: int = 50) -> dict:
+def search_object(
+    store: Path,
+    query: str,
+    *,
+    limit: int = 50,
+    within_media_ids: list[str] | set[str] | None = None,
+) -> dict:
     """Substring / class match over NanoDet object observations. Not identity.
 
     Contour ``class=region`` rows are ignored. Missing detector pack → UNAVAILABLE.
@@ -753,13 +776,17 @@ def search_object(store: Path, query: str, *, limit: int = 50) -> dict:
     from semblon.object_pack import probe_nanodet_status
 
     q = (query or "").strip()
+    basis = _OBJECT_SEARCH_BASIS
+    scope = {str(m).strip() for m in (within_media_ids or []) if str(m).strip()} or None
+    if scope is not None:
+        basis = f"{basis} · current Field"
     empty = {
         "kind": "object",
         "query": query,
         "count": 0,
         "items": [],
         "media_ids": [],
-        "similarity_basis": _OBJECT_SEARCH_BASIS,
+        "similarity_basis": basis,
         "note": _OBJECT_SEARCH_NOTE,
     }
     if not q:
@@ -803,13 +830,15 @@ def search_object(store: Path, query: str, *, limit: int = 50) -> dict:
             continue
         if str(payload.get("contract_status") or "").upper() == "UNAVAILABLE":
             continue
+        mid = str(r["media_id"] or "").strip()
+        if scope is not None and mid not in scope:
+            continue
         label = str(payload.get("label") or payload.get("class") or "").strip()
         if not label or label.lower() == "region":
             continue
         saw_label = True
         if q_lower not in label.lower() and q_lower != str(payload.get("class_id") or ""):
             continue
-        mid = str(r["media_id"] or "").strip()
         items.append(
             {
                 "item_id": r["item_id"],
@@ -839,7 +868,7 @@ def search_object(store: Path, query: str, *, limit: int = 50) -> dict:
             "provider_state": "READY",
             "reason": f"Found {len(items)} photos with matching object labels.",
             "error_id": None,
-            "similarity_basis": _OBJECT_SEARCH_BASIS,
+            "similarity_basis": basis,
             "note": _OBJECT_SEARCH_NOTE,
         }
     if saw_label:

@@ -111,7 +111,8 @@ class NanoDetSession:
         import cv2
 
         self._cv2 = cv2
-        self.strides = (8, 16, 32, 64)
+        # object_detection_nanodet_2022nov.onnx exposes 3 FPN levels (not 4).
+        self.strides = (8, 16, 32)
         self.image_shape = (416, 416)
         self.reg_max = 7
         self.prob_threshold = float(prob_threshold)
@@ -136,9 +137,27 @@ class NanoDetSession:
         arr = (arr - self.mean) / self.std
         return self._cv2.dnn.blobFromImage(arr)
 
+    def _split_heads(self, preds: list) -> tuple[list, list]:
+        """Map OpenCV DNN outputs to (cls_scores, bbox_preds) per stride.
+
+        ``object_detection_nanodet_2022nov.onnx`` returns all class heads then
+        all box heads (3+3). Older zoo demos assumed interleaved pairs.
+        """
+        arrs = [np.asarray(p) for p in preds]
+        if len(arrs) == 2 * len(self.strides):
+            last_dim = [a.shape[-1] for a in arrs]
+            n_lvl = len(self.strides)
+            if all(d == 80 for d in last_dim[:n_lvl]) and all(d == 32 for d in last_dim[n_lvl:]):
+                return arrs[:n_lvl], arrs[n_lvl:]
+            if all(d == 80 for d in last_dim[::2]) and all(d == 32 for d in last_dim[1::2]):
+                return arrs[::2], arrs[1::2]
+        raise RuntimeError(
+            f"unexpected NanoDet output layout: shapes={[a.shape for a in arrs]}"
+        )
+
     def _post_process(self, preds: list) -> np.ndarray:
         cv2 = self._cv2
-        cls_scores, bbox_preds = preds[::2], preds[1::2]
+        cls_scores, bbox_preds = self._split_heads(preds)
         bboxes_mlvl = []
         scores_mlvl = []
         for stride, cls_score, bbox_pred, anchors in zip(
@@ -148,23 +167,22 @@ class NanoDetSession:
                 cls_score = cls_score.squeeze(axis=0)
             if bbox_pred.ndim == 3:
                 bbox_pred = bbox_pred.squeeze(axis=0)
+            # bbox: (N, 32) → (N, 4) distance after softmax over reg_max+1 bins
             x_exp = np.exp(bbox_pred.reshape(-1, self.reg_max + 1))
             x_sum = np.sum(x_exp, axis=1, keepdims=True)
-            bbox_pred = x_exp / x_sum
-            bbox_pred = np.dot(bbox_pred, self.project).reshape(-1, 4)
-            bbox_pred *= stride
+            dist = (x_exp / x_sum).reshape(-1, 4, self.reg_max + 1)
+            dist = np.dot(dist, self.project) * stride
             nms_pre = 1000
             if nms_pre > 0 and cls_score.shape[0] > nms_pre:
                 max_scores = cls_score.max(axis=1)
-                topk_inds = max_scores.argsort()[::-1][0:nms_pre]
+                topk_inds = max_scores.argsort()[::-1][:nms_pre]
                 anchors = anchors[topk_inds, :]
-                bbox_pred = bbox_pred[topk_inds, :]
+                dist = dist[topk_inds, :]
                 cls_score = cls_score[topk_inds, :]
-            distance = bbox_pred
-            x1 = np.clip(anchors[:, 0] - distance[:, 0], 0, self.image_shape[1])
-            y1 = np.clip(anchors[:, 1] - distance[:, 1], 0, self.image_shape[0])
-            x2 = np.clip(anchors[:, 0] + distance[:, 2], 0, self.image_shape[1])
-            y2 = np.clip(anchors[:, 1] + distance[:, 3], 0, self.image_shape[0])
+            x1 = np.clip(anchors[:, 0] - dist[:, 0], 0, self.image_shape[1])
+            y1 = np.clip(anchors[:, 1] - dist[:, 1], 0, self.image_shape[0])
+            x2 = np.clip(anchors[:, 0] + dist[:, 2], 0, self.image_shape[1])
+            y2 = np.clip(anchors[:, 1] + dist[:, 3], 0, self.image_shape[0])
             bboxes_mlvl.append(np.column_stack([x1, y1, x2, y2]))
             scores_mlvl.append(cls_score)
         bboxes_mlvl = np.concatenate(bboxes_mlvl, axis=0)

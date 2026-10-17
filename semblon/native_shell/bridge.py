@@ -718,6 +718,19 @@ class ShellBridge(QObject):
         self.editorialChanged.emit()
         self._apply_result(Result("ready", self._library_root_message()))
 
+    def _active_field_media_ids(self) -> list[str] | None:
+        """Media ids for the current Field scope, or None for archive-wide search."""
+        if self._person_field_filter and self._person_field_ids:
+            return list(self._person_field_ids)
+        if self._scope_kind and self._scope_label:
+            ids = self._scope_ids.get(self._scope_kind, {}).get(self._scope_label)
+            if ids:
+                return list(ids)
+        current = self._model.media_ids()
+        if current is not None:
+            return list(current)
+        return None
+
     def _apply_discovery_search(self, result: Result) -> None:
         """Apply text/object search hits to Field with an honest basis note."""
         media_ids = [str(m) for m in (result.data.get("media_ids") or []) if m]
@@ -1772,7 +1785,10 @@ class ShellBridge(QObject):
             return
         mode = str(self._adapter.search_mode().data.get("mode") or "people")
         if mode in {"text", "object"}:
-            result = self._safe_call(lambda: self._adapter.search(mode, query))
+            within = self._active_field_media_ids()
+            result = self._safe_call(
+                lambda: self._adapter.search(mode, query, within_media_ids=within)
+            )
             self._apply_discovery_search(result)
             return
         if self._mode == PRIMARY:
