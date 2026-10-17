@@ -15,7 +15,8 @@ InsightFace **code** and **buffalo_l weights** are **retired from the production
 
 **Gate L status:** **OPEN / BYO only.** Source-directory licence labels are recorded; commercial redistribution of the exact weight bytes is **not** claimed until legal sign-off files local SHA-256 pins + NOTICE packaging. The code MSI / WiX path (`packaging/msi`, `tools/msi/assert-no-weights.py`) fails closed on any `.onnx`.
 
-Exact install + hashes: `docs/IDENTITY-PACK.md`. Evaluation order: `docs/decisions/2026-10-16-identity-stack-eval-order.md`.
+Exact install + hashes: `docs/IDENTITY-PACK.md`. Evaluation order: `docs/decisions/2026-10-16-identity-stack-eval-order.md`.  
+Notice copies: `docs/notices/yunet-MIT.txt`, `docs/notices/sface-APACHE-2.0.txt`, `docs/notices/nanodet-APACHE-2.0.txt`.
 
 Unresolved before L PASS:
 
@@ -23,6 +24,22 @@ Unresolved before L PASS:
 2. Confirm YuNet MIT applies to the chosen `2023mar` / `2026may` file at that commit.
 3. Record local SHA-256 after owner download; keep copies of LICENSE files with the release NOTICE plan.
 4. Decide whether MSI may ever bundle (separate product approval) or remain permanent BYO.
+
+## Object detection (NanoDet BYO)
+
+| Component | Role | Licence note | Redistribute in MSI? |
+|---|---|---|---|
+| NanoDet ONNX (`object_detection_nanodet_2022nov.onnx`) | COCO-80 detector | Zoo directory claims **Apache-2.0** ([LICENSE](https://github.com/opencv/opencv_zoo/blob/main/models/object_detection_nanodet/LICENSE)) | **no until L PASS** — BYO |
+| Contour regions (`opencv-contour`) | geometry only | OpenCV runtime | code path yes; **not** detector labels |
+
+**Gate L status (objects):** **OPEN / BYO only.** Exact SHA-256 unrecorded until owner download evidence in `docs/OBJECT-PACK.md`. MSI `assert-no-weights.py` refuses `.onnx` and NanoDet names.
+
+## OCR (Tesseract BYO)
+
+| Component | Role | Licence note | Redistribute? |
+|---|---|---|---|
+| Tesseract binary | OCR | Apache-2.0 (upstream) | **OS/BYO** — not MSI-bundled unless separately approved |
+| pytesseract | optional Python bridge | Apache-2.0 | code dep optional |
 
 ## Other inventory
 

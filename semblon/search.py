@@ -601,30 +601,42 @@ def _text_evidence(payload: dict) -> str:
     return "ignore"
 
 
-def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
+def search_text(
+    store: Path,
+    query: str,
+    *,
+    limit: int = 50,
+    within_media_ids: list[str] | set[str] | None = None,
+) -> dict:
     """Substring lookup over OCR observation_items payloads. Not identity.
 
     No new columns. Reads ``kind='text'`` payload_json only. Does not write
     the store and never touches faces.person_id or face embeddings.
 
-    A library with no completed read is UNAVAILABLE, not an empty match.
-    A completed read with no hit is NO_RESULT. SUCCESS requires items.
+    When ``within_media_ids`` is set (active Field / day / person scope), only
+    those media rows can match. A library with no completed read is UNAVAILABLE,
+    not an empty match. A completed read with no hit is NO_RESULT.
     """
     q = (query or "").strip()
     if not q:
         raise SearchError("text query is empty")
     q_lower = q.lower()
+    scope = {str(m).strip() for m in (within_media_ids or []) if str(m).strip()} or None
     conn = _open_ro(store)
     try:
         rows = conn.execute(
-            """SELECT item_id, observation_id, run_id, provider, score, payload_json
-               FROM observation_items
-               WHERE kind='text'
-               ORDER BY item_id"""
+            """SELECT i.item_id, i.observation_id, i.run_id, i.provider, i.score,
+                      i.payload_json, o.media_id
+               FROM observation_items i
+               JOIN observations o ON o.observation_id = i.observation_id
+               WHERE i.kind='text'
+               ORDER BY i.item_id"""
         ).fetchall()
     finally:
         conn.close()
     items = []
+    media_ids: list[str] = []
+    seen_media: set[str] = set()
     saw_evidence = False
     saw_ran = False
     saw_failed = False
@@ -645,13 +657,17 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
         if kind != "evidence":
             continue
         saw_evidence = True
+        mid = str(r["media_id"] or "").strip()
+        if scope is not None and mid not in scope:
+            continue
         text = payload.get("text")
-        if q_lower not in text.lower():
+        if not isinstance(text, str) or q_lower not in text.lower():
             continue
         items.append(
             {
                 "item_id": r["item_id"],
                 "observation_id": r["observation_id"],
+                "media_id": mid,
                 "run_id": r["run_id"],
                 "provider": r["provider"],
                 "score": r["score"],
@@ -659,33 +675,48 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
                 "why": "OCR payload substring; not a person",
             }
         )
+        if mid and mid not in seen_media:
+            seen_media.add(mid)
+            media_ids.append(mid)
         if len(items) >= limit:
             break
-    note = "Text in photos is observation evidence only — not identity."
+    note = "Text in photos — not a person."
+    basis = "Text in photos (OCR substring)"
+    if scope is not None:
+        basis = f"{basis} · current Field"
     if items:
         return {
             "kind": "text",
             "query": q,
             "count": len(items),
             "items": items,
+            "media_ids": media_ids,
             "status": "SUCCESS",
             "model_state": "AVAILABLE",
             "provider_state": "READY",
             "reason": "Found matching text in your photos.",
             "error_id": None,
+            "similarity_basis": basis,
             "note": note,
         }
     if saw_evidence or saw_ran:
+        reason = (
+            "No text matched in the current Field."
+            if scope is not None
+            else "No text matched in your photos."
+        )
         return {
             "kind": "text",
             "query": q,
             "count": 0,
             "items": [],
+            "media_ids": [],
             "status": "NO_RESULT",
             "model_state": "AVAILABLE",
             "provider_state": "READY",
-            "reason": "No text matched in your photos.",
+            "reason": reason,
             "error_id": None,
+            "similarity_basis": basis,
             "note": note,
         }
     from semblon.runtime_contract import invoke
@@ -714,10 +745,151 @@ def search_text(store: Path, query: str, *, limit: int = 50) -> dict:
         "query": q,
         "count": 0,
         "items": [],
+        "media_ids": [],
         "status": status,
         "model_state": model_state,
         "provider_state": provider_state,
         "reason": reason,
         "error_id": error_id,
+        "similarity_basis": basis,
         "note": note,
+    }
+
+
+_OBJECT_SEARCH_BASIS = "COCO object detection (NanoDet)"
+_OBJECT_SEARCH_NOTE = "Object labels are not identity. Contour regions are not detector matches."
+_NANODET_PROVIDER = "opencv-zoo-nanodet"
+
+
+def search_object(
+    store: Path,
+    query: str,
+    *,
+    limit: int = 50,
+    within_media_ids: list[str] | set[str] | None = None,
+) -> dict:
+    """Substring / class match over NanoDet object observations. Not identity.
+
+    Contour ``class=region`` rows are ignored. Missing detector pack → UNAVAILABLE.
+    Does not write the store or touch faces.person_id.
+    """
+    from semblon.object_pack import probe_nanodet_status
+
+    q = (query or "").strip()
+    basis = _OBJECT_SEARCH_BASIS
+    scope = {str(m).strip() for m in (within_media_ids or []) if str(m).strip()} or None
+    if scope is not None:
+        basis = f"{basis} · current Field"
+    empty = {
+        "kind": "object",
+        "query": query,
+        "count": 0,
+        "items": [],
+        "media_ids": [],
+        "similarity_basis": basis,
+        "note": _OBJECT_SEARCH_NOTE,
+    }
+    if not q:
+        raise SearchError("object query is empty")
+    ready, pack_note = probe_nanodet_status()
+    if not ready:
+        return {
+            **empty,
+            "query": q,
+            "status": "UNAVAILABLE",
+            "model_state": "MISSING",
+            "provider_state": "FAILED",
+            "reason": pack_note
+            or "Object detection needs a NanoDet pack. Contours are not object search.",
+            "error_id": "object.PACK_MISSING",
+        }
+    q_lower = q.lower()
+    conn = _open_ro(store)
+    try:
+        rows = conn.execute(
+            """SELECT i.item_id, i.observation_id, i.run_id, i.provider, i.score,
+                      i.payload_json, o.media_id
+               FROM observation_items i
+               JOIN observations o ON o.observation_id = i.observation_id
+               WHERE i.kind='object' AND i.provider=?
+               ORDER BY i.item_id""",
+            (_NANODET_PROVIDER,),
+        ).fetchall()
+    finally:
+        conn.close()
+    items = []
+    media_ids: list[str] = []
+    seen_media: set[str] = set()
+    saw_label = False
+    for r in rows:
+        try:
+            payload = json.loads(r["payload_json"] or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        if not isinstance(payload, dict):
+            continue
+        if str(payload.get("contract_status") or "").upper() == "UNAVAILABLE":
+            continue
+        mid = str(r["media_id"] or "").strip()
+        if scope is not None and mid not in scope:
+            continue
+        label = str(payload.get("label") or payload.get("class") or "").strip()
+        if not label or label.lower() == "region":
+            continue
+        saw_label = True
+        if q_lower not in label.lower() and q_lower != str(payload.get("class_id") or ""):
+            continue
+        items.append(
+            {
+                "item_id": r["item_id"],
+                "observation_id": r["observation_id"],
+                "media_id": mid,
+                "run_id": r["run_id"],
+                "provider": r["provider"],
+                "score": r["score"],
+                "label": label,
+                "why": "NanoDet COCO label; not a person",
+            }
+        )
+        if mid and mid not in seen_media:
+            seen_media.add(mid)
+            media_ids.append(mid)
+        if len(items) >= limit:
+            break
+    if items:
+        return {
+            "kind": "object",
+            "query": q,
+            "count": len(items),
+            "items": items,
+            "media_ids": media_ids,
+            "status": "SUCCESS",
+            "model_state": "AVAILABLE",
+            "provider_state": "READY",
+            "reason": f"Found {len(items)} photos with matching object labels.",
+            "error_id": None,
+            "similarity_basis": basis,
+            "note": _OBJECT_SEARCH_NOTE,
+        }
+    if saw_label:
+        return {
+            **empty,
+            "query": q,
+            "status": "NO_RESULT",
+            "model_state": "AVAILABLE",
+            "provider_state": "READY",
+            "reason": "No stored object labels matched.",
+            "error_id": None,
+        }
+    return {
+        **empty,
+        "query": q,
+        "status": "UNAVAILABLE",
+        "model_state": "MISSING",
+        "provider_state": "FAILED",
+        "reason": (
+            "No NanoDet object labels are stored yet. "
+            "Add the pack and re-scan photos, or search by appearance."
+        ),
+        "error_id": "object.NO_STORED_LABELS",
     }

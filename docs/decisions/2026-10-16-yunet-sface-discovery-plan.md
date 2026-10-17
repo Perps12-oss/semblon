@@ -188,4 +188,4 @@ Any production threshold change needs Semblon corpus evidence (false merge / fal
 
 **Slice D — approved and implemented** (whole / region / face share Focus strip; distinct ready-visible basis labels; region via shared adapter path). Evidence: `docs/BUILD-STATUS.md`.
 
-Next concrete slice (needs approval): **E — OCR / objects** (optional providers only; not identity).
+**Slice E — implemented (BYO / L OPEN):** OCR `search_text` → Field + honest “text in photos” basis; NanoDet BYO observe/`search_object`/shell Objects mode; contours remain separate. MSI bundling of NanoDet weights stays blocked until L PASS.

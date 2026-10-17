@@ -14,7 +14,9 @@ from pathlib import Path
 
 FORBIDDEN_RE = re.compile(
     r"(buffalo_l|\.insightface|antelopev2|w600k_r50|"
-    r"yunet_sface|face_detection_yunet|face_recognition_sface|\.onnx$)",
+    r"yunet_sface|face_detection_yunet|face_recognition_sface|"
+    # Weight / pack paths only — not Python modules like object_nanodet.py
+    r"object_detection_nanodet|(^|/)models/nanodet/|\.onnx$)",
     re.IGNORECASE,
 )
 
@@ -55,7 +57,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    print("assert-no-weights: OK (no buffalo_l / YuNet / SFace / .onnx in scanned paths)")
+    print(
+        "assert-no-weights: OK "
+        "(no buffalo_l / YuNet / SFace / NanoDet / .onnx in scanned paths)"
+    )
     return 0
 
 

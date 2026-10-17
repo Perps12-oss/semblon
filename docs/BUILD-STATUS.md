@@ -108,24 +108,30 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 
 1. Named People row → `personId` + `memory.history` → day chips (newest first) and **Browse in Time**.
 2. Day chip / Browse → close People → `openFocusInContext` (Gate A archive-wide day neighbours). Honest empty if no dated stills.
-3. No person-only Field filter; no auto-name.
+3. Explicit **Show only this person** Field filter (opt-in); day neighbours stay archive-wide until that filter is on. No auto-name.
 
 ## Behaviour landed — discovery slice D
 
 1. Whole / region / face Similar all publish through shared adapter + Focus strip (`similarBasis` / `similarBasisLabel`).
 2. Ready-state basis note visible above the strip (not only empty/unavailable).
 3. Distinct labels: whole photo · colour histogram · selected region · colour histogram · face embedding.
-4. Plan/ROADMAP: milestone 6 IN PROGRESS (A–D); E not started.
+
+## Behaviour landed — discovery slice E (OCR / objects BYO)
+
+1. `search_text` joins `media_id`, returns `media_ids` + basis “Text in photos (OCR substring)”; respects active Field via `within_media_ids`; shell text mode sets Field. Label: text in photos — not a person. Tesseract OS/BYO (present on this machine).
+2. NanoDet BYO pack (`docs/OBJECT-PACK.md`): pin + SHA required; OpenCV DNN postprocess matches 3-level ONNX layout; observe when ready; `search_object` / CLI `--object` / shell Search objects. Live detect evidenced (person/couch). Contours stay `opencv-contour` / `region`. MSI fail-closed on `.onnx` (L OPEN — not bundled).
+3. People desk: tracks “Track (not a person)”; unresolved → inbox; person-only Field filter; Focus → People prefers named person when face already named. Offscreen tests in `test_ae_shell_programme.py`.
 
 ## Capability notes
 
 - Default whole/region Similar is colour histogram (`appearance/rgb8@1`), not semantic / face identity.
 - Focus face Similar is face embedding (same pack); not a name; not auto-assign.
 - People desk groups are hypotheses until Name; Name remains the only person-create path.
-- Named person → Time uses archive day scope (neighbours may include other people that day).
+- Named person → Time uses archive day scope (neighbours may include other people that day) unless person-only filter is explicit.
 - Results chrome is one strip; basis labels stay distinct per door.
 - Pack gate unchanged. ARM64 OpenCV load remains BLOCKED historically (`docs/PERF-P1-ARM64.md`).
 - Identity runtime is YuNet + SFace (`opencv/yunet_sface`); buffalo_l retired from deps (BYO historical only).
+- Object/OCR search never votes on identity. NanoDet/SFace/YuNet MSI bundling remains L OPEN.
 
 ## Outstanding blockers (exact)
 

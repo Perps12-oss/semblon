@@ -56,7 +56,7 @@ KEY_WINDOW_GEOMETRY = "window_geometry"
 KEY_LAST_STORE = "last_store"
 
 GRID_DENSITIES = ("comfortable", "cozy", "compact")
-SEARCH_MODES = ("people", "text", "whole", "region")
+SEARCH_MODES = ("people", "text", "object", "whole", "region")
 LIBRARY_FILTERS = ("all", "photos", "videos")
 
 _GEOM_RE = re.compile(r"^(\d+)x(\d+)(?:([+-]\d+)([+-]\d+))?$")

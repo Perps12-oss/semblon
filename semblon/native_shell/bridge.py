@@ -161,6 +161,9 @@ class ShellBridge(QObject):
         self._media_kind = "all"
         self._scope_kind = ""
         self._scope_label = ""
+        self._person_field_filter = False
+        self._person_field_ids: list[str] = []
+        self._person_field_label = ""
         self.ingestFinished.connect(self._after_ingest)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
@@ -501,7 +504,17 @@ class ShellBridge(QObject):
         """Point the grid at the current scope, narrowed by the photo/video choice."""
         day_map = self._scope_ids.get("day", {})
         ordered: list[str] | None = None
-        if self._scope_kind:
+        # Explicit person-scoped Field (user opt-in). Day neighbours stay archive-wide
+        # unless this filter is on — see showSelectedPersonOnly / clearPersonFieldFilter.
+        if self._person_field_filter and self._person_field_ids:
+            if self._scope_kind == "day":
+                day_ids = set(self._scope_ids.get("day", {}).get(self._scope_label, []))
+                ids = [m for m in self._person_field_ids if m in day_ids]
+            else:
+                ids = list(self._person_field_ids)
+            ordered = self._ordered_ids(ids)
+            self._model.set_media_ids(ordered)
+        elif self._scope_kind:
             ids = list(self._scope_ids[self._scope_kind][self._scope_label])
             ordered = self._ordered_ids(ids)
             self._model.set_media_ids(ordered)
@@ -698,9 +711,61 @@ class ShellBridge(QObject):
         self._scope_label = ""
         self._facet = "memory"
         self._buckets = []
+        self._person_field_filter = False
+        self._person_field_ids = []
+        self._person_field_label = ""
         self._apply_scope_view()
         self.editorialChanged.emit()
         self._apply_result(Result("ready", self._library_root_message()))
+
+    def _active_field_media_ids(self) -> list[str] | None:
+        """Media ids for the current Field scope, or None for archive-wide search."""
+        if self._person_field_filter and self._person_field_ids:
+            return list(self._person_field_ids)
+        if self._scope_kind and self._scope_label:
+            ids = self._scope_ids.get(self._scope_kind, {}).get(self._scope_label)
+            if ids:
+                return list(ids)
+        current = self._model.media_ids()
+        if current is not None:
+            return list(current)
+        return None
+
+    def _apply_discovery_search(self, result: Result) -> None:
+        """Apply text/object search hits to Field with an honest basis note."""
+        media_ids = [str(m) for m in (result.data.get("media_ids") or []) if m]
+        basis = str(result.data.get("basis") or "")
+        basis_label = str(result.data.get("basis_label") or "")
+        if result.state == "ready" and media_ids:
+            self._person_field_filter = False
+            self._person_field_ids = []
+            self._person_field_label = ""
+            self._scope_kind = ""
+            self._scope_label = ""
+            self._facet = "memory"
+            self._buckets = []
+            ordered = self._ordered_ids(media_ids)
+            self._model.set_media_ids(ordered)
+            self._refresh_field_sections(None)
+            self._sticky_heading = ""
+            self.editorialChanged.emit()
+            if basis:
+                self._publish_similar(
+                    "ready",
+                    result.message,
+                    [(mid, 0.0) for mid in ordered[:8]],
+                    basis=basis,
+                    basis_label=basis_label or basis,
+                )
+        elif basis:
+            self._publish_similar(
+                "unavailable" if result.state == "unavailable" else "empty",
+                result.message,
+                [],
+                basis=basis,
+                basis_label=basis_label or basis,
+            )
+        self._apply_result(result)
 
     @Slot()
     def clearScope(self) -> None:
@@ -1201,9 +1266,12 @@ class ShellBridge(QObject):
 
     @Slot(str)
     def reviewFaceGroup(self, face_id: str = "") -> None:
-        """Leave Focus and open the People desk on the candidate group for this face."""
+        """Leave Focus and open the People desk on the group or named person for this face."""
         fid = str(face_id or self._selected_observation or "").strip()
         subject = self._subject_for_face(fid)
+        named_subject = self._named_subject_for_face(fid)
+        if named_subject:
+            subject = named_subject
         if not subject:
             self._set_result("No candidate group for this face yet.")
             return
@@ -1222,10 +1290,15 @@ class ShellBridge(QObject):
         self._merge_target_subject = ""
         self._split_faces = []
         if row:
+            note = (
+                "Opened this person."
+                if row.get("named")
+                else "Opened the candidate group for this face."
+            )
             self._people_note = present_message(
                 self._mode,
-                "Opened the candidate group for this face.",
-                fallback="Opened the candidate group for this face.",
+                note,
+                fallback=note,
             )
         else:
             self._people_note = present_message(
@@ -1233,6 +1306,7 @@ class ShellBridge(QObject):
                 "That group is no longer here.",
                 fallback="That group is no longer here.",
             )
+        self._reload_person_days()
         self.peopleChanged.emit()
 
     @Slot()
@@ -1296,6 +1370,130 @@ class ShellBridge(QObject):
         self.openFocusInContext(media_id)
         if self._session.focus_id and self._scope_kind == "day":
             self._set_result("Opened this person in Time.")
+
+    @Property(bool, notify=peopleChanged)
+    def personFieldFilterActive(self) -> bool:
+        return bool(self._person_field_filter)
+
+    @Property(str, notify=peopleChanged)
+    def personFieldFilterLabel(self) -> str:
+        return str(self._person_field_label or "")
+
+    @Slot()
+    def showSelectedPersonOnly(self) -> None:
+        """Explicit person-scoped Field. Day neighbours stay archive-wide until this is on."""
+        row = self._people.row(self._selected_subject)
+        if not row or not row.get("named"):
+            self._people_note = present_message(
+                self._mode,
+                "No dated photos for this person yet.",
+                fallback="No dated photos for this person yet.",
+            )
+            self.peopleChanged.emit()
+            return
+        person_id = str(row.get("personId") or "").strip()
+        if not person_id:
+            self._people_note = present_message(
+                self._mode,
+                "No dated photos for this person yet.",
+                fallback="No dated photos for this person yet.",
+            )
+            self.peopleChanged.emit()
+            return
+        from semblon.memory import MemoryError, history
+
+        try:
+            rec = history(self._jobs.store, person=person_id)
+        except MemoryError:
+            rec = {"items": []}
+        media_ids: list[str] = []
+        seen: set[str] = set()
+        for item in rec.get("items") or []:
+            if str(item.get("source_type") or "") != "folder":
+                continue
+            mid = str(item.get("media_id") or "").strip()
+            if mid and mid not in seen:
+                seen.add(mid)
+                media_ids.append(mid)
+        if not media_ids:
+            self._people_note = present_message(
+                self._mode,
+                "No dated photos for this person yet.",
+                fallback="No dated photos for this person yet.",
+            )
+            self.peopleChanged.emit()
+            return
+        title = str(row.get("title") or "this person")
+        self._person_field_filter = True
+        self._person_field_ids = media_ids
+        self._person_field_label = title
+        self.closePeople()
+        self._scope_kind = ""
+        self._scope_label = ""
+        self._facet = "memory"
+        self._buckets = []
+        self._apply_scope_view()
+        self.editorialChanged.emit()
+        self.peopleChanged.emit()
+        self._apply_result(Result("ready", f"Showing only {title}."))
+
+    @Slot()
+    def clearPersonFieldFilter(self) -> None:
+        if not self._person_field_filter and not self._person_field_ids:
+            return
+        self._person_field_filter = False
+        self._person_field_ids = []
+        self._person_field_label = ""
+        self._apply_scope_view()
+        self.editorialChanged.emit()
+        self.peopleChanged.emit()
+        self._apply_result(Result("ready", "Showing the full archive again."))
+
+    @Slot()
+    def openUnresolvedInbox(self) -> None:
+        """Open People desk on the first overlooked / review-required face."""
+        result = self._safe_call(
+            lambda: self._adapter.unresolved(include_rejected=self._mode == ADVANCED)
+        )
+        faces = list(result.data.get("faces") or [])
+        self._refresh_people()
+        self._people_open = True
+        if not faces:
+            self._people_note = present_message(
+                self._mode,
+                "No overlooked faces right now.",
+                fallback="No overlooked faces right now.",
+            )
+            self.peopleChanged.emit()
+            self._apply_result(result)
+            return
+        # Prefer REVIEW_REQUIRED, then UNKNOWN — navigable inbox, not auto-name.
+        ordered = sorted(
+            faces,
+            key=lambda row: 0 if str(row.get("bucket") or "") == "REVIEW_REQUIRED" else 1,
+        )
+        face_id = str(ordered[0].get("face_id") or "").strip()
+        subject = self._subject_for_face(face_id) if face_id else None
+        if subject is None and face_id and self._people.row(face_id) is not None:
+            subject = face_id
+        if subject and self._people.row(subject) is not None:
+            self._selected_subject = subject
+            row = self._people.row(subject)
+            self._evidence_id = str(row.get("mediaId") or "") if row else ""
+            self._reload_person_days()
+        self._people_note = present_message(
+            self._mode,
+            "Opened overlooked faces for review.",
+            fallback="Opened overlooked faces for review.",
+        )
+        self.peopleChanged.emit()
+        self._apply_result(
+            Result(
+                "ready",
+                f"Overlooked faces: {len(faces)} to review.",
+                {"faces": faces},
+            )
+        )
 
     @Slot(str)
     def selectMergeTarget(self, subject: str) -> None:
@@ -1382,6 +1580,39 @@ class ShellBridge(QObject):
                 return subject or None
         return None
 
+    def _named_subject_for_face(self, face_id: str) -> str | None:
+        """If this face already belongs to a named person, return that board subject."""
+        fid = str(face_id or "").strip()
+        if not fid:
+            return None
+        try:
+            board = self._jobs.board()
+        except Exception:
+            return None
+        person_id = ""
+        for item in board.get("items") or []:
+            if item.get("kind") == "track":
+                continue
+            for member in item.get("members") or []:
+                if str(member.get("face_id") or "") == fid:
+                    person_id = str(member.get("person_id") or "").strip()
+                    break
+            if person_id:
+                break
+        if not person_id:
+            return None
+        for item in board.get("items") or []:
+            if not item.get("named"):
+                continue
+            subject = str(item.get("cluster_id") or item.get("face_id") or "")
+            for member in item.get("members") or []:
+                if str(member.get("person_id") or "").strip() == person_id:
+                    return subject or None
+            names_pid = str(item.get("person_id") or "").strip()
+            if names_pid == person_id:
+                return subject or None
+        return None
+
     def _reload_person_days(self) -> None:
         """Rebuild day chips for the selected named person from memory.history."""
         self._person_days = []
@@ -1439,7 +1670,31 @@ class ShellBridge(QObject):
             return
         for item in board.get("items") or []:
             members = item.get("members") or []
-            if item.get("kind") == "track":
+            kind = str(item.get("kind") or "cluster")
+            if kind == "track":
+                # Tracks are shown as tracks — never as people.
+                subject = str(item.get("track_id") or item.get("cluster_id") or "")
+                if not subject:
+                    continue
+                media_id = str(members[0].get("media_id") or "") if members else ""
+                face_id = str(members[0].get("face_id") or "") if members else ""
+                rows.append(
+                    {
+                        "subject": subject,
+                        "title": group_list_title(
+                            named=False, names=[], kind="track", band="track"
+                        ),
+                        "count": int(item.get("face_count") or len(members) or 0),
+                        "named": False,
+                        "mediaId": media_id,
+                        "faceId": face_id,
+                        "personId": "",
+                        "kind": "track",
+                        "band": "track",
+                        "bandLabel": group_band_label(named=False, kind="track", band="track"),
+                        "members": list(members),
+                    }
+                )
                 continue
             if members and all(str(member.get("source_type") or "") == "video" for member in members):
                 continue
@@ -1452,7 +1707,6 @@ class ShellBridge(QObject):
             subject = str(item.get("cluster_id") or item.get("face_id") or "")
             if not subject:
                 continue
-            kind = str(item.get("kind") or "cluster")
             band = str(item.get("band") or ("unassigned" if kind == "unassigned" else "review"))
             named = bool(item.get("named"))
             person_id = ""
@@ -1530,8 +1784,12 @@ class ShellBridge(QObject):
             self._set_result(self.peopleSummary())
             return
         mode = str(self._adapter.search_mode().data.get("mode") or "people")
-        if mode == "text":
-            self._apply_result(self._safe_call(lambda: self._adapter.search("text", query)))
+        if mode in {"text", "object"}:
+            within = self._active_field_media_ids()
+            result = self._safe_call(
+                lambda: self._adapter.search(mode, query, within_media_ids=within)
+            )
+            self._apply_discovery_search(result)
             return
         if self._mode == PRIMARY:
             self._set_result(self._search_people(query))

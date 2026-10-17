@@ -44,9 +44,14 @@ _SAFE_PRIMARY_EXACT = {
     "No photo for this group.",
     "Groups are hypotheses until you name them. A group is not a person.",
     "Opened the candidate group for this face.",
+    "Opened this person.",
     "No candidate group for this face yet.",
     "No dated photos for this person yet.",
     "Opened this person in Time.",
+    "Showing only this person's photos.",
+    "Showing the full archive again.",
+    "Opened overlooked faces for review.",
+    "No overlooked faces right now.",
     "This photo is missing from its stored path. If you moved or renamed it, add that folder again so Semblon can reconnect it.",
     "Opened photo. No date on file — time context unavailable.",
 }
@@ -72,8 +77,11 @@ _SAFE_PRIMARY_PATTERNS = (
     re.compile(r"^Folders: [^\n]+\.$"),
     re.compile(r"^Days: [^\n]+\.$"),
     re.compile(r"^Text search: [^\n]+\.$"),
+    re.compile(r"^Object search: [^\n]+\.$"),
     re.compile(r"^Similar: [^\n]+\.$"),
     re.compile(r"^Similar \([^)]+\): [^\n]+\.$"),
+    re.compile(r"^Showing only [^\n]+\.$"),
+    re.compile(r"^Overlooked faces: [^\n]+\.$"),
     re.compile(r"^Named items: [^\n]+\.$"),
     re.compile(r"^Rescan: [^\n]+\.$"),
 )
@@ -158,6 +166,8 @@ def group_list_title(*, named: bool, names: list[str], kind: str, band: str) -> 
         return "Named person"
     kind = str(kind or "").strip().lower()
     band = str(band or "").strip().lower()
+    if kind == "track":
+        return "Track (not a person)"
     if kind == "unassigned":
         return "Unassigned face"
     if band == "strong":
@@ -171,6 +181,8 @@ def group_band_label(*, named: bool, kind: str, band: str) -> str:
         return "Named person"
     kind = str(kind or "").strip().lower()
     band = str(band or "").strip().lower()
+    if kind == "track":
+        return "Appearance track — not a person"
     if kind == "unassigned":
         return "Single face — name to confirm"
     if band == "strong":

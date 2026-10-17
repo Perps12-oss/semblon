@@ -22,8 +22,10 @@ Zoo commit at download time: `opencv/opencv_zoo` **main** tip (pin a commit SHA 
 
 Licence texts (verify independently — OpenCV **code** licence ≠ model clearance):
 
-- YuNet: MIT — `models/face_detection_yunet/LICENSE`
-- SFace: Apache-2.0 — `models/face_recognition_sface/LICENSE`
+- YuNet: MIT — `models/face_detection_yunet/LICENSE` (local copy: `docs/notices/yunet-MIT.txt`)
+- SFace: Apache-2.0 — `models/face_recognition_sface/LICENSE` (local copy: `docs/notices/sface-APACHE-2.0.txt`)
+
+**Re-verified on owner machine 2026-10-16:** local ONNX SHA-256 matches the table above; `semblon-pack-pin.json` matches. Detect/embed returns observation rows (dim **128**); does **not** write `persons` / `faces.person_id` (review path only). **Q calibration** on a representative Semblon corpus remains **OPEN / BLOCKED** — no PASS claimed.
 
 ## Install (BYO, offline after download)
 
