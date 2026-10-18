@@ -4,7 +4,7 @@
 
 **Current production exposure (2026-10-16), source-read at `079d88ba`:** one production UI, PySide6 `semblon shell` → `Application`. Tk Home, review-ui, and canvas are retired. `review.html` is retired.
 
-The left nav in `semblon/native_shell/qml/Shell.qml` is Library, People, Search, Add folder, and Settings. Archive browse (media kind, folders, moments, similar) lives in that left column; see `docs/TIMELINE-VIEW.md`. The 2026-10-15 sentence that called a right-hand archive sidebar the only library filter is out of date.
+The left nav in `semblon/native_shell/qml/Shell.qml` is Home, Library, People, Add folder, and Settings. Home is a permanent launchpad (`HomeLaunchpad.qml`) with Library, Visual discovery, and People cards plus an All capabilities catalogue. Archive browse (media kind, folders, moments, similar) lives in that left column when Library is open; see `docs/TIMELINE-VIEW.md`. The 2026-10-15 sentence that called a right-hand archive sidebar the only library filter is out of date.
 
 People shows face crops. Focus opens stills (`source_type=folder`), shows observation boxes, and offers whole-image Similar, a drawn region, and Ask photo. Advanced Activity lists history. Video tiles are labeled and do not open. Playback is not implemented. Saved albums are an honest deferred empty state.
 

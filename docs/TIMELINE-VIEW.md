@@ -7,13 +7,12 @@
 ## Product shape
 
 ```text
-+-- LEFT NAV: destinations · memory search · Browse (media/folders/moments/similar) · mode -+
-+-- HERO DENSITY TIMELINE (sole temporal overview) -----------------------------------------+
-+-- MEMORY CALENDAR (month title · Today · prev/next · Mon…Sun) ----------------------------+
-+-- FIELD (day-grouped for year/month/range; flat grid otherwise) --------------------------+
++-- LEFT NAV: Home · Library · People · Add folder · Settings · Browse (when Library) -----+
++-- HOME launchpad (permanent) OR Library stage: -----------------------------------------+
+|     HERO DENSITY TIMELINE · MEMORY CALENDAR · FIELD                                    |
 ```
 
-One density timeline only. The bottom year scrubber was removed (product design). Archive browse (media type, folders, Moments, Similar) lives in the left navigation column — there is no right-hand “Explore your archive” panel.
+Home is a permanent editorial launchpad (`HomeLaunchpad.qml`); Library is this timeline contract. One density timeline only. The bottom year scrubber was removed (product design). Archive browse (media type, folders, Moments, Similar) lives in the left navigation column when Library is open — there is no right-hand “Explore your archive” panel. Primary / Advanced and Atmosphere live in Settings.
 
 Archive uses a single column: `archiveHeaderBand` (timeline + clipped `MemoryCalendar` + sticky/zero) then `fieldViewport` below it. Calendar day cells size to fit inside the calendar height (including the empty-month line) so they cannot overflow into the Field.
 
@@ -76,4 +75,4 @@ Measured 2026-10-15 (offscreen Qt): high-volume day (1,282 ids) cell build **2.8
 
 ## Object names
 
-`navSidebar`, `archiveBrowseFlick`, `archiveSidebar` (left-nav Browse block), `contextSidebarSearch`, `sidebarFolder_*`, `sidebarMoments`, `sidebarSimilar`, `sidebarKind_*`, `timelineHero`, `timelineYear_*`, `timelineMonth_*`, `archiveHeaderBand`, `memoryCalendar`, `calendarPrev`, `calendarNext`, `calendarGoHome`, `calendarTitle`, `calendarDay_*`, `fieldSections`, `fieldSection_*`, `stickyHeader`, `zeroResultFilter`, `fieldGrid`
+`navSidebar`, `homeButton`, `libraryButton`, `emptyState` (Home launchpad), `archiveBrowseFlick`, `archiveSidebar` (left-nav Browse block), `contextSidebarSearch`, `sidebarFolder_*`, `sidebarMoments`, `sidebarSimilar`, `sidebarKind_*`, `timelineHero`, `timelineYear_*`, `timelineMonth_*`, `archiveHeaderBand`, `memoryCalendar`, `calendarPrev`, `calendarNext`, `calendarGoHome`, `calendarTitle`, `calendarDay_*`, `fieldSections`, `fieldSection_*`, `stickyHeader`, `zeroResultFilter`, `fieldGrid`
