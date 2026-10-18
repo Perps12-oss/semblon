@@ -1,0 +1,75 @@
+{
+  "corpus": "generated-textured-objects",
+  "not": "photographs or an owner-photo study",
+  "model": "dinov2-vits14 onnx cls",
+  "floor": 0.76,
+  "queries": 3,
+  "mug_hit_at_5": 1.0,
+  "tile_top1": 0,
+  "index_seconds": 25.123,
+  "details": [
+    {
+      "query": "mug0.png",
+      "basis": "Similar look",
+      "ranked": [
+        {
+          "name": "mug2.png",
+          "group": "mug",
+          "score": 0.8603548732814744
+        },
+        {
+          "name": "tile0.png",
+          "group": "tile",
+          "score": 0.8325842745438043
+        },
+        {
+          "name": "mug1.png",
+          "group": "mug",
+          "score": 0.8177252798896888
+        }
+      ]
+    },
+    {
+      "query": "mug1.png",
+      "basis": "Similar look",
+      "ranked": [
+        {
+          "name": "mug2.png",
+          "group": "mug",
+          "score": 0.9219922268181419
+        },
+        {
+          "name": "mug0.png",
+          "group": "mug",
+          "score": 0.8975886371800588
+        },
+        {
+          "name": "tile0.png",
+          "group": "tile",
+          "score": 0.8122393655541358
+        }
+      ]
+    },
+    {
+      "query": "mug2.png",
+      "basis": "Similar look",
+      "ranked": [
+        {
+          "name": "mug0.png",
+          "group": "mug",
+          "score": 0.9039604393935068
+        },
+        {
+          "name": "mug1.png",
+          "group": "mug",
+          "score": 0.834874232878218
+        },
+        {
+          "name": "tile0.png",
+          "group": "tile",
+          "score": 0.7911582643992285
+        }
+      ]
+    }
+  ]
+}
