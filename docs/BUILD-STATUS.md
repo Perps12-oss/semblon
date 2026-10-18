@@ -153,7 +153,7 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 
 1. Contract centre of gravity is point → understand → find (`docs/PRODUCT.md`, `docs/decisions/2026-10-18-local-visual-discovery.md`). Archive, people, and time stay supporting capabilities.
 2. Ingest stores every content patch of the frame plus overlapping windows (`modality=region_patch`, pack id ending `/patch`). A query crop is scored by late interaction against those patches. Proposal CLS rows remain only when the patch map is absent. No new columns. No face writes.
-3. The selection says face, a detector class, text, or unlabelled region. It does not invent a product or a person.
+3. The selection says face, a detector class, text, one local noun that beats "no specific name", or unlabelled region. The noun is not a person and does not choose the matches. A missing naming weight stays unlabelled. It does not invent a product or a person.
 4. A result carries `match_norm`. Opening that result draws the box on the photo. Back still returns to the previous search.
 5. **Keep this find** writes `{store}.discoveries.json` (query, selection, hits, match boxes). Opening a kept find restores that search.
 6. Command: `.venv-312\Scripts\python.exe tools\eval_photo_regions.py` → **exit 0**. Sources are scikit-image photographs. Viewpoint is a homography of the crop on another photograph. Lighting is gamma plus a colour cast. The distractor is the crop's mean colour on another photograph.
@@ -173,7 +173,7 @@ Floors, chosen on this run: token cosine 0.35, mean score 0.28, coverage 0.28.
 
 The archive shell is unchanged as a browser. Focus is the discovery surface.
 
-1. The selection is a clear crop on the stored rectangle: white corner brackets and a dim on the picture outside the frame. A drawn region stays unnamed. An empty similar search says nothing was close enough. Edges and corners resize it. Dragging inside it moves it. Click still points. Drag still draws. Ctrl+wheel, trackpad pinch, and touch pinch zoom the photo (1×–8×). Middle-drag or Alt-drag pans. Left and Right move to the previous and next photo and reset that zoom. Search this area repeats the search on that rectangle.
+1. The selection is a clear crop on the stored rectangle: white corner brackets and a dim on the picture outside the frame. A drawn region stays unnamed and is not replaced by a nearby detection. A click on a face, read text, or detector box adopts that box. A click that misses those boxes stays a small rectangle on the point. A contour is not a snap target. An empty similar search says nothing was close enough. Edges and corners resize it. Dragging inside it moves it. Click still points. Drag still draws. Ctrl+wheel, trackpad pinch, and touch pinch zoom the photo (1×–8×). Middle-drag or Alt-drag pans. Left and Right move to the previous and next photo and reset that zoom. Search this area repeats the search on that rectangle.
 2. Similar search runs off the UI thread. The strip says it is looking, Cancel search and Escape drop a late result, and a newer search replaces a slower one.
 3. Each result draws its match box on that thumbnail (fit, not a crop that hides the box). The open match photo draws the same box. The query outline stays on the query photo. The line under the strip says a match is a similar region, not proof it is the same object.
 4. Kept finds restore the query photo, the rectangle, and the match boxes.

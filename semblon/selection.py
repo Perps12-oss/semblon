@@ -22,6 +22,39 @@ LENS_SUBCOPY = (
 LENS_EMPTY_GUIDE = "Open a photo, then select something to look at."
 LENS_BUSY = "Looking…"
 LENS_SELECT_HINT = "Drag a box on the photo. Semblon remembers that selection."
+
+
+def click_adopts_box(kind: str, source: str = "") -> bool:
+    """A click may adopt a face, read text, or a detector box.
+
+    A contour is only geometry. Adopting it would replace the place the user
+    pointed with a region they did not choose. A drawn rectangle never comes
+    through here.
+    """
+    kind = str(kind or "")
+    source = str(source or "")
+    if kind in {"face", "text"}:
+        return True
+    return kind == "object" and source == "nanodet"
+
+
+def point_box(px: int, py: int, width: int, height: int, side: int = 32) -> tuple[int, int, int, int]:
+    """Small rectangle around a click. It does not grow toward a nearby detection."""
+    width = int(width)
+    height = int(height)
+    side = max(1, min(int(side), width, height))
+    half = side // 2
+    x = int(px) - half
+    y = int(py) - half
+    if x < 0:
+        x = 0
+    if y < 0:
+        y = 0
+    if x + side > width:
+        x = max(0, width - side)
+    if y + side > height:
+        y = max(0, height - side)
+    return x, y, side, side
 UNKNOWN_HEADLINE = "Unknown selection"
 UNKNOWN_BODY = "We couldn't identify this yet."
 

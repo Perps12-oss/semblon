@@ -220,6 +220,7 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
                 "bbox": [it.get("bbox_x1"), it.get("bbox_y1"), it.get("bbox_x2"), it.get("bbox_y2")],
                 "tag": tag,
                 "color": "#c47a1a",
+                "source": str(payload.get("source") or ""),
             }
         )
     return boxes
