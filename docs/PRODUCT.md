@@ -1,12 +1,12 @@
 # Semblon — product contract
 
 **Status:** enduring contract. Implementation gaps do not amend this file.  
-**Evidence date of the split:** 2026-10-16.  
+**Evidence date of the split:** 2026-10-16. Centre-of-gravity correction: 2026-10-18.  
 **What exists today:** `docs/BUILD-STATUS.md`.  
 **What closes the gap:** `docs/ROADMAP.md`.  
-**Why the wording changed:** `docs/decisions/2026-10-16-product-truth-layers.md`.
+**Why the wording changed:** `docs/decisions/2026-10-16-product-truth-layers.md`, `docs/decisions/2026-10-18-local-visual-discovery.md`.
 
-Semblon is a local-first visual memory you can look into. It lets one person explore their own visual archive and rediscover images through appearance, regions, people, time, and other signals that are actually available. Faces are one capability, not the product identity. Uncertain identity remains uncertain. Processing and capability availability are represented honestly.
+Semblon is a local visual memory you can look into. The defining act is to open something from your own archive, point at a thing in it, and find that thing again in your other pictures. The archive, people, time, and folders support that act. Faces are one capability, not the product identity. Uncertain identity remains uncertain. A local model does not invent a product, landmark, or species name. Processing and capability availability are represented honestly.
 
 ## Who it is for
 
@@ -16,7 +16,7 @@ Windows x64 native and Windows ARM64 native are both first-class. x64-on-ARM64 i
 
 ## Principles
 
-1. The archive is the product. People, time, appearance, text, and other signals are lenses on that same archive.
+1. Point, understand, and find is the product. The archive holds the pictures. People, time, appearance, text, and other signals support looking into that same archive.
 2. Unknown is a valid result. A false merge is worse than a false split. A wrong identity is worse than unknown.
 3. A cluster, a track, a hypothesis, a review decision, and a named person are different things. Naming is a human act.
 4. A missing model, a missing file, and an empty match are different outcomes. The product says which one happened.
@@ -28,9 +28,9 @@ Windows x64 native and Windows ARM64 native are both first-class. x64-on-ARM64 i
 These are the product, including where the build is still short of them. Shortfalls are recorded in `docs/BUILD-STATUS.md`. They do not shrink this list.
 
 1. **Enter the archive.** Add a folder. See an honest empty state, then a thumbnail grid. Open a photo and inspect it. File references survive moves and renames.
-2. **Find by appearance.** From a photo, or from a region drawn on it, find other images that look related. The result says what kind of match it is.
+2. **Look into a picture.** Open a supported visual. Point at a thing, or draw around it, and get a selection that follows that thing. Semblon says what it can say: text, a face, a class the installed detector actually returned, or an unlabelled region. It then searches this archive for other pictures where that visual content appears, including another angle or different light. Each result shows where the match sits. Opening a result keeps the search so you can point again. A missing model, a picture that was never indexed, and a genuine empty match stay different outcomes.
 3. **Recover the context.** From a result, reach the date, the surrounding photos, and the related moments.
-4. **Keep and organise discoveries.** Save a useful result, return to it, and organise it without losing where it came from.
+4. **Keep a discovery.** Save a useful find, return to it, and keep the picture, the selection, and the matches it came from.
 5. **Trust the library.** Review people when that is useful. Correct a decision. Erase a person or the library without deleting the original files. Install and run on a clean Windows machine with a signed, versioned package.
 
 Identity review, when used, follows `cluster → review → person → name`. A cluster id is never a person id.
@@ -46,7 +46,7 @@ The library holds paths, display names, and biometric templates. That is special
 
 ## What success is
 
-A person can add their own photos, browse them, find related images by appearance and region, recover the time around a find, keep that find, and trust that identity stayed uncertain until they named someone. Every signal that is not installed says so. The same archive is still there after a move, a correction, or an erase.
+A person can add their own photos, open one, point at a thing, read an honest account of that selection, and find other photos in the archive where that visual content appears, with the matching place marked. They can continue from a result and keep the find. Identity stays uncertain until they name someone. Every signal that is not installed says so. The same archive is still there after a move, a correction, or an erase.
 
 ## Out of the product
 

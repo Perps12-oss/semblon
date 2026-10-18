@@ -45,10 +45,15 @@ Preprocess for query and index: letterbox to 224 (the whole crop is kept), divid
 
 | Stored modality | What it is |
 |---|---|
-| `region` | A crop. Region search reads only this, and only this pack. |
-| `scene` | The whole frame of the same model. Whole-image Similar may use it. |
+| `region` | A proposal crop (CLS). Used only when a patch map is absent. |
+| `region_patch` | Every content patch of the frame. Region search reads this first. Pack id ends in `/patch`. |
+| `scene` | The whole frame CLS of the same model. Whole-image Similar may use it. |
 | `appearance` | Colour histogram. Labelled "Colour only" when the encoder or a compatible index is missing. |
+
+A pointed region is embedded as its own content patches and scored against `region_patch` rows by late interaction (mean of each query patch's best cosine in the other photo). The match box is the union of those winning patches. The six proposal crops are not the search space.
 
 A session or run that exceeds 15 seconds is abandoned. Later encodes fail closed until the process restarts, and search says colour only.
 
-Ranking: cosine via `compare_space`, same modality and pack, drop the source media, keep the best score per media, drop scores below 0.76, cap the list. That floor was chosen on the synthetic glyph corpus in `docs/evidence/visual-discovery-eval.json`. It is not a photograph confirmation and it is not a claim of same-physical-object retrieval.
+Whole-frame CLS ranking for the proposal fallback stays cosine 0.76, chosen on the glyph corpus.
+
+Patch search is different. Each indexed photo stores content patches of the full frame and of overlapping windows (the ONNX input is fixed at 224, so a small object needs a closer window). The query crop's patches score the other photo by the mean of each query patch's best cosine. Token floor 0.35, score floor 0.28, coverage floor 0.28, chosen on `docs/evidence/photo-region-eval.json`. The match box is the union of the winning patches. This is not a person and not a claim of web identification.

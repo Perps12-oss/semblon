@@ -378,6 +378,29 @@ def _read_and_hash(path: Path) -> tuple[str, bytes, int, int]:
     )
 
 
+def _orient_display(image: np.ndarray, payload: bytes | None) -> np.ndarray:
+    """Match the shell's EXIF display so indexed boxes sit on the pixels the user sees."""
+    if payload is None or image is None:
+        return image
+    try:
+        from io import BytesIO
+
+        from PIL import Image, ImageOps
+    except Exception:
+        return image
+    try:
+        with Image.open(BytesIO(payload)) as raw:
+            oriented = ImageOps.exif_transpose(raw)
+            if oriented.size == raw.size and oriented.tobytes() == raw.tobytes():
+                return image
+            rgb = np.asarray(oriented.convert("RGB"))
+    except Exception:
+        return image
+    if rgb.ndim != 3 or rgb.shape[2] < 3:
+        return image
+    return rgb[:, :, ::-1].copy()
+
+
 def _decode_bgr(data: bytes | None, path: Path):
     payload = data
     if not payload:
@@ -400,6 +423,7 @@ def _decode_bgr(data: bytes | None, path: Path):
         img = cv2.imread(str(path))
     if img is None:
         return None
+    img = _orient_display(img, payload)
     height, width = img.shape[:2]
     if int(height) * int(width) > MAX_IMAGE_PIXELS:
         return None

@@ -11,9 +11,12 @@ from semblon.native_shell.presentation import is_primary_safe_message
 
 def test_unified_basis_messages_are_allowlisted():
     for line in (
-        "Similar (whole photo · colour histogram): 2 colour matches.",
-        "Similar (selected region · colour histogram): no similar images found yet.",
-        "Similar (face embedding): 3 face matches.",
+        "Similar (Colour only): 2 colour histogram matches.",
+        "Similar (Colour only): no colour histogram matches.",
+        "Similar (Same face): 3 matches.",
+        "Similar (Similar look): 3 matches.",
+        "Similar (Text in the selection): 1 match.",
+        "Similar (Unknown region): 1 match.",
     ):
         assert is_primary_safe_message(line)
 
@@ -31,8 +34,8 @@ def test_adapter_region_and_whole_share_chrome_with_distinct_labels(tmp_path):
     whole = adapter.similar_media("missing")
     assert whole.state == "unavailable"
     assert whole.data["basis"] == "whole"
-    assert "whole photo" in whole.data["basis_label"]
-    assert "colour histogram" in whole.data["basis_label"]
+    assert whole.data["basis_label"] == "Colour only"
+    assert "colour" in whole.message.lower()
     assert whole.data["engine"] == "color-hist"
 
     region = adapter.similar_region(
@@ -45,15 +48,15 @@ def test_adapter_region_and_whole_share_chrome_with_distinct_labels(tmp_path):
     )
     assert region.state == "ready"
     assert region.data["basis"] == "region"
-    assert "selected region" in region.data["basis_label"]
-    assert "colour histogram" in region.data["basis_label"]
+    assert region.data["basis_label"] == "Colour only"
+    assert "colour histogram" in region.message.lower()
     assert "face" not in region.message.lower()
     assert region.data["items"][0]["media_id"] == "m2"
 
     face = adapter.similar_faces("")
     assert face.state == "unavailable"
     assert face.data["basis"] == "face"
-    assert face.data["basis_label"] == "face embedding"
+    assert face.data["basis_label"] == "Same face"
     assert face.data["engine"] == "face-embed"
     assert "colour" not in face.message.lower()
 
@@ -102,13 +105,13 @@ def test_bridge_publishes_basis_for_region_and_whole(tmp_path, monkeypatch):
     bridge.findSimilar()
     assert bridge.similarState == "ready"
     assert bridge.similarBasis == "region"
-    assert "selected region" in bridge.similarBasisLabel
+    assert bridge.similarBasisLabel == "Colour only"
     assert "colour histogram" in bridge.similarNote.lower()
     assert "face" not in bridge.similarNote.lower()
     assert bridge.similarCount == 1
 
     bridge.findSimilarWhole()
     assert bridge.similarBasis == "whole"
-    assert "whole photo" in bridge.similarBasisLabel
-    assert "colour histogram" in bridge.similarNote.lower()
+    assert bridge.similarBasisLabel == "Colour only"
+    assert "colour only" in bridge.similarNote.lower()
     shutdown_shell(engine)

@@ -50,7 +50,7 @@ def test_search_similar_faces_ranks_same_pack_photos(tmp_path):
     after = sqlite3.connect(str(store)).execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
     assert after == before
     assert rec["status"] == "SUCCESS"
-    assert rec["similarity_basis"].startswith("Face (embedding")
+    assert rec["similarity_basis"] == "Same face"
     assert "auto-assign" in rec["note"].lower() or "not a name" in rec["note"].lower()
     assert "m1" not in rec["media_ids"]
     assert "m3" in rec["media_ids"]
@@ -145,7 +145,7 @@ def test_adapter_similar_faces_labels_face_embedding(tmp_path):
     adapter = ArchiveAdapter(Application(store))
     result = adapter.similar_faces("f1")
     assert result.state == "ready"
-    assert "face embedding" in result.message
+    assert "same face" in result.message.lower()
     assert "colour" not in result.message.lower()
     assert result.data["basis"] == "face"
     assert result.data["engine"] == "face-embed"

@@ -156,6 +156,11 @@ ApplicationWindow {
         onActivated: if (shellReady) shellApi.findSimilarWhole()
     }
     Shortcut {
+        sequence: "Alt+Left"
+        enabled: focusActive && shellReady && shellApi.canBackDiscovery
+        onActivated: shellApi.backToDiscovery()
+    }
+    Shortcut {
         sequence: "Ctrl+1"
         enabled: !commandField.activeFocus && !searchField.activeFocus
         onActivated: if (shellReady) shellApi.setLibraryFilter("all")
@@ -1877,8 +1882,6 @@ ApplicationWindow {
                                 return
                             grid.currentIndex = index
                             shellApi.setScroll(grid.contentY)
-                            if (kind === "video")
-                                return
                             shellApi.openFocus(mediaId)
                         }
                     }
@@ -2104,12 +2107,35 @@ ApplicationWindow {
                 id: photo
                 anchors.fill: parent
                 anchors.margins: 48
-                visible: focusKindSafe !== "video"
-                source: (focusActive && focusKindSafe !== "video")
-                        ? ("image://archive/f/" + focusIdSafe) : ""
+                visible: focusActive
+                source: focusActive ? ("image://archive/f/" + focusIdSafe) : ""
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
                 cache: false
+            }
+
+            Text {
+                objectName: "pointHint"
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: 18
+                visible: focusActive && focusKindSafe !== "video"
+                text: "Point or draw to search"
+                color: tokenMuted
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+            }
+
+            Text {
+                objectName: "sampledFrameNote"
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: 48
+                visible: focusActive && focusKindSafe === "video"
+                text: "Sampled frame. Not a player."
+                color: tokenMuted
+                font.family: "Segoe UI"
+                font.pixelSize: 13
             }
 
             Text {
@@ -2118,7 +2144,6 @@ ApplicationWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - 96
                 visible: focusActive
-                         && focusKindSafe !== "video"
                          && shellReady
                          && shellApi.focusFileMissing
                 wrapMode: Text.WordWrap
@@ -2134,7 +2159,7 @@ ApplicationWindow {
                 id: observationLayer
                 objectName: "observationLayer"
                 anchors.fill: photo
-                visible: focusKindSafe !== "video" && photo.paintedWidth > 0
+                visible: photo.paintedWidth > 0
 
                 function contentOrigin() {
                     return Qt.point(
@@ -2175,13 +2200,27 @@ ApplicationWindow {
                         }
                     }
                 }
+
+                Rectangle {
+                    objectName: "matchOverlay"
+                    visible: shellReady && shellApi.matchW > 0.01 && shellApi.matchH > 0.01
+                    readonly property var origin: observationLayer.contentOrigin()
+                    x: origin.x + shellApi.matchX * photo.paintedWidth
+                    y: origin.y + shellApi.matchY * photo.paintedHeight
+                    width: Math.max(2, shellApi.matchW * photo.paintedWidth)
+                    height: Math.max(2, shellApi.matchH * photo.paintedHeight)
+                    color: "#334C9A8A"
+                    border.color: tokenAccent
+                    border.width: 2
+                    z: 4
+                }
             }
 
             MouseArea {
                 id: regionDrag
                 objectName: "regionDrag"
                 anchors.fill: photo
-                enabled: focusKindSafe !== "video" && photo.paintedWidth > 0
+                enabled: photo.paintedWidth > 0
                 z: 2
                 property real rx: 0
                 property real ry: 0
@@ -2299,7 +2338,7 @@ ApplicationWindow {
             }
 
             Rectangle {
-                visible: regionDrag.hasRect && focusKindSafe !== "video"
+                visible: regionDrag.hasRect
                 x: photo.x + regionDrag.rx
                 y: photo.y + regionDrag.ry
                 width: regionDrag.rw
@@ -2370,7 +2409,7 @@ ApplicationWindow {
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
-                        text: "Similar"
+                        text: "Similar look"
                         color: tokenText
                         font.family: "Segoe UI"
                         font.pixelSize: 13
@@ -2381,7 +2420,146 @@ ApplicationWindow {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Similar look"
+                        Accessible.role: Accessible.Button
                         onClicked: if (shellReady) shellApi.findSimilarWhole()
+                    }
+                }
+
+                Text {
+                    objectName: "selectionNote"
+                    width: parent.width
+                    visible: shellReady && shellApi.selectionNote !== ""
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? shellApi.selectionNote : ""
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                Rectangle {
+                    objectName: "keepDiscoveryAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && similarStateSafe === "ready" && similarCountSafe > 0
+                    radius: 6
+                    color: keepHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Keep this find"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: keepHit
+                        objectName: "keepDiscoveryHit"
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Keep this find"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.keepDiscovery()
+                    }
+                }
+
+                Text {
+                    objectName: "keptHeading"
+                    width: parent.width
+                    visible: shellReady && shellApi.keptCount > 0
+                    text: "Kept finds"
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                ListView {
+                    objectName: "keptFinds"
+                    width: parent.width
+                    height: (shellReady ? shellApi.keptCount : 0) * 30
+                    visible: height > 0
+                    interactive: false
+                    clip: true
+                    model: shellReady ? shellApi.keptCount : 0
+                    delegate: Rectangle {
+                        width: 220
+                        height: 28
+                        radius: 4
+                        color: keptHit.containsMouse ? tokenAccentDim : tokenBg
+                        border.color: tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            text: shellReady ? shellApi.keptLabel(index) : ""
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        MouseArea {
+                            id: keptHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Open kept find"
+                            onClicked: if (shellReady) shellApi.openKept(index)
+                        }
+                    }
+                }
+
+                Rectangle {
+                    objectName: "backDiscoveryAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && shellApi.canBackDiscovery
+                    radius: 6
+                    color: tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Back to results"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Back to results"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.backToDiscovery()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "showDayAction"
+                    width: parent.width
+                    height: 32
+                    visible: focusActive
+                    radius: 6
+                    color: tokenBg2
+                    border.color: tokenBorder
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Show this day"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Show this day"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.showDayAroundFocus()
                     }
                 }
 
@@ -2498,10 +2676,11 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 // Sit above the strip when ready so the basis label stays visible.
-                anchors.bottomMargin: similarStrip.visible ? 108 : 28
+                anchors.bottomMargin: similarStrip.visible ? 148 : 68
                 visible: (similarStateSafe === "empty"
                           || similarStateSafe === "unavailable"
-                          || similarStateSafe === "ready")
+                          || similarStateSafe === "ready"
+                          || similarStateSafe === "loading")
                          && similarNoteSafe !== ""
                 text: similarNoteSafe
                 color: tokenMuted
@@ -2556,7 +2735,8 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: if (shellReady) shellApi.openFocusInContext(mediaId)
+                                    onClicked: if (shellReady) shellApi.openDiscoveryHit(mediaId)
+                                    Accessible.name: "Open match"
                                 }
                             }
                         }

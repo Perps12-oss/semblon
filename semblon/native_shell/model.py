@@ -20,6 +20,10 @@ _NAME = Qt.ItemDataRole.UserRole + 4
 
 _SIMILAR_ID = Qt.ItemDataRole.UserRole + 1
 _SIMILAR_SCORE = Qt.ItemDataRole.UserRole + 2
+_SIMILAR_NX = Qt.ItemDataRole.UserRole + 3
+_SIMILAR_NY = Qt.ItemDataRole.UserRole + 4
+_SIMILAR_NW = Qt.ItemDataRole.UserRole + 5
+_SIMILAR_NH = Qt.ItemDataRole.UserRole + 6
 _STRIP_CAP = 8
 
 
@@ -111,7 +115,7 @@ class SimilarStripModel(QAbstractListModel):
 
     def __init__(self):
         super().__init__()
-        self._rows: list[tuple[str, float]] = []
+        self._rows: list[tuple] = []
 
     def rowCount(self, parent=QModelIndex()) -> int:  # noqa: N802
         if parent.isValid():
@@ -119,21 +123,46 @@ class SimilarStripModel(QAbstractListModel):
         return len(self._rows)
 
     def roleNames(self):  # noqa: N802
-        return {_SIMILAR_ID: b"mediaId", _SIMILAR_SCORE: b"score"}
+        return {
+            _SIMILAR_ID: b"mediaId",
+            _SIMILAR_SCORE: b"score",
+            _SIMILAR_NX: b"matchX",
+            _SIMILAR_NY: b"matchY",
+            _SIMILAR_NW: b"matchW",
+            _SIMILAR_NH: b"matchH",
+        }
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid() or index.row() >= len(self._rows):
             return None
-        media_id, score = self._rows[index.row()]
+        media_id, score, nx, ny, nw, nh = self._rows[index.row()]
         if role in (Qt.ItemDataRole.DisplayRole, _SIMILAR_ID):
             return media_id
         if role == _SIMILAR_SCORE:
             return score
+        if role == _SIMILAR_NX:
+            return nx
+        if role == _SIMILAR_NY:
+            return ny
+        if role == _SIMILAR_NW:
+            return nw
+        if role == _SIMILAR_NH:
+            return nh
         return None
 
-    def set_rows(self, rows: list[tuple[str, float]]) -> None:
+    def set_rows(self, rows: list) -> None:
         self.beginResetModel()
-        self._rows = list(rows[:_STRIP_CAP])
+        packed = []
+        for row in list(rows)[:_STRIP_CAP]:
+            media_id = str(row[0])
+            score = float(row[1])
+            if len(row) >= 6:
+                packed.append(
+                    (media_id, score, float(row[2]), float(row[3]), float(row[4]), float(row[5]))
+                )
+            else:
+                packed.append((media_id, score, 0.0, 0.0, 0.0, 0.0))
+        self._rows = packed
         self.endResetModel()
 
     def media_id(self, row: int) -> str:

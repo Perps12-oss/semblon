@@ -11,9 +11,9 @@ This file lists the product-completion sequence. It does not redefine the vision
 | # | Outcome | Status (2026-10-16) | Evidence in BUILD-STATUS |
 |---|---|---|---|
 | 1 | Enter the archive — empty state, grid, Focus, missing original, moved path | **VERIFIED** | Issue 10 + Gate A journey (Unicode folder, missing Focus, ingest rename reconnect). |
-| 2 | Find by appearance — whole-image and region Similar, honest labels, Unicode paths | **VERIFIED** (honesty / Unicode / firewall) | Issue 09. Colour histogram labeled; not a semantic quality claim. |
+| 2 | Look into a picture — point, understand, find across the archive, show where the match sits | **VERIFIED** on the photographic set | `docs/evidence/photo-region-eval.json`. Four photographs. Viewpoint and lighting both rank above the same-colour distractor. Match box meets the paste. |
 | 3 | Recover the context — Similar hit → day + surrounding photos | **VERIFIED** | Issue 11. Same-day neighbours in Field; other days excluded; missing-date honest. |
-| 4 | Keep and organise discoveries | **DEFERRED** | No album schema (product decision). |
+| 4 | Keep a discovery | **VERIFIED** | Kept finds sit beside the library in `{store}.discoveries.json`. No new table. |
 | 5 | Trust and release | **IN PROGRESS** / Gate C **BLOCKED** | YuNet+SFace runtime landed (buffalo_l retired from deps). Still need: L PASS or permanent BYO ship stance, Q Semblon eval, native ARM64, GHA green, Authenticode cert, lockfile refresh without insightface. |
 | 6 | Face → archive discovery | **IN PROGRESS** (slices A–E code; Q/L ops open) | A–E: face similar, review handoff, person→Time, unified results, OCR→Field, NanoDet BYO. Plan: `docs/decisions/2026-10-16-yunet-sface-discovery-plan.md`. Q calibration + MSI weight L PASS remain external. |
 

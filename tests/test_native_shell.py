@@ -481,7 +481,7 @@ def test_focus_qml_keeps_the_strip_and_a_primary_similar_action():
     assert "shell.resumeJob()" in qml
     assert 'objectName: "resumeJob"' in qml
     assert 'objectName: "similarAction"' in qml
-    assert 'text: "Similar"' in qml
+    assert 'text: "Similar look"' in qml
     assert 'objectName: "findSimilar"' not in qml
     assert 'objectName: "similarStrip"' in qml
     assert "shell.thumbFor(mediaId)" in qml
@@ -583,8 +583,7 @@ def test_drawn_region_strip_replaces_and_clears(tmp_path, monkeypatch):
     bridge.findSimilar()
     assert bridge.similarState == "empty"
     assert bridge.similarCount == 0
-    assert "no similar images found yet" in bridge.similarNote.lower()
-    assert "colour histogram" in bridge.similarNote.lower()
+    assert "colour" in bridge.similarNote.lower()
     bridge.setRegion(0.1, 0.1, 0.2, 0.2)
     bridge.findSimilar()
     bridge.focusNext()
