@@ -1569,10 +1569,14 @@ def test_point_uses_stored_region_then_existing_similar_door(tmp_path, monkeypat
     _app, engine = build_shell(store, app=app)
     bridge = engine._semblon_bridge
     bridge.openFocus("m1")
+    bridge.setRegion(0.2, 0.2, 0.1, 0.1)
+    assert bridge._region_norm == (0.2, 0.2, 0.1, 0.1)
+    assert bridge._selection_kind == "drawn"
     monkeypatch.setattr(bridge, "_stored_visual_bbox", lambda media_id, px, py: (10, 20, 30, 40))
+    monkeypatch.setattr(bridge, "_refine_bbox", lambda media_id, px, py: (1, 1, 90, 70))
     spec = bridge.pointAt(0.5, 0.5)
-    assert spec == "0.1,0.25,0.3,0.5"
-    assert found == [("m1", 10, 20, 30, 40)]
+    assert spec == "0.34,0.3,0.32,0.4"
+    assert found == [("m1", 34, 24, 32, 32)]
     assert bridge.similarCount == 1
     assert bridge.similarId(0) == "m2"
     bridge.openFocus(bridge.similarId(0))
@@ -1581,7 +1585,7 @@ def test_point_uses_stored_region_then_existing_similar_door(tmp_path, monkeypat
     bridge.escape()
     assert bridge.focusId == ""
     assert bridge.pointAt(-0.1, 0.2) == ""
-    assert found == [("m1", 10, 20, 30, 40)]
+    assert found == [("m1", 34, 24, 32, 32)]
     shutdown_shell(engine)
 
 
@@ -1612,14 +1616,13 @@ def test_point_on_fresh_image_refines_without_inventing_a_miss(tmp_path, monkeyp
     _app, engine = build_shell(store, app=app)
     bridge = engine._semblon_bridge
     bridge.openFocus("m1")
-    monkeypatch.setattr(bridge, "_stored_visual_bbox", lambda media_id, px, py: None)
+    monkeypatch.setattr(bridge, "_stored_visual_bbox", lambda media_id, px, py: (1, 1, 40, 30))
     monkeypatch.setattr(bridge, "_refine_bbox", lambda media_id, px, py: (5, 6, 10, 12))
-    assert bridge.pointAt(0.2, 0.2) == "0.1,0.15,0.2,0.3"
-    assert found == [(5, 6, 10, 12)]
+    assert bridge.pointAt(0.2, 0.2) == "0.0,0.0,0.64,0.8"
+    assert found == [(0, 0, 32, 32)]
     assert bridge.similarState == "unavailable"
-    monkeypatch.setattr(bridge, "_refine_bbox", lambda media_id, px, py: None)
-    assert bridge.pointAt(0.2, 0.2) == ""
-    assert bridge.similarCount == 0
+    assert bridge.pointAt(0.2, 0.2) == "0.0,0.0,0.64,0.8"
+    assert found == [(0, 0, 32, 32), (0, 0, 32, 32)]
     shutdown_shell(engine)
 
 

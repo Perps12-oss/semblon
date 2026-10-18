@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from semblon.region_search import describe_selection
+from semblon.selection import click_adopts_box, point_box
 from semblon.store import connect, init_db
 
 
@@ -122,6 +123,17 @@ def test_selection_understanding_is_not_a_person_name(tmp_path):
     conn = connect(store)
     assert conn.execute("SELECT COUNT(*) FROM embeddings WHERE modality='face'").fetchone()[0] == 0
     conn.close()
+
+
+def test_click_adopts_a_detector_box_and_not_a_contour():
+    assert click_adopts_box("face") is True
+    assert click_adopts_box("text") is True
+    assert click_adopts_box("object", "nanodet") is True
+    assert click_adopts_box("object", "contour") is False
+    assert click_adopts_box("object", "") is False
+    box = point_box(50, 40, 100, 80)
+    assert box == (34, 24, 32, 32)
+    assert point_box(10, 8, 50, 40) == (0, 0, 32, 32)
 
 
 def test_absent_namer_stays_unlabelled(tmp_path, monkeypatch):

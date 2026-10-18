@@ -2400,6 +2400,8 @@ ApplicationWindow {
                         return ""
                     for (var i = focusBoxesSafe.length - 1; i >= 0; i--) {
                         var box = focusBoxesSafe[i]
+                        if (box.snap === false)
+                            continue
                         var bx = origin.x + box.nx * pw
                         var by = origin.y + box.ny * ph
                         var bw = Math.max(2, box.nw * pw)
