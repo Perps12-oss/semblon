@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -109,6 +110,10 @@ class ShellBridge(QObject):
         self._similar_note = ""
         self._similar_basis = ""
         self._similar_basis_label = ""
+        self._selection_note = ""
+        self._selection_kind = ""
+        self._similar_cancel = False
+        self._discovery_trail: list[dict] = []
         self._point_source = ""
         self._people = PeopleModel()
         self._people_open = False
@@ -312,9 +317,28 @@ class ShellBridge(QObject):
         for box in self._focus_boxes:
             if str(box.get("id") or "") == wanted:
                 self._selected_observation = wanted
+                kind = str(box.get("kind") or "")
                 self.focusChanged.emit()
-                if str(box.get("kind") or "") == "face":
+                if kind == "face":
+                    self._selection_kind = "face"
+                    self._selection_note = ""
                     self.findSimilarFaces(wanted)
+                    return
+                if kind in {"object", "text", "clip", "appearance"}:
+                    self.setRegion(
+                        float(box.get("nx") or 0),
+                        float(box.get("ny") or 0),
+                        float(box.get("nw") or 0),
+                        float(box.get("nh") or 0),
+                    )
+                    self._selection_kind = "text" if kind == "text" else "object"
+                    self._selection_note = (
+                        "Text in the selection."
+                        if kind == "text"
+                        else "Selected region."
+                    )
+                    self.similarChanged.emit()
+                    self.findSimilar()
                 return
 
     @Property(float, notify=focusChanged)
@@ -905,6 +929,170 @@ class ShellBridge(QObject):
         """User-facing basis for the open results strip (distinct per door)."""
         return self._similar_basis_label
 
+    @Property(str, notify=similarChanged)
+    def selectionNote(self) -> str:
+        """How the current box was chosen. Plain language, not a model id."""
+        return self._selection_note
+
+    @Property(bool, notify=similarChanged)
+    def canBackDiscovery(self) -> bool:
+        return bool(self._discovery_trail)
+
+    def _discovery_file(self) -> Path:
+        store = Path(self._jobs.store)
+        return store.with_name(store.stem + ".visual-discovery.json")
+
+    def _persist_discovery(self) -> None:
+        if self._similar_state not in {"ready", "empty"}:
+            return
+        payload = {
+            "query_media_id": self._session.focus_id or "",
+            "basis": self._similar_basis,
+            "basis_label": self._similar_basis_label,
+            "note": self._similar_note,
+            "state": self._similar_state,
+            "region": list(self._region_norm) if self._region_norm else None,
+            "items": [
+                {"media_id": media_id, "score": score}
+                for media_id, score in self._similar._rows
+            ],
+        }
+        try:
+            self._discovery_file().write_text(json.dumps(payload), encoding="utf-8")
+        except OSError:
+            return
+
+    def _push_discovery(self) -> None:
+        if self._similar_state not in {"ready", "empty"} or not self._session.focus_id:
+            return
+        self._discovery_trail.append(
+            {
+                "focus_id": self._session.focus_id,
+                "rows": list(self._similar._rows),
+                "state": self._similar_state,
+                "note": self._similar_note,
+                "basis": self._similar_basis,
+                "basis_label": self._similar_basis_label,
+                "region": self._region_norm,
+            }
+        )
+        if len(self._discovery_trail) > 8:
+            self._discovery_trail = self._discovery_trail[-8:]
+
+    def _open_focus_keep_results(self, media_id: str) -> None:
+        item = self._jobs.media(media_id)
+        if item is None or item.source_type not in {"folder", "video"}:
+            return
+        rows = list(self._similar._rows)
+        state = self._similar_state
+        note = self._similar_note
+        basis = self._similar_basis
+        label = self._similar_basis_label
+        self._session.open_focus(media_id)
+        self._load_focus_boxes(media_id)
+        self._similar.set_rows(rows)
+        self._similar_state = state
+        self._similar_note = note
+        self._similar_basis = basis
+        self._similar_basis_label = label
+        try:
+            missing = not item.path or not Path(item.path).is_file()
+        except OSError:
+            missing = True
+        if missing:
+            self._report_missing_original()
+        self.focusChanged.emit()
+        self.similarChanged.emit()
+        self.diagnosticsChanged.emit()
+
+    @Slot(str)
+    def openDiscoveryHit(self, media_id: str) -> None:
+        """Open a visual result without replacing the result set or the day scope."""
+        if not media_id:
+            return
+        self._push_discovery()
+        self._open_focus_keep_results(media_id)
+
+    @Slot()
+    def backToDiscovery(self) -> None:
+        if not self._discovery_trail:
+            return
+        frame = self._discovery_trail.pop()
+        focus_id = str(frame.get("focus_id") or "")
+        if focus_id:
+            item = self._jobs.media(focus_id)
+            if item is not None and item.source_type in {"folder", "video"}:
+                self._session.open_focus(focus_id)
+                self._load_focus_boxes(focus_id)
+        region = frame.get("region")
+        self._region_norm = tuple(region) if region else None
+        self._similar.set_rows(list(frame.get("rows") or []))
+        self._similar_state = str(frame.get("state") or "idle")
+        self._similar_note = str(frame.get("note") or "")
+        self._similar_basis = str(frame.get("basis") or "")
+        self._similar_basis_label = str(frame.get("basis_label") or "")
+        self.focusChanged.emit()
+        self.similarChanged.emit()
+        self.diagnosticsChanged.emit()
+
+    @Slot()
+    def showDayAroundFocus(self) -> None:
+        """Day neighbours stay available. They do not clear the visual result set."""
+        item = self._jobs.media(self._session.focus_id or "")
+        if item is None or not item.day:
+            self._set_result("Opened photo. No date on file — time context unavailable.")
+            return
+        day = item.day
+        if len(day) >= 7:
+            self._sync_calendar_month(day[:7])
+        self._select_scope("day", day)
+
+    @Slot()
+    def reopenLastVisualSearch(self) -> None:
+        path = self._discovery_file()
+        if not path.is_file():
+            self._publish_similar(
+                "empty",
+                "Similar (Similar look): no saved search yet.",
+                [],
+                basis="region",
+                basis_label="Similar look",
+            )
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self._publish_similar(
+                "unavailable",
+                "Similar (Similar look): the saved search could not be read.",
+                [],
+                basis="region",
+                basis_label="Similar look",
+            )
+            return
+        query = str(payload.get("query_media_id") or "")
+        if query:
+            self._open_focus_keep_results(query)
+        region = payload.get("region")
+        if isinstance(region, list) and len(region) == 4:
+            self._region_norm = tuple(float(v) for v in region)
+        rows = [
+            (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
+            for item in (payload.get("items") or [])
+            if item.get("media_id")
+        ]
+        self._publish_similar(
+            str(payload.get("state") or ("ready" if rows else "empty")),
+            str(payload.get("note") or "Similar (Similar look): restored."),
+            rows,
+            basis=str(payload.get("basis") or "region"),
+            basis_label=str(payload.get("basis_label") or "Similar look"),
+        )
+
+    @Slot()
+    def cancelSimilar(self) -> None:
+        self._similar_cancel = True
+
     @Property(int, notify=similarChanged)
     def similarCount(self) -> int:
         return self._similar.rowCount()
@@ -940,6 +1128,8 @@ class ShellBridge(QObject):
         self._similar_basis = str(basis or "")
         self._similar_basis_label = str(basis_label or "")
         self.similarChanged.emit()
+        if state in {"ready", "empty"}:
+            self._persist_discovery()
 
     def _publish_similar_result(self, result) -> None:
         """Shared Focus strip publish for whole / region / face doors."""
@@ -973,7 +1163,7 @@ class ShellBridge(QObject):
         self._selected_observation = ""
         self._focus_boxes = []
         item = self._jobs.media(media_id)
-        if item is None or item.source_type != "folder":
+        if item is None or item.source_type not in {"folder", "video"}:
             return
         width = float(item.width or 0)
         height = float(item.height or 0)
@@ -1033,7 +1223,7 @@ class ShellBridge(QObject):
     @Slot(str)
     def openFocus(self, media_id: str) -> None:
         item = self._jobs.media(media_id)
-        if item is None or item.source_type != "folder":
+        if item is None or item.source_type not in {"folder", "video"}:
             return
         self._session.open_focus(media_id)
         self._clear_query()
@@ -1051,7 +1241,7 @@ class ShellBridge(QObject):
     def openFocusInContext(self, media_id: str) -> None:
         """Open a search/similar hit and scope Time to its day when mtime exists."""
         item = self._jobs.media(media_id)
-        if item is None or item.source_type != "folder":
+        if item is None or item.source_type not in {"folder", "video"}:
             return
         day = item.day
         try:
@@ -1070,7 +1260,7 @@ class ShellBridge(QObject):
     @Slot(int)
     def openIndex(self, index: int) -> None:
         rows = self._jobs.archive_window(index, 1)
-        if not rows or rows[0].source_type != "folder":
+        if not rows or rows[0].source_type not in {"folder", "video"}:
             return
         self._session.open_focus(rows[0].media_id)
         self._clear_query()
@@ -1672,7 +1862,9 @@ class ShellBridge(QObject):
             members = item.get("members") or []
             kind = str(item.get("kind") or "cluster")
             if kind == "track":
-                # Tracks are shown as tracks — never as people.
+                # Tracks are shown as tracks — never as people. Video-only tracks stay off this desk.
+                if members and all(str(member.get("source_type") or "") == "video" for member in members):
+                    continue
                 subject = str(item.get("track_id") or item.get("cluster_id") or "")
                 if not subject:
                     continue
@@ -1892,6 +2084,8 @@ class ShellBridge(QObject):
             max(0.0, min(1.0, float(nw))),
             max(0.0, min(1.0, float(nh))),
         )
+        self._selection_kind = "drawn"
+        self._selection_note = "Drawn region."
 
     def _pixel_rect(self) -> tuple[int, int, int, int] | None:
         media_id = self._session.focus_id
@@ -1961,7 +2155,16 @@ class ShellBridge(QObject):
             self._clear_query()
             return ""
         x, y, w, h = bbox
+        kind = self._selection_kind
+        note = self._selection_note
+        source = self._point_source
         self.setRegion(x / width, y / height, w / width, h / height)
+        if source == "refine":
+            self._selection_kind = kind or "unknown"
+            self._selection_note = note or "Plain rectangle. Segmentation is not available."
+        elif source == "stored":
+            self._selection_kind = "object"
+            self._selection_note = "Selected region."
         self.findSimilar()
         return f"{x / width},{y / height},{w / width},{h / height}"
 
@@ -2020,6 +2223,15 @@ class ShellBridge(QObject):
         x1, y1, x2, y2 = (float(box[0]), float(box[1]), float(box[2]), float(box[3]))
         if x2 <= x1 or y2 <= y1:
             return None
+        label = str(raw.get("label") or "").strip().lower()
+        payload = raw.get("payload") if isinstance(raw.get("payload"), dict) else {}
+        refine = str(payload.get("refine") or "")
+        if label == "unknown region" or refine not in {"floodfill", "sam2"}:
+            self._selection_kind = "unknown"
+            self._selection_note = "Plain rectangle. Segmentation is not available."
+        else:
+            self._selection_kind = "region"
+            self._selection_note = "Pointed area from the photo. Not a named object."
         return int(x1), int(y1), max(1, int(round(x2 - x1))), max(1, int(round(y2 - y1)))
 
     def _item_for_decision(self, subject: str) -> dict:
@@ -2408,6 +2620,10 @@ class ShellBridge(QObject):
         if not media_id:
             self._publish_similar("unavailable", "Open a photo first.", [])
             return
+        if self._similar_state == "ready" and self._similar.rowCount():
+            self._push_discovery()
+        self._selection_kind = ""
+        self._selection_note = ""
         result = self._safe_call(lambda: self._adapter.similar_media(media_id))
         self._publish_similar_result(result)
 
@@ -2418,6 +2634,8 @@ class ShellBridge(QObject):
         if not fid:
             self._publish_similar("unavailable", "Select a face on the photo first.", [])
             return
+        if self._similar_state == "ready" and self._similar.rowCount():
+            self._push_discovery()
         result = self._safe_call(lambda: self._adapter.similar_faces(fid))
         self._publish_similar_result(result)
 
@@ -2433,17 +2651,38 @@ class ShellBridge(QObject):
             self._publish_similar("unavailable", "Draw a region on the photo first.", [])
             return
         x, y, w, h = rect
+        if self._similar_state == "ready" and self._similar.rowCount():
+            self._push_discovery()
+        self._similar_cancel = False
+        kind = self._selection_kind or None
         try:
-            rec = self._jobs.remember_and_find_region(media_id, x, y, w, h)
+            rec = self._jobs.remember_and_find_region(
+                media_id,
+                x,
+                y,
+                w,
+                h,
+                selection_kind=kind,
+                cancelled=lambda: self._similar_cancel,
+            )
         except Exception:  # noqa: BLE001 — honest failure, no invented matches
             self._result_text = ""
             self.resultChanged.emit()
             self._publish_similar(
                 "unavailable",
-                "Similar (selected region · colour histogram): Similar search could not run.",
+                "Similar (Colour only): Similar search could not run.",
                 [],
                 basis="region",
-                basis_label="selected region · colour histogram",
+                basis_label="Colour only",
+            )
+            return
+        if self._similar_cancel:
+            self._publish_similar(
+                "empty",
+                "Similar (Similar look): cancelled.",
+                [],
+                basis="region",
+                basis_label="Similar look",
             )
             return
         result = self._safe_call(lambda: self._adapter.similar_region(rec))

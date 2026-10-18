@@ -17,6 +17,33 @@ from PySide6.QtQuick import QQuickAsyncImageProvider, QQuickImageResponse, QQuic
 Lookup = Callable[[str], str | None]
 
 
+def _video_frame(path: Path, max_side: int) -> QImage:
+    """First decoded frame. This is not a player."""
+    try:
+        import cv2
+
+        from semblon.temporal import read_bgr
+    except Exception:
+        return QImage()
+    frame = read_bgr(path, frame_id=0)
+    if frame is None:
+        return QImage()
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    height, width = rgb.shape[:2]
+    if max_side > 0:
+        longest = max(width, height, 1)
+        scale = min(1.0, float(max_side) / float(longest))
+        if scale < 1.0:
+            rgb = cv2.resize(
+                rgb,
+                (max(1, int(width * scale)), max(1, int(height * scale))),
+                interpolation=cv2.INTER_AREA,
+            )
+            height, width = rgb.shape[:2]
+    image = QImage(rgb.data, width, height, width * 3, QImage.Format.Format_RGB888)
+    return image.copy()
+
+
 class _Decode(QRunnable):
     def __init__(self, response: "ArchiveImageResponse", path: str, max_side: int):
         super().__init__()
@@ -27,7 +54,16 @@ class _Decode(QRunnable):
     def run(self) -> None:
         image = QImage()
         file = Path(self._path) if self._path else None
-        if file is not None and file.is_file():
+        if file is not None and file.is_file() and file.suffix.lower() in {
+            ".mp4",
+            ".mov",
+            ".avi",
+            ".mkv",
+            ".webm",
+            ".m4v",
+        }:
+            image = _video_frame(file, self._max_side)
+        elif file is not None and file.is_file():
             reader = QImageReader(str(file))
             reader.setAutoTransform(True)
             size = reader.size()

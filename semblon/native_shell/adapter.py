@@ -243,49 +243,49 @@ class ArchiveAdapter:
         return self._similar_result(rec, basis="face")
 
     def similar_region(self, rec: dict) -> Result:
-        """Region door → same Focus strip chrome as whole/face. Colour histogram only."""
+        """Region door → same Focus strip. Basis comes from the search record."""
         similar = dict((rec or {}).get("similar") or {})
         if str(similar.get("status") or "") == "UNAVAILABLE":
             reason = str(similar.get("reason") or "")
             lowered = reason.lower()
-            if "embedding" in lowered or "pack" in lowered or "space" in lowered:
-                similar["reason"] = "Similar search needs photos that have already been looked at."
-            elif "sqlite" in lowered or "traceback" in lowered or not reason.strip():
+            if "sqlite" in lowered or "traceback" in lowered or not reason.strip():
                 similar["reason"] = "Similar search could not run."
         return self._similar_result(similar, basis="region")
 
     def _similar_result(self, rec: dict, *, basis: str) -> Result:
         status = str(rec.get("status") or "")
         items = []
+        seen: set[str] = set()
         for item in rec.get("items") or []:
             media_id = str(item.get("media_id") or "")
-            if not media_id:
+            if not media_id or media_id in seen:
                 continue
+            seen.add(media_id)
             try:
                 score = float(item.get("score") or 0.0)
             except (TypeError, ValueError):
                 score = 0.0
             items.append({"media_id": media_id, "score": score})
         if basis == "face":
-            basis_label = "face embedding"
-            engine = "face-embed"
-            empty_msg = f"Similar ({basis_label}): no similar faces found yet."
-            ready_msg = f"Similar ({basis_label}): {len(items)} face matches."
-        elif basis == "region":
-            # Region door is colour histogram on the drawn box — not face identity.
-            basis_label = "selected region · colour histogram"
-            engine = "color-hist"
-            empty_msg = f"Similar ({basis_label}): no similar images found yet."
-            ready_msg = f"Similar ({basis_label}): {len(items)} colour matches."
+            basis_label = str(rec.get("similarity_basis") or "Same face")
+            engine = str(rec.get("engine") or "face-embed")
+            empty_msg = f"Similar ({basis_label}): no matches above the line."
+            ready_msg = f"Similar ({basis_label}): {len(items)} matches."
         else:
-            # Whole-image door uses colour-histogram appearance, not semantics.
-            basis_label = "whole photo · colour histogram"
-            engine = "color-hist"
-            empty_msg = f"Similar ({basis_label}): no similar images found yet."
-            ready_msg = f"Similar ({basis_label}): {len(items)} colour matches."
+            basis_label = str(rec.get("similarity_basis") or "Colour only")
+            engine = str(rec.get("engine") or ("color-hist" if "colour" in basis_label.lower() else "dinov2-vits14"))
+            if "colour" in basis_label.lower():
+                empty_msg = f"Similar ({basis_label}): no colour histogram matches."
+                ready_msg = f"Similar ({basis_label}): {len(items)} colour histogram matches."
+            else:
+                empty_msg = f"Similar ({basis_label}): no matches above the line."
+                noun = "match" if len(items) == 1 else "matches"
+                ready_msg = f"Similar ({basis_label}): {len(items)} {noun}."
         meta = {"basis": basis, "basis_label": basis_label, "engine": engine, "items": []}
         if status == "UNAVAILABLE":
-            reason = str(rec.get("reason") or "Similar search could not run.")
+            reason = str(rec.get("reason") or "Similar search could not run.").strip()
+            if not reason.endswith("."):
+                reason += "."
             return Result(
                 "unavailable",
                 f"Similar ({basis_label}): {reason}",
