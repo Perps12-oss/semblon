@@ -180,7 +180,7 @@ def test_region_similar_unicode_path_finds_colour_match(tmp_path):
     # library row or the redder neighbour — never invent a face identity.
     rec = remember_and_find(store, media_id="m2", image_path=None, x=0, y=0, w=16, h=16)
     similar = rec["similar"]
-    assert similar.get("similarity_basis") == "Selected region (colour histogram)"
+    assert similar.get("similarity_basis") == "Colour only"
     assert similar.get("modality") == "appearance"
     assert "face" not in str(similar.get("modality") or "")
     assert similar["status"] in {"SUCCESS", "NO_RESULT"}

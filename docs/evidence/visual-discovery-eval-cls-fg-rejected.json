@@ -1,0 +1,151 @@
+{
+  "corpus": "synthetic-glyphs",
+  "not": "real-world photo eval",
+  "model": "dinov2-vits14 onnx cls-fg letterbox-224 imagenet",
+  "pool": "cls-fg",
+  "floor": 0.76,
+  "queries": 6,
+  "recall_at_5": 1.0,
+  "other_mark_recall_at_5": 0.4,
+  "precision_at_5": 0.667,
+  "returned": 18,
+  "top1_not_mark": 1,
+  "top1_colour_bar": 0,
+  "index_seconds": 17.796,
+  "query_latency_s_mean": 0.672,
+  "query_latency_s_max": 0.924,
+  "details": [
+    {
+      "query": "a0.png",
+      "basis": "Similar look",
+      "status": "SUCCESS",
+      "ranked": [
+        {
+          "name": "small.png",
+          "group": "mark",
+          "score": 0.8603808058854336
+        },
+        {
+          "name": "b0.png",
+          "group": "disc",
+          "score": 0.76354057740753
+        }
+      ]
+    },
+    {
+      "query": "a1.png",
+      "basis": "Similar look",
+      "status": "SUCCESS",
+      "ranked": [
+        {
+          "name": "a2.png",
+          "group": "mark",
+          "score": 0.9188516022732204
+        },
+        {
+          "name": "a3.png",
+          "group": "mark",
+          "score": 0.8965090184826081
+        },
+        {
+          "name": "c1.png",
+          "group": "bar",
+          "score": 0.7731524167254398
+        }
+      ]
+    },
+    {
+      "query": "a2.png",
+      "basis": "Similar look",
+      "status": "SUCCESS",
+      "ranked": [
+        {
+          "name": "a1.png",
+          "group": "mark",
+          "score": 0.8870260335300135
+        },
+        {
+          "name": "a3.png",
+          "group": "mark",
+          "score": 0.8823080006761775
+        },
+        {
+          "name": "c1.png",
+          "group": "bar",
+          "score": 0.7951222062816832
+        }
+      ]
+    },
+    {
+      "query": "a3.png",
+      "basis": "Similar look",
+      "status": "SUCCESS",
+      "ranked": [
+        {
+          "name": "a2.png",
+          "group": "mark",
+          "score": 0.8996408477950318
+        },
+        {
+          "name": "a1.png",
+          "group": "mark",
+          "score": 0.8594076666391944
+        },
+        {
+          "name": "c1.png",
+          "group": "bar",
+          "score": 0.777217720021684
+        },
+        {
+          "name": "clutter.png",
+          "group": "mark",
+          "score": 0.7686682223604313
+        }
+      ]
+    },
+    {
+      "query": "small.png",
+      "basis": "Similar look",
+      "status": "SUCCESS",
+      "ranked": [
+        {
+          "name": "a0.png",
+          "group": "mark",
+          "score": 0.784520896217708
+        }
+      ]
+    },
+    {
+      "query": "clutter.png",
+      "basis": "Similar look",
+      "status": "SUCCESS",
+      "ranked": [
+        {
+          "name": "b0.png",
+          "group": "disc",
+          "score": 0.828865203926037
+        },
+        {
+          "name": "a1.png",
+          "group": "mark",
+          "score": 0.828825931499958
+        },
+        {
+          "name": "a3.png",
+          "group": "mark",
+          "score": 0.8271522156428356
+        },
+        {
+          "name": "a0.png",
+          "group": "mark",
+          "score": 0.8217232694373707
+        },
+        {
+          "name": "b1.png",
+          "group": "disc",
+          "score": 0.8057418244540355
+        }
+      ]
+    }
+  ]
+}

@@ -230,11 +230,17 @@ def optional_status() -> dict:
     nanodet, nanodet_note = probe_nanodet_status()
     if nanodet_note:
         notes["nanodet"] = nanodet_note
+    from semblon.region_encoder import probe_region_pack
+
+    region_ready, region_note = probe_region_pack()
+    if region_note:
+        notes["region"] = region_note
     return {
         "facekit": True,
         "appearance": True,
         "object": True,  # contour region discovery (not COCO labels)
         "nanodet": nanodet,
+        "region": region_ready,
         "ocr": ocr,
         "clip": clip,
         "pose": pose,
@@ -248,6 +254,7 @@ def optional_status() -> dict:
 BASE_HOME_OBSERVERS: tuple[str, ...] = ("face", "color", "object")
 # Probe key → --observers token (observe_bgr accepts "ocr" or "text" for OCR).
 OPTIONAL_PROBE_TO_OBSERVER: tuple[tuple[str, str], ...] = (
+    ("region", "region"),
     ("ocr", "text"),
     ("clip", "clip"),
     ("pose", "pose"),
@@ -308,7 +315,12 @@ def modality_product_settings_lines() -> list[str]:
         "Pose is observation-only (no identity compare)."
     )
     lines.append(
-        "OCR/CLIP/pose never write faces.person_id or embeddings.modality=face."
+        "OCR/CLIP/pose/region never write faces.person_id or embeddings.modality=face."
+    )
+    lines.append(
+        "Stills opened here: jpg, jpeg, png, bmp, webp. "
+        "Video opens as a sampled frame, not a player. "
+        "PDF, HEIC, and TIFF are not opened in this install."
     )
     return lines
 
@@ -324,7 +336,42 @@ def ocr_image(img) -> dict | None:
         arr = np.asarray(img)
         gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY) if arr.ndim == 3 else arr
         text = (pytesseract.image_to_string(gray) or "").strip()
-        return {"text": text[:4000], "score": 1.0 if text else 0.0}
+        words: list[dict] = []
+        try:
+            from pytesseract import Output
+
+            data = pytesseract.image_to_data(gray, output_type=Output.DICT)
+            texts = data.get("text") or []
+            confs = data.get("conf") or []
+            lefts = data.get("left") or []
+            tops = data.get("top") or []
+            widths = data.get("width") or []
+            heights = data.get("height") or []
+            for raw, conf, left, top, width, height in zip(texts, confs, lefts, tops, widths, heights):
+                token = str(raw or "").strip()
+                try:
+                    score = float(conf)
+                except (TypeError, ValueError):
+                    continue
+                if score < 60 or len(token) < 2:
+                    continue
+                if width <= 0 or height <= 0:
+                    continue
+                words.append(
+                    {
+                        "text": token[:200],
+                        "score": score / 100.0,
+                        "bbox": (
+                            float(left),
+                            float(top),
+                            float(left + width),
+                            float(top + height),
+                        ),
+                    }
+                )
+        except Exception:
+            words = []
+        return {"text": text[:4000], "score": 1.0 if text else 0.0, "words": words[:40]}
     except Exception as e:  # noqa: BLE001 — optional extra must not crash ingest
         return {"error": type(e).__name__, "note": str(e)[:240]}
 
@@ -608,6 +655,16 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
                 )
         # Missing pack: no NanoDet rows. search_object probes the pack and reports UNAVAILABLE.
         # Contour regions above remain honest geometry, not detector labels.
+    if "region" in wanted:
+        from semblon.region_encoder import index_image_regions
+
+        try:
+            indexed = index_image_regions(
+                conn, observation_id=observation_id, run_id=run_id, img=img
+            )
+        except Exception:  # noqa: BLE001 — colour and objects must still commit
+            indexed = {"region": 0, "scene": 0}
+        counts["clip"] += int(indexed.get("region") or 0) + int(indexed.get("scene") or 0)
     if "text" in wanted or "ocr" in wanted:
         paused = _circuit_paused("ocr")
         if paused is not None:
@@ -662,6 +719,27 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
                     score=rec.get("score"),
                 )
                 counts["text"] += 1
+                for word in rec.get("words") or []:
+                    box = word.get("bbox")
+                    token = str(word.get("text") or "").strip()
+                    if not token or not box:
+                        continue
+                    persist_item(
+                        conn,
+                        observation_id=observation_id,
+                        run_id=run_id,
+                        kind="text",
+                        provider=OCR_PROVIDER,
+                        payload={
+                            "text": token,
+                            "identity": "not facekit",
+                            "contract_status": "SUCCESS",
+                            "role": "word",
+                        },
+                        bbox=tuple(box),
+                        score=word.get("score"),
+                    )
+                    counts["text"] += 1
                 _circuit_note("ocr", rec, matched=bool(text_read.strip()))
     if "clip" in wanted:
         paused = _circuit_paused("clip")

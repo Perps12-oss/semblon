@@ -308,6 +308,8 @@ class Application:
         image_path: Path | None = None,
         run_id: str | None = None,
         limit: int = 10,
+        selection_kind: str | None = None,
+        cancelled=None,
     ) -> dict:
         from semblon.region_search import remember_and_find
 
@@ -321,5 +323,7 @@ class Application:
             h=h,
             run_id=run_id,
             limit=limit,
+            selection_kind=selection_kind,
+            cancelled=cancelled,
         )
 

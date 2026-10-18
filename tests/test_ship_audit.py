@@ -690,7 +690,7 @@ def test_whole_image_similar_basis_says_colour_histogram(tmp_path):
     conn.commit()
     conn.close()
     rec = search_similar_media(store, "m1")
-    assert "colour histogram" in str(rec.get("similarity_basis") or "").lower()
+    assert "colour" in str(rec.get("similarity_basis") or "").lower()
     assert rec.get("modality") == "appearance" or rec.get("status") in {
         "SUCCESS",
         "NO_RESULT",

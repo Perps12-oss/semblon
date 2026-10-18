@@ -109,7 +109,7 @@ def search_face(store: Path, run_id: str, face_id: str) -> dict:
     }
 
 
-_FACE_SIMILAR_BASIS = "Face (embedding · same pack)"
+_FACE_SIMILAR_BASIS = "Same face"
 _FACE_SIMILAR_NOTE = (
     "Face similarity is not a name. Semblon does not auto-assign a person."
 )
@@ -339,28 +339,37 @@ def _failed_item(conn, item_id: str) -> dict | None:
     }
 
 
+# Whole-image Similar picks a space on purpose. Region crops are not that space.
+_WHOLE_MODALITY_RANK = {"scene": 0, "clip": 1, "appearance": 2}
+
+
 def non_face_item_for_media(store: Path, media_id: str) -> str | None:
-    """First non-face embedding item on a media row — seed for whole-image (B) search."""
+    """Intentional whole-image seed. Scene, then CLIP, then colour. Never lowest UUID."""
     mid = (media_id or "").strip()
     if not mid:
         return None
     conn = _open_ro(store)
     try:
-        row = conn.execute(
-            """SELECT e.item_id
+        rows = conn.execute(
+            """SELECT e.item_id, e.modality
                FROM embeddings e
                JOIN observation_items i ON i.item_id = e.item_id
                JOIN observations o ON o.observation_id = i.observation_id
-               WHERE o.media_id=? AND e.modality != 'face'
-               ORDER BY e.item_id
-               LIMIT 1""",
+               WHERE o.media_id=? AND e.modality NOT IN ('face', 'region')""",
             (mid,),
-        ).fetchone()
+        ).fetchall()
     finally:
         conn.close()
-    if row is None:
+    if not rows:
         return None
-    return str(row["item_id"] if hasattr(row, "keys") else row[0])
+
+    def _rank(row) -> tuple[int, str]:
+        modality = str(row["modality"] if hasattr(row, "keys") else row[1])
+        item_id = str(row["item_id"] if hasattr(row, "keys") else row[0])
+        return (_WHOLE_MODALITY_RANK.get(modality, 50), item_id)
+
+    best = sorted(rows, key=_rank)[0]
+    return str(best["item_id"] if hasattr(best, "keys") else best[0])
 
 
 def media_ids_for_items(store: Path, item_ids: list[str]) -> dict[str, str]:
@@ -389,14 +398,18 @@ def media_ids_for_items(store: Path, item_ids: list[str]) -> dict[str, str]:
 
 
 def _whole_image_basis_label(modality: str | None, pack_id: str | None) -> str:
-    """Product label for whole-image Similar. Colour histogram is not semantics."""
+    """Product label for whole-image Similar. Colour is named only when it is colour."""
+    from semblon.region_encoder import LABEL_COLOUR, LABEL_SIMILAR
+
     mod = str(modality or "").strip().lower()
     pack = str(pack_id or "").strip().lower()
-    if mod == "appearance" or pack.startswith("appearance/") or "color" in pack:
-        return "Whole photo (colour histogram · appearance)"
+    if mod in {"scene", "clip"}:
+        return LABEL_SIMILAR
+    if mod == "appearance" or pack.startswith("appearance/") or "color" in pack or "colour" in pack:
+        return LABEL_COLOUR
     if mod:
-        return f"Whole photo ({mod} · search_similar)"
-    return "Whole photo (search_similar)"
+        return LABEL_SIMILAR
+    return LABEL_COLOUR
 
 
 def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict:
@@ -414,7 +427,7 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
             "reason": "Open a photo, then search Whole image — or type a media id.",
             "error_id": "similar.NO_MEDIA",
             "note": "Whole-image similarity is not identity.",
-            "similarity_basis": "Whole photo (colour histogram · appearance)",
+            "similarity_basis": "Colour only",
         }
     item = non_face_item_for_media(store, mid)
     if item is None:
@@ -432,22 +445,58 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
             ),
             "error_id": "similar.NO_EMBEDDING",
             "note": "Whole-image similarity is not identity.",
-            "similarity_basis": "Whole photo (colour histogram · appearance)",
+            "similarity_basis": "Colour only",
             "media_ids": [],
         }
-    rec = search_similar(store, item, limit=limit)
+    from semblon.region_encoder import COLOUR_SCORE_FLOOR, PROVIDER, SCENE_SCORE_FLOOR
+
+    modality_row = None
+    conn = _open_ro(store)
+    try:
+        modality_row = conn.execute(
+            "SELECT modality FROM embeddings WHERE item_id=?",
+            (item,),
+        ).fetchone()
+    finally:
+        conn.close()
+    modality_name = str(modality_row["modality"] if modality_row is not None else "")
+    floor = COLOUR_SCORE_FLOOR if modality_name == "appearance" else SCENE_SCORE_FLOOR
+    rec = search_similar(store, item, limit=max(limit * 4, limit), min_score=floor)
     rec["similarity_basis"] = _whole_image_basis_label(rec.get("modality"), rec.get("pack_id"))
+    rec["engine"] = "color-hist" if str(rec.get("modality") or "") == "appearance" else PROVIDER
     rec["seed_media_id"] = mid
     item_ids = [str(it.get("item_id")) for it in (rec.get("items") or []) if it.get("item_id")]
     mid_map = media_ids_for_items(store, item_ids)
+    kept: list[dict] = []
+    seen: set[str] = set()
     for it in rec.get("items") or []:
-        if isinstance(it, dict) and it.get("item_id") in mid_map:
-            it["media_id"] = mid_map[it["item_id"]]
-    rec["media_ids"] = [mid_map[i] for i in item_ids if i in mid_map]
+        if not isinstance(it, dict) or it.get("item_id") not in mid_map:
+            continue
+        media_id = mid_map[it["item_id"]]
+        if media_id == mid or media_id in seen:
+            continue
+        seen.add(media_id)
+        it["media_id"] = media_id
+        kept.append(it)
+        if len(kept) >= limit:
+            break
+    rec["items"] = kept
+    rec["count"] = len(kept)
+    rec["media_ids"] = [it["media_id"] for it in kept]
+    if rec.get("status") == "SUCCESS" and not kept:
+        rec["status"] = "NO_RESULT"
+        rec["reason"] = "Searched your library and nothing else was close enough."
     return rec
 
 
-def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index: bool = False) -> dict:
+def search_similar(
+    store: Path,
+    item_id: str,
+    *,
+    limit: int = 10,
+    require_index: bool = False,
+    min_score: float | None = None,
+) -> dict:
     """Modality-scoped nearest items. Face identity is forbidden here.
 
     A derived matrix index, when present, is an exact dot-product scan — not an
@@ -525,6 +574,8 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index:
                     )
                 except CompareError:
                     continue
+                if min_score is not None and float(s) < float(min_score):
+                    continue
                 scored.append(
                     {
                         "item_id": o["item_id"],
@@ -536,6 +587,8 @@ def search_similar(store: Path, item_id: str, *, limit: int = 10, require_index:
                 )
     finally:
         conn.close()
+    if min_score is not None:
+        scored = [row for row in scored if float(row.get("score") or 0.0) >= float(min_score)]
     scored.sort(key=lambda x: -x["score"])
     items = scored[:limit]
     note = "Similar looking is not the same as a named person."
