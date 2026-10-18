@@ -1,6 +1,8 @@
 # Open-vocabulary interactive visual understanding
 
-**Status:** vertical slice on production Canvas (non-identity observation layer)  
+**Production UI:** PySide6 `semblon shell` (`semblon/native_shell`). The Canvas / Tk paths in the table below are historical.
+
+**Status:** historical Canvas slice (non-identity observation layer). Production door is PySide6 `semblon shell`.  
 **Authority:** observation extras under `SEM-ARCH-V1.4` / PRODUCT Level 2; identity firewall unchanged  
 **Not:** a second GUI, SAM3-as-architecture, or automatic person naming
 

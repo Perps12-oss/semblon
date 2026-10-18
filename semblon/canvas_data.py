@@ -194,6 +194,21 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
             continue
         if it.get("bbox_x1") is None:
             continue
+        payload = it.get("payload") if isinstance(it.get("payload"), dict) else None
+        if payload is None:
+            raw_payload = it.get("payload_json")
+            if isinstance(raw_payload, str) and raw_payload:
+                try:
+                    import json
+
+                    parsed = json.loads(raw_payload)
+                    payload = parsed if isinstance(parsed, dict) else {}
+                except json.JSONDecodeError:
+                    payload = {}
+            else:
+                payload = {}
+        if payload.get("display") is False:
+            continue
         lane = lane_by_item.get(it.get("item_id"))
         tag = it.get("provider") or it.get("kind") or "item"
         if lane:
