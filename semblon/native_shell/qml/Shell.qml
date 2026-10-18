@@ -2657,35 +2657,42 @@ ApplicationWindow {
             Item {
                 id: selectionShade
                 objectName: "selectionShade"
-                anchors.fill: parent
+                readonly property var origin: regionDrag.contentOrigin()
+                readonly property real localX: selectionOutline.x - x
+                readonly property real localY: selectionOutline.y - y
                 visible: selectionOutline.visible
+                x: photo.paintedWidth > 1 ? photo.x + origin.x : 0
+                y: photo.paintedHeight > 1 ? photo.y + origin.y : 0
+                width: photo.paintedWidth > 1 ? photo.paintedWidth : 0
+                height: photo.paintedHeight > 1 ? photo.paintedHeight : 0
+                clip: true
                 z: 1
 
                 Rectangle {
                     x: 0
                     y: 0
                     width: parent.width
-                    height: Math.max(0, selectionOutline.y)
+                    height: Math.max(0, selectionShade.localY)
                     color: Qt.rgba(0, 0, 0, 0.5)
                 }
                 Rectangle {
                     x: 0
-                    y: selectionOutline.y + selectionOutline.height
+                    y: selectionShade.localY + selectionOutline.height
                     width: parent.width
-                    height: Math.max(0, parent.height - (selectionOutline.y + selectionOutline.height))
+                    height: Math.max(0, parent.height - (selectionShade.localY + selectionOutline.height))
                     color: Qt.rgba(0, 0, 0, 0.5)
                 }
                 Rectangle {
                     x: 0
-                    y: selectionOutline.y
-                    width: Math.max(0, selectionOutline.x)
+                    y: Math.max(0, selectionShade.localY)
+                    width: Math.max(0, selectionShade.localX)
                     height: selectionOutline.height
                     color: Qt.rgba(0, 0, 0, 0.5)
                 }
                 Rectangle {
-                    x: selectionOutline.x + selectionOutline.width
-                    y: selectionOutline.y
-                    width: Math.max(0, parent.width - (selectionOutline.x + selectionOutline.width))
+                    x: selectionShade.localX + selectionOutline.width
+                    y: Math.max(0, selectionShade.localY)
+                    width: Math.max(0, parent.width - (selectionShade.localX + selectionOutline.width))
                     height: selectionOutline.height
                     color: Qt.rgba(0, 0, 0, 0.5)
                 }
@@ -2713,18 +2720,6 @@ ApplicationWindow {
                 border.color: "white"
                 border.width: 1
                 z: 3
-
-                Repeater {
-                    model: 4
-                    delegate: Rectangle {
-                        objectName: "selectionGrid"
-                        color: "white"
-                        x: index < 2 ? ((index + 1) * parent.width / 3) : 0
-                        y: index < 2 ? 0 : ((index - 1) * parent.height / 3)
-                        width: index < 2 ? 1 : parent.width
-                        height: index < 2 ? parent.height : 1
-                    }
-                }
             }
 
             Repeater {

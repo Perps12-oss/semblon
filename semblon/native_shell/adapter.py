@@ -281,7 +281,7 @@ class ArchiveAdapter:
         if basis == "face":
             basis_label = str(rec.get("similarity_basis") or "Same face")
             engine = str(rec.get("engine") or "face-embed")
-            empty_msg = f"Similar ({basis_label}): no matches above the line."
+            empty_msg = f"Similar ({basis_label}): nothing close enough."
             ready_msg = f"Similar ({basis_label}): {len(items)} matches."
         else:
             basis_label = str(rec.get("similarity_basis") or "Colour only")
@@ -290,7 +290,7 @@ class ArchiveAdapter:
                 empty_msg = f"Similar ({basis_label}): no colour histogram matches."
                 ready_msg = f"Similar ({basis_label}): {len(items)} colour histogram matches."
             else:
-                empty_msg = f"Similar ({basis_label}): no matches above the line."
+                empty_msg = f"Similar ({basis_label}): nothing close enough."
                 noun = "match" if len(items) == 1 else "matches"
                 ready_msg = f"Similar ({basis_label}): {len(items)} {noun}."
         meta = {"basis": basis, "basis_label": basis_label, "engine": engine, "items": []}
