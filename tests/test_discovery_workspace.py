@@ -103,7 +103,12 @@ def test_selection_survives_restore_and_states_are_distinct(tmp_path, monkeypatc
         assert bridge.similarCaution.startswith("A match is a similar region")
         assert "proof" in bridge.similarCaution
         root = engine.rootObjects()[0]
-        assert root.findChild(QObject, "selectionOutline") is not None
+        outline = root.findChild(QObject, "selectionOutline")
+        assert outline is not None
+        assert outline.property("color").alpha() == 0
+        shade = root.findChild(QObject, "selectionShade")
+        assert shade is not None
+        assert shade.property("visible") is True
         assert root.findChild(QObject, "searchThisArea") is not None
         assert root.findChild(QObject, "cancelSearch") is not None
         assert root.findChild(QObject, "indexNote") is not None

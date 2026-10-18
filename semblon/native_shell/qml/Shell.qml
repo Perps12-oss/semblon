@@ -2653,6 +2653,43 @@ ApplicationWindow {
                 }
             }
 
+            Item {
+                id: selectionShade
+                objectName: "selectionShade"
+                anchors.fill: parent
+                visible: selectionOutline.visible
+                z: 1
+
+                Rectangle {
+                    x: 0
+                    y: 0
+                    width: parent.width
+                    height: Math.max(0, selectionOutline.y)
+                    color: Qt.rgba(0, 0, 0, 0.5)
+                }
+                Rectangle {
+                    x: 0
+                    y: selectionOutline.y + selectionOutline.height
+                    width: parent.width
+                    height: Math.max(0, parent.height - (selectionOutline.y + selectionOutline.height))
+                    color: Qt.rgba(0, 0, 0, 0.5)
+                }
+                Rectangle {
+                    x: 0
+                    y: selectionOutline.y
+                    width: Math.max(0, selectionOutline.x)
+                    height: selectionOutline.height
+                    color: Qt.rgba(0, 0, 0, 0.5)
+                }
+                Rectangle {
+                    x: selectionOutline.x + selectionOutline.width
+                    y: selectionOutline.y
+                    width: Math.max(0, parent.width - (selectionOutline.x + selectionOutline.width))
+                    height: selectionOutline.height
+                    color: Qt.rgba(0, 0, 0, 0.5)
+                }
+            }
+
             Rectangle {
                 id: selectionOutline
                 objectName: "selectionOutline"
@@ -2671,28 +2708,53 @@ ApplicationWindow {
                 height: regionDrag.hasRect
                         ? regionDrag.rh
                         : Math.max(2, (shellReady ? shellApi.selectionH : 0) * photo.paintedHeight)
-                color: tokenAccentDim
-                border.color: tokenAccent
-                border.width: 2
+                color: "transparent"
+                border.color: "white"
+                border.width: 1
                 z: 3
+
+                Repeater {
+                    model: 4
+                    delegate: Rectangle {
+                        objectName: "selectionGrid"
+                        color: "white"
+                        x: index < 2 ? ((index + 1) * parent.width / 3) : 0
+                        y: index < 2 ? 0 : ((index - 1) * parent.height / 3)
+                        width: index < 2 ? 1 : parent.width
+                        height: index < 2 ? parent.height : 1
+                    }
+                }
             }
 
             Repeater {
                 model: 4
-                delegate: Rectangle {
+                delegate: Item {
                     objectName: "selectionHandle"
                     visible: selectionOutline.visible
-                    width: 12
-                    height: 12
-                    radius: 2
+                    readonly property int arm: 18
+                    readonly property int thick: 3
+                    readonly property bool rightSide: index % 2 === 1
+                    readonly property bool bottomSide: index >= 2
+                    width: arm
+                    height: arm
                     z: 6
-                    x: selectionOutline.x + ((index % 2) * selectionOutline.width) - 6
-                    y: selectionOutline.y + ((index < 2 ? 0 : 1) * selectionOutline.height) - 6
-                    color: tokenAccent
-                    border.color: tokenText
-                    border.width: 1
+                    x: selectionOutline.x + (rightSide ? selectionOutline.width - arm : 0)
+                    y: selectionOutline.y + (bottomSide ? selectionOutline.height - arm : 0)
                     Accessible.name: "Resize selection"
                     Accessible.role: Accessible.Button
+
+                    Rectangle {
+                        y: parent.bottomSide ? parent.height - parent.thick : 0
+                        width: parent.arm
+                        height: parent.thick
+                        color: "white"
+                    }
+                    Rectangle {
+                        x: parent.rightSide ? parent.width - parent.thick : 0
+                        width: parent.thick
+                        height: parent.arm
+                        color: "white"
+                    }
                 }
             }
 
