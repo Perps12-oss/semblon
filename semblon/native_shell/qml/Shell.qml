@@ -163,6 +163,10 @@ ApplicationWindow {
         }
     }
     Shortcut {
+        sequence: "Ctrl+Shift+S"
+        onActivated: if (shellReady) shellApi.startScreenQuery()
+    }
+    Shortcut {
         sequence: "Ctrl+,"
         onActivated: if (shellReady) shellApi.toggleSettings()
     }
@@ -2868,6 +2872,33 @@ ApplicationWindow {
                         Accessible.name: "Install required model"
                         Accessible.role: Accessible.Button
                         onClicked: if (shellReady) shellApi.installSuggestedModel()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "screenQueryAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && !shellApi.searchBusy
+                    radius: 6
+                    color: screenQueryHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Query screen"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: screenQueryHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Query screen"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.startScreenQuery()
                     }
                 }
 

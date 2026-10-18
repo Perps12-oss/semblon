@@ -2724,6 +2724,78 @@ class ShellBridge(QObject):
         lines = rec.get("lines") or [rec.get("reason") or "Nothing was searched."]
         self._set_result(_ask_lines(lines, self._mode))
 
+    @Slot()
+    def startScreenQuery(self) -> None:
+        """SQ-3: transient desktop selection routed into the same discovery strip."""
+        if self._search_busy:
+            self._apply_result(Result("unavailable", "A search is already running."))
+            return
+        try:
+            from semblon.native_shell.screen_query_overlay import (
+                ScreenSelectionUnavailable,
+                select_screen_region,
+            )
+
+            rect = select_screen_region()
+        except ScreenSelectionUnavailable as exc:
+            self._set_install_suggestion("", "")
+            self._publish_similar(
+                "unavailable",
+                f"Screen query: {exc}",
+                [],
+                basis="region",
+                basis_label="Similar look",
+                persist=False,
+            )
+            return
+        if rect is None:
+            self._apply_result(Result("empty", "Screen query cancelled."))
+            return
+        x, y, w, h = rect
+        self._query_focus_id = ""
+        self._region_norm = None
+        self._selection_kind = "region"
+        self._selection_note = "Screen selection."
+        self.selectionChanged.emit()
+        adapter = self._adapter
+        jobs = self._jobs
+
+        def build(flag):
+            rec = jobs.query_screen(
+                x,
+                y,
+                w,
+                h,
+                limit=10,
+                selection_kind="region",
+                cancelled=lambda: bool(flag[0]),
+            )
+            if flag[0]:
+                return None
+            similar = rec.get("similar")
+            if not isinstance(similar, dict):
+                reason = str(rec.get("reason") or "Screen capture did not run. Nothing was searched.")
+                return Result(
+                    "unavailable",
+                    f"Similar (Similar look): {reason}",
+                    {
+                        "basis": "region",
+                        "basis_label": "Similar look",
+                        "engine": "screen",
+                        "items": [],
+                        "error_id": "screen.NO_CAPTURE",
+                    },
+                )
+            result = adapter.similar_region({"similar": similar})
+            lines = rec.get("lines") or []
+            understanding = _screen_understanding(lines)
+            data = dict(result.data or {})
+            if understanding:
+                data["understanding"] = understanding
+            return Result(result.state, result.message, data)
+
+        self._start_visual_search(basis="region", label="Similar look", build=build)
+
     @Slot(float, float, float, float)
     def setRegion(self, nx: float, ny: float, nw: float, nh: float) -> None:
         """Normalized image-space rectangle from the focus view. Not a widget image."""
@@ -3670,4 +3742,16 @@ def _ask_lines(lines, mode: str) -> str:
             continue
         kept.append(text)
     return "\n".join(kept) or "Nothing was searched."
+
+
+def _screen_understanding(lines) -> str:
+    for line in lines:
+        text = str(line or "").strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if lowered == "lens" or lowered.startswith("selected area"):
+            continue
+        return text
+    return "Screen selection."
 
