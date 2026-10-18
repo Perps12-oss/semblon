@@ -1,6 +1,7 @@
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("SEMBLON_SEARCH_SYNC", "1")
 # Must precede QApplication / Controls registration (Linux CI QQuickStyle ordering).
 os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
 

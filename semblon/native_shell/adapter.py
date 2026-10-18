@@ -294,6 +294,8 @@ class ArchiveAdapter:
                 noun = "match" if len(items) == 1 else "matches"
                 ready_msg = f"Similar ({basis_label}): {len(items)} {noun}."
         meta = {"basis": basis, "basis_label": basis_label, "engine": engine, "items": []}
+        if rec.get("error_id"):
+            meta["error_id"] = str(rec.get("error_id"))
         if rec.get("understanding"):
             meta["understanding"] = str(rec.get("understanding"))
         if status == "UNAVAILABLE":
