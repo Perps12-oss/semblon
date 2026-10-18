@@ -588,6 +588,31 @@ class ArchiveAdapter:
             raise AdapterError("model.INSTALL", str(exc)) from exc
         return Result("ready", "Model file: installed locally.", {"path": rec.get("path"), "state": rec.get("state")})
 
+    def install_region_pack(self) -> Result:
+        """User-confirmed one-click installer for the pinned region encoder."""
+        from semblon.region_pack_install import RegionPackInstallError, install_region_pack
+
+        try:
+            rec = install_region_pack()
+        except RegionPackInstallError as exc:
+            raise AdapterError("region_pack.INSTALL", str(exc), state="unavailable") from exc
+        changed = bool(rec.get("changed"))
+        message = (
+            "Region model installed. Similar look will retry now."
+            if changed
+            else "Region model already installed. Similar look will retry now."
+        )
+        return Result(
+            "ready",
+            message,
+            {
+                "path": rec.get("path"),
+                "sha256": rec.get("sha256"),
+                "state": rec.get("state"),
+                "changed": changed,
+            },
+        )
+
     def named_items(self) -> Result:
         """User-drawn regions. These are not people and do not confirm identity."""
         rows = self._app.regions()

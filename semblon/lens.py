@@ -684,6 +684,29 @@ def query_screen(
     blocked=None,
 ) -> QueryReport:
     """Selection on the Windows screen, then the same query pipeline as a file."""
+    report, _image = query_screen_with_image(
+        x,
+        y,
+        w,
+        h,
+        capabilities=capabilities,
+        vlm_generate=vlm_generate,
+        blocked=blocked,
+    )
+    return report
+
+
+def query_screen_with_image(
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    *,
+    capabilities: tuple[str, ...] | None = None,
+    vlm_generate=None,
+    blocked=None,
+) -> tuple[QueryReport, np.ndarray | None]:
+    """Screen selection query plus captured pixels for downstream local retrieval."""
     captured, image = capture_screen(x, y, w, h, blocked=blocked)
     region = {"x": int(x), "y": int(y), "w": int(w), "h": int(h), "translated": False}
     if image is None:
@@ -696,10 +719,13 @@ def query_screen(
             )
             for cap in wanted
         ]
-        return QueryReport(
-            source="screen",
-            results=(captured, *blocked),
-            region=region,
+        return (
+            QueryReport(
+                source="screen",
+                results=(captured, *blocked),
+                region=region,
+            ),
+            None,
         )
     inner = query_image(
         image,
@@ -707,11 +733,14 @@ def query_screen(
         source="screen",
         vlm_generate=vlm_generate,
     )
-    return QueryReport(
-        source="screen",
-        results=(captured, *inner.results),
-        region=region,
-        embeddings=inner.embeddings,
+    return (
+        QueryReport(
+            source="screen",
+            results=(captured, *inner.results),
+            region=region,
+            embeddings=inner.embeddings,
+        ),
+        image,
     )
 
 

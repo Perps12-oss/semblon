@@ -108,6 +108,23 @@ class _VisualSearchThread(QThread):
             self.failed.emit(self._generation, str(exc) or "search failed")
 
 
+class _TaskThread(QThread):
+    """One background task that returns a Result-like object."""
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, fn, parent=None):
+        super().__init__(parent)
+        self._fn = fn
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._fn())
+        except Exception as exc:  # noqa: BLE001 — UI translates this to a safe message
+            self.failed.emit(str(exc) or "task failed")
+
+
 class ShellBridge(QObject):
     lensChanged = Signal()
     focusChanged = Signal()
@@ -154,6 +171,9 @@ class ShellBridge(QObject):
         self._search_thread: _VisualSearchThread | None = None
         self._cancel_flag: list[bool] | None = None
         self._search_failure = ""
+        self._install_suggestion = ""
+        self._install_suggestion_label = ""
+        self._install_thread: _TaskThread | None = None
         self._index_state = ""
         self._index_note = ""
         self._progress_seen: int | None = None
@@ -242,6 +262,9 @@ class ShellBridge(QObject):
         thread = self._search_thread
         if thread is not None and thread.isRunning():
             thread.wait(2000)
+        install = self._install_thread
+        if install is not None and install.isRunning():
+            install.wait(2000)
         jobs = getattr(self, "_jobs", None)
         engine = getattr(jobs, "engine", None) if jobs is not None else None
         if engine is not None and hasattr(engine, "shutdown"):
@@ -1036,6 +1059,14 @@ class ShellBridge(QObject):
         """User-facing basis for the open results strip (distinct per door)."""
         return self._similar_basis_label
 
+    @Property(bool, notify=similarChanged)
+    def installSuggestionVisible(self) -> bool:
+        return bool(self._install_suggestion)
+
+    @Property(str, notify=similarChanged)
+    def installSuggestionLabel(self) -> str:
+        return self._install_suggestion_label or "Install required model"
+
     @Property(str, notify=similarChanged)
     def selectionNote(self) -> str:
         """How the current box was chosen. Plain language, not a model id."""
@@ -1242,6 +1273,7 @@ class ShellBridge(QObject):
         """Publish looking immediately, then run build(cancel_flag) off the UI thread."""
         if self._cancel_flag is not None:
             self._cancel_flag[0] = True
+        self._set_install_suggestion("", "")
         self._search_generation += 1
         generation = self._search_generation
         flag = [False]
@@ -1402,6 +1434,19 @@ class ShellBridge(QObject):
         self._similar_note = ""
         self._similar_basis = ""
         self._similar_basis_label = ""
+        self._set_install_suggestion("", "")
+        self.similarChanged.emit()
+
+    def _set_install_suggestion(self, action: str, label: str = "") -> None:
+        next_action = str(action or "")
+        next_label = str(label or "")
+        if (
+            next_action == self._install_suggestion
+            and next_label == self._install_suggestion_label
+        ):
+            return
+        self._install_suggestion = next_action
+        self._install_suggestion_label = next_label
         self.similarChanged.emit()
 
     def _publish_similar(
@@ -1635,13 +1680,18 @@ class ShellBridge(QObject):
         note = result.message if result.message else "Similar search could not run."
         error_id = str((result.data or {}).get("error_id") or "")
         label = str((result.data or {}).get("basis_label") or self._similar_basis_label or "Similar look")
+        install_action = ""
+        install_label = ""
         if state == "unavailable" and error_id == "region.NO_PACK":
             note = f"Similar ({label}): the region model is not installed."
+            install_action = "region_pack"
+            install_label = "Install region model"
         elif state == "unavailable" and error_id == "region.NO_PATCH_INDEX":
             note = f"Similar ({label}): these photos are not indexed for region search yet."
         elif error_id in {"region.ENCODE", "region.NO_IMAGE", "region.NO_STORE"}:
             state = "error"
             note = f"Similar ({label}): search failed."
+        self._set_install_suggestion(install_action, install_label)
         self._result_text = ""
         self.resultChanged.emit()
         self._publish_similar(
@@ -3300,6 +3350,79 @@ class ShellBridge(QObject):
         )
         self._apply_result(result)
         return self._notice
+
+    @Slot(result=str)
+    def installSuggestedModel(self) -> str:
+        """Install the currently suggested missing model, then retry the active query."""
+        if self._install_suggestion != "region_pack":
+            self._apply_result(Result("empty", "No install action is available right now."))
+            return self._notice
+        answer = QMessageBox.question(
+            None,
+            "Install region model?",
+            (
+                "Semblon will download and install the pinned local region model now.\n\n"
+                "Continue?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self._apply_result(Result("empty", "Model install cancelled."))
+            return self._notice
+        if self._install_thread is not None and self._install_thread.isRunning():
+            self._apply_result(Result("loading", "Model install is already running."))
+            return self._notice
+        basis = self._similar_basis or "region"
+        label = self._similar_basis_label or "Similar look"
+        self._set_install_suggestion("", "")
+        self._publish_similar(
+            "loading",
+            f"Similar ({label}): installing required model.",
+            [],
+            basis=basis,
+            basis_label=label,
+            persist=False,
+        )
+        thread = _TaskThread(lambda: self._adapter.install_region_pack(), self)
+        thread.succeeded.connect(self._on_install_suggested_ready)
+        thread.failed.connect(self._on_install_suggested_failed)
+        self._install_thread = thread
+        thread.start()
+        return self._notice
+
+    @Slot(object)
+    def _on_install_suggested_ready(self, payload) -> None:
+        self._install_thread = None
+        result = payload if isinstance(payload, Result) else Result("ready", "Region model installed.")
+        self._apply_result(result)
+        if self._session.focus_id and self._region_norm:
+            self.findSimilar()
+            return
+        label = self._similar_basis_label or "Similar look"
+        self._publish_similar(
+            "empty",
+            f"Similar ({label}): model is ready. Search this area again.",
+            [],
+            basis=self._similar_basis or "region",
+            basis_label=label,
+            persist=False,
+        )
+
+    @Slot(str)
+    def _on_install_suggested_failed(self, message: str) -> None:
+        self._install_thread = None
+        label = self._similar_basis_label or "Similar look"
+        self._set_install_suggestion("region_pack", "Install region model")
+        self._publish_similar(
+            "unavailable",
+            f"Similar ({label}): model install failed.",
+            [],
+            basis=self._similar_basis or "region",
+            basis_label=label,
+            persist=False,
+        )
+        self._apply_result(Result("unavailable", str(message or "Model install failed.")))
 
     @Slot()
     def findSimilarWhole(self) -> None:

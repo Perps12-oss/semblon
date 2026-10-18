@@ -2842,6 +2842,36 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    objectName: "installSuggestedModel"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady
+                             && shellApi.installSuggestionVisible
+                             && similarStateSafe === "unavailable"
+                             && !shellApi.searchBusy
+                    radius: 6
+                    color: installSuggestedModelHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: shellReady ? shellApi.installSuggestionLabel : "Install required model"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: installSuggestedModelHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Install required model"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.installSuggestedModel()
+                    }
+                }
+
+                Rectangle {
                     width: parent.width
                     height: 32
                     radius: 6
