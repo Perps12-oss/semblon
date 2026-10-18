@@ -345,7 +345,7 @@ Item {
                             }
                             Connections {
                                 target: dayHover
-                                function onContainsMouseChanged() { requestPaint() }
+                                function onContainsMouseChanged() { parent.requestPaint() }
                             }
                             Component.onCompleted: requestPaint()
                         }

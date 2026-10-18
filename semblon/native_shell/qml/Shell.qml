@@ -269,7 +269,7 @@ ApplicationWindow {
                         Component.onCompleted: requestPaint()
                         Connections {
                             target: window
-                            function onSidebarCollapsedChanged() { requestPaint() }
+                            function onSidebarCollapsedChanged() { parent.requestPaint() }
                         }
                     }
 
