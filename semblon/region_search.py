@@ -1,11 +1,14 @@
 """Find similar from a persisted user box.
 
-Primary space: indexed region embeddings from the installed local encoder
-(same pack and preprocess as the query crop). Colour histograms are the
-labelled fallback when that encoder or its index is absent.
+Primary space: dense DINOv2 content patches of each indexed frame, scored
+against the query crop by late interaction. A pointed region can match a
+place that was never one of the proposal boxes. Proposal CLS crops remain
+the fallback when that patch map is absent. Colour histograms are the
+labelled fallback when the encoder itself is absent.
 
 Does not write an embedding row for the query. Does not create a sibling item.
-Face identity is forbidden. A region query never scans whole-frame vectors.
+Face identity is forbidden. A region query never scans whole-frame scene vectors
+and never writes faces.person_id.
 """
 
 from __future__ import annotations
@@ -20,16 +23,24 @@ from semblon.compare import CompareError, compare_space
 from semblon.observers import APPEARANCE_DIM, APPEARANCE_PACK, color_histogram
 from semblon.region_encoder import (
     COLOUR_SCORE_FLOOR,
+    KNOWN_SHA256,
     LABEL_COLOUR,
     LABEL_SIMILAR,
     LABEL_TEXT,
     LABEL_UNKNOWN,
+    MODALITY_PATCH,
     MODALITY_REGION,
+    PATCH_COVERAGE_FLOOR,
+    PATCH_SCORE_FLOOR,
+    PATCH_TOKEN_FLOOR,
     PROVIDER,
     REGION_SCORE_FLOOR,
+    WEIGHT_NAME,
     RegionPackError,
     active_pack,
+    content_patch_records,
     embed_bgr,
+    pack_id_patches,
     probe_region_pack,
 )
 from semblon.user_region import RegionError, persist_user_region
@@ -387,6 +398,275 @@ def _colour_result(store: Path, crop, *, limit: int, exclude_media_id: str | Non
     return rec
 
 
+def describe_selection(store: Path, media_id: str, x: int, y: int, w: int, h: int) -> str:
+    """What this selection is, in plain language. Never a person name.
+
+    Order: a face box that contains the centre, then a detector class
+    (contour boxes are geometry, not a class), then overlapping OCR text,
+    otherwise an unlabelled region.
+    """
+    path = Path(store)
+    if not path.is_file() or not media_id:
+        return "Unlabelled region."
+    cx = float(x) + float(w) / 2.0
+    cy = float(y) + float(h) / 2.0
+    conn = _open_ro(path)
+    try:
+        faces = conn.execute(
+            """SELECT f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2
+               FROM faces f
+               JOIN observations o ON o.observation_id = f.observation_id
+               WHERE o.media_id=?""",
+            (media_id,),
+        ).fetchall()
+        objects = conn.execute(
+            """SELECT i.payload_json, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2, i.provider
+               FROM observation_items i
+               JOIN observations o ON o.observation_id = i.observation_id
+               WHERE o.media_id=? AND i.kind='object'""",
+            (media_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    for row in faces:
+        if _point_in_box(cx, cy, row["bbox_x1"], row["bbox_y1"], row["bbox_x2"], row["bbox_y2"]):
+            return "Face in the selection. Not a named person."
+    for row in objects:
+        if row["bbox_x1"] is None:
+            continue
+        if not _point_in_box(cx, cy, row["bbox_x1"], row["bbox_y1"], row["bbox_x2"], row["bbox_y2"]):
+            continue
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if str(payload.get("source") or "") == "contour":
+            continue
+        label = str(payload.get("label") or payload.get("class") or "").strip()
+        if not label or label.lower() == "region":
+            continue
+        return f"Object: {label}."
+    text = overlapping_text(store, media_id, x, y, w, h)
+    token = _text_query_token(text)
+    if token:
+        return f"Text: {token}."
+    return "Unlabelled region."
+
+
+def _point_in_box(px: float, py: float, x1, y1, x2, y2) -> bool:
+    if x1 is None or y1 is None or x2 is None or y2 is None:
+        return False
+    return float(x1) <= px <= float(x2) and float(y1) <= py <= float(y2)
+
+
+def _union_box(boxes: list[tuple[float, float, float, float]]) -> tuple[float, float, float, float]:
+    return (
+        min(box[0] for box in boxes),
+        min(box[1] for box in boxes),
+        max(box[2] for box in boxes),
+        max(box[3] for box in boxes),
+    )
+
+
+def _norm_box(box: tuple[float, float, float, float], width: int, height: int) -> list[float]:
+    if width <= 0 or height <= 0:
+        return [0.0, 0.0, 0.0, 0.0]
+    x1, y1, x2, y2 = box
+    nx = max(0.0, min(1.0, x1 / float(width)))
+    ny = max(0.0, min(1.0, y1 / float(height)))
+    nw = max(0.0, min(1.0 - nx, (x2 - x1) / float(width)))
+    nh = max(0.0, min(1.0 - ny, (y2 - y1) / float(height)))
+    return [nx, ny, nw, nh]
+
+
+def search_patches(
+    store: Path,
+    crop,
+    *,
+    limit: int = 10,
+    exclude_media_id: str | None = None,
+    cancelled=None,
+    keep_weak: bool = False,
+) -> dict:
+    """Late interaction of the query crop against stored content patches.
+
+    Score is the mean, over query patches, of the best cosine in the other
+    photo. The match box is the union of those winning patches. Proposal
+    rows are not read.
+    """
+    ready, missing = probe_region_pack()
+    empty = {
+        "kind": "region_similar",
+        "status": "UNAVAILABLE",
+        "reason": missing or "Region encoder is not installed.",
+        "error_id": "region.NO_PACK",
+        "count": 0,
+        "items": [],
+        "modality": MODALITY_PATCH,
+        "pack_id": None,
+        "indexed": False,
+        "wrote_embedding": False,
+        "engine": "dinov2-patch",
+        "note": "A patch match is not a named person.",
+    }
+    if not ready:
+        return empty
+    pack = pack_id_patches(KNOWN_SHA256[WEIGHT_NAME])
+    try:
+        _cls, records = content_patch_records(crop)
+    except RegionPackError as exc:
+        empty["reason"] = str(exc)
+        empty["error_id"] = "region.ENCODE"
+        return empty
+    query = np.stack([np.frombuffer(record["blob"], dtype=np.float32).copy() for record in records])
+    if query.size == 0:
+        empty["reason"] = "The selection produced no patches."
+        return empty
+    path = Path(store)
+    if not path.is_file():
+        empty["reason"] = "Store not found. Nothing was searched."
+        empty["error_id"] = "region.NO_STORE"
+        return empty
+    conn = _open_ro(path)
+    try:
+        rows = conn.execute(
+            """SELECT e.embedding, e.embedding_dim, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2,
+                      o.media_id, m.width, m.height
+               FROM embeddings e
+               JOIN observation_items i ON i.item_id = e.item_id
+               JOIN observations o ON o.observation_id = i.observation_id
+               JOIN media m ON m.media_id = o.media_id
+               WHERE e.modality = ? AND e.pack_id = ?""",
+            (MODALITY_PATCH, pack),
+        ).fetchall()
+    finally:
+        conn.close()
+    if not rows:
+        empty["reason"] = (
+            "These photos have no patch map yet. Add the folder again to index regions."
+        )
+        empty["error_id"] = "region.NO_PATCH_INDEX"
+        return empty
+    grouped: dict[str, dict] = {}
+    for row in rows:
+        media_id = str(row["media_id"] or "")
+        if not media_id or media_id == str(exclude_media_id or ""):
+            continue
+        if row["bbox_x1"] is None or int(row["embedding_dim"] or 0) != query.shape[1]:
+            continue
+        bucket = grouped.setdefault(
+            media_id,
+            {"width": int(row["width"] or 0), "height": int(row["height"] or 0), "vecs": [], "boxes": []},
+        )
+        bucket["vecs"].append(np.frombuffer(row["embedding"], dtype=np.float32).copy())
+        bucket["boxes"].append(
+            (float(row["bbox_x1"]), float(row["bbox_y1"]), float(row["bbox_x2"]), float(row["bbox_y2"]))
+        )
+    items: list[dict] = []
+    for media_id, bucket in grouped.items():
+        if cancelled is not None and cancelled():
+            break
+        matrix = np.stack(bucket["vecs"])
+        sims = query @ matrix.T
+        maxes = sims.max(axis=1)
+        score = float(maxes.mean())
+        coverage = float((maxes >= PATCH_TOKEN_FLOOR).mean())
+        above = score >= PATCH_SCORE_FLOOR and coverage >= PATCH_COVERAGE_FLOOR
+        if not above and not keep_weak:
+            continue
+        winners: list[tuple[float, tuple[float, float, float, float]]] = []
+        chosen = sims.argmax(axis=1)
+        for index, column in enumerate(chosen):
+            weight = float(sims[index, column])
+            if weight >= PATCH_TOKEN_FLOOR:
+                winners.append((weight, bucket["boxes"][int(column)]))
+        if not winners:
+            if not keep_weak:
+                continue
+            items.append(
+                {
+                    "item_id": None,
+                    "media_id": media_id,
+                    "kind": "clip",
+                    "provider": PROVIDER,
+                    "score": score,
+                    "match_box": [0.0, 0.0, 0.0, 0.0],
+                    "match_norm": [0.0, 0.0, 0.0, 0.0],
+                    "coverage": coverage,
+                    "above_floor": False,
+                    "why": "patch max-sim below the token line; not a person",
+                }
+            )
+            continue
+        winners.sort(key=lambda item: -item[0])
+        # A tight box. If the winners cover most of the photo, keep the strongest quarter.
+        span = _union_box([box for _weight, box in winners])
+        area = max(0.0, span[2] - span[0]) * max(0.0, span[3] - span[1])
+        frame = float(bucket["width"] * bucket["height"] or 1)
+        if area > 0.55 * frame and len(winners) > 4:
+            keep = max(4, len(winners) // 4)
+            span = _union_box([box for _weight, box in winners[:keep]])
+        x1, y1, x2, y2 = span
+        items.append(
+            {
+                "item_id": None,
+                "media_id": media_id,
+                "kind": "clip",
+                "provider": PROVIDER,
+                "score": score,
+                "match_box": [x1, y1, max(1.0, x2 - x1), max(1.0, y2 - y1)],
+                "match_norm": _norm_box(span, bucket["width"], bucket["height"]),
+                "coverage": coverage,
+                "above_floor": above,
+                "why": "patch max-sim; source excluded; not a person",
+            }
+        )
+    items.sort(key=lambda item: -float(item["score"]))
+    items = items[:limit]
+    if not items:
+        return {
+            "kind": "region_similar",
+            "status": "NO_RESULT",
+            "reason": "Searched the patch maps and nothing matched this selection.",
+            "error_id": None,
+            "count": 0,
+            "items": [],
+            "modality": MODALITY_PATCH,
+            "pack_id": pack,
+            "indexed": True,
+            "wrote_embedding": False,
+            "similarity_basis": LABEL_SIMILAR,
+            "engine": "dinov2-patch",
+            "fallback": None,
+            "note": "A patch match is not a named person.",
+        }
+    return {
+        "kind": "region_similar",
+        "status": "SUCCESS",
+        "reason": "Matching region in your archive. The box marks where it sits.",
+        "error_id": None,
+        "count": len(items),
+        "items": items,
+        "modality": MODALITY_PATCH,
+        "pack_id": pack,
+        "indexed": True,
+        "wrote_embedding": False,
+        "similarity_basis": LABEL_SIMILAR,
+        "engine": "dinov2-patch",
+        "fallback": None,
+        "note": "Patch-map match. Not a name and not colour.",
+    }
+
+
+def _attach_understanding(rec: dict, understanding: str, *, selection_kind: str | None) -> dict:
+    rec["understanding"] = understanding
+    if selection_kind == "unknown" and rec.get("engine") == "dinov2-patch":
+        rec["similarity_basis"] = LABEL_UNKNOWN
+    return rec
+
+
 def find_similar_region(
     store: Path,
     *,
@@ -402,13 +682,16 @@ def find_similar_region(
 ) -> dict:
     crop = crop_bgr(Path(image_path), x, y, w, h)
     pixels = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
+    understanding = describe_selection(store, media_id or "", x, y, w, h)
     stored_text = overlapping_text(store, media_id or "", x, y, w, h) if media_id else ""
     text = stored_text
     if not text and selection_kind == "text":
         # Pointing at text with no stored box still reads the crop. Other selections stay visual.
         text = _ocr_crop_text(crop)
     token = _text_query_token(text)
-    if token and selection_kind != "face":
+    # A text observation is its own door. Any other selection keeps the visual search
+    # and only reports the text as understanding.
+    if token and selection_kind == "text":
         from semblon.search import search_text
 
         text_rec = search_text(store, token, limit=limit)
@@ -421,16 +704,36 @@ def find_similar_region(
         if items:
             rec = _as_text_result(text_rec, token=token)
             rec["query_pixels"] = pixels
-            return rec
-        # A stored text box with no other hit stays a text result. A crop-only
-        # guess with no hit falls through to the visual index.
+            return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
         if stored_text and text_rec.get("status") in {"NO_RESULT", "SUCCESS", "UNAVAILABLE"}:
             rec = _as_text_result(text_rec, token=token)
             rec["status"] = "NO_RESULT"
             rec["query_pixels"] = pixels
-            return rec
+            return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
 
     ready, missing = probe_region_pack()
+    if ready:
+        dense = search_patches(
+            store,
+            crop,
+            limit=limit,
+            exclude_media_id=media_id,
+            cancelled=cancelled,
+        )
+        dense["query_pixels"] = pixels
+        if dense.get("status") in {"SUCCESS", "NO_RESULT"}:
+            return _attach_understanding(dense, understanding, selection_kind=selection_kind)
+        if dense.get("error_id") == "region.ENCODE":
+            colour = _colour_result(
+                store,
+                crop,
+                limit=limit,
+                exclude_media_id=media_id,
+                cancelled=cancelled,
+                reason=str(dense.get("reason") or "The region encoder did not finish. Showing colour only."),
+            )
+            colour["query_pixels"] = pixels
+            return _attach_understanding(colour, understanding, selection_kind=selection_kind)
     pack = active_pack() if ready else None
     if pack is not None:
         pack_id, dim = pack
@@ -453,7 +756,7 @@ def find_similar_region(
                 ),
             )
             colour["query_pixels"] = pixels
-            return colour
+            return _attach_understanding(colour, understanding, selection_kind=selection_kind)
         if blob is not None:
             rec = search_vector(
                 store,
@@ -478,7 +781,7 @@ def find_similar_region(
                     "Visually similar region. Not a claim that it is the same physical object."
                 )
                 rec["note"] = "Region embedding match. Not a name and not colour."
-                return rec
+                return _attach_understanding(rec, understanding, selection_kind=selection_kind)
             colour = _colour_result(
                 store,
                 crop,
@@ -491,7 +794,7 @@ def find_similar_region(
                 ),
             )
             colour["query_pixels"] = pixels
-            return colour
+            return _attach_understanding(colour, understanding, selection_kind=selection_kind)
     colour = _colour_result(
         store,
         crop,
@@ -502,7 +805,7 @@ def find_similar_region(
         or "Region encoder is not installed. Showing colour only.",
     )
     colour["query_pixels"] = pixels
-    return colour
+    return _attach_understanding(colour, understanding, selection_kind=selection_kind)
 
 
 def remember_and_find(

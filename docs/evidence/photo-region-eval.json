@@ -1,0 +1,107 @@
+{
+  "status": "PASS",
+  "method": "DINOv2 ViT-S/14 content patches, late interaction max-sim",
+  "sources": "scikit-image photographs; homography viewpoint; gamma lighting; mean-colour distractor",
+  "floors": {
+    "token": 0.35,
+    "score": 0.28,
+    "coverage": 0.28
+  },
+  "cases": [
+    {
+      "name": "chelsea",
+      "engine": "dinov2-patch",
+      "understanding": "Unlabelled region.",
+      "status": "SUCCESS",
+      "ranked": [
+        "chelsea-view",
+        "chelsea-light"
+      ],
+      "view_rank": 1,
+      "light_rank": 2,
+      "distractor_rank": null,
+      "view_score": 0.5641,
+      "light_score": 0.5455,
+      "view_located": true,
+      "light_located": true,
+      "view_proposal_iou": 0.806,
+      "light_proposal_iou": 0.823,
+      "pass": true
+    },
+    {
+      "name": "clock",
+      "engine": "dinov2-patch",
+      "understanding": "Unlabelled region.",
+      "status": "SUCCESS",
+      "ranked": [
+        "clock-view",
+        "camera-dist",
+        "coins-light",
+        "clock-light",
+        "coins-query",
+        "clock-dist",
+        "coins-view",
+        "camera-view"
+      ],
+      "view_rank": 1,
+      "light_rank": 4,
+      "distractor_rank": 6,
+      "view_score": 0.5257,
+      "light_score": 0.5006,
+      "view_located": true,
+      "light_located": true,
+      "view_proposal_iou": 0.913,
+      "light_proposal_iou": 0.077,
+      "pass": true
+    },
+    {
+      "name": "coins",
+      "engine": "dinov2-patch",
+      "understanding": "Unlabelled region.",
+      "status": "SUCCESS",
+      "ranked": [
+        "coins-light",
+        "coins-view",
+        "camera-light",
+        "clock-query",
+        "camera-dist",
+        "clock-light",
+        "camera-view",
+        "chelsea-view"
+      ],
+      "view_rank": 2,
+      "light_rank": 1,
+      "distractor_rank": null,
+      "view_score": 0.424,
+      "light_score": 0.7055,
+      "view_located": true,
+      "light_located": true,
+      "view_proposal_iou": 0.183,
+      "light_proposal_iou": 0.0,
+      "pass": true
+    },
+    {
+      "name": "camera",
+      "engine": "dinov2-patch",
+      "understanding": "Unlabelled region.",
+      "status": "SUCCESS",
+      "ranked": [
+        "camera-light",
+        "camera-view",
+        "clock-view"
+      ],
+      "view_rank": 2,
+      "light_rank": 1,
+      "distractor_rank": null,
+      "view_score": 0.6129,
+      "light_score": 0.6273,
+      "view_located": true,
+      "light_located": true,
+      "view_proposal_iou": 0.57,
+      "light_proposal_iou": 0.958,
+      "pass": true
+    }
+  ],
+  "failures": [],
+  "bar": "viewpoint and lighting both rank above the same-colour distractor and the match box meets the paste"
+}

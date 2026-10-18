@@ -265,7 +265,19 @@ class ArchiveAdapter:
                 score = float(item.get("score") or 0.0)
             except (TypeError, ValueError):
                 score = 0.0
-            items.append({"media_id": media_id, "score": score})
+            norm = item.get("match_norm") or [0.0, 0.0, 0.0, 0.0]
+            if not isinstance(norm, (list, tuple)) or len(norm) != 4:
+                norm = [0.0, 0.0, 0.0, 0.0]
+            items.append(
+                {
+                    "media_id": media_id,
+                    "score": score,
+                    "match_nx": float(norm[0]),
+                    "match_ny": float(norm[1]),
+                    "match_nw": float(norm[2]),
+                    "match_nh": float(norm[3]),
+                }
+            )
         if basis == "face":
             basis_label = str(rec.get("similarity_basis") or "Same face")
             engine = str(rec.get("engine") or "face-embed")
@@ -282,6 +294,8 @@ class ArchiveAdapter:
                 noun = "match" if len(items) == 1 else "matches"
                 ready_msg = f"Similar ({basis_label}): {len(items)} {noun}."
         meta = {"basis": basis, "basis_label": basis_label, "engine": engine, "items": []}
+        if rec.get("understanding"):
+            meta["understanding"] = str(rec.get("understanding"))
         if status == "UNAVAILABLE":
             reason = str(rec.get("reason") or "Similar search could not run.").strip()
             if not reason.endswith("."):

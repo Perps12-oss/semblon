@@ -664,7 +664,11 @@ def observe_bgr(conn, *, observation_id: str, run_id: str, img, observers: tuple
             )
         except Exception:  # noqa: BLE001 — colour and objects must still commit
             indexed = {"region": 0, "scene": 0}
-        counts["clip"] += int(indexed.get("region") or 0) + int(indexed.get("scene") or 0)
+        counts["clip"] += (
+            int(indexed.get("region") or 0)
+            + int(indexed.get("scene") or 0)
+            + int(indexed.get("patch") or 0)
+        )
     if "text" in wanted or "ocr" in wanted:
         paused = _circuit_paused("ocr")
         if paused is not None:

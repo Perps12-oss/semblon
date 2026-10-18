@@ -87,6 +87,7 @@ class ShellBridge(QObject):
     ingestFinished = Signal()
     resultChanged = Signal()
     similarChanged = Signal()
+    keepsChanged = Signal()
     peopleChanged = Signal()
     surfaceChanged = Signal()
     editorialChanged = Signal()
@@ -114,6 +115,7 @@ class ShellBridge(QObject):
         self._selection_kind = ""
         self._similar_cancel = False
         self._discovery_trail: list[dict] = []
+        self._query_focus_id = ""
         self._point_source = ""
         self._people = PeopleModel()
         self._people_open = False
@@ -946,15 +948,20 @@ class ShellBridge(QObject):
         if self._similar_state not in {"ready", "empty"}:
             return
         payload = {
-            "query_media_id": self._session.focus_id or "",
+            "query_media_id": self._query_focus_id or self._session.focus_id or "",
             "basis": self._similar_basis,
             "basis_label": self._similar_basis_label,
             "note": self._similar_note,
             "state": self._similar_state,
             "region": list(self._region_norm) if self._region_norm else None,
+            "understanding": self._selection_note,
             "items": [
-                {"media_id": media_id, "score": score}
-                for media_id, score in self._similar._rows
+                {
+                    "media_id": row[0],
+                    "score": row[1],
+                    "match_norm": [row[2], row[3], row[4], row[5]] if len(row) >= 6 else [0, 0, 0, 0],
+                }
+                for row in self._similar._rows
             ],
         }
         try:
@@ -1076,11 +1083,21 @@ class ShellBridge(QObject):
         region = payload.get("region")
         if isinstance(region, list) and len(region) == 4:
             self._region_norm = tuple(float(v) for v in region)
-        rows = [
-            (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
-            for item in (payload.get("items") or [])
-            if item.get("media_id")
-        ]
+        rows = []
+        for item in payload.get("items") or []:
+            if not item.get("media_id"):
+                continue
+            norm = item.get("match_norm") or [0, 0, 0, 0]
+            rows.append(
+                (
+                    str(item.get("media_id") or ""),
+                    float(item.get("score") or 0.0),
+                    float(norm[0]),
+                    float(norm[1]),
+                    float(norm[2]),
+                    float(norm[3]),
+                )
+            )
         self._publish_similar(
             str(payload.get("state") or ("ready" if rows else "empty")),
             str(payload.get("note") or "Similar (Similar look): restored."),
@@ -1131,13 +1148,152 @@ class ShellBridge(QObject):
         if state in {"ready", "empty"}:
             self._persist_discovery()
 
+    def _match_for_focus(self) -> tuple[float, float, float, float]:
+        focus = self._session.focus_id or ""
+        for row in self._similar._rows:
+            if str(row[0]) != focus or len(row) < 6:
+                continue
+            if float(row[4]) > 0 and float(row[5]) > 0:
+                return float(row[2]), float(row[3]), float(row[4]), float(row[5])
+        return 0.0, 0.0, 0.0, 0.0
+
+    @Property(float, notify=similarChanged)
+    def matchX(self) -> float:
+        return self._match_for_focus()[0]
+
+    @Property(float, notify=similarChanged)
+    def matchY(self) -> float:
+        return self._match_for_focus()[1]
+
+    @Property(float, notify=similarChanged)
+    def matchW(self) -> float:
+        return self._match_for_focus()[2]
+
+    @Property(float, notify=similarChanged)
+    def matchH(self) -> float:
+        return self._match_for_focus()[3]
+
+    def _keeps_file(self) -> Path:
+        store = Path(self._jobs.store)
+        return store.with_name(store.stem + ".discoveries.json")
+
+    def _read_keeps(self) -> list[dict]:
+        path = self._keeps_file()
+        if not path.is_file():
+            return []
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        return []
+
+    def _recent_keeps(self) -> list[dict]:
+        return list(reversed(self._read_keeps()[-8:]))
+
+    @Property(int, notify=keepsChanged)
+    def keptCount(self) -> int:
+        return len(self._recent_keeps())
+
+    @Slot(int, result=str)
+    def keptLabel(self, index: int) -> str:
+        rows = self._recent_keeps()
+        if index < 0 or index >= len(rows):
+            return ""
+        item = rows[index]
+        label = str(item.get("understanding") or "Kept find")
+        count = len(item.get("items") or [])
+        noun = "match" if count == 1 else "matches"
+        return f"{label} · {count} {noun}"
+
+    @Slot(result=str)
+    def keepDiscovery(self) -> str:
+        """Remember the open visual search beside the library. No new table."""
+        if self._similar_state != "ready" or not self._similar._rows or not self._region_norm:
+            return "Search a region before keeping a find."
+        entry = {
+            "query_media_id": self._query_focus_id or self._session.focus_id or "",
+            "basis": self._similar_basis,
+            "basis_label": self._similar_basis_label,
+            "understanding": self._selection_note,
+            "note": self._similar_note,
+            "region": list(self._region_norm),
+            "items": [
+                {
+                    "media_id": row[0],
+                    "score": row[1],
+                    "match_norm": [row[2], row[3], row[4], row[5]] if len(row) >= 6 else [0, 0, 0, 0],
+                }
+                for row in self._similar._rows
+            ],
+        }
+        rows = self._read_keeps()
+        rows.append(entry)
+        rows = rows[-50:]
+        try:
+            self._keeps_file().write_text(json.dumps(rows), encoding="utf-8")
+        except OSError:
+            return "This find could not be kept."
+        self.keepsChanged.emit()
+        self._set_result("Kept this find.")
+        return "Kept this find."
+
+    @Slot(int)
+    def openKept(self, index: int) -> None:
+        rows = self._recent_keeps()
+        if index < 0 or index >= len(rows):
+            return
+        item = rows[index]
+        query = str(item.get("query_media_id") or "")
+        if query:
+            self._open_focus_keep_results(query)
+        region = item.get("region")
+        if isinstance(region, list) and len(region) == 4:
+            self._region_norm = tuple(float(value) for value in region)
+        self._selection_note = str(item.get("understanding") or "")
+        packed = []
+        for hit in item.get("items") or []:
+            if not hit.get("media_id"):
+                continue
+            norm = hit.get("match_norm") or [0, 0, 0, 0]
+            packed.append(
+                (
+                    str(hit.get("media_id")),
+                    float(hit.get("score") or 0.0),
+                    float(norm[0]),
+                    float(norm[1]),
+                    float(norm[2]),
+                    float(norm[3]),
+                )
+            )
+        self._publish_similar(
+            "ready" if packed else "empty",
+            str(item.get("note") or "Kept find."),
+            packed,
+            basis=str(item.get("basis") or "region"),
+            basis_label=str(item.get("basis_label") or "Similar look"),
+        )
+
     def _publish_similar_result(self, result) -> None:
         """Shared Focus strip publish for whole / region / face doors."""
-        rows = [
-            (str(item.get("media_id") or ""), float(item.get("score") or 0.0))
-            for item in (result.data.get("items") or [])
-            if item.get("media_id")
-        ]
+        understanding = str((result.data or {}).get("understanding") or "")
+        if understanding:
+            self._selection_note = understanding
+        rows = []
+        for item in (result.data.get("items") or []):
+            if not item.get("media_id"):
+                continue
+            rows.append(
+                (
+                    str(item.get("media_id") or ""),
+                    float(item.get("score") or 0.0),
+                    float(item.get("match_nx") or 0.0),
+                    float(item.get("match_ny") or 0.0),
+                    float(item.get("match_nw") or 0.0),
+                    float(item.get("match_nh") or 0.0),
+                )
+            )
         state = result.state if result.state in {"ready", "empty", "unavailable"} else "unavailable"
         note = result.message if result.message else "Similar search could not run."
         self._result_text = ""
@@ -2620,6 +2776,7 @@ class ShellBridge(QObject):
         if not media_id:
             self._publish_similar("unavailable", "Open a photo first.", [])
             return
+        self._query_focus_id = media_id
         if self._similar_state == "ready" and self._similar.rowCount():
             self._push_discovery()
         self._selection_kind = ""
@@ -2651,6 +2808,7 @@ class ShellBridge(QObject):
             self._publish_similar("unavailable", "Draw a region on the photo first.", [])
             return
         x, y, w, h = rect
+        self._query_focus_id = media_id
         if self._similar_state == "ready" and self._similar.rowCount():
             self._push_discovery()
         self._similar_cancel = False

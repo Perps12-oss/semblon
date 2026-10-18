@@ -7,7 +7,7 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-17 (local region retrieval) |
+| Evidence date | 2026-10-18 (photographic patch retrieval) |
 | Branch | `grok/visual-discovery` |
 | Parent HEAD | (see git log on branch) |
 | Working tree at evidence | Slice D unified results basis labels; pytest below |
@@ -53,7 +53,7 @@ Deferred without blocking unrelated work: **02** encryption, **08** product capt
 | 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | `tools/facekit_owner_evidence.py` + `.github/workflows/facekit-owner.yml` + `docs/FACEKIT-OWNER.md`. No owner pack on this machine — evidence JSON not PASS. |
 | 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Unchanged. |
 | 08 Screen-capture privacy | P1 | DEFERRED | Decision unchanged. |
-| 09 Visual-memory search | P0 | **VERIFIED** on synthetic glyphs (2026-10-17) | Region Similar uses DINOv2 ViT-S/14 when the pinned pack is installed (`docs/REGION-PACK.md`). Colour histogram is the labelled fallback. Face Similar stays a separate door. Not a real-photo or same-object eval. |
+| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18) | Dense `region_patch` late interaction, not the six proposal crops. `docs/evidence/photo-region-eval.json`: 4/4 photographs, viewpoint and lighting ahead of the same-colour distractor, match box on the paste. Colour histogram remains the labelled fallback. Face Similar stays a separate door. |
 | 10 Archive continuity | P0 | **VERIFIED** | Missing Focus notice; ingest rename reconnect; copy/basename safety; Gate A journey on Unicode folder. |
 | 11 Contextual discovery | P1 | **VERIFIED** | `openFocusInContext` day scope includes same-day neighbours and excludes other days; missing-date honest. |
 | 12 Unified experience + docs | P0/P1 | **VERIFIED** (milestones 1–3) | Gate A journey + ROADMAP sync. Milestones 4–5 / Gates B–C remain. |
@@ -149,7 +149,29 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 4. **Authenticode certificate** (Gate C) — signing path in `msi-release.yml`; secrets not provisioned.
 5. WiX owner run on a machine with WiX + (optional) cert — workflow exists; not executed here.
 
+## Behaviour landed — photographic patch retrieval (2026-10-18)
+
+1. Contract centre of gravity is point → understand → find (`docs/PRODUCT.md`, `docs/decisions/2026-10-18-local-visual-discovery.md`). Archive, people, and time stay supporting capabilities.
+2. Ingest stores every content patch of the frame plus overlapping windows (`modality=region_patch`, pack id ending `/patch`). A query crop is scored by late interaction against those patches. Proposal CLS rows remain only when the patch map is absent. No new columns. No face writes.
+3. The selection says face, a detector class, text, or unlabelled region. It does not invent a product or a person.
+4. A result carries `match_norm`. Opening that result draws the box on the photo. Back still returns to the previous search.
+5. **Keep this find** writes `{store}.discoveries.json` (query, selection, hits, match boxes). Opening a kept find restores that search.
+6. Command: `.venv-312\Scripts\python.exe tools\eval_photo_regions.py` → **exit 0**. Sources are scikit-image photographs. Viewpoint is a homography of the crop on another photograph. Lighting is gamma plus a colour cast. The distractor is the crop's mean colour on another photograph.
+
+| Query | Viewpoint rank | Lighting rank | Own distractor | Match box |
+|---|---|---|---|---|
+| chelsea | 1 (0.564) | 2 (0.546) | absent | yes / yes |
+| clock | 1 (0.526) | 4 (0.501) | 6 | yes / yes |
+| coins | 2 (0.424) | 1 (0.706) | absent | yes / yes |
+| camera | 2 (0.613) | 1 (0.627) | absent | yes / yes |
+
+Coins lighting had proposal IoU 0.0 and was still rank 1, so the hit is not one of the six proposal boxes. Clock's own colour distractor is rank 6, behind both true hits. Other library photos can still sit between those two hits (clock lighting is rank 4). That impurity is in the JSON. It is not a missed positive.
+
+Floors, chosen on this run: token cosine 0.35, mean score 0.28, coverage 0.28.
+
 ## Behaviour landed — local region retrieval (2026-10-17)
+
+Historical. The photographic patch result above replaces the glyph-only claim for region search.
 
 1. Encoder: DINOv2 ViT-S/14 ONNX, Apache-2.0, CLS token, letterbox 224, ImageNet mean/std, L2. `pack_id` `region/dinov2-vits14@1/f22797eabf810a75/cls`. Vectors live in existing `embeddings` rows (`modality` `region` for crops, `scene` for the whole frame). Observation kind is `clip` with `display: false`. No new columns.
 2. Ingest indexes contour/object crops plus one scene vector when the pack probes ready. The query embeds only the selection. Source media is excluded. Results dedupe by media. Score floor is 0.76 cosine.

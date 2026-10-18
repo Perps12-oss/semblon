@@ -2200,6 +2200,20 @@ ApplicationWindow {
                         }
                     }
                 }
+
+                Rectangle {
+                    objectName: "matchOverlay"
+                    visible: shellReady && shellApi.matchW > 0.01 && shellApi.matchH > 0.01
+                    readonly property var origin: observationLayer.contentOrigin()
+                    x: origin.x + shellApi.matchX * photo.paintedWidth
+                    y: origin.y + shellApi.matchY * photo.paintedHeight
+                    width: Math.max(2, shellApi.matchW * photo.paintedWidth)
+                    height: Math.max(2, shellApi.matchH * photo.paintedHeight)
+                    color: "#334C9A8A"
+                    border.color: tokenAccent
+                    border.width: 2
+                    z: 4
+                }
             }
 
             MouseArea {
@@ -2421,6 +2435,80 @@ ApplicationWindow {
                     color: tokenMuted
                     font.family: "Segoe UI"
                     font.pixelSize: 12
+                }
+
+                Rectangle {
+                    objectName: "keepDiscoveryAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && similarStateSafe === "ready" && similarCountSafe > 0
+                    radius: 6
+                    color: keepHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Keep this find"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: keepHit
+                        objectName: "keepDiscoveryHit"
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Keep this find"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.keepDiscovery()
+                    }
+                }
+
+                Text {
+                    objectName: "keptHeading"
+                    width: parent.width
+                    visible: shellReady && shellApi.keptCount > 0
+                    text: "Kept finds"
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                ListView {
+                    objectName: "keptFinds"
+                    width: parent.width
+                    height: (shellReady ? shellApi.keptCount : 0) * 30
+                    visible: height > 0
+                    interactive: false
+                    clip: true
+                    model: shellReady ? shellApi.keptCount : 0
+                    delegate: Rectangle {
+                        width: 220
+                        height: 28
+                        radius: 4
+                        color: keptHit.containsMouse ? tokenAccentDim : tokenBg
+                        border.color: tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            text: shellReady ? shellApi.keptLabel(index) : ""
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        MouseArea {
+                            id: keptHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Open kept find"
+                            onClicked: if (shellReady) shellApi.openKept(index)
+                        }
+                    }
                 }
 
                 Rectangle {

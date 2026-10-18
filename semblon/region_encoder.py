@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import threading
 from pathlib import Path
@@ -50,7 +51,15 @@ _PAD_BGR = (104, 116, 124)
 
 MODALITY_REGION = "region"
 MODALITY_SCENE = "scene"
+# One vector per content patch of the whole frame. Not a proposal box.
+# Never 'face'. compare_space refuses that modality; this one is a different pack.
+MODALITY_PATCH = "region_patch"
 PROVIDER = "dinov2-vits14"
+# Late-interaction floors for patch max-sim. Chosen on the photographic
+# eval in docs/evidence/photo-region-eval.json, not on glyphs and not on identity.
+PATCH_TOKEN_FLOOR = 0.35
+PATCH_SCORE_FLOOR = 0.28
+PATCH_COVERAGE_FLOOR = 0.28
 # Cosine on L2 CLS vectors. On the synthetic glyph corpus, floor 0.45 let
 # colour-similar different shapes into the list (precision@5 0.633). Floor
 # 0.76 drops that band (precision@5 0.857, recall@5 still 1.0, no colour-bar
@@ -61,6 +70,10 @@ REGION_SCORE_FLOOR = 0.76
 COLOUR_SCORE_FLOOR = 0.85
 SCENE_SCORE_FLOOR = 0.50
 MAX_REGION_BOXES = 6
+# Whole frame plus overlapping windows. The ONNX input is fixed at 224,
+# so a small object in a large photo is only a few full-frame patches.
+# Windows are not detector proposals: they cover the picture on a grid.
+MAX_PATCH_WINDOWS = 9
 
 LABEL_SIMILAR = "Similar look"
 LABEL_COLOUR = "Colour only"
@@ -114,6 +127,11 @@ def write_pin(root: Path, digest: str) -> None:
 def pack_id_for(digest: str) -> str:
     """Family + version + weight hash. The hash is the compare key, not the family name."""
     return f"region/{MODEL_FAMILY}@{PACK_VERSION}/{digest[:16]}/{POOL}"
+
+
+def pack_id_patches(digest: str) -> str:
+    """Same weights as the CLS pack. Patch tokens are a different compare space."""
+    return f"region/{MODEL_FAMILY}@{PACK_VERSION}/{digest[:16]}/patch"
 
 
 def probe_region_pack(root: Path | None = None) -> tuple[bool, str | None]:
@@ -231,6 +249,18 @@ def _session(root: Path | None = None):
         return session
 
 
+def letterbox_geometry(height: int, width: int, size: int = INPUT_SIZE) -> tuple[int, int, int, int]:
+    """Content rectangle on the square canvas: x0, y0, resized width, resized height."""
+    if height < 1 or width < 1:
+        raise RegionPackError("region has no pixels")
+    scale = float(size) / float(max(height, width))
+    resized_w = max(1, min(size, int(round(width * scale))))
+    resized_h = max(1, min(size, int(round(height * scale))))
+    x0 = (size - resized_w) // 2
+    y0 = (size - resized_h) // 2
+    return x0, y0, resized_w, resized_h
+
+
 def letterbox_bgr(image: np.ndarray, size: int = INPUT_SIZE) -> np.ndarray:
     """Fit the whole crop inside a square. Same pixels in, same canvas out."""
     import cv2
@@ -240,17 +270,9 @@ def letterbox_bgr(image: np.ndarray, size: int = INPUT_SIZE) -> np.ndarray:
         raise RegionPackError("region encoder needs a BGR image")
     arr = arr[:, :, :3]
     height, width = arr.shape[:2]
-    if height < 1 or width < 1:
-        raise RegionPackError("region has no pixels")
-    scale = float(size) / float(max(height, width))
-    resized_w = max(1, int(round(width * scale)))
-    resized_h = max(1, int(round(height * scale)))
-    resized_w = min(size, resized_w)
-    resized_h = min(size, resized_h)
+    x0, y0, resized_w, resized_h = letterbox_geometry(height, width, size)
     resized = cv2.resize(arr, (resized_w, resized_h), interpolation=cv2.INTER_CUBIC)
     canvas = np.full((size, size, 3), _PAD_BGR, dtype=np.uint8)
-    x0 = (size - resized_w) // 2
-    y0 = (size - resized_h) // 2
     canvas[y0 : y0 + resized_h, x0 : x0 + resized_w] = resized
     return canvas
 
@@ -280,7 +302,16 @@ def _pool(hidden, *, pool: str) -> np.ndarray:
     return vec
 
 
-def _embed_now(image_bgr: np.ndarray, root: Path | None, *, pool: str) -> bytes:
+def _l2(vec: np.ndarray) -> np.ndarray:
+    out = np.asarray(vec, dtype=np.float32).reshape(-1)
+    norm = float(np.linalg.norm(out))
+    if norm > 0:
+        out = out / norm
+    return out
+
+
+def _hidden_now(image_bgr: np.ndarray, root: Path | None) -> np.ndarray:
+    """Token matrix (CLS at row 0, then patches). One forward. Not normalised."""
     session = _session(root)
     tensor = _tensor(image_bgr)
     input_name = session.get_inputs()[0].name
@@ -296,10 +327,82 @@ def _embed_now(image_bgr: np.ndarray, root: Path | None, *, pool: str) -> bytes:
             break
     if hidden is None:
         raise RegionPackError("region encoder returned no 384-d hidden state")
+    array = np.asarray(hidden, dtype=np.float32)
+    if array.ndim == 3:
+        array = array[0]
+    if array.ndim != 2 or array.shape[-1] != OUTPUT_DIM:
+        raise RegionPackError(f"unexpected encoder shape {array.shape}")
+    return array
+
+
+def _embed_now(image_bgr: np.ndarray, root: Path | None, *, pool: str) -> bytes:
+    hidden = _hidden_now(image_bgr, root)
     vec = _pool(hidden, pool=pool)
     if vec.size != OUTPUT_DIM:
         raise RegionPackError(f"region encoder dim {vec.size} != {OUTPUT_DIM}")
     return vec.tobytes()
+
+
+def content_patch_records(
+    image_bgr: np.ndarray, root: Path | None = None
+) -> tuple[bytes, list[dict]]:
+    """CLS bytes plus every content patch of this frame.
+
+    Padding patches from letterbox are dropped. Each record's bbox is in
+    original-image pixels (x1, y1, x2, y2). One ONNX forward covers the
+    whole picture, so a later query can hit a place that was never a proposal.
+    """
+
+    def run() -> tuple[bytes, list[dict]]:
+        hidden = _hidden_now(image_bgr, root)
+        return _split_content_patches(image_bgr, hidden)
+
+    return _bounded(run)
+
+
+def _split_content_patches(image: np.ndarray, hidden: np.ndarray) -> tuple[bytes, list[dict]]:
+    tokens = np.asarray(hidden, dtype=np.float32)
+    if tokens.ndim != 2 or tokens.shape[0] < 2 or tokens.shape[1] != OUTPUT_DIM:
+        raise RegionPackError(f"unexpected encoder shape {getattr(tokens, 'shape', None)}")
+    cls = _l2(tokens[0]).astype(np.float32).tobytes()
+    patches = tokens[1:]
+    grid = int(round(math.sqrt(patches.shape[0])))
+    if grid < 2 or grid * grid != patches.shape[0]:
+        raise RegionPackError(f"patch count {patches.shape[0]} is not a square grid")
+    height, width = int(image.shape[0]), int(image.shape[1])
+    x0, y0, resized_w, resized_h = letterbox_geometry(height, width)
+    cell = float(INPUT_SIZE) / float(grid)
+    scale_x = float(width) / float(resized_w)
+    scale_y = float(height) / float(resized_h)
+    records: list[dict] = []
+    for index in range(patches.shape[0]):
+        gy, gx = divmod(index, grid)
+        cx = (gx + 0.5) * cell
+        cy = (gy + 0.5) * cell
+        if cx < x0 or cy < y0 or cx >= x0 + resized_w or cy >= y0 + resized_h:
+            continue
+        px1 = max(gx * cell, float(x0))
+        py1 = max(gy * cell, float(y0))
+        px2 = min((gx + 1) * cell, float(x0 + resized_w))
+        py2 = min((gy + 1) * cell, float(y0 + resized_h))
+        ox1 = (px1 - x0) * scale_x
+        oy1 = (py1 - y0) * scale_y
+        ox2 = (px2 - x0) * scale_x
+        oy2 = (py2 - y0) * scale_y
+        if ox2 - ox1 < 1 or oy2 - oy1 < 1:
+            continue
+        records.append(
+            {
+                "blob": _l2(patches[index]).astype(np.float32).tobytes(),
+                "bbox": (float(ox1), float(oy1), float(ox2), float(oy2)),
+                "gx": int(gx),
+                "gy": int(gy),
+                "grid": int(grid),
+            }
+        )
+    if not records:
+        raise RegionPackError("no content patches")
+    return cls, records
 
 
 def embed_bgr(image_bgr: np.ndarray, root: Path | None = None, *, pool: str | None = None) -> bytes:
@@ -376,6 +479,30 @@ def _iou(a: tuple[float, float, float, float], b: tuple[float, float, float, flo
     return inter / union
 
 
+def patch_windows(image: np.ndarray) -> list[tuple[np.ndarray, int, int]]:
+    """Full frame, then a coarse grid of overlapping windows. Bounded."""
+    height, width = image.shape[:2]
+    windows = [(image, 0, 0)]
+    if min(height, width) < 64:
+        return windows
+    for fraction in (0.62, 0.40):
+        tile_h = max(48, int(round(height * fraction)))
+        tile_w = max(48, int(round(width * fraction)))
+        if tile_h >= height - 8 and tile_w >= width - 8:
+            continue
+        ys = [0, max(0, height - tile_h)]
+        xs = [0, max(0, width - tile_w)]
+        pairs = [(y0, x0) for y0 in ys for x0 in xs]
+        for y0, x0 in pairs:
+                if len(windows) >= MAX_PATCH_WINDOWS:
+                    return windows
+                crop = image[y0 : y0 + tile_h, x0 : x0 + tile_w]
+                if crop.size == 0:
+                    continue
+                windows.append((crop, int(x0), int(y0)))
+    return windows
+
+
 def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
     """Persist region crops and one whole-frame vector. No-op when the pack is missing.
 
@@ -385,7 +512,7 @@ def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
     from semblon.observers import persist_item
 
     ready, note = probe_region_pack()
-    counts = {"region": 0, "scene": 0, "ready": ready}
+    counts = {"region": 0, "scene": 0, "patch": 0, "ready": ready}
     if not ready:
         return {**counts, "note": note}
     image = np.asarray(img)
@@ -394,8 +521,9 @@ def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
     try:
         digest = KNOWN_SHA256[WEIGHT_NAME]
         pack = pack_id_for(digest)
+        patch_pack = pack_id_patches(digest)
         try:
-            scene = embed_bgr(image)
+            scene, patches = content_patch_records(image)
         except RegionPackError as exc:
             return {**counts, "note": str(exc)}
         except Exception as exc:  # noqa: BLE001 — a bad encoder must not roll back colour ingest
@@ -420,6 +548,61 @@ def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
             dim=dim,
         )
         counts["scene"] += 1
+        for record in patches:
+            persist_item(
+                conn,
+                observation_id=observation_id,
+                run_id=run_id,
+                kind="clip",
+                provider=PROVIDER,
+                payload={
+                    "role": "region_patch",
+                    "space": MODEL_FAMILY,
+                    "preprocess": "letterbox-224-imagenet-patch-l2",
+                    "grid": record["grid"],
+                    "gx": record["gx"],
+                    "gy": record["gy"],
+                    "identity": "not facekit",
+                    "display": False,
+                },
+                bbox=record["bbox"],
+                embedding=record["blob"],
+                modality=MODALITY_PATCH,
+                pack_id=patch_pack,
+                dim=int(len(record["blob"]) // 4),
+            )
+            counts["patch"] += 1
+        for window, x_off, y_off in patch_windows(image)[1:]:
+            try:
+                _tile_cls, tile_patches = content_patch_records(window)
+            except RegionPackError:
+                continue
+            for record in tile_patches:
+                x1, y1, x2, y2 = record["bbox"]
+                persist_item(
+                    conn,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    kind="clip",
+                    provider=PROVIDER,
+                    payload={
+                        "role": "region_patch",
+                        "space": MODEL_FAMILY,
+                        "preprocess": "letterbox-224-imagenet-patch-l2",
+                        "grid": record["grid"],
+                        "gx": record["gx"],
+                        "gy": record["gy"],
+                        "window": [x_off, y_off],
+                        "identity": "not facekit",
+                        "display": False,
+                    },
+                    bbox=(float(x1 + x_off), float(y1 + y_off), float(x2 + x_off), float(y2 + y_off)),
+                    embedding=record["blob"],
+                    modality=MODALITY_PATCH,
+                    pack_id=patch_pack,
+                    dim=int(len(record["blob"]) // 4),
+                )
+                counts["patch"] += 1
         for box in proposal_boxes(image):
             try:
                 crop = crop_box(image, box)
