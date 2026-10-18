@@ -36,7 +36,11 @@ ApplicationWindow {
     readonly property string jobLabelSafe: shellReady ? shellApi.jobLabel : ""
     readonly property bool peopleVisible: shellReady && shellApi.peopleOpen
     readonly property bool emptySafe: shellReady ? shellApi.empty : true
+    readonly property bool homeOpenSafe: shellReady ? shellApi.homeOpen : true
+    readonly property string stageSafe: shellReady ? shellApi.stage : "home"
     readonly property string lensLabelSafe: shellReady ? shellApi.lensLabel : ""
+    readonly property string archiveSummarySafe: shellReady ? shellApi.archiveSummary : ""
+    readonly property string searchModeShortSafe: shellReady ? shellApi.searchModeShort : "Names"
     readonly property bool canResumeSafe: shellReady && shellApi.canResume
     readonly property string focusKindSafe: shellReady ? shellApi.focusKind : ""
     readonly property string focusNameSafe: shellReady ? shellApi.focusName : ""
@@ -301,8 +305,10 @@ ApplicationWindow {
                             return peopleVisible
                         if (navId === "settings")
                             return shellReady && shellApi.settingsOpen
+                        if (navId === "home")
+                            return homeOpenSafe && !peopleVisible && !(shellReady && shellApi.settingsOpen) && !focusActive
                         if (navId === "library")
-                            return !peopleVisible && !(shellReady && shellApi.settingsOpen) && !focusActive
+                            return !homeOpenSafe && !peopleVisible && !(shellReady && shellApi.settingsOpen) && !focusActive
                         return false
                     }
                     anchors.fill: parent
@@ -312,6 +318,7 @@ ApplicationWindow {
                            : (navArea.containsMouse ? Qt.rgba(1, 1, 1, 0.04) : "transparent")
                     objectName: navId === "people" ? "peopleButton" :
                                 navId === "settings" ? "settingsButton" :
+                                navId === "home" ? "homeButton" :
                                 (navId === "library" ? "libraryButton" : "")
 
                     Rectangle {
@@ -358,12 +365,9 @@ ApplicationWindow {
                         onClicked: {
                             if (!shellReady) return
                             var c = navCall
-                            if (c === "wordmark") shellApi.wordmark()
+                            if (c === "showHome") shellApi.showHome()
+                            else if (c === "wordmark") shellApi.wordmark()
                             else if (c === "openPeople") shellApi.openPeople()
-                            else if (c === "focusSearch") {
-                                if (primaryModeSafe) searchField.forceActiveFocus()
-                                else commandField.forceActiveFocus()
-                            }
                             else if (c === "addFolder") { if (!jobRunning) shellApi.addFolder() }
                             else if (c === "toggleSettings") shellApi.toggleSettings()
                         }
@@ -375,6 +379,12 @@ ApplicationWindow {
                 }
             }
 
+            Loader {
+                width: parent.width
+                height: 36
+                sourceComponent: navEntry
+                onLoaded: window.bindNav(item, "home", "Home", "home", "showHome")
+            }
             Loader {
                 width: parent.width
                 height: 36
@@ -391,12 +401,6 @@ ApplicationWindow {
                 width: parent.width
                 height: 36
                 sourceComponent: navEntry
-                onLoaded: window.bindNav(item, "search", "Search", "search", "focusSearch")
-            }
-            Loader {
-                width: parent.width
-                height: 36
-                sourceComponent: navEntry
                 onLoaded: window.bindNav(item, "add", "Add folder", "addFolder", "addFolder")
             }
             Loader {
@@ -408,79 +412,71 @@ ApplicationWindow {
 
             Item { width: 1; height: 12 }
 
-            // Search field (expanded only)
+            // Search field — Library and People only (Home has its own well)
             Rectangle {
-                visible: !sidebarCollapsed
+                visible: !sidebarCollapsed && !homeOpenSafe
                 width: parent.width
-                height: 32
+                height: 36
                 radius: 8
                 color: tokenBg2
                 border.color: (searchField.activeFocus || commandField.activeFocus) ? tokenAccent : tokenBorder
                 border.width: 1
 
-                TextField {
-                    id: searchField
-                    objectName: "searchField"
-                    visible: primaryModeSafe
+                Row {
                     anchors.fill: parent
                     anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    verticalAlignment: TextInput.AlignVCenter
-                placeholderText: "Search memory"
-                placeholderTextColor: tokenFaint
-                color: tokenText
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                background: Item {}
-                selectByMouse: true
-                onAccepted: if (shellReady) shellApi.submitCommand(text)
-                }
-                TextField {
-                    id: commandField
-                    objectName: "commandField"
-                    visible: advancedModeSafe
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    verticalAlignment: TextInput.AlignVCenter
-                    placeholderText: "Command…  Ctrl+K"
-                    placeholderTextColor: tokenFaint
-                    color: tokenText
-                    font.family: "Segoe UI"
-                    font.pixelSize: 13
-                    background: Item {}
-                    selectByMouse: true
-                    onAccepted: if (shellReady) shellApi.submitCommand(text)
-                }
-            }
+                    anchors.rightMargin: 8
+                    spacing: 6
 
-            Item { width: 1; height: 8; visible: !sidebarCollapsed }
-
-            // Atmosphere (expanded)
-            ComboBox {
-                id: atmospherePicker
-                objectName: "atmospherePicker"
-                visible: !sidebarCollapsed
-                width: parent.width
-                model: shellReady ? shellApi.atmosphereChoices : []
-                textRole: "label"
-                displayText: (currentIndex >= 0 && model.length > currentIndex) ? model[currentIndex].label : "Atmosphere"
-                palette.window: tokenBg2
-                palette.base: tokenBg2
-                palette.button: tokenBg2
-                palette.buttonText: tokenText
-                palette.text: tokenText
-                palette.highlightedText: tokenText
-                palette.highlight: tokenAccentDim
-                onActivated: if (shellReady && currentIndex >= 0 && model.length > currentIndex) {
-                    shellApi.setAtmosphere(model[currentIndex].id)
-                }
-                Component.onCompleted: {
-                    if (!shellReady) return
-                    for (var i = 0; i < model.length; i++) {
-                        if (model[i].id === atmosphereIdSafe) {
-                            currentIndex = i
-                            break
+                    TextField {
+                        id: searchField
+                        objectName: "searchField"
+                        visible: primaryModeSafe && !homeOpenSafe
+                        width: parent.width - sidebarModeChip.width - 6
+                        height: parent.height
+                        verticalAlignment: TextInput.AlignVCenter
+                        placeholderText: searchModeShortSafe === "Names" ? "Search names" : "Search memory"
+                        placeholderTextColor: tokenFaint
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        background: Item {}
+                        selectByMouse: true
+                        onAccepted: if (shellReady) shellApi.submitCommand(text)
+                    }
+                    TextField {
+                        id: commandField
+                        objectName: "commandField"
+                        visible: advancedModeSafe && !homeOpenSafe
+                        width: parent.width - sidebarModeChip.width - 6
+                        height: parent.height
+                        verticalAlignment: TextInput.AlignVCenter
+                        placeholderText: "Command…  Ctrl+K"
+                        placeholderTextColor: tokenFaint
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                        background: Item {}
+                        selectByMouse: true
+                        onAccepted: if (shellReady) shellApi.submitCommand(text)
+                    }
+                    Rectangle {
+                        id: sidebarModeChip
+                        width: sidebarModeLabel.implicitWidth + 12
+                        height: 22
+                        radius: 5
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: primaryModeSafe
+                        color: tokenBg3
+                        border.color: tokenBorder
+                        border.width: 1
+                        Text {
+                            id: sidebarModeLabel
+                            anchors.centerIn: parent
+                            text: searchModeShortSafe
+                            color: tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 10
                         }
                     }
                 }
@@ -501,7 +497,7 @@ ApplicationWindow {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             contentHeight: archiveSidebar.contentHeight
-            visible: !sidebarCollapsed && !emptySafe && !peopleVisible
+            visible: !sidebarCollapsed && !homeOpenSafe && !emptySafe && !peopleVisible
             interactive: contentHeight > height
 
             ContextSidebar {
@@ -524,7 +520,7 @@ ApplicationWindow {
             }
         }
 
-        // Bottom section (mode + job)
+        // Bottom section (job only — mode and atmosphere live in Settings)
         Column {
             id: sidebarBottom
             anchors.left: parent.left
@@ -542,7 +538,7 @@ ApplicationWindow {
                     width: 14
                     height: 14
                     RotationAnimation on rotation {
-                        running: shellReady && jobRunning && !shellApi.reducedMotion
+                        running: shellReady && jobRunning && jobStateSafe !== "paused" && jobStateSafe !== "cancelling" && !shellApi.reducedMotion
                         loops: Animation.Infinite
                         duration: 1100
                         from: 0
@@ -570,77 +566,8 @@ ApplicationWindow {
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
-
-            Text {
-                visible: !sidebarCollapsed
-                width: parent.width
-                text: "Mode"
-                color: tokenFaint
-                font.family: "Segoe UI"
-                font.pixelSize: 11
-                font.letterSpacing: 0.4
-            }
-            Rectangle {
-                objectName: "primaryModeButton"
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: !sidebarCollapsed
-                color: primaryModeSafe ? tokenAccentDim : "transparent"
-                border.color: primaryModeSafe ? tokenAccent : tokenBorder
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "Primary"
-                    color: primaryModeSafe ? tokenText : tokenMuted
-                    font.pixelSize: 12
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.setMode("primary")
-                }
-            }
-            Rectangle {
-                objectName: "advancedModeButton"
-                width: parent.width
-                height: 28
-                radius: 6
-                visible: !sidebarCollapsed
-                color: advancedModeSafe ? tokenAccentDim : "transparent"
-                border.color: advancedModeSafe ? tokenAccent : tokenBorder
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
-                    text: "Advanced"
-                    color: advancedModeSafe ? tokenText : tokenMuted
-                    font.pixelSize: 12
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.setMode("advanced")
-                }
-            }
-
-            Item {
-                visible: sidebarCollapsed
-                width: parent.width
-                height: 28
-                Text {
-                    anchors.centerIn: parent
-                    text: primaryModeSafe ? "P" : "A"
-                    color: tokenAccent
-                    font.pixelSize: 13
-                    font.weight: Font.DemiBold
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.setMode(primaryModeSafe ? "advanced" : "primary")
-                }
-            }
         }
+
     }
 
 
@@ -660,70 +587,140 @@ ApplicationWindow {
             anchors.topMargin: 8
             spacing: 16
             z: 2
-            visible: shellReady && (jobRunning || shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
+            visible: shellReady && !jobRunning && (shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
 
             Text {
                 objectName: "surfaceState"
-                text: {
-                    if (!shellReady)
-                        return ""
-                    if (jobRunning)
-                        return jobLabelSafe || "Processing"
-                    return shellApi.noticeText || (shellApi.surfaceState === "loading" ? "Working…" : "Something went wrong. Try again.")
-                }
-                color: shellReady && !jobRunning && shellApi.surfaceState === "error" ? tokenDanger : tokenMuted
+                text: shellReady
+                      ? (shellApi.noticeText || (shellApi.surfaceState === "loading" ? "Working…" : "Something went wrong. Try again."))
+                      : ""
+                color: shellReady && shellApi.surfaceState === "error" ? tokenDanger : tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
             }
+        }
 
-            Text {
-                objectName: "pauseJob"
-                visible: jobRunning && jobStateSafe !== "paused"
-                text: "Pause"
-                color: pauseJobArea.containsMouse ? tokenText : tokenAccent
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                MouseArea {
-                    id: pauseJobArea
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.pauseJob()
-                }
+        Rectangle {
+            id: scanHero
+            objectName: "scanHero"
+            visible: jobRunning
+            z: 30
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 14
+            width: Math.min(460, Math.max(280, parent.width - 48))
+            height: 132
+            radius: 12
+            color: tokenBg1
+            border.color: tokenAccent
+            border.width: 1
+            readonly property real fraction: {
+                if (!shellReady || shellApi.jobTotal <= 0)
+                    return 0
+                return Math.max(0, Math.min(1, shellApi.jobCurrent / shellApi.jobTotal))
             }
 
-            Text {
-                objectName: "resumeJobBand"
-                visible: jobRunning && jobStateSafe === "paused"
-                text: "Resume"
-                color: resumeJobArea.containsMouse ? tokenText : tokenAccent
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                MouseArea {
-                    id: resumeJobArea
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.resumeJob()
-                }
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                onPressed: function(mouse) { mouse.accepted = true }
+                onWheel: function(wheel) { wheel.accepted = true }
             }
 
-            Text {
-                objectName: "cancelJob"
-                visible: jobRunning
-                text: "Cancel"
-                color: cancelJobArea.containsMouse ? tokenText : tokenDanger
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                MouseArea {
-                    id: cancelJobArea
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.cancelJob()
+            Column {
+                id: scanHeroColumn
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 14
+                spacing: 8
+
+                Text {
+                    text: {
+                        if (jobStateSafe === "paused")
+                            return "Scanning paused"
+                        if (jobStateSafe === "cancelling")
+                            return "Stopping the scan"
+                        return "Scanning in progress"
+                    }
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 18
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: shellReady && shellApi.jobTotal > 0
+                          ? (shellApi.jobCurrent + " of " + shellApi.jobTotal + ". Photos already added can be opened.")
+                          : "Photos already added can be opened."
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                }
+                Rectangle {
+                    objectName: "scanProgress"
+                    width: parent.width
+                    height: 8
+                    radius: 4
+                    color: tokenBg
+                    Rectangle {
+                        width: Math.max(0, parent.width * scanHero.fraction)
+                        height: parent.height
+                        radius: 4
+                        color: tokenAccent
+                    }
+                }
+                Row {
+                    spacing: 16
+                    Text {
+                        objectName: "pauseJob"
+                        visible: jobStateSafe !== "paused" && jobStateSafe !== "cancelling"
+                        text: "Pause"
+                        color: pauseJobArea.containsMouse ? tokenText : tokenAccent
+                        font.family: "Segoe UI"
+                        font.pixelSize: 14
+                        MouseArea {
+                            id: pauseJobArea
+                            anchors.fill: parent
+                            anchors.margins: -6
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.pauseJob()
+                        }
+                    }
+                    Text {
+                        objectName: "resumeJobBand"
+                        visible: jobStateSafe === "paused"
+                        text: "Resume"
+                        color: resumeJobArea.containsMouse ? tokenText : tokenAccent
+                        font.family: "Segoe UI"
+                        font.pixelSize: 14
+                        MouseArea {
+                            id: resumeJobArea
+                            anchors.fill: parent
+                            anchors.margins: -6
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.resumeJob()
+                        }
+                    }
+                    Text {
+                        objectName: "cancelJob"
+                        visible: jobStateSafe !== "cancelling"
+                        text: "Cancel"
+                        color: cancelJobArea.containsMouse ? tokenText : tokenDanger
+                        font.family: "Segoe UI"
+                        font.pixelSize: 14
+                        MouseArea {
+                            id: cancelJobArea
+                            anchors.fill: parent
+                            anchors.margins: -6
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.cancelJob()
+                        }
+                    }
                 }
             }
         }
@@ -849,6 +846,93 @@ ApplicationWindow {
                     color: tokenMuted
                     font.pixelSize: 12
                     font.family: "Segoe UI"
+                }
+                Text {
+                    width: parent.width
+                    text: "Mode"
+                    color: tokenFaint
+                    font.pixelSize: 11
+                    font.letterSpacing: 0.4
+                    font.family: "Segoe UI"
+                }
+                Row {
+                    width: parent.width
+                    spacing: 8
+                    Rectangle {
+                        objectName: "primaryModeButton"
+                        width: (parent.width - 8) / 2
+                        height: 28
+                        radius: 6
+                        color: primaryModeSafe ? tokenAccentDim : tokenBg2
+                        border.color: primaryModeSafe ? tokenAccent : tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Primary"
+                            color: primaryModeSafe ? tokenText : tokenMuted
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.setMode("primary")
+                        }
+                    }
+                    Rectangle {
+                        objectName: "advancedModeButton"
+                        width: (parent.width - 8) / 2
+                        height: 28
+                        radius: 6
+                        color: advancedModeSafe ? tokenAccentDim : tokenBg2
+                        border.color: advancedModeSafe ? tokenAccent : tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Advanced"
+                            color: advancedModeSafe ? tokenText : tokenMuted
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.setMode("advanced")
+                        }
+                    }
+                }
+                Text {
+                    width: parent.width
+                    text: "Appearance"
+                    color: tokenFaint
+                    font.pixelSize: 11
+                    font.letterSpacing: 0.4
+                    font.family: "Segoe UI"
+                }
+                ComboBox {
+                    id: atmospherePicker
+                    objectName: "atmospherePicker"
+                    width: parent.width
+                    model: shellReady ? shellApi.atmosphereChoices : []
+                    textRole: "label"
+                    displayText: (currentIndex >= 0 && model.length > currentIndex) ? model[currentIndex].label : "Atmosphere"
+                    palette.window: tokenBg2
+                    palette.base: tokenBg2
+                    palette.button: tokenBg2
+                    palette.buttonText: tokenText
+                    palette.text: tokenText
+                    palette.highlightedText: tokenText
+                    palette.highlight: tokenAccentDim
+                    onActivated: if (shellReady && currentIndex >= 0 && model.length > currentIndex) {
+                        shellApi.setAtmosphere(model[currentIndex].id)
+                    }
+                    Component.onCompleted: {
+                        if (!shellReady) return
+                        for (var i = 0; i < model.length; i++) {
+                            if (model[i].id === atmosphereIdSafe) {
+                                currentIndex = i
+                                break
+                            }
+                        }
+                    }
                 }
                     Repeater {
                     objectName: "primarySettingsRepeater"
@@ -1593,7 +1677,7 @@ ApplicationWindow {
             anchors.rightMargin: 22
             anchors.topMargin: 12
             anchors.bottomMargin: 12
-            visible: !emptySafe && !peopleVisible && !focusActive
+            visible: !homeOpenSafe && !emptySafe && !peopleVisible && !focusActive
 
             // Soft center lift (Phase 2 atmosphere) — edges stay on canvas floor.
             Rectangle {
@@ -1931,175 +2015,30 @@ ApplicationWindow {
             }
         }
 
-        Column {
+        HomeLaunchpad {
+            id: homeLaunchpad
             objectName: "emptyState"
-            visible: emptySafe
-            anchors.centerIn: parent
-            spacing: 14
-            width: 820
-
-            Text {
-                width: parent.width
-                text: "Explore your local photo memory"
-                color: tokenText
-                font.family: "Segoe UI Variable"
-                font.pixelSize: 30
-                font.weight: Font.DemiBold
-                horizontalAlignment: Text.AlignHCenter
-            }
-            Text {
-                width: parent.width
-                text: jobRunning
-                      ? "Adding your folder. The library will unlock here as media is indexed."
-                      : "Semblon keeps your originals where they are, then helps you browse, review, search, and understand what is in your archive."
-                                      color: tokenMuted
-                font.family: "Segoe UI"
-                font.pixelSize: 15
-                wrapMode: Text.WordWrap
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Text {
-                objectName: "emptyStatus"
-                width: parent.width
-                visible: jobLabelSafe !== "" || canResumeSafe
-                text: jobLabelSafe === "Last add failed" ? "The last add didn't finish. Try again or choose another folder."
-                      : (canResumeSafe ? "The last add was stopped. Resume it or choose another folder." : jobLabelSafe)
-                                      color: tokenMuted
-                font.family: "Segoe UI"
-                font.pixelSize: 13
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Grid {
-                columns: 4
-                columnSpacing: 12
-                rowSpacing: 12
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width
-
-                Rectangle {
-                    objectName: "archiveCard"
-                    width: 180
-                    height: 110
-                    radius: 10
-                    color: tokenBg1
-                    border.color: tokenBorder
-                    border.width: 1
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        spacing: 8
-                        Text { text: "Archive"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                        Text { text: "Browse your local library"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
-                    }
-                }
-
-                Rectangle {
-                    objectName: "peopleCard"
-                    width: 180
-                    height: 110
-                    radius: 10
-                    color: tokenBg1
-                    border.color: tokenBorder
-                    border.width: 1
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        spacing: 8
-                        Text { text: "People"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                        Text { text: "Review groups with human decisions"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
-                    }
-                }
-
-                Rectangle {
-                    objectName: "searchCard"
-                    width: 180
-                    height: 110
-                    radius: 10
-                    color: tokenBg1
-                    border.color: tokenBorder
-                    border.width: 1
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        spacing: 8
-                        Text { text: "Search"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                        Text { text: "Find faces, people, and media"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
-                    }
-                }
-
-                Rectangle {
-                    objectName: "lensCard"
-                    width: 180
-                    height: 110
-                    radius: 10
-                    color: tokenBg1
-                    border.color: tokenBorder
-                    border.width: 1
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        spacing: 8
-                        Text { text: "Ask photo"; color: tokenText; font.family: "Segoe UI"; font.pixelSize: 16; font.weight: Font.DemiBold }
-                        Text { text: "Read, describe, and inspect visual context"; color: tokenMuted; font.family: "Segoe UI"; font.pixelSize: 12; wrapMode: Text.WordWrap }
-                    }
-                }
-            }
-
-            Item { width: 1; height: 8 }
-            Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: addLabel.implicitWidth + 36
-                height: 40
-                radius: 8
-                color: addArea.containsMouse ? tokenAccentDim : tokenBg2
-                border.color: tokenAccent
-                border.width: 1
-                visible: !jobRunning
-                Text {
-                    id: addLabel
-                    anchors.centerIn: parent
-                    text: "Add a folder"
-                    color: tokenText
-                    font.family: "Segoe UI"
-                    font.pixelSize: 14
-                }
-                MouseArea {
-                    id: addArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.addFolder()
-                }
-            }
-            Rectangle {
-                objectName: "emptyResume"
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: resumeEmptyLabel.implicitWidth + 36
-                height: 40
-                radius: 8
-                color: resumeEmptyArea.containsMouse ? tokenAccentDim : tokenBg2
-                border.color: tokenBorder
-                border.width: 1
-                visible: canResumeSafe && !jobRunning
-                Text {
-                    id: resumeEmptyLabel
-                    objectName: "resumeJob"
-                    anchors.centerIn: parent
-                    text: jobLabelSafe === "Last add failed" ? "Try again" : "Resume"
-                    color: tokenText
-                    font.family: "Segoe UI"
-                    font.pixelSize: 14
-                }
-                MouseArea {
-                    id: resumeEmptyArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: if (shellReady) shellApi.resumeJob()
-                }
-            }
+            anchors.fill: parent
+            visible: homeOpenSafe && !peopleVisible && !focusActive
+            shellApi: window.shellApi
+            shellReady: window.shellReady
+            emptyArchive: emptySafe
+            jobRunning: jobRunning
+            canResume: canResumeSafe
+            jobLabel: jobLabelSafe
+            archiveSummary: archiveSummarySafe
+            searchModeShort: searchModeShortSafe
+            advancedMode: advancedModeSafe
+            tokenBg: window.tokenBg
+            tokenBg1: window.tokenBg1
+            tokenBg2: window.tokenBg2
+            tokenBg3: window.tokenBg3
+            tokenAccent: window.tokenAccent
+            tokenAccentDim: window.tokenAccentDim
+            tokenText: window.tokenText
+            tokenMuted: window.tokenMuted
+            tokenFaint: window.tokenFaint
+            tokenBorder: window.tokenBorder
         }
 
         Item {
@@ -2120,7 +2059,7 @@ ApplicationWindow {
                 objectName: "pointHint"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
-                anchors.topMargin: 18
+                anchors.topMargin: jobRunning ? scanHero.height + 28 : 18
                 visible: focusActive && focusKindSafe !== "video"
                 text: "Point or draw to search"
                 color: tokenMuted
@@ -2657,35 +2596,42 @@ ApplicationWindow {
             Item {
                 id: selectionShade
                 objectName: "selectionShade"
-                anchors.fill: parent
+                readonly property var origin: regionDrag.contentOrigin()
+                readonly property real localX: selectionOutline.x - x
+                readonly property real localY: selectionOutline.y - y
                 visible: selectionOutline.visible
+                x: photo.paintedWidth > 1 ? photo.x + origin.x : 0
+                y: photo.paintedHeight > 1 ? photo.y + origin.y : 0
+                width: photo.paintedWidth > 1 ? photo.paintedWidth : 0
+                height: photo.paintedHeight > 1 ? photo.paintedHeight : 0
+                clip: true
                 z: 1
 
                 Rectangle {
                     x: 0
                     y: 0
                     width: parent.width
-                    height: Math.max(0, selectionOutline.y)
+                    height: Math.max(0, selectionShade.localY)
                     color: Qt.rgba(0, 0, 0, 0.5)
                 }
                 Rectangle {
                     x: 0
-                    y: selectionOutline.y + selectionOutline.height
+                    y: selectionShade.localY + selectionOutline.height
                     width: parent.width
-                    height: Math.max(0, parent.height - (selectionOutline.y + selectionOutline.height))
+                    height: Math.max(0, parent.height - (selectionShade.localY + selectionOutline.height))
                     color: Qt.rgba(0, 0, 0, 0.5)
                 }
                 Rectangle {
                     x: 0
-                    y: selectionOutline.y
-                    width: Math.max(0, selectionOutline.x)
+                    y: Math.max(0, selectionShade.localY)
+                    width: Math.max(0, selectionShade.localX)
                     height: selectionOutline.height
                     color: Qt.rgba(0, 0, 0, 0.5)
                 }
                 Rectangle {
-                    x: selectionOutline.x + selectionOutline.width
-                    y: selectionOutline.y
-                    width: Math.max(0, parent.width - (selectionOutline.x + selectionOutline.width))
+                    x: selectionShade.localX + selectionOutline.width
+                    y: Math.max(0, selectionShade.localY)
+                    width: Math.max(0, parent.width - (selectionShade.localX + selectionOutline.width))
                     height: selectionOutline.height
                     color: Qt.rgba(0, 0, 0, 0.5)
                 }
@@ -2713,18 +2659,6 @@ ApplicationWindow {
                 border.color: "white"
                 border.width: 1
                 z: 3
-
-                Repeater {
-                    model: 4
-                    delegate: Rectangle {
-                        objectName: "selectionGrid"
-                        color: "white"
-                        x: index < 2 ? ((index + 1) * parent.width / 3) : 0
-                        y: index < 2 ? 0 : ((index - 1) * parent.height / 3)
-                        width: index < 2 ? 1 : parent.width
-                        height: index < 2 ? parent.height : 1
-                    }
-                }
             }
 
             Repeater {

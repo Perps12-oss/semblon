@@ -74,7 +74,20 @@ Canvas {
         }
 
         var ic = icon
-        if (ic === "grid" || ic === "library") {
+        if (ic === "home") {
+            // Simple house: roof + body with door cutout.
+            ctx.beginPath()
+            ctx.moveTo(9, 1.5)
+            ctx.lineTo(16, 8)
+            ctx.lineTo(13.5, 8)
+            ctx.lineTo(13.5, 15.5)
+            ctx.lineTo(4.5, 15.5)
+            ctx.lineTo(4.5, 8)
+            ctx.lineTo(2, 8)
+            ctx.closePath()
+            ctx.fill()
+            punchRect(7.5, 10, 3, 5.5, 0.5)
+        } else if (ic === "grid" || ic === "library") {
             // Stacked photo rectangles.
             roundRect(2, 4, 12, 11, 2)
             punchRect(4, 6, 8, 5, 1)

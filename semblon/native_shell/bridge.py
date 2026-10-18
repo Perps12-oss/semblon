@@ -137,6 +137,7 @@ class ShellBridge(QObject):
         self._resume_ready = False
         self._cancel_requested = False
         self._empty = self._jobs.archive_count() == 0
+        self._stage = "home"
         self._reduced = reduced_motion()
         self._result_text = ""
         self._region_norm: tuple[float, float, float, float] | None = None
@@ -156,6 +157,8 @@ class ShellBridge(QObject):
         self._index_state = ""
         self._index_note = ""
         self._progress_seen: int | None = None
+        self._progress_current = 0
+        self._progress_total = 0
         self._discovery_trail: list[dict] = []
         self._query_focus_id = ""
         self._point_source = ""
@@ -221,6 +224,16 @@ class ShellBridge(QObject):
         self._timer.start()
         model.reload()
         self._reload_editorial()
+        QTimer.singleShot(0, self._sync_windows_caption)
+
+    def _sync_windows_caption(self) -> None:
+        """Match the native Windows caption to the shell background when supported."""
+        try:
+            from semblon.native_shell.windows_caption import apply_dark_caption
+        except Exception:  # noqa: BLE001 — caption is cosmetic
+            return
+        tokens = tokens_for(self._atmosphere_id)
+        apply_dark_caption(tokens.get("bg0", "#0a0b10"), tokens.get("text1", "#f2f3f5"))
 
     def shutdown(self) -> None:
         if self._cancel_flag is not None:
@@ -400,6 +413,37 @@ class ShellBridge(QObject):
     def empty(self) -> bool:
         return self._empty
 
+    @Property(str, notify=surfaceChanged)
+    def stage(self) -> str:
+        """Product stage: home launchpad or library field."""
+        return self._stage
+
+    @Property(bool, notify=surfaceChanged)
+    def homeOpen(self) -> bool:
+        return self._stage == "home"
+
+    @Property(str, notify=libraryChanged)
+    def archiveSummary(self) -> str:
+        """One-line library status for the Home state band."""
+        photos = int(self._photo_count or 0)
+        total = int(self._jobs.archive_count())
+        if total <= 0 and photos <= 0:
+            return ""
+        count = photos if photos > 0 else total
+        noun = "photo" if count == 1 else "photos"
+        return f"{count} {noun}. Originals stay where they are."
+
+    @Property(str, notify=surfaceChanged)
+    def searchModeShort(self) -> str:
+        mode = str(self._adapter.search_mode().data.get("mode") or "people")
+        return {
+            "people": "Names",
+            "text": "Text in photos",
+            "object": "Objects",
+            "whole": "Whole photo",
+            "region": "Region",
+        }.get(mode, "Names")
+
     @Property(bool, notify=jobChanged)
     def jobActive(self) -> bool:
         return self._job_active
@@ -423,6 +467,14 @@ class ShellBridge(QObject):
         if self._job_state == "cancelling":
             return "Cancelling"
         return self._progress_label or "Processing"
+
+    @Property(int, notify=jobChanged)
+    def jobCurrent(self) -> int:
+        return int(self._progress_current)
+
+    @Property(int, notify=jobChanged)
+    def jobTotal(self) -> int:
+        return int(self._progress_total)
 
     @Property(bool, constant=True)
     def reducedMotion(self) -> bool:
@@ -2411,13 +2463,95 @@ class ShellBridge(QObject):
         self.diagnosticsChanged.emit()
         self.lensChanged.emit()
 
+    def _close_stage_overlays(self, *, keep_focus: bool = False) -> None:
+        """Leave People / Settings / Activity without dropping the archive."""
+        changed = False
+        if self._settings_open:
+            self._settings_open = False
+            changed = True
+        if self._named_items_open:
+            self._named_items_open = False
+            changed = True
+        if self._activity_open:
+            self._activity_open = False
+            self._activity_rows = []
+            changed = True
+        if self._people_open:
+            self._people_open = False
+            self._selected_subject = ""
+            self._evidence_id = ""
+            self._merge_target_subject = ""
+            self._split_faces = []
+            self._person_days = []
+            self.peopleChanged.emit()
+        if not keep_focus and self._session.focus_id:
+            self._session.escape()
+            self._clear_query()
+            self._clear_focus_boxes()
+            self.focusChanged.emit()
+            self.diagnosticsChanged.emit()
+            self.lensChanged.emit()
+        if changed:
+            self.surfaceChanged.emit()
+
+    @Slot()
+    def showHome(self) -> None:
+        """Return to the permanent Home launchpad. Archive and scope stay."""
+        self._close_stage_overlays(keep_focus=False)
+        if self._stage != "home":
+            self._stage = "home"
+            self.surfaceChanged.emit()
+        elif not self._settings_open:
+            self.surfaceChanged.emit()
+
+    @Slot()
+    def showLibrary(self) -> None:
+        """Open the archive field (timeline, calendar, grid)."""
+        self._close_stage_overlays(keep_focus=False)
+        if self._stage != "library":
+            self._stage = "library"
+            self.surfaceChanged.emit()
+        else:
+            self.surfaceChanged.emit()
+
     @Slot()
     def wordmark(self) -> None:
-        self._session.wordmark()
-        self._clear_query()
-        self.focusChanged.emit()
-        self.diagnosticsChanged.emit()
-        self.lensChanged.emit()
+        """Sidebar Library entry — open the archive field."""
+        self.showLibrary()
+
+    @Slot()
+    def openVisualDiscovery(self) -> None:
+        """Open Focus so the person can point or draw. Empty archive adds a folder."""
+        if self._jobs.archive_count() == 0:
+            self.addFolder()
+            return
+        if self._settings_open or self._named_items_open or self._activity_open:
+            self._settings_open = False
+            self._named_items_open = False
+            if self._activity_open:
+                self._activity_open = False
+                self._activity_rows = []
+            self.surfaceChanged.emit()
+        if self._people_open:
+            self._people_open = False
+            self._selected_subject = ""
+            self._evidence_id = ""
+            self._merge_target_subject = ""
+            self._split_faces = []
+            self._person_days = []
+            self.peopleChanged.emit()
+        media_id = self._session.focus_id or ""
+        item = self._jobs.media(media_id) if media_id else None
+        if item is None or item.source_type not in {"folder", "video"}:
+            media_id = ""
+            for row in self._jobs.archive_window(0, 48):
+                if row.source_type in {"folder", "video"}:
+                    media_id = row.media_id
+                    break
+        if not media_id:
+            self._set_result("No photo is ready for visual discovery yet.")
+            return
+        self.openFocus(media_id)
 
     @Slot(str)
     def submitCommand(self, text: str) -> None:
@@ -2495,6 +2629,7 @@ class ShellBridge(QObject):
         self._atmosphere_id = chosen
         save_theme_mode(chosen, self._prefs_store())
         self.lensChanged.emit()
+        self._sync_windows_caption()
 
     @Slot()
     def cycleAtmosphere(self) -> None:
@@ -2929,6 +3064,7 @@ class ShellBridge(QObject):
     @Slot(str)
     def setSearchMode(self, mode: str) -> None:
         self._apply_result(self._safe_call(lambda: self._adapter.set_search_mode(mode)))
+        self.surfaceChanged.emit()
 
     @Slot(str)
     def setLibraryFilter(self, filter_key: str) -> None:
@@ -3060,6 +3196,8 @@ class ShellBridge(QObject):
         self.keepsChanged.emit()
         self.focusChanged.emit()
         self.peopleChanged.emit()
+        self._stage = "home"
+        self.surfaceChanged.emit()
         self._apply_result(
             Result(
                 "ready",
@@ -3329,6 +3467,8 @@ class ShellBridge(QObject):
         current = payload.get("current")
         total = payload.get("total")
         if isinstance(current, int) and isinstance(total, int) and total > 0:
+            self._progress_current = current
+            self._progress_total = total
             self._progress_label = (
                 f"Processing {current}/{total}. Photos already added can be opened."
             )
@@ -3361,6 +3501,8 @@ class ShellBridge(QObject):
         if active != self._job_active or state != self._job_state:
             was = self._job_active
             if was and not active:
+                self._progress_current = 0
+                self._progress_total = 0
                 self._resume_ready = self._resume_ready or bool(self._cancel_requested and self._last_folder is not None)
                 self._cancel_requested = False
                 self._last_job_failed = self._terminal_status == "failed"

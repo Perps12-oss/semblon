@@ -153,6 +153,7 @@ def test_archive_model_filter_does_not_widen_the_window(tmp_path):
 def test_qml_exposes_four_operations_and_hides_places():
     root = Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml"
     qml = (root / "Shell.qml").read_text(encoding="utf-8")
+    home = (root / "HomeLaunchpad.qml").read_text(encoding="utf-8")
     sidebar = (root / "ContextSidebar.qml").read_text(encoding="utf-8")
     assert '"rescan"' in qml
     assert '"namedItems"' in qml
@@ -163,10 +164,12 @@ def test_qml_exposes_four_operations_and_hides_places():
     assert "Install model" in qml
     assert 'objectName: "namedItemsSheet"' in qml
     assert 'objectName: "similarAction"' in qml
-    assert 'objectName: "archiveCard"' in qml
-    assert 'objectName: "peopleCard"' in qml
-    assert 'objectName: "searchCard"' in qml
-    assert 'objectName: "lensCard"' in qml
+    assert 'objectName: "archiveCard"' in home
+    assert 'objectName: "peopleCard"' in home
+    assert 'objectName: "discoverCard"' in home
+    assert "HomeLaunchpad" in qml
+    assert '"homeButton"' in qml
+    assert 'showHome' in qml
     assert "ContextSidebar" in qml
     assert 'objectName: "archiveSidebar"' in sidebar
     assert 'objectName: "sidebarMoments"' in sidebar
@@ -176,13 +179,12 @@ def test_qml_exposes_four_operations_and_hides_places():
     assert "facetBar" not in qml
     assert "quickActionRail" not in qml
     assert "librarySnapshot" not in qml
-    assert "Explore your local photo memory" in qml
-    assert "Review groups with human decisions" in qml
-    assert "Find faces, people, and media" in qml
-    assert "Read, describe, and inspect visual context" in qml
+    assert "There is more to remember." in home
+    assert "Visual discovery" in home
+    assert "Explore all capabilities" in home
     assert "Places" not in qml
-    assert "Coming soon" not in qml
-    assert "coming soon" not in qml
+    assert "Coming soon" not in home
+    assert "coming soon" not in home
     assert 'objectName: "mainSidebar"' not in qml
     assert "timelineRail" not in qml
 
@@ -292,8 +294,15 @@ def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
     assert root.findChild(QObject, "facetBar") is None
     assert root.findChild(QObject, "quickActionRail") is None
     assert root.findChild(QObject, "librarySnapshot") is None
-    assert root.findChild(QObject, "archiveSidebar") is not None
+    assert root.findChild(QObject, "homeButton") is not None
     assert root.findChild(QObject, "settingsButton") is not None
+    assert bridge.homeOpen is True
+    assert root.findChild(QObject, "emptyState").property("visible") is True
+    assert root.findChild(QObject, "searchField").property("visible") is False
+    bridge.showLibrary()
+    app.processEvents()
+    assert bridge.homeOpen is False
+    assert root.findChild(QObject, "archiveSidebar") is not None
     assert root.findChild(QObject, "searchField") is not None
     assert root.findChild(QObject, "searchField").property("visible") is True
     assert root.findChild(QObject, "commandField").property("visible") is False
@@ -301,6 +310,8 @@ def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
     app.processEvents()
     sheet = root.findChild(QObject, "settingsSheet")
     assert sheet.property("visible") is True
+    assert root.findChild(QObject, "primaryModeButton") is not None
+    assert root.findChild(QObject, "atmospherePicker") is not None
     bridge.setFacet("days")
     app.processEvents()
     assert bridge.facet == "timeline"

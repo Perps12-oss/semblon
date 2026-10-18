@@ -7,10 +7,10 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-18 (photographic patch retrieval; discovery workspace) |
-| Branch | `grok/visual-discovery` |
+| Evidence date | 2026-10-18 (editorial Home launchpad) |
+| Branch | `grok/home-launchpad` |
 | Parent HEAD | (see git log on branch) |
-| Working tree at evidence | Slice D unified results basis labels; pytest below |
+| Working tree at evidence | Permanent Home stage + capability catalogue; shell journey updated |
 
 ## Status vocabulary
 
@@ -173,11 +173,11 @@ Floors, chosen on this run: token cosine 0.35, mean score 0.28, coverage 0.28.
 
 The archive shell is unchanged as a browser. Focus is the discovery surface.
 
-1. The selection is a clear crop on the stored rectangle: white corner brackets, a thirds grid, and a dim outside the frame. Edges and corners resize it. Dragging inside it moves it. Click still points. Drag still draws. Ctrl+wheel, trackpad pinch, and touch pinch zoom the photo (1×–8×). Middle-drag or Alt-drag pans. Left and Right move to the previous and next photo and reset that zoom. Search this area repeats the search on that rectangle.
+1. The selection is a clear crop on the stored rectangle: white corner brackets and a dim on the picture outside the frame. A drawn region stays unnamed. An empty similar search says nothing was close enough. Edges and corners resize it. Dragging inside it moves it. Click still points. Drag still draws. Ctrl+wheel, trackpad pinch, and touch pinch zoom the photo (1×–8×). Middle-drag or Alt-drag pans. Left and Right move to the previous and next photo and reset that zoom. Search this area repeats the search on that rectangle.
 2. Similar search runs off the UI thread. The strip says it is looking, Cancel search and Escape drop a late result, and a newer search replaces a slower one.
 3. Each result draws its match box on that thumbnail (fit, not a crop that hides the box). The open match photo draws the same box. The query outline stays on the query photo. The line under the strip says a match is a similar region, not proof it is the same object.
 4. Kept finds restore the query photo, the rectangle, and the match boxes.
-5. Index copy distinguishes still indexing, this photo already searchable, coarse index only, and not indexed. Ingest progress still counts processed/total and says photos already added can be opened. The grid reloads as that count moves.
+5. Index copy distinguishes still indexing, this photo already searchable, coarse index only, and not indexed. A scan shows a card with a progress bar and Pause or Cancel. The card does not cover the library, so photos already added can still be opened. The grid reloads as that count moves.
 6. Scores and the index state word sit in Advanced. Primary shows the photo, the selection, the understanding line, and the matches.
 7. Settings **Clear library** asks first (No is the default). Yes deletes the folder index, names, and the two discovery sidecars beside the store. Original files stay on disk. Display settings stay. **Reset defaults** still only clears appearance and caches.
 
@@ -215,6 +215,13 @@ Generated textured objects (not photographs): `tools/eval_rendered_regions.py` �
 Visible shell grab: `docs/evidence/visual-discovery-shell-windows.png` shows **Similar look** and `Similar (Similar look): 1 match.` on a generated mug. See `docs/evidence/visual-discovery-shell.md`.
 
 Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
+
+## Behaviour landed — editorial Home launchpad (2026-10-18)
+
+1. Home is a permanent stage (`showHome` / `homeOpen`), empty or populated. Adding a folder does not hide it.
+2. Sidebar: Home, Library, People, Add folder, Settings. Library opens the timeline Field. Visual discovery opens Focus on a still (or Add a folder when empty).
+3. Home cards: Library, Visual discovery, People. **Explore all capabilities** opens a filterable catalogue of actions the shell already runs.
+4. Primary / Advanced and Atmosphere moved into the Settings sheet. Native Windows caption follows the shell background when DWM allows it.
 
 ## What this file will not absorb
 

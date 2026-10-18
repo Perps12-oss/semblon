@@ -445,7 +445,7 @@ def describe_selection(store: Path, media_id: str, x: int, y: int, w: int, h: in
         if str(payload.get("source") or "") == "contour":
             continue
         label = str(payload.get("label") or payload.get("class") or "").strip()
-        if not label or label.lower() == "region":
+        if not label or label.lower() in {"region", "user_region"}:
             continue
         return f"Object: {label}."
     text = overlapping_text(store, media_id, x, y, w, h)

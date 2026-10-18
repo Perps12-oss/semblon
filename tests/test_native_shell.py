@@ -42,10 +42,11 @@ def test_shell_command_loads_qml_archive_not_the_widget_columns():
     text = bridge.read_text(encoding="utf-8")
     assert "submit_ingest" in text
     assert "open_review=False" in text
-    qml = (Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml" / "Shell.qml").read_text(
-        encoding="utf-8"
-    )
-    assert "Add a folder" in qml
+    qml_dir = Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml"
+    qml = (qml_dir / "Shell.qml").read_text(encoding="utf-8")
+    home = (qml_dir / "HomeLaunchpad.qml").read_text(encoding="utf-8")
+    assert "Add folder" in qml
+    assert "Add a folder" in home
     assert 'objectName: "lensLine"' in qml
     assert "GridView" in qml
     assert "QListWidget" not in qml
@@ -157,6 +158,12 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
     assert bridge.count == 2
+    assert bridge.homeOpen is True
+    assert root.findChild(QObject, "emptyState").property("visible") is True
+    assert root.findChild(QObject, "fieldGrid").property("visible") is False
+    bridge.showLibrary()
+    app.processEvents()
+    assert bridge.homeOpen is False
     assert root.findChild(QObject, "emptyState").property("visible") is False
     assert root.findChild(QObject, "fieldGrid").property("visible") is True
     assert root.findChild(QObject, "lensLine").property("text") == "Time"
@@ -473,13 +480,13 @@ def test_bridge_archive_media_ask_similar_and_ingest_use_application(tmp_path, m
 
 def test_focus_qml_keeps_the_strip_and_a_primary_similar_action():
     """Region drag still fills the strip. Similar is also a primary action."""
-    qml = (
-        Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml" / "Shell.qml"
-    ).read_text(encoding="utf-8")
+    qml_root = Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml"
+    qml = (qml_root / "Shell.qml").read_text(encoding="utf-8")
+    home = (qml_root / "HomeLaunchpad.qml").read_text(encoding="utf-8")
     assert "shell.findSimilar()" in qml
     assert "shellApi.findSimilarWhole()" in qml
-    assert "shell.resumeJob()" in qml
-    assert 'objectName: "resumeJob"' in qml
+    assert "shell.resumeJob()" in home or "resumeJob()" in home
+    assert 'objectName: "resumeJob"' in home
     assert 'objectName: "similarAction"' in qml
     assert 'text: "Similar look"' in qml
     assert 'objectName: "findSimilar"' not in qml

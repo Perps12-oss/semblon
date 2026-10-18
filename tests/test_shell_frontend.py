@@ -606,7 +606,9 @@ def test_windows_journey_launch_ingest_browse_search_theme_restart_recover(tmp_p
     bridge = engine._semblon_bridge
     try:
         assert bridge.empty and bridge.primaryMode and bridge.atmosphereId == "mica_dark"
+        assert bridge.homeOpen is True
         assert root.findChild(QObject, "emptyState").property("visible") is True
+        assert root.findChild(QObject, "homeButton") is not None
 
         bridge._start_ingest(tmp_path / "missing-folder")
         wait_idle(app, bridge)
@@ -617,9 +619,23 @@ def test_windows_journey_launch_ingest_browse_search_theme_restart_recover(tmp_p
         wait_idle(app, bridge)
         assert not bridge.empty
         assert bridge.count == 2
-        assert root.findChild(QObject, "emptyState").property("visible") is False
+        assert bridge.homeOpen is True
+        assert root.findChild(QObject, "emptyState").property("visible") is True
         assert bridge.photoCount == 2
 
+        bridge.showLibrary()
+        app.processEvents()
+        assert bridge.homeOpen is False
+        assert root.findChild(QObject, "emptyState").property("visible") is False
+        assert root.findChild(QObject, "fieldGrid").property("visible") is True
+
+        bridge.showHome()
+        app.processEvents()
+        assert bridge.homeOpen is True
+        assert root.findChild(QObject, "emptyState").property("visible") is True
+
+        bridge.showLibrary()
+        app.processEvents()
         bridge.setFacet("folders")
         assert bridge.buckets
         bridge.setFacet("memory")
