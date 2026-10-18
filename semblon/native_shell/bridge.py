@@ -20,10 +20,11 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtWidgets import QApplication, QFileDialog
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
+from semblon.focus_gesture import adjust_box, clamp_view, zoom_about
 from semblon.native_shell.adapter import AdapterError, ArchiveAdapter, Result
 from semblon.native_shell.events import (
     IDENTITY_CHANGED,
@@ -2543,6 +2544,46 @@ class ShellBridge(QObject):
         self._selection_note = "Drawn region."
         self.selectionChanged.emit()
 
+    @Slot(float, float, float, float, str, float, float, float, float, float, float, result=str)
+    def adjustSelectionBox(
+        self,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        edge: str,
+        dx: float,
+        dy: float,
+        min_x: float,
+        min_y: float,
+        max_x: float,
+        max_y: float,
+    ) -> str:
+        """Local-pixel rectangle after dragging one edge or corner."""
+        rect = adjust_box(x, y, w, h, edge, dx, dy, min_x, min_y, max_x, max_y)
+        return ",".join(f"{value:.8f}" for value in rect)
+
+    @Slot(float, float, float, float, float, result=str)
+    def clampFocusView(self, x: float, y: float, scale: float, width: float, height: float) -> str:
+        view = clamp_view(x, y, scale, width, height)
+        return ",".join(f"{value:.8f}" for value in view)
+
+    @Slot(float, float, float, float, float, float, float, float, result=str)
+    def zoomFocusView(
+        self,
+        x: float,
+        y: float,
+        scale: float,
+        view_x: float,
+        view_y: float,
+        width: float,
+        height: float,
+        factor: float,
+    ) -> str:
+        """Zoom the fitted photo about a viewport point. Returns x, y, scale."""
+        view = zoom_about(x, y, scale, view_x, view_y, factor, width, height)
+        return ",".join(f"{value:.8f}" for value in view)
+
     def _pixel_rect(self) -> tuple[int, int, int, int] | None:
         media_id = self._session.focus_id
         if not media_id or self._region_norm is None:
@@ -2977,6 +3018,54 @@ class ShellBridge(QObject):
         self._atmosphere_id = self._load_atmosphere_id()
         self._apply_result(result)
         self.lensChanged.emit()
+
+    @Slot()
+    def clearLibrary(self) -> None:
+        """Drop the folder index and names. Original files stay on disk."""
+        if self._jobs.busy:
+            self._apply_result(Result("unavailable", "A folder is being added. Wait until that finishes."))
+            return
+        answer = QMessageBox.question(
+            None,
+            "Clear library",
+            "Remove the folder index, names, and kept finds from Semblon?\n\n"
+            "Photos on disk stay where they are.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self._apply_result(Result("empty", "Library clear was cancelled."))
+            return
+        self._stop_search(publish=False)
+        try:
+            self._jobs.wipe_library()
+        except Exception:  # noqa: BLE001 — the notice stays non-technical
+            self._apply_result(Result("error", "The library could not be cleared."))
+            return
+        self._discovery_trail.clear()
+        for path in (self._discovery_file(), self._keeps_file()):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        self._session.clear_focus()
+        self._region_norm = None
+        self._selection_kind = ""
+        self._selection_note = ""
+        self.selectionChanged.emit()
+        self._clear_similar()
+        self._clear_focus_boxes()
+        self._refresh_library()
+        self._refresh_people()
+        self.keepsChanged.emit()
+        self.focusChanged.emit()
+        self.peopleChanged.emit()
+        self._apply_result(
+            Result(
+                "ready",
+                "Library cleared. Photos on disk were kept. Add a folder to start again.",
+            )
+        )
 
     @Slot()
     def toggleSettings(self) -> None:

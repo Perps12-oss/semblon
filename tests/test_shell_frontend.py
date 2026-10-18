@@ -250,6 +250,64 @@ def test_reset_defaults_returns_to_dark_primary_without_losing_library(shell, tm
     assert bridge.primaryMode
 
 
+def test_clear_library_drops_the_index_and_keeps_originals(shell, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    from semblon.atmosphere import ATMOSPHERE_IDS
+
+    store = tmp_path / "clear.sqlite"
+    bridge = shell(store)
+    _seed(store, tmp_path, n=2)
+    photo = tmp_path / "2017" / "0.jpg"
+    photo.parent.mkdir(parents=True, exist_ok=True)
+    photo.write_bytes(b"original-stays")
+    (tmp_path / "2018").mkdir(exist_ok=True)
+    (tmp_path / "2018" / "1.jpg").write_bytes(b"original-stays")
+    bridge._discovery_file().write_text("{}", encoding="utf-8")
+    bridge._keeps_file().write_text('[{"understanding":"Kept find","items":[]}]', encoding="utf-8")
+    chosen = next(i for i in ATMOSPHERE_IDS if i != "mica_dark")
+    bridge.setAtmosphere(chosen)
+    bridge._model.reload()
+    bridge.openFocus("m0")
+    assert bridge.focusId == "m0"
+    assert bridge.keptCount == 1
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
+    bridge.clearLibrary()
+    assert bridge.resultText == "Library cleared. Photos on disk were kept. Add a folder to start again."
+    assert bridge._jobs.archive_count() == 0
+    assert bridge._model.rowCount() == 0
+    assert bridge.focusId == ""
+    assert bridge.keptCount == 0
+    assert store.is_file()
+    assert photo.read_bytes() == b"original-stays"
+    assert not bridge._discovery_file().exists()
+    assert not bridge._keeps_file().exists()
+    assert bridge.atmosphereId == chosen
+
+
+def test_clear_library_cancel_and_busy_leave_the_index(shell, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QMessageBox
+
+    store = tmp_path / "keep.sqlite"
+    bridge = shell(store)
+    _seed(store, tmp_path, n=2)
+    bridge._model.reload()
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.No)
+    bridge.clearLibrary()
+    assert bridge.resultText == "Library clear was cancelled."
+    assert bridge._jobs.archive_count() == 2
+
+    bridge._jobs.engine._current = SimpleNamespace()
+    try:
+        bridge.clearLibrary()
+        assert bridge.resultText == "A folder is being added. Wait until that finishes."
+        assert bridge._jobs.archive_count() == 2
+    finally:
+        bridge._jobs.engine._current = None
+
+
 def _seed(store, tmp_path, n=4):
     from semblon.store import connect, init_db
 

@@ -103,7 +103,12 @@ def test_selection_survives_restore_and_states_are_distinct(tmp_path, monkeypatc
         assert bridge.similarCaution.startswith("A match is a similar region")
         assert "proof" in bridge.similarCaution
         root = engine.rootObjects()[0]
-        assert root.findChild(QObject, "selectionOutline") is not None
+        outline = root.findChild(QObject, "selectionOutline")
+        assert outline is not None
+        assert outline.property("color").alpha() == 0
+        shade = root.findChild(QObject, "selectionShade")
+        assert shade is not None
+        assert shade.property("visible") is True
         assert root.findChild(QObject, "searchThisArea") is not None
         assert root.findChild(QObject, "cancelSearch") is not None
         assert root.findChild(QObject, "indexNote") is not None
@@ -255,5 +260,36 @@ def test_coarse_index_is_not_called_ready(tmp_path, monkeypatch):
         bridge._refresh_index_note()
         assert bridge.indexState == "fallback"
         assert "coarse index" in bridge.indexNote
+    finally:
+        shutdown_shell(engine)
+
+
+def test_zoom_resets_on_the_next_photo_and_edges_resize(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject
+
+    from semblon.native_shell.host import shutdown_shell
+
+    _app, engine, bridge = _shell(tmp_path, monkeypatch)
+    try:
+        root = engine.rootObjects()[0]
+        view = root.findChild(QObject, "photoView")
+        assert view is not None
+        assert root.findChild(QObject, "photoPinch") is not None
+        assert root.findChild(QObject, "photoWheel") is not None
+        assert root.findChild(QObject, "regionDrag") is not None
+        _app.processEvents()
+        assert float(view.property("width")) > 1
+        view.zoomAt(30, 30, 2)
+        assert float(view.property("scale")) == pytest.approx(2)
+        bridge.focusNext()
+        _app.processEvents()
+        assert bridge.focusId == "m2"
+        assert float(view.property("scale")) == pytest.approx(1)
+        assert float(view.property("x")) == pytest.approx(0)
+        grown = [float(part) for part in bridge.adjustSelectionBox(
+            10, 20, 100, 40, "r", 25, 0, 0, 0, 400, 300
+        ).split(",")]
+        assert grown[2] == pytest.approx(125)
+        assert grown[3] == pytest.approx(40)
     finally:
         shutdown_shell(engine)
