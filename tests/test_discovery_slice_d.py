@@ -17,6 +17,17 @@ def test_unified_basis_messages_are_allowlisted():
         "Similar (Similar look): 3 matches.",
         "Similar (Text in the selection): 1 match.",
         "Similar (Unknown region): 1 match.",
+        "Similar (Similar look): looking through photos already indexed.",
+        "Similar (Similar look): cancelled.",
+        "Similar (Similar look): search failed.",
+        "Similar (Similar look): the region model is not installed.",
+        "Similar (Similar look): these photos are not indexed for region search yet.",
+        "Kept this find.",
+        "A match is a similar region, not proof it is the same object.",
+        "Still indexing. Photos already added can be opened.",
+        "Still indexing. This photo can already be searched.",
+        "This photo is not indexed yet. Add its folder so search can see inside it.",
+        "This photo has a coarse index only. Matches may miss the area you point at.",
     ):
         assert is_primary_safe_message(line)
 

@@ -214,7 +214,10 @@ def _bounded(fn, *, seconds: float = ENCODE_TIMEOUT_S):
             _SESSION_KEY = None
         raise RegionPackError("region encoder timed out")
     if "error" in box:
-        raise box["error"]
+        err = box["error"]
+        if isinstance(err, RegionPackError):
+            raise err
+        raise RegionPackError(str(err) or "region encoder failed") from err
     return box.get("value")
 
 

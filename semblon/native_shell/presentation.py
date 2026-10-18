@@ -54,6 +54,12 @@ _SAFE_PRIMARY_EXACT = {
     "No overlooked faces right now.",
     "This photo is missing from its stored path. If you moved or renamed it, add that folder again so Semblon can reconnect it.",
     "Opened photo. No date on file — time context unavailable.",
+    "Kept this find.",
+    "A match is a similar region, not proof it is the same object.",
+    "Still indexing. Photos already added can be opened.",
+    "Still indexing. This photo can already be searched.",
+    "This photo is not indexed yet. Add its folder so search can see inside it.",
+    "This photo has a coarse index only. Matches may miss the area you point at.",
 }
 
 _SAFE_PRIMARY_PATTERNS = (

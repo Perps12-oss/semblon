@@ -4,11 +4,23 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QMetaObject, Qt, QTimer, QUrl, Signal, Slot
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtCore import (
+    Property,
+    QEventLoop,
+    QMetaObject,
+    QObject,
+    Qt,
+    QThread,
+    QTimer,
+    QUrl,
+    Signal,
+    Slot,
+)
+from PySide6.QtWidgets import QApplication, QFileDialog
 
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
@@ -77,6 +89,24 @@ def reduced_motion() -> bool:
         return False
 
 
+class _VisualSearchThread(QThread):
+    """Region and similar lookups off the UI thread. The slot applies the result."""
+
+    succeeded = Signal(int, object)
+    failed = Signal(int, str)
+
+    def __init__(self, generation: int, fn, parent=None):
+        super().__init__(parent)
+        self._generation = generation
+        self._fn = fn
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._generation, self._fn())
+        except Exception as exc:  # noqa: BLE001 — the UI slot turns this into search failed
+            self.failed.emit(self._generation, str(exc) or "search failed")
+
+
 class ShellBridge(QObject):
     lensChanged = Signal()
     focusChanged = Signal()
@@ -87,6 +117,9 @@ class ShellBridge(QObject):
     ingestFinished = Signal()
     resultChanged = Signal()
     similarChanged = Signal()
+    selectionChanged = Signal()
+    searchBusyChanged = Signal()
+    indexChanged = Signal()
     keepsChanged = Signal()
     peopleChanged = Signal()
     surfaceChanged = Signal()
@@ -114,6 +147,14 @@ class ShellBridge(QObject):
         self._selection_note = ""
         self._selection_kind = ""
         self._similar_cancel = False
+        self._search_generation = 0
+        self._search_busy = False
+        self._search_thread: _VisualSearchThread | None = None
+        self._cancel_flag: list[bool] | None = None
+        self._search_failure = ""
+        self._index_state = ""
+        self._index_note = ""
+        self._progress_seen: int | None = None
         self._discovery_trail: list[dict] = []
         self._query_focus_id = ""
         self._point_source = ""
@@ -172,6 +213,7 @@ class ShellBridge(QObject):
         self._person_field_ids: list[str] = []
         self._person_field_label = ""
         self.ingestFinished.connect(self._after_ingest)
+        self.focusChanged.connect(self._refresh_index_note)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
         self._timer.timeout.connect(self._poll_job)
@@ -180,6 +222,12 @@ class ShellBridge(QObject):
         self._reload_editorial()
 
     def shutdown(self) -> None:
+        if self._cancel_flag is not None:
+            self._cancel_flag[0] = True
+        self._search_generation += 1
+        thread = self._search_thread
+        if thread is not None and thread.isRunning():
+            thread.wait(2000)
         jobs = getattr(self, "_jobs", None)
         engine = getattr(jobs, "engine", None) if jobs is not None else None
         if engine is not None and hasattr(engine, "shutdown"):
@@ -1033,6 +1081,8 @@ class ShellBridge(QObject):
                 self._load_focus_boxes(focus_id)
         region = frame.get("region")
         self._region_norm = tuple(region) if region else None
+        self._query_focus_id = focus_id
+        self.selectionChanged.emit()
         self._similar.set_rows(list(frame.get("rows") or []))
         self._similar_state = str(frame.get("state") or "idle")
         self._similar_note = str(frame.get("note") or "")
@@ -1108,7 +1158,174 @@ class ShellBridge(QObject):
 
     @Slot()
     def cancelSimilar(self) -> None:
+        self._stop_search(publish=True)
+
+    def _stop_search(self, *, publish: bool) -> None:
+        self._search_generation += 1
+        if self._cancel_flag is not None:
+            self._cancel_flag[0] = True
         self._similar_cancel = True
+        was_busy = self._search_busy
+        self._search_busy = False
+        if was_busy:
+            self.searchBusyChanged.emit()
+        if not publish:
+            return
+        label = self._similar_basis_label or "Similar look"
+        self._publish_similar(
+            "empty",
+            f"Similar ({label}): cancelled.",
+            [],
+            basis=self._similar_basis or "region",
+            basis_label=label,
+            persist=False,
+        )
+
+    def _start_visual_search(self, *, basis: str, label: str, build) -> None:
+        """Publish looking immediately, then run build(cancel_flag) off the UI thread."""
+        if self._cancel_flag is not None:
+            self._cancel_flag[0] = True
+        self._search_generation += 1
+        generation = self._search_generation
+        flag = [False]
+        self._cancel_flag = flag
+        self._similar_cancel = False
+        self._search_failure = ""
+        self._search_busy = True
+        self.searchBusyChanged.emit()
+        self._publish_similar(
+            "loading",
+            f"Similar ({label}): looking through photos already indexed.",
+            [],
+            basis=basis,
+            basis_label=label,
+            persist=False,
+        )
+        thread = _VisualSearchThread(generation, lambda: build(flag), self)
+        thread.succeeded.connect(self._on_visual_search)
+        thread.failed.connect(self._on_visual_search_failed)
+        self._search_thread = thread
+        thread.start()
+        if os.environ.get("SEMBLON_SEARCH_SYNC") == "1":
+            self._settle_search()
+
+    def _settle_search(self) -> None:
+        """Wait until the worker finishes. Connect before the running check so a fast result is not missed."""
+        thread = self._search_thread
+        if thread is not None and thread.isRunning():
+            loop = QEventLoop()
+
+            def _stop() -> None:
+                if loop.isRunning():
+                    loop.quit()
+
+            thread.finished.connect(_stop)
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(_stop)
+            timer.start(8000)
+            if thread.isRunning():
+                loop.exec()
+            timer.stop()
+            try:
+                thread.finished.disconnect(_stop)
+            except RuntimeError:
+                pass
+        app = QApplication.instance()
+        if app is None:
+            return
+        for _ in range(8):
+            app.processEvents()
+            if not self._search_busy:
+                break
+
+    @Slot(int, object)
+    def _on_visual_search(self, generation: int, payload) -> None:
+        if generation != self._search_generation:
+            return
+        self._search_busy = False
+        self.searchBusyChanged.emit()
+        if payload is None or self._similar_cancel:
+            self._publish_similar(
+                "empty",
+                f"Similar ({self._similar_basis_label or 'Similar look'}): cancelled.",
+                [],
+                basis=self._similar_basis or "region",
+                basis_label=self._similar_basis_label or "Similar look",
+                persist=False,
+            )
+            return
+        if isinstance(payload, Result):
+            result = payload
+        else:
+            result = self._safe_call(lambda: self._adapter.similar_region(payload))
+        self._publish_similar_result(result)
+
+    @Slot(int, str)
+    def _on_visual_search_failed(self, generation: int, message: str) -> None:
+        if generation != self._search_generation:
+            return
+        self._search_busy = False
+        self._search_failure = str(message or "search failed")
+        self.searchBusyChanged.emit()
+        label = self._similar_basis_label or "Similar look"
+        self._publish_similar(
+            "error",
+            f"Similar ({label}): search failed.",
+            [],
+            basis=self._similar_basis or "region",
+            basis_label=label,
+            persist=False,
+        )
+
+    def _refresh_index_note(self) -> None:
+        state, note = self._index_for_focus()
+        if state == self._index_state and note == self._index_note:
+            return
+        self._index_state = state
+        self._index_note = note
+        self.indexChanged.emit()
+        self.similarChanged.emit()
+
+    def _index_for_focus(self) -> tuple[str, str]:
+        media_id = self._session.focus_id or ""
+        if not media_id:
+            return "", ""
+        patch = 0
+        coarse = 0
+        try:
+            store = Path(self._jobs.store)
+            conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
+            try:
+                row = conn.execute(
+                    """SELECT
+                         SUM(CASE WHEN e.modality='region_patch' THEN 1 ELSE 0 END),
+                         SUM(CASE WHEN e.modality='region' THEN 1 ELSE 0 END)
+                       FROM embeddings e
+                       JOIN observation_items i ON i.item_id = e.item_id
+                       JOIN observations o ON o.observation_id = i.observation_id
+                       WHERE o.media_id=?""",
+                    (media_id,),
+                ).fetchone()
+            finally:
+                conn.close()
+            patch = int((row[0] if row else 0) or 0)
+            coarse = int((row[1] if row else 0) or 0)
+        except sqlite3.Error:
+            return "unknown", ""
+        if patch > 0 and self._job_active:
+            return "patch", "Still indexing. This photo can already be searched."
+        if patch > 0:
+            return "patch", ""
+        if self._job_active:
+            return "indexing", "Still indexing. Photos already added can be opened."
+        if coarse > 0:
+            return "fallback", (
+                "This photo has a coarse index only. Matches may miss the area you point at."
+            )
+        return "unindexed", (
+            "This photo is not indexed yet. Add its folder so search can see inside it."
+        )
 
     @Property(int, notify=similarChanged)
     def similarCount(self) -> int:
@@ -1138,6 +1355,7 @@ class ShellBridge(QObject):
         *,
         basis: str = "",
         basis_label: str = "",
+        persist: bool = True,
     ) -> None:
         self._similar.set_rows(rows)
         self._similar_state = state
@@ -1145,7 +1363,7 @@ class ShellBridge(QObject):
         self._similar_basis = str(basis or "")
         self._similar_basis_label = str(basis_label or "")
         self.similarChanged.emit()
-        if state in {"ready", "empty"}:
+        if persist and state in {"ready", "empty"}:
             self._persist_discovery()
 
     def _match_for_focus(self) -> tuple[float, float, float, float]:
@@ -1172,6 +1390,66 @@ class ShellBridge(QObject):
     @Property(float, notify=similarChanged)
     def matchH(self) -> float:
         return self._match_for_focus()[3]
+
+    @Property(float, notify=selectionChanged)
+    def selectionX(self) -> float:
+        return float(self._region_norm[0]) if self._region_norm else 0.0
+
+    @Property(float, notify=selectionChanged)
+    def selectionY(self) -> float:
+        return float(self._region_norm[1]) if self._region_norm else 0.0
+
+    @Property(float, notify=selectionChanged)
+    def selectionW(self) -> float:
+        return float(self._region_norm[2]) if self._region_norm else 0.0
+
+    @Property(float, notify=selectionChanged)
+    def selectionH(self) -> float:
+        return float(self._region_norm[3]) if self._region_norm else 0.0
+
+    @Property(bool, notify=selectionChanged)
+    def selectionOnFocus(self) -> bool:
+        """The drawn box belongs to this photo. A match photo shows its match box instead."""
+        if not self._region_norm or self._region_norm[2] <= 0 or self._region_norm[3] <= 0:
+            return False
+        return (self._query_focus_id or "") == (self._session.focus_id or "")
+
+    @Property(str, notify=selectionChanged)
+    def queryFocusId(self) -> str:
+        return self._query_focus_id or ""
+
+    @Property(bool, notify=searchBusyChanged)
+    def searchBusy(self) -> bool:
+        return self._search_busy
+
+    @Property(str, notify=indexChanged)
+    def indexState(self) -> str:
+        return self._index_state
+
+    @Property(str, notify=indexChanged)
+    def indexNote(self) -> str:
+        if not self._index_note:
+            return ""
+        return present_message(self._mode, self._index_note, fallback="")
+
+    @Property(str, notify=similarChanged)
+    def similarCaution(self) -> str:
+        if self._similar_state != "ready" or self._similar_basis == "face":
+            return ""
+        return "A match is a similar region, not proof it is the same object."
+
+    @Property(str, notify=similarChanged)
+    def retrievalDetail(self) -> str:
+        parts: list[str] = []
+        if self._similar_basis_label:
+            parts.append(self._similar_basis_label)
+        if self._index_state:
+            parts.append(self._index_state)
+        if self._similar._rows:
+            parts.append(f"top {float(self._similar._rows[0][1]):.2f}")
+        if self._mode == ADVANCED and self._search_failure:
+            parts.append(self._search_failure)
+        return " · ".join(parts)
 
     def _keeps_file(self) -> Path:
         store = Path(self._jobs.store)
@@ -1247,10 +1525,12 @@ class ShellBridge(QObject):
         item = rows[index]
         query = str(item.get("query_media_id") or "")
         if query:
+            self._query_focus_id = query
             self._open_focus_keep_results(query)
         region = item.get("region")
         if isinstance(region, list) and len(region) == 4:
             self._region_norm = tuple(float(value) for value in region)
+        self.selectionChanged.emit()
         self._selection_note = str(item.get("understanding") or "")
         packed = []
         for hit in item.get("items") or []:
@@ -1294,8 +1574,17 @@ class ShellBridge(QObject):
                     float(item.get("match_nh") or 0.0),
                 )
             )
-        state = result.state if result.state in {"ready", "empty", "unavailable"} else "unavailable"
+        state = result.state if result.state in {"ready", "empty", "unavailable", "error"} else "error"
         note = result.message if result.message else "Similar search could not run."
+        error_id = str((result.data or {}).get("error_id") or "")
+        label = str((result.data or {}).get("basis_label") or self._similar_basis_label or "Similar look")
+        if state == "unavailable" and error_id == "region.NO_PACK":
+            note = f"Similar ({label}): the region model is not installed."
+        elif state == "unavailable" and error_id == "region.NO_PATCH_INDEX":
+            note = f"Similar ({label}): these photos are not indexed for region search yet."
+        elif error_id in {"region.ENCODE", "region.NO_IMAGE", "region.NO_STORE"}:
+            state = "error"
+            note = f"Similar ({label}): search failed."
         self._result_text = ""
         self.resultChanged.emit()
         self._publish_similar(
@@ -1307,7 +1596,12 @@ class ShellBridge(QObject):
         )
 
     def _clear_query(self) -> None:
+        if self._search_busy:
+            self._stop_search(publish=False)
         self._region_norm = None
+        self._selection_kind = ""
+        self._selection_note = ""
+        self.selectionChanged.emit()
         self._result_text = ""
         self.resultChanged.emit()
         self._clear_similar()
@@ -2093,6 +2387,9 @@ class ShellBridge(QObject):
 
     @Slot()
     def escape(self) -> None:
+        if self._search_busy:
+            self.cancelSimilar()
+            return
         if self._session.focus_id and self._people_open:
             self._session.escape()
             self._clear_query()
@@ -2240,8 +2537,11 @@ class ShellBridge(QObject):
             max(0.0, min(1.0, float(nw))),
             max(0.0, min(1.0, float(nh))),
         )
+        if self._session.focus_id:
+            self._query_focus_id = self._session.focus_id
         self._selection_kind = "drawn"
         self._selection_note = "Drawn region."
+        self.selectionChanged.emit()
 
     def _pixel_rect(self) -> tuple[int, int, int, int] | None:
         media_id = self._session.focus_id
@@ -2781,8 +3081,12 @@ class ShellBridge(QObject):
             self._push_discovery()
         self._selection_kind = ""
         self._selection_note = ""
-        result = self._safe_call(lambda: self._adapter.similar_media(media_id))
-        self._publish_similar_result(result)
+        adapter = self._adapter
+
+        def build(_flag):
+            return adapter.similar_media(media_id)
+
+        self._start_visual_search(basis="whole", label="Colour only", build=build)
 
     @Slot(str)
     def findSimilarFaces(self, face_id: str = "") -> None:
@@ -2793,8 +3097,12 @@ class ShellBridge(QObject):
             return
         if self._similar_state == "ready" and self._similar.rowCount():
             self._push_discovery()
-        result = self._safe_call(lambda: self._adapter.similar_faces(fid))
-        self._publish_similar_result(result)
+        adapter = self._adapter
+
+        def build(_flag):
+            return adapter.similar_faces(fid)
+
+        self._start_visual_search(basis="face", label="Same face", build=build)
 
     @Slot()
     def findSimilar(self) -> None:
@@ -2809,42 +3117,42 @@ class ShellBridge(QObject):
             return
         x, y, w, h = rect
         self._query_focus_id = media_id
+        self.selectionChanged.emit()
         if self._similar_state == "ready" and self._similar.rowCount():
             self._push_discovery()
-        self._similar_cancel = False
         kind = self._selection_kind or None
-        try:
-            rec = self._jobs.remember_and_find_region(
-                media_id,
-                x,
-                y,
-                w,
-                h,
-                selection_kind=kind,
-                cancelled=lambda: self._similar_cancel,
-            )
-        except Exception:  # noqa: BLE001 — honest failure, no invented matches
-            self._result_text = ""
-            self.resultChanged.emit()
-            self._publish_similar(
-                "unavailable",
-                "Similar (Colour only): Similar search could not run.",
-                [],
-                basis="region",
-                basis_label="Colour only",
-            )
-            return
-        if self._similar_cancel:
-            self._publish_similar(
-                "empty",
-                "Similar (Similar look): cancelled.",
-                [],
-                basis="region",
-                basis_label="Similar look",
-            )
-            return
-        result = self._safe_call(lambda: self._adapter.similar_region(rec))
-        self._publish_similar_result(result)
+        jobs = self._jobs
+        adapter = self._adapter
+
+        def build(flag):
+            from semblon.user_region import RegionError
+
+            try:
+                rec = jobs.remember_and_find_region(
+                    media_id,
+                    x,
+                    y,
+                    w,
+                    h,
+                    selection_kind=kind,
+                    cancelled=lambda: bool(flag[0]),
+                )
+            except RegionError as exc:
+                return Result(
+                    "unavailable",
+                    f"Similar (Similar look): {exc}.",
+                    {
+                        "basis": "region",
+                        "basis_label": "Similar look",
+                        "engine": "dinov2-patch",
+                        "items": [],
+                    },
+                )
+            if flag[0]:
+                return None
+            return adapter.similar_region(rec)
+
+        self._start_visual_search(basis="region", label="Similar look", build=build)
 
     @Slot()
     def pauseJob(self) -> None:
@@ -2932,10 +3240,16 @@ class ShellBridge(QObject):
         current = payload.get("current")
         total = payload.get("total")
         if isinstance(current, int) and isinstance(total, int) and total > 0:
-            self._progress_label = f"Processing {current}/{total}"
+            self._progress_label = (
+                f"Processing {current}/{total}. Photos already added can be opened."
+            )
         elif payload.get("stage"):
             self._progress_label = "Processing"
         self.jobChanged.emit()
+        if isinstance(current, int) and current != self._progress_seen:
+            self._progress_seen = current
+            self._refresh_library()
+            self._refresh_index_note()
 
     @Slot()
     def _queue_ingest_finished(self) -> None:

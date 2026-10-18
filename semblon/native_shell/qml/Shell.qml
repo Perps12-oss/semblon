@@ -122,13 +122,24 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Right"
-        enabled: focusActive
+        enabled: focusActive && !matchStrip.activeFocus
         onActivated: if (shellReady) shellApi.focusNext()
     }
     Shortcut {
         sequence: "Left"
-        enabled: focusActive
+        enabled: focusActive && !matchStrip.activeFocus
         onActivated: if (shellReady) shellApi.focusPrev()
+    }
+    Shortcut {
+        sequence: "Down"
+        enabled: focusActive && similarCountSafe > 0 && !matchStrip.activeFocus
+        onActivated: matchStrip.forceActiveFocus()
+    }
+    Shortcut {
+        sequence: "K"
+        enabled: focusActive && similarStateSafe === "ready" && similarCountSafe > 0
+                 && !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.keepDiscovery()
     }
     Shortcut {
         sequence: "Return"
@@ -2115,6 +2126,7 @@ ApplicationWindow {
             }
 
             Text {
+                id: pointHint
                 objectName: "pointHint"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
@@ -2122,6 +2134,21 @@ ApplicationWindow {
                 visible: focusActive && focusKindSafe !== "video"
                 text: "Point or draw to search"
                 color: tokenMuted
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+            }
+
+            Text {
+                objectName: "indexNote"
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: pointHint.bottom
+                anchors.topMargin: 4
+                width: parent.width - 280
+                visible: focusActive && shellReady && shellApi.indexNote !== ""
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                text: shellReady ? shellApi.indexNote : ""
+                color: tokenText
                 font.family: "Segoe UI"
                 font.pixelSize: 13
             }
@@ -2209,7 +2236,7 @@ ApplicationWindow {
                     y: origin.y + shellApi.matchY * photo.paintedHeight
                     width: Math.max(2, shellApi.matchW * photo.paintedWidth)
                     height: Math.max(2, shellApi.matchH * photo.paintedHeight)
-                    color: "#334C9A8A"
+                    color: Qt.rgba(tokenAccent.r, tokenAccent.g, tokenAccent.b, 0.28)
                     border.color: tokenAccent
                     border.width: 2
                     z: 4
@@ -2230,6 +2257,13 @@ ApplicationWindow {
                 property real x0: 0
                 property real y0: 0
                 property bool dragging: false
+                property bool moving: false
+                property real anchorX: 0
+                property real anchorY: 0
+                property real moveW: 0
+                property real moveH: 0
+                property real startRx: 0
+                property real startRy: 0
 
                 function contentOrigin() {
                     return Qt.point(
@@ -2244,6 +2278,74 @@ ApplicationWindow {
                             && px >= origin.x && py >= origin.y
                             && px < origin.x + photo.paintedWidth
                             && py < origin.y + photo.paintedHeight
+                }
+
+                function selectionRect() {
+                    var origin = contentOrigin()
+                    var pw = photo.paintedWidth
+                    var ph = photo.paintedHeight
+                    if (!shellReady || pw <= 1 || ph <= 1 || !shellApi.selectionOnFocus)
+                        return Qt.rect(0, 0, 0, 0)
+                    return Qt.rect(
+                        origin.x + shellApi.selectionX * pw,
+                        origin.y + shellApi.selectionY * ph,
+                        Math.max(1, shellApi.selectionW * pw),
+                        Math.max(1, shellApi.selectionH * ph)
+                    )
+                }
+
+                function insideSelection(px, py) {
+                    var box = selectionRect()
+                    return box.width > 2 && px >= box.x && py >= box.y
+                            && px <= box.x + box.width && py <= box.y + box.height
+                }
+
+                function beginResize(corner) {
+                    var box = selectionRect()
+                    if (box.width < 2)
+                        return
+                    dragging = true
+                    moving = false
+                    hasRect = true
+                    anchorX = (corner % 2 === 0) ? (box.x + box.width) : box.x
+                    anchorY = (corner < 2) ? (box.y + box.height) : box.y
+                    rx = box.x
+                    ry = box.y
+                    rw = box.width
+                    rh = box.height
+                }
+
+                function resizeTo(pos) {
+                    var x1 = Math.min(anchorX, pos.x)
+                    var y1 = Math.min(anchorY, pos.y)
+                    var x2 = Math.max(anchorX, pos.x)
+                    var y2 = Math.max(anchorY, pos.y)
+                    rx = x1
+                    ry = y1
+                    rw = Math.max(1, x2 - x1)
+                    rh = Math.max(1, y2 - y1)
+                    hasRect = true
+                    dragging = true
+                }
+
+                function commitSelection() {
+                    var origin = contentOrigin()
+                    var pw = photo.paintedWidth
+                    var ph = photo.paintedHeight
+                    dragging = false
+                    moving = false
+                    if (!shellReady || pw <= 1 || ph <= 1 || rw < 4 || rh < 4) {
+                        hasRect = false
+                        return
+                    }
+                    shellApi.setRegion(
+                        Math.max(0, Math.min(1, (rx - origin.x) / pw)),
+                        Math.max(0, Math.min(1, (ry - origin.y) / ph)),
+                        Math.max(0, Math.min(1, rw / pw)),
+                        Math.max(0, Math.min(1, rh / ph))
+                    )
+                    hasRect = false
+                    shellApi.findSimilar()
                 }
 
                 function hitObservation(px, py) {
@@ -2266,10 +2368,22 @@ ApplicationWindow {
 
                 onPressed: function(mouse) {
                     dragging = false
-                    if (shellReady)
-                        shellApi.clearDrawnQuery()
+                    moving = false
                     x0 = mouse.x
                     y0 = mouse.y
+                    if (insideSelection(mouse.x, mouse.y)) {
+                        var box = selectionRect()
+                        moving = true
+                        moveW = box.width
+                        moveH = box.height
+                        startRx = box.x
+                        startRy = box.y
+                        rx = box.x
+                        ry = box.y
+                        rw = box.width
+                        rh = box.height
+                        return
+                    }
                     rx = mouse.x
                     ry = mouse.y
                     rw = 0
@@ -2279,6 +2393,17 @@ ApplicationWindow {
                 onPositionChanged: function(mouse) {
                     if (!pressed)
                         return
+                    if (moving) {
+                        var dx = mouse.x - x0
+                        var dy = mouse.y - y0
+                        rx = startRx + dx
+                        ry = startRy + dy
+                        rw = moveW
+                        rh = moveH
+                        dragging = Math.abs(dx) >= 4 || Math.abs(dy) >= 4
+                        hasRect = true
+                        return
+                    }
                     rx = Math.min(x0, mouse.x)
                     ry = Math.min(y0, mouse.y)
                     rw = Math.abs(mouse.x - x0)
@@ -2290,6 +2415,19 @@ ApplicationWindow {
                     var origin = contentOrigin()
                     var pw = photo.paintedWidth
                     var ph = photo.paintedHeight
+                    if (moving) {
+                        var moved = dragging
+                        if (moved) {
+                            commitSelection()
+                            return
+                        }
+                        moving = false
+                        hasRect = false
+                        var keptHit = hitObservation(mouse.x, mouse.y)
+                        if (keptHit !== "" && shellReady)
+                            shellApi.selectObservation(keptHit)
+                        return
+                    }
                     if (pw <= 1 || ph <= 1) {
                         hasRect = false
                         shell.clearDrawnQuery()
@@ -2320,7 +2458,7 @@ ApplicationWindow {
                         ry = origin.y + parseFloat(parts[1]) * ph
                         rw = Math.max(1, parseFloat(parts[2]) * pw)
                         rh = Math.max(1, parseFloat(parts[3]) * ph)
-                        hasRect = true
+                        hasRect = false
                         return
                     }
                     var nx = (rx - origin.x) / pw
@@ -2333,20 +2471,63 @@ ApplicationWindow {
                         Math.max(0, Math.min(1, nw)),
                         Math.max(0, Math.min(1, nh))
                     )
+                    hasRect = false
                     shell.findSimilar()
                 }
             }
 
             Rectangle {
+                id: selectionOutline
+                objectName: "selectionOutline"
                 visible: regionDrag.hasRect
-                x: photo.x + regionDrag.rx
-                y: photo.y + regionDrag.ry
-                width: regionDrag.rw
-                height: regionDrag.rh
+                         || (shellReady && shellApi.selectionOnFocus && shellApi.selectionW > 0.004)
+                readonly property var origin: regionDrag.contentOrigin()
+                x: photo.x + (regionDrag.hasRect
+                              ? regionDrag.rx
+                              : origin.x + (shellReady ? shellApi.selectionX : 0) * photo.paintedWidth)
+                y: photo.y + (regionDrag.hasRect
+                              ? regionDrag.ry
+                              : origin.y + (shellReady ? shellApi.selectionY : 0) * photo.paintedHeight)
+                width: regionDrag.hasRect
+                       ? regionDrag.rw
+                       : Math.max(2, (shellReady ? shellApi.selectionW : 0) * photo.paintedWidth)
+                height: regionDrag.hasRect
+                        ? regionDrag.rh
+                        : Math.max(2, (shellReady ? shellApi.selectionH : 0) * photo.paintedHeight)
                 color: tokenAccentDim
                 border.color: tokenAccent
-                border.width: 1
+                border.width: 2
                 z: 3
+            }
+
+            Repeater {
+                model: 4
+                delegate: Rectangle {
+                    objectName: "selectionHandle"
+                    visible: selectionOutline.visible && !regionDrag.dragging && !regionDrag.hasRect
+                    width: 12
+                    height: 12
+                    radius: 2
+                    z: 6
+                    x: selectionOutline.x + ((index % 2) * selectionOutline.width) - 6
+                    y: selectionOutline.y + ((index < 2 ? 0 : 1) * selectionOutline.height) - 6
+                    color: tokenAccent
+                    border.color: tokenText
+                    border.width: 1
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: (index === 0 || index === 3) ? Qt.SizeFDiagCursor : Qt.SizeBDiagCursor
+                        Accessible.name: "Resize selection"
+                        Accessible.role: Accessible.Button
+                        onPressed: regionDrag.beginResize(index)
+                        onPositionChanged: function(mouse) {
+                            if (pressed)
+                                regionDrag.resizeTo(mapToItem(regionDrag, mouse.x, mouse.y))
+                        }
+                        onReleased: regionDrag.commitSelection()
+                    }
+                }
             }
 
             // Playback is deferred. QtMultimedia is intentionally not imported:
@@ -2384,7 +2565,7 @@ ApplicationWindow {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.margins: 22
-                anchors.bottomMargin: similarStrip.visible ? 108 : 22
+                anchors.bottomMargin: matchStrip.visible ? 136 : 22
                 text: focusNameSafe
                 color: tokenMuted
                 font.family: "Segoe UI"
@@ -2396,9 +2577,63 @@ ApplicationWindow {
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom
                 anchors.leftMargin: 22
-                anchors.bottomMargin: similarStrip.visible ? 108 : 22
+                anchors.bottomMargin: matchStrip.visible ? 136 : 22
                 spacing: 8
                 width: 220
+
+                Rectangle {
+                    objectName: "searchThisArea"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.searchBusy
+                    radius: 6
+                    color: searchAreaHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Search this area"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: searchAreaHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Search this area"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.findSimilar()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "cancelSearch"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && shellApi.searchBusy
+                    radius: 6
+                    color: cancelSearchHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenDanger
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Cancel search"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: cancelSearchHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Cancel search"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.cancelSimilar()
+                    }
+                }
 
                 Rectangle {
                     width: parent.width
@@ -2435,6 +2670,17 @@ ApplicationWindow {
                     color: tokenMuted
                     font.family: "Segoe UI"
                     font.pixelSize: 12
+                }
+
+                Text {
+                    objectName: "retrievalDetail"
+                    width: parent.width
+                    visible: advancedModeSafe && shellReady && shellApi.retrievalDetail !== ""
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? shellApi.retrievalDetail : ""
+                    color: tokenFaint
+                    font.family: "Consolas"
+                    font.pixelSize: 11
                 }
 
                 Rectangle {
@@ -2672,13 +2918,30 @@ ApplicationWindow {
             }
 
             Text {
+                objectName: "matchHonesty"
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: similarNote.top
+                anchors.bottomMargin: 4
+                width: parent.width - 280
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                visible: shellReady && shellApi.similarCaution !== ""
+                text: shellReady ? shellApi.similarCaution : ""
+                color: tokenText
+                font.family: "Segoe UI"
+                font.pixelSize: 12
+            }
+
+            Text {
+                id: similarNote
                 objectName: "similarNote"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 // Sit above the strip when ready so the basis label stays visible.
-                anchors.bottomMargin: similarStrip.visible ? 148 : 68
+                anchors.bottomMargin: matchStrip.visible ? 168 : 68
                 visible: (similarStateSafe === "empty"
                           || similarStateSafe === "unavailable"
+                          || similarStateSafe === "error"
                           || similarStateSafe === "ready"
                           || similarStateSafe === "loading")
                          && similarNoteSafe !== ""
@@ -2688,58 +2951,86 @@ ApplicationWindow {
                 font.pixelSize: 13
             }
 
-            Flickable {
-                id: similarStrip
+            ListView {
+                id: matchStrip
                 objectName: "similarStrip"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 22
-                width: Math.min(Math.max(similarCountSafe * 80 - 8, 0), parent.width - 96)
-                height: similarReady && similarCountSafe > 0 ? 76 : 0
-                contentWidth: stripRow.width
-                contentHeight: 76
-                flickableDirection: Flickable.HorizontalFlick
-                boundsBehavior: Flickable.StopAtBounds
+                width: Math.min(Math.max(similarCountSafe * 104 - 8, 0), parent.width - 96)
+                height: similarReady && similarCountSafe > 0 ? 104 : 0
+                orientation: ListView.Horizontal
+                spacing: 8
                 clip: true
                 visible: height > 0
+                model: similarModel
+                keyNavigationEnabled: true
+                activeFocusOnTab: true
+                Accessible.name: "Matches"
+                Keys.onReturnPressed: if (shellReady) shellApi.openDiscoveryHit(shellApi.similarId(currentIndex))
+                Keys.onEnterPressed: if (shellReady) shellApi.openDiscoveryHit(shellApi.similarId(currentIndex))
+                Keys.onUpPressed: regionDrag.forceActiveFocus()
 
-                Row {
-                    id: stripRow
-                    spacing: 8
-                    Repeater {
-                        model: similarModel
-                        delegate: Item {
-                            width: 72
-                            height: 72
-                            objectName: "similarThumb"
+                delegate: Item {
+                    width: 96
+                    height: 104
+                    objectName: "similarThumb"
 
-                            Rectangle {
-                                anchors.fill: parent
-                                color: tokenBg2
-                                radius: 2
-                                border.width: thumbArea.containsMouse ? 1 : 0
-                                border.color: tokenAccent
+                    Rectangle {
+                        id: thumbFrame
+                        anchors.top: parent.top
+                        width: 96
+                        height: 84
+                        color: tokenBg2
+                        radius: 2
+                        border.width: (matchStrip.activeFocus && matchStrip.currentIndex === index) || thumbArea.containsMouse ? 2 : 0
+                        border.color: tokenAccent
 
-                                Image {
-                                    anchors.fill: parent
-                                    anchors.margins: 1
-                                    source: shellReady ? shellApi.thumbFor(mediaId) : ""
-                                    fillMode: Image.PreserveAspectCrop
-                                    asynchronous: true
-                                    cache: true
-                                }
-
-                                MouseArea {
-                                    id: thumbArea
-                                    objectName: "similarThumbHit"
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: if (shellReady) shellApi.openDiscoveryHit(mediaId)
-                                    Accessible.name: "Open match"
-                                }
-                            }
+                        Image {
+                            id: thumbImage
+                            anchors.fill: parent
+                            anchors.margins: 2
+                            source: shellReady ? shellApi.thumbFor(mediaId) : ""
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            cache: true
                         }
+
+                        Rectangle {
+                            objectName: "similarMatchBox"
+                            readonly property real frameW: thumbImage.paintedWidth > 1 ? thumbImage.paintedWidth : thumbImage.width
+                            readonly property real frameH: thumbImage.paintedHeight > 1 ? thumbImage.paintedHeight : thumbImage.height
+                            visible: matchW > 0.01 && matchH > 0.01 && frameW > 1 && frameH > 1
+                            x: thumbImage.x + (thumbImage.width - frameW) / 2 + matchX * frameW
+                            y: thumbImage.y + (thumbImage.height - frameH) / 2 + matchY * frameH
+                            width: Math.max(2, matchW * frameW)
+                            height: Math.max(2, matchH * frameH)
+                            color: Qt.rgba(tokenAccent.r, tokenAccent.g, tokenAccent.b, 0.28)
+                            border.color: tokenAccent
+                            border.width: 1
+                        }
+
+                        MouseArea {
+                            id: thumbArea
+                            objectName: "similarThumbHit"
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.openDiscoveryHit(mediaId)
+                            Accessible.name: "Open match"
+                        }
+                    }
+
+                    Text {
+                        anchors.top: thumbFrame.bottom
+                        anchors.topMargin: 2
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        visible: advancedModeSafe
+                        text: score.toFixed(2)
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 10
                     }
                 }
             }
