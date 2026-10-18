@@ -83,8 +83,8 @@ ApplicationWindow {
     readonly property color tokenFaint: shellReady ? shellApi.text3 : "#6b7280"
     readonly property color tokenAccentDim: shellReady ? shellApi.accentDim : "#2b4d8f"
     readonly property color tokenDanger: shellReady ? shellApi.dangerColor : "#e5484d"
-    readonly property var primarySettingCalls: ["cycleDensity", "libraryHealth", "showActivity", "modePeople", "modeText", "modeObject", "rescan", "resetDefaults"]
-    readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Search objects", "Rescan", "Reset defaults"]
+    readonly property var primarySettingCalls: ["cycleDensity", "libraryHealth", "showActivity", "modePeople", "modeText", "modeObject", "rescan", "resetDefaults", "clearLibrary"]
+    readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Search objects", "Rescan", "Reset defaults", "Clear library"]
     readonly property var advancedSettingCalls: ["scanDuplicates", "showCapabilities", "gpuAuto", "gpuOff", "namedItems", "knowledgePack", "installModel"]
     readonly property var advancedSettingLabels: ["Duplicates", "Capabilities", "GPU auto", "GPU off", "Named items", "Knowledge pack", "Install model"]
     font.family: "Segoe UI"
@@ -107,6 +107,7 @@ ApplicationWindow {
         else if (call === "knowledgePack") shellApi.chooseKnowledgePack()
         else if (call === "installModel") shellApi.chooseModelInstall()
         else if (call === "resetDefaults") shellApi.resetDefaults()
+        else if (call === "clearLibrary") shellApi.clearLibrary()
     }
 
     function bindNav(item, navId, navLabel, navIcon, navCall) {
@@ -851,7 +852,7 @@ ApplicationWindow {
                 }
                     Repeater {
                     objectName: "primarySettingsRepeater"
-                    model: 8
+                    model: primarySettingCalls.length
                     delegate: Rectangle {
                         Component.onCompleted: objectName = "setting_" + primarySettingCalls[index]
                         width: parent.width

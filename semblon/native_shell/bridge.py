@@ -20,7 +20,7 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtWidgets import QApplication, QFileDialog
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
@@ -3018,6 +3018,54 @@ class ShellBridge(QObject):
         self._atmosphere_id = self._load_atmosphere_id()
         self._apply_result(result)
         self.lensChanged.emit()
+
+    @Slot()
+    def clearLibrary(self) -> None:
+        """Drop the folder index and names. Original files stay on disk."""
+        if self._jobs.busy:
+            self._apply_result(Result("unavailable", "A folder is being added. Wait until that finishes."))
+            return
+        answer = QMessageBox.question(
+            None,
+            "Clear library",
+            "Remove the folder index, names, and kept finds from Semblon?\n\n"
+            "Photos on disk stay where they are.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self._apply_result(Result("empty", "Library clear was cancelled."))
+            return
+        self._stop_search(publish=False)
+        try:
+            self._jobs.wipe_library()
+        except Exception:  # noqa: BLE001 — the notice stays non-technical
+            self._apply_result(Result("error", "The library could not be cleared."))
+            return
+        self._discovery_trail.clear()
+        for path in (self._discovery_file(), self._keeps_file()):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        self._session.clear_focus()
+        self._region_norm = None
+        self._selection_kind = ""
+        self._selection_note = ""
+        self.selectionChanged.emit()
+        self._clear_similar()
+        self._clear_focus_boxes()
+        self._refresh_library()
+        self._refresh_people()
+        self.keepsChanged.emit()
+        self.focusChanged.emit()
+        self.peopleChanged.emit()
+        self._apply_result(
+            Result(
+                "ready",
+                "Library cleared. Photos on disk were kept. Add a folder to start again.",
+            )
+        )
 
     @Slot()
     def toggleSettings(self) -> None:

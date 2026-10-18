@@ -179,6 +179,7 @@ The archive shell is unchanged as a browser. Focus is the discovery surface.
 4. Kept finds restore the query photo, the rectangle, and the match boxes.
 5. Index copy distinguishes still indexing, this photo already searchable, coarse index only, and not indexed. Ingest progress still counts processed/total and says photos already added can be opened. The grid reloads as that count moves.
 6. Scores and the index state word sit in Advanced. Primary shows the photo, the selection, the understanding line, and the matches.
+7. Settings **Clear library** asks first (No is the default). Yes deletes the folder index, names, and the two discovery sidecars beside the store. Original files stay on disk. Display settings stay. **Reset defaults** still only clears appearance and caches.
 
 Indexing cost is unchanged: up to nine ONNX passes per still. The 16-image photographic run remains the retrieval measurement. A larger-library timing and memory run was not taken. A desktop grab of this shell is `docs/evidence/discovery-workspace.png` when that file is present; offscreen tests cover the sequence without it.
 
