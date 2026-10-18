@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog
 
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
+from semblon.focus_gesture import adjust_box, clamp_view, zoom_about
 from semblon.native_shell.adapter import AdapterError, ArchiveAdapter, Result
 from semblon.native_shell.events import (
     IDENTITY_CHANGED,
@@ -2542,6 +2543,46 @@ class ShellBridge(QObject):
         self._selection_kind = "drawn"
         self._selection_note = "Drawn region."
         self.selectionChanged.emit()
+
+    @Slot(float, float, float, float, str, float, float, float, float, float, float, result=str)
+    def adjustSelectionBox(
+        self,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        edge: str,
+        dx: float,
+        dy: float,
+        min_x: float,
+        min_y: float,
+        max_x: float,
+        max_y: float,
+    ) -> str:
+        """Local-pixel rectangle after dragging one edge or corner."""
+        rect = adjust_box(x, y, w, h, edge, dx, dy, min_x, min_y, max_x, max_y)
+        return ",".join(f"{value:.8f}" for value in rect)
+
+    @Slot(float, float, float, float, float, result=str)
+    def clampFocusView(self, x: float, y: float, scale: float, width: float, height: float) -> str:
+        view = clamp_view(x, y, scale, width, height)
+        return ",".join(f"{value:.8f}" for value in view)
+
+    @Slot(float, float, float, float, float, float, float, float, result=str)
+    def zoomFocusView(
+        self,
+        x: float,
+        y: float,
+        scale: float,
+        view_x: float,
+        view_y: float,
+        width: float,
+        height: float,
+        factor: float,
+    ) -> str:
+        """Zoom the fitted photo about a viewport point. Returns x, y, scale."""
+        view = zoom_about(x, y, scale, view_x, view_y, factor, width, height)
+        return ",".join(f"{value:.8f}" for value in view)
 
     def _pixel_rect(self) -> tuple[int, int, int, int] | None:
         media_id = self._session.focus_id

@@ -2114,17 +2114,6 @@ ApplicationWindow {
                 color: tokenBg
             }
 
-            Image {
-                id: photo
-                anchors.fill: parent
-                anchors.margins: 48
-                visible: focusActive
-                source: focusActive ? ("image://archive/f/" + focusIdSafe) : ""
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
-                cache: false
-            }
-
             Text {
                 id: pointHint
                 objectName: "pointHint"
@@ -2181,6 +2170,59 @@ ApplicationWindow {
                 text: "This photo is missing from its stored path. "
                       + "If you moved or renamed it, add that folder again so Semblon can reconnect it."
             }
+
+            Item {
+                id: photoViewport
+                objectName: "photoViewport"
+                anchors.fill: parent
+                anchors.margins: 48
+                clip: true
+
+                Item {
+                    id: photoView
+                    objectName: "photoView"
+                    width: photoViewport.width
+                    height: photoViewport.height
+                    scale: 1
+                    transformOrigin: Item.Center
+
+                    function resetView() {
+                        x = 0
+                        y = 0
+                        scale = 1
+                    }
+
+                    function applyTriple(spec) {
+                        var parts = String(spec).split(",")
+                        if (parts.length < 3)
+                            return
+                        x = parseFloat(parts[0])
+                        y = parseFloat(parts[1])
+                        scale = parseFloat(parts[2])
+                    }
+
+                    function clampView() {
+                        if (!shellReady || width < 1 || height < 1)
+                            return
+                        applyTriple(shellApi.clampFocusView(x, y, scale, width, height))
+                    }
+
+                    function zoomAt(viewX, viewY, factor) {
+                        if (!shellReady || width < 1 || height < 1)
+                            return
+                        applyTriple(shellApi.zoomFocusView(
+                            x, y, scale, viewX, viewY, width, height, factor))
+                    }
+
+                    Image {
+                        id: photo
+                        anchors.fill: parent
+                        visible: focusActive
+                        source: focusActive ? ("image://archive/f/" + focusIdSafe) : ""
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        cache: false
+                    }
 
             Item {
                 id: observationLayer
@@ -2248,6 +2290,9 @@ ApplicationWindow {
                 objectName: "regionDrag"
                 anchors.fill: photo
                 enabled: photo.paintedWidth > 0
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                preventStealing: false
                 z: 2
                 property real rx: 0
                 property real ry: 0
@@ -2258,12 +2303,19 @@ ApplicationWindow {
                 property real y0: 0
                 property bool dragging: false
                 property bool moving: false
-                property real anchorX: 0
-                property real anchorY: 0
+                property bool resizing: false
+                property bool panning: false
+                property string resizeEdge: ""
                 property real moveW: 0
                 property real moveH: 0
                 property real startRx: 0
                 property real startRy: 0
+                property real startRw: 0
+                property real startRh: 0
+                property real panVX: 0
+                property real panVY: 0
+                property real panX0: 0
+                property real panY0: 0
 
                 function contentOrigin() {
                     return Qt.point(
@@ -2300,30 +2352,81 @@ ApplicationWindow {
                             && px <= box.x + box.width && py <= box.y + box.height
                 }
 
-                function beginResize(corner) {
+                function edgeAt(px, py) {
                     var box = selectionRect()
-                    if (box.width < 2)
-                        return
-                    dragging = true
-                    moving = false
-                    hasRect = true
-                    anchorX = (corner % 2 === 0) ? (box.x + box.width) : box.x
-                    anchorY = (corner < 2) ? (box.y + box.height) : box.y
-                    rx = box.x
-                    ry = box.y
-                    rw = box.width
-                    rh = box.height
+                    if (box.width < 2 || box.height < 2)
+                        return ""
+                    var margin = Math.max(12, 12 / Math.max(photoView.scale, 1))
+                    var nearL = Math.abs(px - box.x) <= margin
+                            && py >= box.y - margin && py <= box.y + box.height + margin
+                    var nearR = Math.abs(px - (box.x + box.width)) <= margin
+                            && py >= box.y - margin && py <= box.y + box.height + margin
+                    var nearT = Math.abs(py - box.y) <= margin
+                            && px >= box.x - margin && px <= box.x + box.width + margin
+                    var nearB = Math.abs(py - (box.y + box.height)) <= margin
+                            && px >= box.x - margin && px <= box.x + box.width + margin
+                    if (nearL && nearT)
+                        return "tl"
+                    if (nearR && nearT)
+                        return "tr"
+                    if (nearL && nearB)
+                        return "bl"
+                    if (nearR && nearB)
+                        return "br"
+                    if (nearL)
+                        return "l"
+                    if (nearR)
+                        return "r"
+                    if (nearT)
+                        return "t"
+                    if (nearB)
+                        return "b"
+                    return ""
                 }
 
-                function resizeTo(pos) {
-                    var x1 = Math.min(anchorX, pos.x)
-                    var y1 = Math.min(anchorY, pos.y)
-                    var x2 = Math.max(anchorX, pos.x)
-                    var y2 = Math.max(anchorY, pos.y)
-                    rx = x1
-                    ry = y1
-                    rw = Math.max(1, x2 - x1)
-                    rh = Math.max(1, y2 - y1)
+                function cursorFor(edge) {
+                    if (edge === "l" || edge === "r")
+                        return Qt.SizeHorCursor
+                    if (edge === "t" || edge === "b")
+                        return Qt.SizeVerCursor
+                    if (edge === "tl" || edge === "br")
+                        return Qt.SizeFDiagCursor
+                    if (edge === "tr" || edge === "bl")
+                        return Qt.SizeBDiagCursor
+                    return Qt.ArrowCursor
+                }
+
+                function beginPan(mouse) {
+                    var start = mapToItem(photoViewport, mouse.x, mouse.y)
+                    panning = true
+                    resizing = false
+                    moving = false
+                    dragging = false
+                    panVX = start.x
+                    panVY = start.y
+                    panX0 = photoView.x
+                    panY0 = photoView.y
+                }
+
+                function applyResize(dx, dy) {
+                    if (!shellReady)
+                        return
+                    var origin = contentOrigin()
+                    var pw = photo.paintedWidth
+                    var ph = photo.paintedHeight
+                    if (pw <= 1 || ph <= 1)
+                        return
+                    var spec = shellApi.adjustSelectionBox(
+                        startRx, startRy, startRw, startRh, resizeEdge, dx, dy,
+                        origin.x, origin.y, origin.x + pw, origin.y + ph
+                    )
+                    var parts = String(spec).split(",")
+                    if (parts.length !== 4)
+                        return
+                    rx = parseFloat(parts[0])
+                    ry = parseFloat(parts[1])
+                    rw = parseFloat(parts[2])
+                    rh = parseFloat(parts[3])
                     hasRect = true
                     dragging = true
                 }
@@ -2334,6 +2437,7 @@ ApplicationWindow {
                     var ph = photo.paintedHeight
                     dragging = false
                     moving = false
+                    resizing = false
                     if (!shellReady || pw <= 1 || ph <= 1 || rw < 4 || rh < 4) {
                         hasRect = false
                         return
@@ -2367,10 +2471,38 @@ ApplicationWindow {
                 }
 
                 onPressed: function(mouse) {
+                    if (photoPinch.active) {
+                        mouse.accepted = false
+                        return
+                    }
+                    var alt = (mouse.modifiers & Qt.AltModifier) !== 0
+                    if (mouse.button === Qt.MiddleButton || alt) {
+                        beginPan(mouse)
+                        return
+                    }
                     dragging = false
                     moving = false
+                    resizing = false
+                    panning = false
                     x0 = mouse.x
                     y0 = mouse.y
+                    var edge = edgeAt(mouse.x, mouse.y)
+                    if (edge !== "") {
+                        var edgeBox = selectionRect()
+                        resizing = true
+                        resizeEdge = edge
+                        cursorShape = cursorFor(edge)
+                        startRx = edgeBox.x
+                        startRy = edgeBox.y
+                        startRw = edgeBox.width
+                        startRh = edgeBox.height
+                        rx = edgeBox.x
+                        ry = edgeBox.y
+                        rw = edgeBox.width
+                        rh = edgeBox.height
+                        hasRect = true
+                        return
+                    }
                     if (insideSelection(mouse.x, mouse.y)) {
                         var box = selectionRect()
                         moving = true
@@ -2391,13 +2523,34 @@ ApplicationWindow {
                     hasRect = true
                 }
                 onPositionChanged: function(mouse) {
-                    if (!pressed)
+                    if (!pressed) {
+                        var hoverEdge = edgeAt(mouse.x, mouse.y)
+                        if (hoverEdge !== "")
+                            cursorShape = cursorFor(hoverEdge)
+                        else if (insideSelection(mouse.x, mouse.y))
+                            cursorShape = Qt.SizeAllCursor
+                        else
+                            cursorShape = Qt.ArrowCursor
                         return
+                    }
+                    if (panning) {
+                        var panPoint = mapToItem(photoViewport, mouse.x, mouse.y)
+                        photoView.x = panX0 + (panPoint.x - panVX)
+                        photoView.y = panY0 + (panPoint.y - panVY)
+                        return
+                    }
+                    if (resizing) {
+                        applyResize(mouse.x - x0, mouse.y - y0)
+                        return
+                    }
                     if (moving) {
+                        var origin = contentOrigin()
                         var dx = mouse.x - x0
                         var dy = mouse.y - y0
-                        rx = startRx + dx
-                        ry = startRy + dy
+                        var maxX = origin.x + photo.paintedWidth - moveW
+                        var maxY = origin.y + photo.paintedHeight - moveH
+                        rx = Math.max(origin.x, Math.min(startRx + dx, maxX))
+                        ry = Math.max(origin.y, Math.min(startRy + dy, maxY))
                         rw = moveW
                         rh = moveH
                         dragging = Math.abs(dx) >= 4 || Math.abs(dy) >= 4
@@ -2412,6 +2565,23 @@ ApplicationWindow {
                         dragging = true
                 }
                 onReleased: function(mouse) {
+                    if (panning) {
+                        panning = false
+                        photoView.clampView()
+                        return
+                    }
+                    if (resizing) {
+                        var changed = Math.abs(rx - startRx) >= 1 || Math.abs(ry - startRy) >= 1
+                                || Math.abs(rw - startRw) >= 1 || Math.abs(rh - startRh) >= 1
+                        resizing = false
+                        if (changed)
+                            commitSelection()
+                        else {
+                            dragging = false
+                            hasRect = false
+                        }
+                        return
+                    }
                     var origin = contentOrigin()
                     var pw = photo.paintedWidth
                     var ph = photo.paintedHeight
@@ -2474,6 +2644,13 @@ ApplicationWindow {
                     hasRect = false
                     shell.findSimilar()
                 }
+                onCanceled: {
+                    dragging = false
+                    moving = false
+                    resizing = false
+                    panning = false
+                    hasRect = false
+                }
             }
 
             Rectangle {
@@ -2504,7 +2681,7 @@ ApplicationWindow {
                 model: 4
                 delegate: Rectangle {
                     objectName: "selectionHandle"
-                    visible: selectionOutline.visible && !regionDrag.dragging && !regionDrag.hasRect
+                    visible: selectionOutline.visible
                     width: 12
                     height: 12
                     radius: 2
@@ -2514,18 +2691,48 @@ ApplicationWindow {
                     color: tokenAccent
                     border.color: tokenText
                     border.width: 1
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: (index === 0 || index === 3) ? Qt.SizeFDiagCursor : Qt.SizeBDiagCursor
-                        Accessible.name: "Resize selection"
-                        Accessible.role: Accessible.Button
-                        onPressed: regionDrag.beginResize(index)
-                        onPositionChanged: function(mouse) {
-                            if (pressed)
-                                regionDrag.resizeTo(mapToItem(regionDrag, mouse.x, mouse.y))
+                    Accessible.name: "Resize selection"
+                    Accessible.role: Accessible.Button
+                }
+            }
+
+                    PinchHandler {
+                        id: photoPinch
+                        objectName: "photoPinch"
+                        target: photoView
+                        minimumScale: 1
+                        maximumScale: 8
+                        minimumRotation: 0
+                        maximumRotation: 0
+                        onActiveChanged: {
+                            if (!active)
+                                photoView.clampView()
                         }
-                        onReleased: regionDrag.commitSelection()
+                    }
+                }
+
+                WheelHandler {
+                    id: photoWheel
+                    objectName: "photoWheel"
+                    onWheel: function(event) {
+                        if (photoPinch.active)
+                            return
+                        if ((event.modifiers & Qt.ControlModifier) === 0)
+                            return
+                        var steps = event.angleDelta.y / 120
+                        if (Math.abs(steps) < 0.01 && event.pixelDelta.y !== 0)
+                            steps = event.pixelDelta.y / 60
+                        if (Math.abs(steps) < 0.01)
+                            return
+                        event.accepted = true
+                        photoView.zoomAt(event.x, event.y, Math.pow(1.12, steps))
+                    }
+                }
+
+                Connections {
+                    target: window
+                    function onFocusIdSafeChanged() {
+                        photoView.resetView()
                     }
                 }
             }

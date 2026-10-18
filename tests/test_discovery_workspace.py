@@ -257,3 +257,34 @@ def test_coarse_index_is_not_called_ready(tmp_path, monkeypatch):
         assert "coarse index" in bridge.indexNote
     finally:
         shutdown_shell(engine)
+
+
+def test_zoom_resets_on_the_next_photo_and_edges_resize(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject
+
+    from semblon.native_shell.host import shutdown_shell
+
+    _app, engine, bridge = _shell(tmp_path, monkeypatch)
+    try:
+        root = engine.rootObjects()[0]
+        view = root.findChild(QObject, "photoView")
+        assert view is not None
+        assert root.findChild(QObject, "photoPinch") is not None
+        assert root.findChild(QObject, "photoWheel") is not None
+        assert root.findChild(QObject, "regionDrag") is not None
+        _app.processEvents()
+        assert float(view.property("width")) > 1
+        view.zoomAt(30, 30, 2)
+        assert float(view.property("scale")) == pytest.approx(2)
+        bridge.focusNext()
+        _app.processEvents()
+        assert bridge.focusId == "m2"
+        assert float(view.property("scale")) == pytest.approx(1)
+        assert float(view.property("x")) == pytest.approx(0)
+        grown = [float(part) for part in bridge.adjustSelectionBox(
+            10, 20, 100, 40, "r", 25, 0, 0, 0, 400, 300
+        ).split(",")]
+        assert grown[2] == pytest.approx(125)
+        assert grown[3] == pytest.approx(40)
+    finally:
+        shutdown_shell(engine)

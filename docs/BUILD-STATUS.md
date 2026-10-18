@@ -173,7 +173,7 @@ Floors, chosen on this run: token cosine 0.35, mean score 0.28, coverage 0.28.
 
 The archive shell is unchanged as a browser. Focus is the discovery surface.
 
-1. The selection outline is the stored rectangle. Corner handles resize it. Dragging inside it moves it. Click still points. Drag still draws. Search this area repeats the search on that rectangle.
+1. The selection outline is the stored rectangle. Edges and corners resize it. Dragging inside it moves it. Click still points. Drag still draws. Ctrl+wheel, trackpad pinch, and touch pinch zoom the photo (1×–8×). Middle-drag or Alt-drag pans. Left and Right move to the previous and next photo and reset that zoom. Search this area repeats the search on that rectangle.
 2. Similar search runs off the UI thread. The strip says it is looking, Cancel search and Escape drop a late result, and a newer search replaces a slower one.
 3. Each result draws its match box on that thumbnail (fit, not a crop that hides the box). The open match photo draws the same box. The query outline stays on the query photo. The line under the strip says a match is a similar region, not proof it is the same object.
 4. Kept finds restore the query photo, the rectangle, and the match boxes.
