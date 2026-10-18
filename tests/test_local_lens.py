@@ -109,9 +109,32 @@ def test_selection_understanding_is_not_a_person_name(tmp_path):
     assert describe_selection(store, "m1", 6, 42, 20, 10) == "Text: NORTH."
     plain = describe_selection(store, "m1", 70, 40, 8, 8)
     assert plain == "Unlabelled region."
+    crop = np.zeros((8, 8, 3), np.uint8)
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("semblon.visual.naming_local.name_crop_bgr", lambda _crop: "Looks like a tree.")
+    try:
+        assert describe_selection(store, "m1", 70, 40, 8, 8, crop=crop) == "Looks like a tree."
+        assert describe_selection(store, "m1", 6, 6, 10, 10, crop=crop) == (
+            "Face in the selection. Not a named person."
+        )
+    finally:
+        monkeypatch.undo()
     conn = connect(store)
     assert conn.execute("SELECT COUNT(*) FROM embeddings WHERE modality='face'").fetchone()[0] == 0
     conn.close()
+
+
+def test_absent_namer_stays_unlabelled(tmp_path, monkeypatch):
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    _run(conn)
+    _media(conn, "m1")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr("semblon.visual.naming_local.name_crop_bgr", lambda _crop: None)
+    crop = np.zeros((8, 8, 3), np.uint8)
+    assert describe_selection(store, "m1", 4, 4, 8, 8, crop=crop) == "Unlabelled region."
 
 
 def test_keep_discovery_and_match_overlay(tmp_path, monkeypatch):

@@ -153,7 +153,7 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 
 1. Contract centre of gravity is point → understand → find (`docs/PRODUCT.md`, `docs/decisions/2026-10-18-local-visual-discovery.md`). Archive, people, and time stay supporting capabilities.
 2. Ingest stores every content patch of the frame plus overlapping windows (`modality=region_patch`, pack id ending `/patch`). A query crop is scored by late interaction against those patches. Proposal CLS rows remain only when the patch map is absent. No new columns. No face writes.
-3. The selection says face, a detector class, text, or unlabelled region. It does not invent a product or a person.
+3. The selection says face, a detector class, text, one local noun that beats "no specific name", or unlabelled region. The noun is not a person and does not choose the matches. A missing naming weight stays unlabelled. It does not invent a product or a person.
 4. A result carries `match_norm`. Opening that result draws the box on the photo. Back still returns to the previous search.
 5. **Keep this find** writes `{store}.discoveries.json` (query, selection, hits, match boxes). Opening a kept find restores that search.
 6. Command: `.venv-312\Scripts\python.exe tools\eval_photo_regions.py` → **exit 0**. Sources are scikit-image photographs. Viewpoint is a homography of the crop on another photograph. Lighting is gamma plus a colour cast. The distractor is the crop's mean colour on another photograph.

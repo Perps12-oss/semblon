@@ -127,6 +127,96 @@ def prepare_naming() -> PreparedNaming:
     return PreparedNaming(siglip_capability())
 
 
+def name_crop_bgr(bgr) -> str | None:
+    """One grounded noun for this crop, or None when the model abstains or is absent.
+
+    The noun has to beat "no specific name". A missing weight file stays silent.
+    This does not write a person and does not decide which archive photos match.
+    """
+    cap = siglip_capability()
+    if cap.get("state") != "READY":
+        return None
+    weights = str(cap.get("weights") or "")
+    try:
+        bundle = _load_bundle(weights, cap.get("runtime"))
+        noun, score = _best_noun(bgr, bundle)
+    except Exception as exc:  # noqa: BLE001 — a naming failure stays unlabelled
+        mark_naming_failed(weights, f"{type(exc).__name__}: {exc}")
+        return None
+    if not noun or score <= 0:
+        return None
+    return f"Looks like a {noun}."
+
+
+def _best_noun(bgr, bundle) -> tuple[str | None, float]:
+    import numpy as np
+    from PIL import Image
+
+    arr = np.asarray(bgr)
+    if arr.ndim != 3 or arr.shape[2] < 3 or arr.shape[0] < 1 or arr.shape[1] < 1:
+        return None, 0.0
+    rgb = arr[:, :, :3][:, :, ::-1]
+    image = Image.fromarray(np.ascontiguousarray(rgb.astype(np.uint8)), "RGB")
+    session = _CropNouns(image, bundle)
+    best_noun = None
+    best = -1.0
+    for noun in proposal_nouns():
+        score = session.cosine(f"a photo of a {noun}")
+        if score > best:
+            best = score
+            best_noun = noun
+    if best_noun is None:
+        return None, 0.0
+    abstain = session.cosine(_ABSTAIN)
+    return best_noun, gated_similarity(best, abstain)
+
+
+class _CropNouns:
+    def __init__(self, image, bundle):
+        self.image = image
+        self.bundle = bundle
+        self._image_feat = None
+        self._text: dict[str, object] = {}
+
+    def cosine(self, prompt: str) -> float:
+        torch = self.bundle["torch"]
+        value = (self.image_feat() * self._text_feat(prompt)).sum(dim=-1)
+        return float(value.detach().flatten()[0].item()) if torch.is_tensor(value) else float(value)
+
+    def image_feat(self):
+        if self._image_feat is not None:
+            return self._image_feat
+        torch = self.bundle["torch"]
+        kind = self.bundle["kind"]
+        with torch.no_grad():
+            if kind == "open_clip":
+                tensor = self.bundle["preprocess"](self.image).unsqueeze(0)
+                feat = self.bundle["model"].encode_image(tensor)
+            else:
+                inputs = self.bundle["processor"](images=self.image, return_tensors="pt")
+                feat = self.bundle["model"].get_image_features(**inputs)
+            feat = feat / feat.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+        self._image_feat = feat
+        return feat
+
+    def _text_feat(self, prompt: str):
+        cached = self._text.get(prompt)
+        if cached is not None:
+            return cached
+        torch = self.bundle["torch"]
+        kind = self.bundle["kind"]
+        with torch.no_grad():
+            if kind == "open_clip":
+                tokens = self.bundle["tokenizer"]([prompt])
+                feat = self.bundle["model"].encode_text(tokens)
+            else:
+                inputs = self.bundle["processor"](text=[prompt], return_tensors="pt", padding=True)
+                feat = self.bundle["model"].get_text_features(**inputs)
+            feat = feat / feat.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+        self._text[prompt] = feat
+        return feat
+
+
 def _load_bundle(weights: str, runtime: str | None):
     key = (weights, runtime)
     if _MODEL["key"] == key and _MODEL["bundle"] is not None:
