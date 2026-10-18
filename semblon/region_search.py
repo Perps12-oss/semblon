@@ -398,12 +398,21 @@ def _colour_result(store: Path, crop, *, limit: int, exclude_media_id: str | Non
     return rec
 
 
-def describe_selection(store: Path, media_id: str, x: int, y: int, w: int, h: int) -> str:
+def describe_selection(
+    store: Path,
+    media_id: str,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    crop: np.ndarray | None = None,
+) -> str:
     """What this selection is, in plain language. Never a person name.
 
     Order: a face box that contains the centre, then a detector class
     (contour boxes are geometry, not a class), then overlapping OCR text,
-    otherwise an unlabelled region.
+    then one local noun that beats "no specific name". Otherwise unlabelled.
+    The noun does not choose which archive photos match.
     """
     path = Path(store)
     if not path.is_file() or not media_id:
@@ -452,6 +461,15 @@ def describe_selection(store: Path, media_id: str, x: int, y: int, w: int, h: in
     token = _text_query_token(text)
     if token:
         return f"Text: {token}."
+    if crop is not None:
+        from semblon.visual.naming_local import name_crop_bgr
+
+        try:
+            named = name_crop_bgr(crop)
+        except Exception:  # noqa: BLE001 — naming must not replace a visual search
+            named = None
+        if named:
+            return named
     return "Unlabelled region."
 
 
@@ -682,7 +700,7 @@ def find_similar_region(
 ) -> dict:
     crop = crop_bgr(Path(image_path), x, y, w, h)
     pixels = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
-    understanding = describe_selection(store, media_id or "", x, y, w, h)
+    understanding = describe_selection(store, media_id or "", x, y, w, h, crop=crop)
     stored_text = overlapping_text(store, media_id or "", x, y, w, h) if media_id else ""
     text = stored_text
     if not text and selection_kind == "text":

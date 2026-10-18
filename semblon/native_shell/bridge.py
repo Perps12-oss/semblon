@@ -389,6 +389,10 @@ class ShellBridge(QObject):
                     self.findSimilarFaces(wanted)
                     return
                 if kind in {"object", "text", "clip", "appearance"}:
+                    from semblon.selection import click_adopts_box
+
+                    if not click_adopts_box(kind, str(box.get("source") or "")):
+                        return
                     self.setRegion(
                         float(box.get("nx") or 0),
                         float(box.get("ny") or 0),
@@ -1688,10 +1692,16 @@ class ShellBridge(QObject):
             nh = max(0.0, (y2 - y1) / height)
             if nw <= 0 or nh <= 0:
                 continue
+            kind = str(box.get("kind") or "")
+            source = str(box.get("source") or "")
+            from semblon.selection import click_adopts_box
+
             self._focus_boxes.append(
                 {
                     "id": str(box.get("id") or ""),
-                    "kind": str(box.get("kind") or ""),
+                    "kind": kind,
+                    "source": source,
+                    "snap": click_adopts_box(kind, source),
                     "tag": str(box.get("tag") or ""),
                     "color": str(box.get("color") or "#2e8b57"),
                     "nx": max(0.0, min(1.0, x1 / width)),
@@ -2780,23 +2790,17 @@ class ShellBridge(QObject):
         if nx < 0.0 or ny < 0.0 or nx >= 1.0 or ny >= 1.0:
             self._clear_query()
             return ""
+        from semblon.selection import point_box
+
         px = max(0, min(width - 1, int(nx * width)))
         py = max(0, min(height - 1, int(ny * height)))
-        bbox = self._bbox_at_point(media_id, px, py)
-        if bbox is None:
-            self._clear_query()
-            return ""
-        x, y, w, h = bbox
-        kind = self._selection_kind
-        note = self._selection_note
-        source = self._point_source
+        # A click that missed a face, text, or detector box stays on that point.
+        # Stored regions and flood-fill are not allowed to move it.
+        x, y, w, h = point_box(px, py, width, height)
+        self._point_source = "point"
         self.setRegion(x / width, y / height, w / width, h / height)
-        if source == "refine":
-            self._selection_kind = kind or "unknown"
-            self._selection_note = note or "Plain rectangle. Segmentation is not available."
-        elif source == "stored":
-            self._selection_kind = "object"
-            self._selection_note = "Selected region."
+        self._selection_kind = "point"
+        self._selection_note = "The click stays where you put it."
         self.findSimilar()
         return f"{x / width},{y / height},{w / width},{h / height}"
 
