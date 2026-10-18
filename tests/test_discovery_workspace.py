@@ -215,6 +215,7 @@ def test_indexing_progress_names_photos_already_added(tmp_path, monkeypatch):
 
     app, engine, bridge = _shell(tmp_path, monkeypatch)
     try:
+        bridge._timer.stop()
         bridge._job_active = True
         bridge._on_worker_progress(
             SimpleNamespace(stage="ingest", kind="progress", current=2, total=9)
@@ -222,6 +223,16 @@ def test_indexing_progress_names_photos_already_added(tmp_path, monkeypatch):
         app.processEvents()
         assert "2/9" in bridge.jobLabel
         assert "already added" in bridge.jobLabel
+        assert bridge.jobCurrent == 2
+        assert bridge.jobTotal == 9
+        from PySide6.QtCore import QObject
+
+        root = engine.rootObjects()[0]
+        heroes = root.findChildren(QObject, "scanHero")
+        assert len(heroes) == 1
+        hero = heroes[0]
+        assert bool(hero.property("visible")) is True
+        assert float(hero.property("fraction")) == pytest.approx(2 / 9)
     finally:
         shutdown_shell(engine)
 

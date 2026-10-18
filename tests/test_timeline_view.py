@@ -153,6 +153,9 @@ def test_timeline_chrome_object_names(tmp_path, monkeypatch):
     bridge = engine._semblon_bridge
     for _ in range(20):
         app.processEvents()
+    bridge.showLibrary()
+    for _ in range(20):
+        app.processEvents()
     assert bridge.timelineDensity
     hero = root.findChild(QQuickItem, "timelineHero")
     assert hero is not None
@@ -164,6 +167,7 @@ def test_timeline_chrome_object_names(tmp_path, monkeypatch):
     assert root.findChild(QObject, "archiveSidebar") is not None
     assert root.findChild(QObject, "contextSidebarSearch") is not None
     assert root.findChild(QObject, "libraryButton") is not None
+    assert root.findChild(QObject, "homeButton") is not None
     assert root.findChild(QObject, "sidebarSectionMedia") is not None
     assert root.findChild(QObject, "sidebarSectionFolders") is not None
     assert root.findChild(QQuickItem, "memoryCalendar") is not None
@@ -305,6 +309,9 @@ def test_calendar_chrome_object_names(tmp_path, monkeypatch):
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
     for _ in range(30):
+        app.processEvents()
+    bridge.showLibrary()
+    for _ in range(20):
         app.processEvents()
     cal = root.findChild(QQuickItem, "memoryCalendar")
     assert cal is not None
@@ -470,6 +477,9 @@ def test_field_sections_chrome(tmp_path, monkeypatch):
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
     for _ in range(30):
+        app.processEvents()
+    bridge.showLibrary()
+    for _ in range(20):
         app.processEvents()
     bridge.selectMonth("2024-05")
     for _ in range(30):

@@ -84,6 +84,28 @@ def test_selection_understanding_is_not_a_person_name(tmp_path):
     conn.close()
     assert describe_selection(store, "m1", 6, 6, 10, 10) == "Face in the selection. Not a named person."
     assert describe_selection(store, "m1", 45, 8, 12, 12) == "Object: cup."
+    conn = connect(store)
+    conn.execute(
+        """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider,
+           bbox_x1, bbox_y1, bbox_x2, bbox_y2, score, payload_json)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            "drawn",
+            "o-m1",
+            "r1",
+            "object",
+            "user_box",
+            80,
+            60,
+            96,
+            76,
+            1,
+            json.dumps({"class": "user_region"}),
+        ),
+    )
+    conn.commit()
+    conn.close()
+    assert describe_selection(store, "m1", 82, 62, 8, 8) == "Unlabelled region."
     assert describe_selection(store, "m1", 6, 42, 20, 10) == "Text: NORTH."
     plain = describe_selection(store, "m1", 70, 40, 8, 8)
     assert plain == "Unlabelled region."

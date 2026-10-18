@@ -22,6 +22,7 @@ def test_unified_basis_messages_are_allowlisted():
         "Similar (Similar look): search failed.",
         "Similar (Similar look): the region model is not installed.",
         "Similar (Similar look): these photos are not indexed for region search yet.",
+        "Similar (Similar look): nothing close enough.",
         "Kept this find.",
         "A folder is being added. Wait until that finishes.",
         "Library clear was cancelled.",
@@ -67,6 +68,18 @@ def test_adapter_region_and_whole_share_chrome_with_distinct_labels(tmp_path):
     assert "colour histogram" in region.message.lower()
     assert "face" not in region.message.lower()
     assert region.data["items"][0]["media_id"] == "m2"
+
+    empty = adapter.similar_region(
+        {
+            "similar": {
+                "status": "SUCCESS",
+                "items": [],
+                "similarity_basis": "Similar look",
+            }
+        }
+    )
+    assert empty.state == "empty"
+    assert empty.message == "Similar (Similar look): nothing close enough."
 
     face = adapter.similar_faces("")
     assert face.state == "unavailable"
