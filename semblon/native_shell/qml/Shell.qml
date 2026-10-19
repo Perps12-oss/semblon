@@ -164,6 +164,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Ctrl+Shift+S"
+        enabled: shellReady && shellApi.screenQueryAvailable
         onActivated: if (shellReady) shellApi.startScreenQuery()
     }
     Shortcut {
@@ -2879,7 +2880,7 @@ ApplicationWindow {
                     objectName: "screenQueryAction"
                     width: parent.width
                     height: 32
-                    visible: shellReady && !shellApi.searchBusy
+                    visible: shellReady && shellApi.screenQueryAvailable && !shellApi.searchBusy
                     radius: 6
                     color: screenQueryHit.containsMouse ? tokenAccentDim : tokenBg2
                     border.color: tokenAccent

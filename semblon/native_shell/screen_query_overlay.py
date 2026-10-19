@@ -1,4 +1,8 @@
-"""Transient desktop selection overlay for screen query."""
+"""Transient desktop selection overlay for screen query.
+
+The overlay spans the virtual desktop so selection works on multi-monitor
+Windows setups. It returns global desktop pixels for downstream query.
+"""
 
 from __future__ import annotations
 
@@ -13,12 +17,32 @@ class ScreenSelectionUnavailable(RuntimeError):
     """Raised when screen selection cannot run on this runtime."""
 
 
+def _union_bounds(bounds: list[tuple[int, int, int, int]]) -> tuple[int, int, int, int]:
+    if not bounds:
+        raise ValueError("no screen bounds")
+    left = min(x for x, _y, _w, _h in bounds)
+    top = min(y for _x, y, _w, _h in bounds)
+    right = max(x + w for x, _y, w, _h in bounds)
+    bottom = max(y + h for _x, y, _w, h in bounds)
+    return left, top, right - left, bottom - top
+
+
+def _screen_bounds(screen) -> tuple[int, int, int, int]:
+    geom = screen.geometry()
+    return int(geom.x()), int(geom.y()), int(geom.width()), int(geom.height())
+
+
 class _ScreenSelectionDialog(QDialog):
-    def __init__(self, screen, parent=None):
+    def __init__(self, screens, parent=None):
         super().__init__(parent)
-        self._screen = screen
-        self._screen_geom = screen.geometry()
-        self._grab = screen.grabWindow(0)
+        self._screens = list(screens)
+        if not self._screens:
+            raise ScreenSelectionUnavailable("No active screen was found.")
+        vx, vy, vw, vh = _union_bounds([_screen_bounds(screen) for screen in self._screens])
+        self._virtual_geom = QRect(vx, vy, vw, vh)
+        self._grabs: list[tuple[QRect, object]] = []
+        for screen in self._screens:
+            self._grabs.append((screen.geometry(), screen.grabWindow(0)))
         self._origin = QPoint()
         self._rect = QRect()
         self._dragging = False
@@ -30,7 +54,7 @@ class _ScreenSelectionDialog(QDialog):
         self.setModal(True)
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.CrossCursor)
-        self.setGeometry(self._screen_geom)
+        self.setGeometry(self._virtual_geom)
 
     def _selected_rect(self) -> QRect:
         rect = self._rect.normalized()
@@ -43,15 +67,25 @@ class _ScreenSelectionDialog(QDialog):
         if rect.isNull():
             return None
         return (
-            int(self._screen_geom.x() + rect.x()),
-            int(self._screen_geom.y() + rect.y()),
+            int(self._virtual_geom.x() + rect.x()),
+            int(self._virtual_geom.y() + rect.y()),
             int(rect.width()),
             int(rect.height()),
         )
 
     def paintEvent(self, _event) -> None:  # noqa: N802 - Qt paintEvent signature
         painter = QPainter(self)
-        painter.drawPixmap(self.rect(), self._grab)
+        painter.fillRect(self.rect(), QColor(10, 10, 10, 255))
+        for screen_geom, pixmap in self._grabs:
+            target = QRect(
+                int(screen_geom.x() - self._virtual_geom.x()),
+                int(screen_geom.y() - self._virtual_geom.y()),
+                int(screen_geom.width()),
+                int(screen_geom.height()),
+            )
+            if target.width() <= 0 or target.height() <= 0:
+                continue
+            painter.drawPixmap(target, pixmap, pixmap.rect())
         painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
         rect = self._selected_rect()
         if not rect.isNull():
@@ -100,11 +134,17 @@ def select_screen_region(parent=None) -> tuple[int, int, int, int] | None:
     app = QApplication.instance()
     if app is None:
         raise ScreenSelectionUnavailable("Screen query is unavailable without a Qt app.")
-    screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
-    if screen is None:
+    screens = list(QGuiApplication.screens())
+    if not screens:
         raise ScreenSelectionUnavailable("No active screen was found.")
-    dialog = _ScreenSelectionDialog(screen, parent=parent)
-    dialog.showFullScreen()
+    # Keep cursor hinting on the current screen by preserving z-order and focus.
+    _focused = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+    dialog = _ScreenSelectionDialog(screens, parent=parent)
+    dialog.show()
+    if _focused is not None:
+        handle = dialog.windowHandle()
+        if handle is not None:
+            handle.setScreen(_focused)
     if dialog.exec() != int(QDialog.DialogCode.Accepted):
         return None
     return dialog.selected_global_rect()

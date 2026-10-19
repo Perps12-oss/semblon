@@ -1021,6 +1021,10 @@ class ShellBridge(QObject):
     def dangerColor(self) -> str:
         return tokens_for(self._atmosphere_id)["danger"]
 
+    @Property(bool, notify=lensChanged)
+    def screenQueryAvailable(self) -> bool:
+        return sys.platform == "win32"
+
     @Property(str, notify=peopleChanged)
     def reviewCountText(self) -> str:
         return self._review_text
