@@ -5,8 +5,9 @@ Doors:
 - OCR substring search over stored text observations
 - object-label search over stored detector labels
 
-Each hit keeps the basis that found it. Identity is not a door.
-Nothing here writes the store.
+Each hit keeps the basis that found it. Ranked lists fuse with Reciprocal
+Rank Fusion, then a cheap rescore when extra signals exist. Identity is
+not a door. Nothing here writes the store.
 """
 
 from __future__ import annotations
@@ -34,7 +35,6 @@ def retrieve_selection(
     cap = max(1, int(limit))
     obs = [row for row in (observations or []) if isinstance(row, dict)]
     channels: list[dict] = []
-    grouped: dict[str, dict] = {}
 
     if _stopped(cancelled):
         return _empty("CANCELLED", "Selection retrieval was cancelled.", channels)
@@ -46,7 +46,6 @@ def retrieve_selection(
         limit=cap,
         cancelled=cancelled,
         channels=channels,
-        grouped=grouped,
     )
     if _stopped(cancelled):
         return _empty("CANCELLED", "Selection retrieval was cancelled.", channels)
@@ -57,7 +56,6 @@ def retrieve_selection(
         kind=kind,
         limit=cap,
         channels=channels,
-        grouped=grouped,
     )
     if _stopped(cancelled):
         return _empty("CANCELLED", "Selection retrieval was cancelled.", channels)
@@ -66,9 +64,8 @@ def retrieve_selection(
         observations=obs,
         limit=cap,
         channels=channels,
-        grouped=grouped,
     )
-    return _merged(channels, grouped, limit=cap, selection_kind=kind)
+    return _merged(channels, limit=cap, selection_kind=kind)
 
 
 def _stopped(cancelled) -> bool:
@@ -89,10 +86,12 @@ def _empty(status: str, reason: str, channels: list[dict]) -> dict:
     }
 
 
-def _add_hit(grouped: dict[str, dict], item: dict, basis: str) -> None:
+def _channel_item(item: dict, basis: str) -> dict | None:
     media_id = str(item.get("media_id") or "").strip()
     if not media_id:
-        return
+        return None
+    if str(item.get("modality") or "") == "face":
+        return None
     raw_score = item.get("score")
     try:
         score = float(raw_score) if raw_score is not None else None
@@ -101,28 +100,19 @@ def _add_hit(grouped: dict[str, dict], item: dict, basis: str) -> None:
     if score is None:
         score = 1.0
     norm = item.get("match_norm") if isinstance(item.get("match_norm"), (list, tuple)) else None
-    row = grouped.get(media_id)
-    if row is None:
-        grouped[media_id] = {
-            "media_id": media_id,
-            "score": score,
-            "bases": [basis],
-            "match_norm": list(norm) if norm and len(norm) == 4 else [0.0, 0.0, 0.0, 0.0],
-        }
-        return
-    if basis not in row["bases"]:
-        row["bases"].append(basis)
-    if score > float(row["score"]):
-        row["score"] = score
-    if norm and len(norm) == 4 and not any(float(v) > 0 for v in row["match_norm"]):
-        row["match_norm"] = [float(v) for v in norm]
+    return {
+        "media_id": media_id,
+        "score": score,
+        "similarity_basis": basis,
+        "match_norm": list(norm) if norm and len(norm) == 4 else [0.0, 0.0, 0.0, 0.0],
+    }
 
 
 def _region_basis_fallback() -> str:
     return "Similar look"
 
 
-def _take_region(store, *, crop, kind, limit, cancelled, channels, grouped) -> None:
+def _take_region(store, *, crop, kind, limit, cancelled, channels) -> None:
     if kind == "text":
         channels.append(
             {
@@ -146,8 +136,7 @@ def _take_region(store, *, crop, kind, limit, cancelled, channels, grouped) -> N
     )
     basis = str(rec.get("similarity_basis") or _region_basis_fallback())
     items = [item for item in (rec.get("items") or []) if isinstance(item, dict)]
-    for item in items:
-        _add_hit(grouped, item, basis)
+    packed = [row for item in items if (row := _channel_item(item, basis))]
     channels.append(
         {
             "door": "region",
@@ -155,7 +144,8 @@ def _take_region(store, *, crop, kind, limit, cancelled, channels, grouped) -> N
             "similarity_basis": basis,
             "reason": str(rec.get("reason") or ""),
             "error_id": rec.get("error_id"),
-            "count": len(items),
+            "count": len(packed),
+            "items": packed,
             "understanding": str(rec.get("understanding") or ""),
             "engine": str(rec.get("engine") or ""),
         }
@@ -193,7 +183,7 @@ def _text_tokens(observations: list[dict], crop, kind: str) -> tuple[list[str], 
     return tokens, source
 
 
-def _take_text(store, *, crop, observations, kind, limit, channels, grouped) -> None:
+def _take_text(store, *, crop, observations, kind, limit, channels) -> None:
     from semblon.observers import probe_ocr_status
     from semblon.search import SearchError, search_text
 
@@ -239,8 +229,9 @@ def _take_text(store, *, crop, observations, kind, limit, channels, grouped) -> 
         error_id = rec.get("error_id") or error_id
         for item in rec.get("items") or []:
             if isinstance(item, dict):
-                found.append(item)
-                _add_hit(grouped, item, _TEXT_BASIS)
+                row = _channel_item(item, _TEXT_BASIS)
+                if row is not None:
+                    found.append(row)
     status = _fold_status(statuses)
     channels.append(
         {
@@ -250,6 +241,7 @@ def _take_text(store, *, crop, observations, kind, limit, channels, grouped) -> 
             "reason": reason,
             "error_id": error_id if status in {"UNAVAILABLE", "ERROR"} else None,
             "count": len({str(item.get("media_id") or "") for item in found if item.get("media_id")}),
+            "items": found,
             "query": " ".join(tokens),
         }
     )
@@ -273,7 +265,7 @@ def _object_labels(observations: list[dict]) -> list[str]:
     return labels
 
 
-def _take_objects(store, *, observations, limit, channels, grouped) -> None:
+def _take_objects(store, *, observations, limit, channels) -> None:
     from semblon.search import SearchError, search_object
 
     labels = _object_labels(observations)
@@ -306,8 +298,9 @@ def _take_objects(store, *, observations, limit, channels, grouped) -> None:
         basis = str(rec.get("similarity_basis") or _OBJECT_BASIS)
         for item in rec.get("items") or []:
             if isinstance(item, dict):
-                found.append(item)
-                _add_hit(grouped, item, basis)
+                row = _channel_item(item, basis)
+                if row is not None:
+                    found.append(row)
     status = _fold_status(statuses)
     channels.append(
         {
@@ -317,6 +310,7 @@ def _take_objects(store, *, observations, limit, channels, grouped) -> None:
             "reason": reason,
             "error_id": error_id if status in {"UNAVAILABLE", "ERROR"} else None,
             "count": len({str(item.get("media_id") or "") for item in found if item.get("media_id")}),
+            "items": found,
             "query": " ".join(labels),
         }
     )
@@ -349,33 +343,36 @@ def _basis_label(channels: list[dict], items: list[dict]) -> str:
     return " · ".join(ordered) or _region_basis_fallback()
 
 
-def _merged(channels: list[dict], grouped: dict[str, dict], *, limit: int, selection_kind: str) -> dict:
-    text_first = selection_kind == "text_priority"
-    items = list(grouped.values())
+def _merged(channels: list[dict], *, limit: int, selection_kind: str) -> dict:
+    from semblon.retrieval_fuse import fuse_hits
 
-    def _rank(item: dict) -> tuple:
-        bases = [str(b).lower() for b in item.get("bases") or []]
-        textish = any("text" in basis for basis in bases)
-        return (
-            0 if text_first and textish else 1,
-            -len(item.get("bases") or []),
-            -float(item.get("score") or 0.0),
-            str(item.get("media_id") or ""),
-        )
-
-    items.sort(key=_rank)
-    items = items[:limit]
+    packed_channels: dict[str, list[dict]] = {}
+    for channel in channels:
+        if channel.get("status") in {_SKIPPED, _NO_QUERY}:
+            continue
+        door = str(channel.get("door") or "").strip()
+        if not door:
+            continue
+        packed_channels[door] = [
+            item for item in (channel.get("items") or []) if isinstance(item, dict)
+        ]
+    fused = fuse_hits(
+        packed_channels,
+        text_priority=selection_kind == "text_priority",
+        limit=limit,
+    )
     packed = []
-    for item in items:
+    for item in fused:
         bases = [str(b) for b in item.get("bases") or [] if b]
         packed.append(
             {
                 "media_id": item["media_id"],
                 "score": float(item["score"]),
+                "rrf": float(item.get("rrf") or 0.0),
                 "match_norm": item["match_norm"],
                 "bases": bases,
                 "similarity_basis": " · ".join(bases),
-                "why": "selection retrieval; not a person",
+                "why": "selection retrieval (RRF); not a person",
             }
         )
     ran = [c for c in channels if c.get("status") not in {_SKIPPED, _NO_QUERY}]

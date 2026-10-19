@@ -259,6 +259,16 @@ Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 3. Object detection and the vision-language describer are optional providers (`optional_providers`). A missing weight is reported. Neither provider writes face identity.
 4. When the current search needs the object model or the local description, the shell offers one install button on that same screen. Confirmation downloads the pinned NanoDet file, or writes the local pixel-describer marker, then runs that search again. Search itself does not download. NanoDet MSI bundling stays blocked.
 
+## Behaviour landed — Lens retrieval structure (2026-10-19)
+
+Design only for the remaining slices; RRF merge is the first code slice.
+
+1. Audit of `main` at `86fdcbf`: production similar-region is DINOv2 `region_patch` late interaction against SQLite, not `crop → OpenCLIP → Chroma`. ANN is named and disabled (`semblon/index_provider.py`). Screen selection already ran region + OCR substring + NanoDet and merged by max score. Focus similar-region stayed visual-first. **Name this area** was already off the hot path.
+2. Design: `docs/LENS-RETRIEVAL.md`. Decision: `docs/decisions/2026-10-19-local-lens-retrieval.md`. Do not swap DINOv2 for SigLIP, NanoDet for YOLO, Tesseract for PaddleOCR, or the exact index for FAISS/Chroma as the product path.
+3. Selection retrieval now fuses channel ranks with Reciprocal Rank Fusion (`semblon/retrieval_fuse.py`). Face rows are dropped. A cheap rerank API exists; class/OCR/colour weights are not yet wired with live signals on Focus.
+4. Remaining slices in that design: one retrieve door for Focus, BM25 over stored OCR, query-time NanoDet crop rescoring, lightweight rerank, denser patch windows only if eval requires, ANN only if a scan is the bottleneck.
+5. Command: `PYTHONPATH=/workspace python3 -m pytest tests/test_retrieval_fuse.py tests/test_selection_retrieval.py tests/test_visual_query.py tests/test_region_search.py tests/test_index_provider.py -q --noconftest` → **23 passed**. `--noconftest` is this Linux agent (no PySide6 in the interpreter). The tests do not need the Qt session fixture.
+
 ## What this file will not absorb
 
 Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE gates stay in `docs/FACE-GATES.md`. Product vision stays in `docs/PRODUCT.md`.

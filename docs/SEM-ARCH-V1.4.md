@@ -280,6 +280,24 @@ Identity firewall remains:
 
 > optional modalities must never silently change face identity decisions.
 
+### F.4 Local Lens-style retrieval (product construction)
+
+The defining act is already visual discovery (`docs/PRODUCT.md`). The remaining engineering gap is retrieval **structure**, not a second identity engine and not a vector-database swap.
+
+Authoritative design: `docs/LENS-RETRIEVAL.md`. Decision: `docs/decisions/2026-10-19-local-lens-retrieval.md`.
+
+Keep:
+
+- One Region Similar operation: `Application.remember_and_find_region`.
+- DINOv2 content patches as the dense visual space (`modality=region_patch`).
+- NanoDet + Tesseract as the BYO object/OCR probes. Do not add YOLO11n, PaddleOCR, or Florence-2 as defaults.
+- Exact derived index (`semblon/index_provider.py`). FAISS/Chroma stay unwired until a measured scan bottleneck.
+- Describers off the default similar path (**Name this area** only).
+
+Change, in slices: Focus similar-region must recall from visual + text + metadata in parallel, fuse with Reciprocal Rank Fusion, then cheaply rerank. No new columns. No face writes.
+
+This is the “multimodal retrieval expansion” already listed in §J. It is not a FACE-n queue, not Chroma, and not public lookup.
+
 ---
 
 ## G) Performance reconciliation (measurement-first)
@@ -444,6 +462,7 @@ Do not resurrect Tk Home as the product door, `review.html`, `review_chrome`, `l
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.14 | 2026-10-19 | Local Lens-style retrieval: structure over model-swap. Design `docs/LENS-RETRIEVAL.md`. RRF fuse is the first slice. ANN/Chroma/YOLO/Paddle stay out. |
 | V1.4.13 | 2026-10-16 | Product contract, build status, and product roadmap are separate documents. This file stays engineering planned work. |
 | V1.4.12 | 2026-10-05 | Production shell baseline closed: PySide6 → Application. `review.html` retired. Tk legacy only. Precedence points at `docs/ARCHITECTURE.md` for the shell. |
 | V1.4.11 | 2026-09-22 | Retire superseded parallel docs (historical SEM-ARCH / maturity / audit / verify playbook); COMPLETION-MATRIX is status authority. |
