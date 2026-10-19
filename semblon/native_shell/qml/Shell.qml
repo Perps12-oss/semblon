@@ -164,7 +164,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Ctrl+Shift+S"
-        enabled: shellReady && shellApi.screenQueryAvailable
+        enabled: shellReady && shellApi.screenQueryAvailable && !shellApi.screenQueryInProgress
         onActivated: if (shellReady) shellApi.startScreenQuery()
     }
     Shortcut {
@@ -2904,6 +2904,33 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    objectName: "screenQueryModeAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && shellApi.screenQueryAvailable && !shellApi.screenQueryInProgress
+                    radius: 6
+                    color: screenQueryModeHit.containsMouse ? tokenBg2 : tokenBg3
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: shellReady ? shellApi.screenQueryModeLabel : "Screen mode"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+                    MouseArea {
+                        id: screenQueryModeHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Toggle screen query mode"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.toggleScreenQueryMode()
+                    }
+                }
+
+                Rectangle {
                     width: parent.width
                     height: 32
                     radius: 6
@@ -2927,6 +2954,17 @@ ApplicationWindow {
                         Accessible.role: Accessible.Button
                         onClicked: if (shellReady) shellApi.findSimilarWhole()
                     }
+                }
+
+                Text {
+                    objectName: "screenQueryProgress"
+                    width: parent.width
+                    visible: shellReady && shellApi.screenQueryInProgress
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? shellApi.screenQueryProgressLabel : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
                 }
 
                 Text {

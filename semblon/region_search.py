@@ -697,10 +697,12 @@ def _find_similar_from_crop(
     stored_text: str,
     query_pixels: dict[str, int] | None,
 ) -> dict:
+    text_only = selection_kind == "text"
+    text_priority = selection_kind in {"text", "text_priority"}
     token = _text_query_token(stored_text)
     # A text observation is its own door. Any other selection keeps the visual search
     # and only reports the text as understanding.
-    if token and selection_kind == "text":
+    if token and text_priority:
         from semblon.search import search_text
 
         text_rec = search_text(store, token, limit=limit)
@@ -716,8 +718,19 @@ def _find_similar_from_crop(
                 rec["query_pixels"] = query_pixels
             return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
         if stored_text and text_rec.get("status") in {"NO_RESULT", "SUCCESS", "UNAVAILABLE"}:
+            if not text_only:
+                understanding = f"Text: {token}. No text match; showing visual similarity."
+            else:
+                rec = _as_text_result(text_rec, token=token)
+                rec["status"] = "NO_RESULT"
+                if query_pixels is not None:
+                    rec["query_pixels"] = query_pixels
+                return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
+        if stored_text and text_rec.get("status") == "ERROR" and not text_only:
+            understanding = f"Text: {token}. Text lookup failed; showing visual similarity."
+        elif stored_text and text_rec.get("status") == "ERROR":
             rec = _as_text_result(text_rec, token=token)
-            rec["status"] = "NO_RESULT"
+            rec["status"] = "ERROR"
             if query_pixels is not None:
                 rec["query_pixels"] = query_pixels
             return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
@@ -852,7 +865,7 @@ def find_similar_region(
     pixels = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
     understanding = describe_selection(store, media_id or "", x, y, w, h, crop=crop)
     stored_text = overlapping_text(store, media_id or "", x, y, w, h) if media_id else ""
-    if not stored_text and selection_kind == "text":
+    if not stored_text and selection_kind in {"text", "text_priority"}:
         # Pointing at text with no stored box still reads the crop. Other selections stay visual.
         stored_text = _ocr_crop_text(crop)
     return _find_similar_from_crop(
@@ -877,7 +890,7 @@ def find_similar_crop(
     cancelled=None,
 ) -> dict:
     """Search the local archive from an arbitrary query crop (for example screen selection)."""
-    text = _ocr_crop_text(crop) if selection_kind == "text" else ""
+    text = _ocr_crop_text(crop) if selection_kind in {"text", "text_priority"} else ""
     understanding = _describe_crop(crop)
     return _find_similar_from_crop(
         store,
