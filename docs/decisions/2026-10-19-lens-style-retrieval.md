@@ -280,7 +280,7 @@ The photographic patch eval (`docs/evidence/photo-region-eval.json`, `tools/eval
 - readable brand / label (`brand-acme`; BM25);
 - hard negatives that are visually close and semantically wrong (`colour-confuser`, plus the injected look lists on the other families).
 
-`--eval-set synthetic` reports ranks and `relevant_above_hard_neg` only. `--eval-set confirmatory` is required for precision; there is no frozen confirmatory Lens set yet, so precision stays refused. Do not tune RRF weights, GBDT, or floors from the first synthetic run. Do not retune S1 identity constants. Exact-scan timing is recorded as evidence that ANN is not justified on this corpus. Slice 9 stays **NOT STARTED**.
+`--eval-set synthetic` reports ranks and `relevant_above_hard_neg` only. First recorded run: 3/5 families pass (`kind-cup`, `look-red-cup`, `colour-confuser`); `brand-acme` and `part-logo` still lose to a confident look list. `--eval-set confirmatory` is required for precision; there is no frozen confirmatory Lens set yet, so precision stays refused. Do not tune RRF weights, GBDT, or floors from that first synthetic run. Do not retune S1 identity constants. Exact-scan timing is recorded as evidence that ANN is not justified on this corpus. Slice 9 stays **NOT STARTED**.
 
 ---
 

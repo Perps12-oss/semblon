@@ -57,7 +57,9 @@ def test_relevant_above_hard_neg_needs_a_relevant_hit():
 
 def test_synthetic_brand_text_finds_acme(tmp_path):
     """BM25 must recall ACME. Beating a confident look-alike is the measured bar."""
-    rec = run_case(build_synthetic_store(tmp_path), _by_family(FAMILY_BRAND_TEXT))
+    case = _by_family(FAMILY_BRAND_TEXT)
+    assert case.observations[0]["payload"]["text"] == "ACME"
+    rec = run_case(build_synthetic_store(tmp_path), case)
     assert rec["relevant_ranks"]["acme-hit"] is not None
     assert rec["ranked"]
     assert "acme-hit" in rec["ranked"]

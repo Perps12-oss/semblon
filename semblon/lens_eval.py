@@ -104,7 +104,7 @@ def labelled_cases() -> list[LensCase]:
             relevant=("acme-hit",),
             hard_negatives=("acne-lookalike", "chair-red"),
             observations=(
-                {"kind": "text", "payload": {"text": "ACME coffee", "role": "ocr"}},
+                {"kind": "text", "payload": {"text": "ACME", "role": "ocr"}},
             ),
             query_spec={"mode": MODE_LOOK},
             look_items=(
@@ -495,7 +495,6 @@ def run_eval(
         elapsed_ms=elapsed_ms,
         corpus_size=_corpus_size(store),
     )
-    report["store"] = str(store)
     if out is not None:
         dest = Path(out)
         dest.parent.mkdir(parents=True, exist_ok=True)

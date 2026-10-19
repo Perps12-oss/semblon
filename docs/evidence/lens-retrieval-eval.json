@@ -1,0 +1,347 @@
+{
+  "status": "FAIL",
+  "eval_set": "synthetic",
+  "method": "retrieve_selection RRF + feature rerank over labelled synthetic tuples",
+  "bar": "best relevant rank sits above every hard negative",
+  "precision": null,
+  "precision_at_5": null,
+  "recall_at_5": null,
+  "precision_reason": "not confirmatory \u2014 precision refused",
+  "cases": [
+    {
+      "case_id": "brand-acme",
+      "family": "brand_text",
+      "status": "SUCCESS",
+      "query_spec": {
+        "mode": "look",
+        "mode_label": "Same look",
+        "mode_hint": "Finds this thing again, even from another angle.",
+        "modifier": "",
+        "part_index": -1,
+        "doors": [
+          "look",
+          "text",
+          "object",
+          "kind"
+        ],
+        "whole_area": true,
+        "has_word": false,
+        "hint": "Finds this thing again, even from another angle. You can pick a part or add a word."
+      },
+      "ranked": [
+        "acne-lookalike",
+        "chair-red",
+        "acme-hit",
+        "logo-hit",
+        "shirt-logo"
+      ],
+      "relevant_ranks": {
+        "acme-hit": 3
+      },
+      "hard_neg_ranks": {
+        "acne-lookalike": 1,
+        "chair-red": 2
+      },
+      "relevant_above_hard_neg": false,
+      "pass": false,
+      "channels": [
+        {
+          "door": "region",
+          "status": "SUCCESS",
+          "count": 3
+        },
+        {
+          "door": "text",
+          "status": "SUCCESS",
+          "count": 3
+        },
+        {
+          "door": "object",
+          "status": "NO_QUERY",
+          "count": 0
+        },
+        {
+          "door": "kind",
+          "status": "SKIPPED",
+          "count": 0
+        }
+      ],
+      "similarity_basis": "Similar look \u00b7 Text in photos (OCR substring)",
+      "notes": "Readable brand. BM25 must lift ACME over a same-colour lookalike."
+    },
+    {
+      "case_id": "kind-cup",
+      "family": "same_kind",
+      "status": "SUCCESS",
+      "query_spec": {
+        "mode": "kind",
+        "mode_label": "Same kind",
+        "mode_hint": "Finds other things of the same kind.",
+        "modifier": "",
+        "part_index": -1,
+        "doors": [
+          "kind",
+          "text",
+          "object",
+          "look"
+        ],
+        "whole_area": true,
+        "has_word": false,
+        "hint": "Finds other things of the same kind. You can pick a part or add a word."
+      },
+      "ranked": [
+        "cup-blue",
+        "chair-red",
+        "cup-red-2",
+        "acme-hit",
+        "acne-lookalike",
+        "acme-query"
+      ],
+      "relevant_ranks": {
+        "cup-blue": 1
+      },
+      "hard_neg_ranks": {
+        "chair-red": 2
+      },
+      "relevant_above_hard_neg": true,
+      "pass": true,
+      "channels": [
+        {
+          "door": "region",
+          "status": "SUCCESS",
+          "count": 2
+        },
+        {
+          "door": "text",
+          "status": "UNAVAILABLE",
+          "count": 0
+        },
+        {
+          "door": "object",
+          "status": "SUCCESS",
+          "count": 5
+        },
+        {
+          "door": "kind",
+          "status": "SKIPPED",
+          "count": 0
+        }
+      ],
+      "similarity_basis": "Similar look \u00b7 COCO object detection (NanoDet)",
+      "notes": "Same kind, different instance. Object class must beat same-colour chair."
+    },
+    {
+      "case_id": "look-red-cup",
+      "family": "same_look",
+      "status": "SUCCESS",
+      "query_spec": {
+        "mode": "look",
+        "mode_label": "Same look",
+        "mode_hint": "Finds this thing again, even from another angle.",
+        "modifier": "",
+        "part_index": -1,
+        "doors": [
+          "look",
+          "text",
+          "object",
+          "kind"
+        ],
+        "whole_area": true,
+        "has_word": false,
+        "hint": "Finds this thing again, even from another angle. You can pick a part or add a word."
+      },
+      "ranked": [
+        "cup-red-2",
+        "chair-red",
+        "cup-blue",
+        "acme-hit",
+        "acne-lookalike",
+        "acme-query"
+      ],
+      "relevant_ranks": {
+        "cup-red-2": 1
+      },
+      "hard_neg_ranks": {
+        "cup-blue": 3
+      },
+      "relevant_above_hard_neg": true,
+      "pass": true,
+      "channels": [
+        {
+          "door": "region",
+          "status": "SUCCESS",
+          "count": 3
+        },
+        {
+          "door": "text",
+          "status": "UNAVAILABLE",
+          "count": 0
+        },
+        {
+          "door": "object",
+          "status": "SUCCESS",
+          "count": 5
+        },
+        {
+          "door": "kind",
+          "status": "SKIPPED",
+          "count": 0
+        }
+      ],
+      "similarity_basis": "Similar look \u00b7 COCO object detection (NanoDet)",
+      "notes": "Same look. Another red cup ranks above a blue cup of the same kind."
+    },
+    {
+      "case_id": "part-logo",
+      "family": "part_vs_whole",
+      "status": "SUCCESS",
+      "query_spec": {
+        "mode": "look",
+        "mode_label": "Same look",
+        "mode_hint": "Finds this thing again, even from another angle.",
+        "modifier": "",
+        "part_index": 0,
+        "doors": [
+          "look",
+          "text",
+          "object",
+          "kind"
+        ],
+        "whole_area": false,
+        "has_word": false,
+        "hint": "Finds this thing again, even from another angle. You can pick a part or add a word."
+      },
+      "ranked": [
+        "shirt-plain",
+        "logo-hit",
+        "acme-hit",
+        "acme-query"
+      ],
+      "relevant_ranks": {
+        "logo-hit": 2,
+        "acme-hit": 3
+      },
+      "hard_neg_ranks": {
+        "shirt-plain": 1
+      },
+      "relevant_above_hard_neg": false,
+      "pass": false,
+      "channels": [
+        {
+          "door": "region",
+          "status": "SUCCESS",
+          "count": 2
+        },
+        {
+          "door": "text",
+          "status": "SUCCESS",
+          "count": 3
+        },
+        {
+          "door": "object",
+          "status": "NO_QUERY",
+          "count": 0
+        },
+        {
+          "door": "kind",
+          "status": "SKIPPED",
+          "count": 0
+        }
+      ],
+      "similarity_basis": "Similar look \u00b7 Text in photos (OCR substring)",
+      "notes": "Search the mark, not the shirt. Logo text ranks above a plain shirt."
+    },
+    {
+      "case_id": "colour-confuser",
+      "family": "hard_neg_colour",
+      "status": "SUCCESS",
+      "query_spec": {
+        "mode": "look",
+        "mode_label": "Same look",
+        "mode_hint": "Finds this thing again, even from another angle.",
+        "modifier": "",
+        "part_index": -1,
+        "doors": [
+          "look",
+          "text",
+          "object",
+          "kind"
+        ],
+        "whole_area": true,
+        "has_word": false,
+        "hint": "Finds this thing again, even from another angle. You can pick a part or add a word."
+      },
+      "ranked": [
+        "cup-red-2",
+        "chair-red",
+        "acme-hit",
+        "acne-lookalike",
+        "cup-blue",
+        "acme-query"
+      ],
+      "relevant_ranks": {
+        "cup-red-2": 1
+      },
+      "hard_neg_ranks": {
+        "chair-red": 2
+      },
+      "relevant_above_hard_neg": true,
+      "pass": true,
+      "channels": [
+        {
+          "door": "region",
+          "status": "SUCCESS",
+          "count": 2
+        },
+        {
+          "door": "text",
+          "status": "UNAVAILABLE",
+          "count": 0
+        },
+        {
+          "door": "object",
+          "status": "SUCCESS",
+          "count": 5
+        },
+        {
+          "door": "kind",
+          "status": "SKIPPED",
+          "count": 0
+        }
+      ],
+      "similarity_basis": "Similar look \u00b7 COCO object detection (NanoDet)",
+      "notes": "Hard negative: same colour, different meaning. Fusion must not keep the chair first."
+    }
+  ],
+  "failures": [
+    "brand-acme",
+    "part-logo"
+  ],
+  "counts": {
+    "cases": 5,
+    "passed": 3,
+    "failed": 2,
+    "corpus": 10
+  },
+  "timing": {
+    "exact_scan_ms": 68.428,
+    "corpus_size": 10,
+    "ann_justified": false,
+    "ann_reason": "Synthetic corpus is too small to claim an exact-scan bottleneck. ANN stays parked.",
+    "index": {
+      "active": "exact-derived",
+      "authoritative": "sqlite",
+      "approximate": false,
+      "ann": {
+        "enabled": false,
+        "reason": "ANN is not wired. Add a provider behind active_vector_index only after a measured retrieval bottleneck."
+      }
+    }
+  },
+  "identity": {
+    "wrote_person_id": false,
+    "wrote_face_embedding": false,
+    "note": "Region ranking is not identity."
+  },
+  "note": "Photographic appearance regression stays docs/evidence/photo-region-eval.json. This harness does not retune RRF, floors, or S1."
+}
