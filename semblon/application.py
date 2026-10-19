@@ -309,6 +309,7 @@ class Application:
         run_id: str | None = None,
         limit: int = 10,
         selection_kind: str | None = None,
+        search_quality: str = "balanced",
         cancelled=None,
     ) -> dict:
         from semblon.region_search import remember_and_find
@@ -324,6 +325,7 @@ class Application:
             run_id=run_id,
             limit=limit,
             selection_kind=selection_kind,
+            search_quality=search_quality,
             cancelled=cancelled,
         )
 

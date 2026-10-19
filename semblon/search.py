@@ -15,6 +15,7 @@ from pathlib import Path
 from semblon.compare import CompareError, compare, compare_space
 from semblon.identify import IdentifyError, identify_face
 from semblon.memory import MemoryError, history
+from semblon.similarity_profile import resolve_search_quality
 
 
 class SearchError(ValueError):
@@ -412,8 +413,16 @@ def _whole_image_basis_label(modality: str | None, pack_id: str | None) -> str:
     return LABEL_COLOUR
 
 
-def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict:
+def search_similar_media(
+    store: Path,
+    media_id: str,
+    *,
+    limit: int = 10,
+    search_quality: str = "balanced",
+) -> dict:
     """Whole-image (B) discovery from a library photo. Honest UNAVAILABLE without embeddings."""
+    quality = resolve_search_quality(search_quality)
+    target_limit = max(1, min(int(limit or 1), quality.max_results))
     mid = (media_id or "").strip()
     if not mid:
         return {
@@ -428,6 +437,8 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
             "error_id": "similar.NO_MEDIA",
             "note": "Whole-image similarity is not identity.",
             "similarity_basis": "Colour only",
+            "search_profile": quality.key,
+            "search_profile_label": quality.label,
         }
     item = non_face_item_for_media(store, mid)
     if item is None:
@@ -447,8 +458,10 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
             "note": "Whole-image similarity is not identity.",
             "similarity_basis": "Colour only",
             "media_ids": [],
+            "search_profile": quality.key,
+            "search_profile_label": quality.label,
         }
-    from semblon.region_encoder import COLOUR_SCORE_FLOOR, PROVIDER, SCENE_SCORE_FLOOR
+    from semblon.region_encoder import PROVIDER
 
     modality_row = None
     conn = _open_ro(store)
@@ -460,11 +473,14 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
     finally:
         conn.close()
     modality_name = str(modality_row["modality"] if modality_row is not None else "")
-    floor = COLOUR_SCORE_FLOOR if modality_name == "appearance" else SCENE_SCORE_FLOOR
-    rec = search_similar(store, item, limit=max(limit * 4, limit), min_score=floor)
+    floor = quality.whole_colour_floor if modality_name == "appearance" else quality.whole_scene_floor
+    probe_limit = max(target_limit * max(1, quality.whole_probe_multiplier), target_limit)
+    rec = search_similar(store, item, limit=probe_limit, min_score=floor)
     rec["similarity_basis"] = _whole_image_basis_label(rec.get("modality"), rec.get("pack_id"))
     rec["engine"] = "color-hist" if str(rec.get("modality") or "") == "appearance" else PROVIDER
     rec["seed_media_id"] = mid
+    rec["search_profile"] = quality.key
+    rec["search_profile_label"] = quality.label
     item_ids = [str(it.get("item_id")) for it in (rec.get("items") or []) if it.get("item_id")]
     mid_map = media_ids_for_items(store, item_ids)
     kept: list[dict] = []
@@ -478,7 +494,7 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
         seen.add(media_id)
         it["media_id"] = media_id
         kept.append(it)
-        if len(kept) >= limit:
+        if len(kept) >= target_limit:
             break
     rec["items"] = kept
     rec["count"] = len(kept)

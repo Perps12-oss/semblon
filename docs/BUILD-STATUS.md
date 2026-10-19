@@ -216,6 +216,13 @@ Visible shell grab: `docs/evidence/visual-discovery-shell-windows.png` shows **S
 
 Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 
+## Behaviour landed — search quality profiles (2026-10-19)
+
+1. Settings and Focus expose **Fast**, **Balanced**, and **Max**. The choice is stored in `appearance.json` as `search_quality`. It is not a schema column and it does not change face identity.
+2. Fast tightens region and whole-image floors and returns fewer hits. Max lowers those floors and keeps a wider result list. Duplicate scan stays the separate Duplicates action.
+3. Focus shows the active quality beside the selection. A region search and a whole-image search both read the saved profile.
+4. Command: `python3 -m pytest tests/test_similarity_quality.py tests/test_discovery_workspace.py tests/test_shell_frontend.py::test_qml_has_no_hardcoded_chrome_colors -q` → **13 passed**. Settings Fast / Balanced / Max are real controls, and Fast raises the colour and scene floors used by Similar.
+
 ## Behaviour landed — editorial Home launchpad (2026-10-18)
 
 1. Home is a permanent stage (`showHome` / `homeOpen`), empty or populated. Adding a folder does not hide it.

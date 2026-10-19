@@ -901,6 +901,107 @@ ApplicationWindow {
                 }
                 Text {
                     width: parent.width
+                    text: "Search quality"
+                    color: tokenFaint
+                    font.pixelSize: 11
+                    font.letterSpacing: 0.4
+                    font.family: "Segoe UI"
+                }
+                Text {
+                    objectName: "searchQualityLabel"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? ("Search quality is " + shellApi.searchQualityLabel + ".") : ""
+                    color: tokenMuted
+                    font.pixelSize: 12
+                    font.family: "Segoe UI"
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "Fast stays snappy. Max looks harder. Neither path is a duplicate scan."
+                    color: tokenFaint
+                    font.pixelSize: 11
+                    font.family: "Segoe UI"
+                }
+                Row {
+                    width: parent.width
+                    spacing: 6
+                    Rectangle {
+                        objectName: "qualityFast"
+                        width: (parent.width - 12) / 3
+                        height: 28
+                        radius: 6
+                        property bool selected: shellReady && shellApi.searchQuality === "fast"
+                        color: selected ? tokenAccentDim : (qualityFastHit.containsMouse ? tokenBg3 : tokenBg2)
+                        border.color: selected ? tokenAccent : tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Fast"
+                            color: selected ? tokenText : tokenMuted
+                            font.pixelSize: 12
+                            font.family: "Segoe UI"
+                        }
+                        MouseArea {
+                            id: qualityFastHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.setSearchQuality("fast")
+                        }
+                    }
+                    Rectangle {
+                        objectName: "qualityBalanced"
+                        width: (parent.width - 12) / 3
+                        height: 28
+                        radius: 6
+                        property bool selected: shellReady && shellApi.searchQuality === "balanced"
+                        color: selected ? tokenAccentDim : (qualityBalancedHit.containsMouse ? tokenBg3 : tokenBg2)
+                        border.color: selected ? tokenAccent : tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Balanced"
+                            color: selected ? tokenText : tokenMuted
+                            font.pixelSize: 12
+                            font.family: "Segoe UI"
+                        }
+                        MouseArea {
+                            id: qualityBalancedHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.setSearchQuality("balanced")
+                        }
+                    }
+                    Rectangle {
+                        objectName: "qualityMax"
+                        width: (parent.width - 12) / 3
+                        height: 28
+                        radius: 6
+                        property bool selected: shellReady && shellApi.searchQuality === "max"
+                        color: selected ? tokenAccentDim : (qualityMaxHit.containsMouse ? tokenBg3 : tokenBg2)
+                        border.color: selected ? tokenAccent : tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Max"
+                            color: selected ? tokenText : tokenMuted
+                            font.pixelSize: 12
+                            font.family: "Segoe UI"
+                        }
+                        MouseArea {
+                            id: qualityMaxHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.setSearchQuality("max")
+                        }
+                    }
+                }
+                Text {
+                    width: parent.width
                     text: "Appearance"
                     color: tokenFaint
                     font.pixelSize: 11
@@ -2865,6 +2966,16 @@ ApplicationWindow {
                         Accessible.role: Accessible.Button
                         onClicked: if (shellReady) shellApi.findSimilarWhole()
                     }
+                }
+
+                Text {
+                    objectName: "searchQualityFocus"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? ("Quality: " + shellApi.searchQualityLabel) : ""
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
                 }
 
                 Text {

@@ -73,6 +73,7 @@ _SAFE_PRIMARY_PATTERNS = (
     re.compile(r"^Library check: [^\n]+\.$"),
     re.compile(r"^Density is [^\n]+\.$"),
     re.compile(r"^Search looks at [^\n]+\.$"),
+    re.compile(r"^Search quality is [^\n]+\.$"),
     re.compile(r"^Showing [^\n]+\.$"),
     re.compile(r"^Reset finished\. [^\n]+\.$"),
     re.compile(r"^Activity: [^\n]+\.$"),

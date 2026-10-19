@@ -22,7 +22,6 @@ import numpy as np
 from semblon.compare import CompareError, compare_space
 from semblon.observers import APPEARANCE_DIM, APPEARANCE_PACK, color_histogram
 from semblon.region_encoder import (
-    COLOUR_SCORE_FLOOR,
     KNOWN_SHA256,
     LABEL_COLOUR,
     LABEL_SIMILAR,
@@ -30,11 +29,7 @@ from semblon.region_encoder import (
     LABEL_UNKNOWN,
     MODALITY_PATCH,
     MODALITY_REGION,
-    PATCH_COVERAGE_FLOOR,
-    PATCH_SCORE_FLOOR,
-    PATCH_TOKEN_FLOOR,
     PROVIDER,
-    REGION_SCORE_FLOOR,
     WEIGHT_NAME,
     RegionPackError,
     active_pack,
@@ -43,6 +38,7 @@ from semblon.region_encoder import (
     pack_id_patches,
     probe_region_pack,
 )
+from semblon.similarity_profile import SimilarityProfile, resolve_search_quality
 from semblon.user_region import RegionError, persist_user_region
 
 
@@ -340,7 +336,7 @@ def _text_query_token(text: str) -> str:
     return ""
 
 
-def _as_text_result(rec: dict, *, token: str) -> dict:
+def _as_text_result(rec: dict, *, token: str, quality: SimilarityProfile) -> dict:
     items = []
     for item in rec.get("items") or []:
         media_id = str(item.get("media_id") or "")
@@ -370,13 +366,25 @@ def _as_text_result(rec: dict, *, token: str) -> dict:
         "similarity_basis": LABEL_TEXT,
         "engine": "ocr",
         "note": "Text in the selection is not a person and not a colour match.",
+        "search_profile": quality.key,
+        "search_profile_label": quality.label,
     }
     if out["status"] == "SUCCESS" and not items:
         out["status"] = "NO_RESULT"
     return out
 
 
-def _colour_result(store: Path, crop, *, limit: int, exclude_media_id: str | None, cancelled, reason: str) -> dict:
+def _colour_result(
+    store: Path,
+    crop,
+    *,
+    limit: int,
+    exclude_media_id: str | None,
+    cancelled,
+    reason: str,
+    min_score: float,
+    quality: SimilarityProfile,
+) -> dict:
     blob = appearance_vector(crop)
     rec = search_vector(
         store,
@@ -386,7 +394,7 @@ def _colour_result(store: Path, crop, *, limit: int, exclude_media_id: str | Non
         dim=APPEARANCE_DIM,
         limit=limit,
         exclude_media_id=exclude_media_id,
-        min_score=COLOUR_SCORE_FLOOR,
+        min_score=min_score,
         cancelled=cancelled,
     )
     rec["wrote_embedding"] = False
@@ -395,6 +403,8 @@ def _colour_result(store: Path, crop, *, limit: int, exclude_media_id: str | Non
     rec["fallback"] = "colour"
     rec["reason"] = reason
     rec["note"] = "Colour only. This is not a region embedding and not a named person."
+    rec["search_profile"] = quality.key
+    rec["search_profile_label"] = quality.label
     return rec
 
 
@@ -507,6 +517,10 @@ def search_patches(
     exclude_media_id: str | None = None,
     cancelled=None,
     keep_weak: bool = False,
+    token_stride: int = 1,
+    token_floor: float = 0.35,
+    score_floor: float = 0.28,
+    coverage_floor: float = 0.28,
 ) -> dict:
     """Late interaction of the query crop against stored content patches.
 
@@ -539,6 +553,9 @@ def search_patches(
         empty["error_id"] = "region.ENCODE"
         return empty
     query = np.stack([np.frombuffer(record["blob"], dtype=np.float32).copy() for record in records])
+    stride = max(1, int(token_stride))
+    if stride > 1 and query.shape[0] > stride:
+        query = query[::stride]
     if query.size == 0:
         empty["reason"] = "The selection produced no patches."
         return empty
@@ -590,15 +607,15 @@ def search_patches(
         sims = query @ matrix.T
         maxes = sims.max(axis=1)
         score = float(maxes.mean())
-        coverage = float((maxes >= PATCH_TOKEN_FLOOR).mean())
-        above = score >= PATCH_SCORE_FLOOR and coverage >= PATCH_COVERAGE_FLOOR
+        coverage = float((maxes >= float(token_floor)).mean())
+        above = score >= float(score_floor) and coverage >= float(coverage_floor)
         if not above and not keep_weak:
             continue
         winners: list[tuple[float, tuple[float, float, float, float]]] = []
         chosen = sims.argmax(axis=1)
         for index, column in enumerate(chosen):
             weight = float(sims[index, column])
-            if weight >= PATCH_TOKEN_FLOOR:
+            if weight >= float(token_floor):
                 winners.append((weight, bucket["boxes"][int(column)]))
         if not winners:
             if not keep_weak:
@@ -696,8 +713,11 @@ def find_similar_region(
     limit: int = 10,
     media_id: str | None = None,
     selection_kind: str | None = None,
+    search_quality: str = "balanced",
     cancelled=None,
 ) -> dict:
+    quality = resolve_search_quality(search_quality)
+    capped_limit = max(1, min(int(limit or 1), quality.max_results))
     crop = crop_bgr(Path(image_path), x, y, w, h)
     pixels = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
     understanding = describe_selection(store, media_id or "", x, y, w, h, crop=crop)
@@ -712,7 +732,7 @@ def find_similar_region(
     if token and selection_kind == "text":
         from semblon.search import search_text
 
-        text_rec = search_text(store, token, limit=limit)
+        text_rec = search_text(store, token, limit=capped_limit)
         items = [
             item
             for item in (text_rec.get("items") or [])
@@ -720,11 +740,11 @@ def find_similar_region(
         ]
         text_rec = {**text_rec, "items": items, "count": len(items)}
         if items:
-            rec = _as_text_result(text_rec, token=token)
+            rec = _as_text_result(text_rec, token=token, quality=quality)
             rec["query_pixels"] = pixels
             return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
         if stored_text and text_rec.get("status") in {"NO_RESULT", "SUCCESS", "UNAVAILABLE"}:
-            rec = _as_text_result(text_rec, token=token)
+            rec = _as_text_result(text_rec, token=token, quality=quality)
             rec["status"] = "NO_RESULT"
             rec["query_pixels"] = pixels
             return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
@@ -734,21 +754,29 @@ def find_similar_region(
         dense = search_patches(
             store,
             crop,
-            limit=limit,
+            limit=capped_limit,
             exclude_media_id=media_id,
             cancelled=cancelled,
+            token_stride=quality.patch_token_stride,
+            token_floor=quality.patch_token_floor,
+            score_floor=quality.patch_score_floor,
+            coverage_floor=quality.patch_coverage_floor,
         )
         dense["query_pixels"] = pixels
+        dense["search_profile"] = quality.key
+        dense["search_profile_label"] = quality.label
         if dense.get("status") in {"SUCCESS", "NO_RESULT"}:
             return _attach_understanding(dense, understanding, selection_kind=selection_kind)
         if dense.get("error_id") == "region.ENCODE":
             colour = _colour_result(
                 store,
                 crop,
-                limit=limit,
+                limit=capped_limit,
                 exclude_media_id=media_id,
                 cancelled=cancelled,
                 reason=str(dense.get("reason") or "The region encoder did not finish. Showing colour only."),
+                min_score=quality.whole_colour_floor,
+                quality=quality,
             )
             colour["query_pixels"] = pixels
             return _attach_understanding(colour, understanding, selection_kind=selection_kind)
@@ -765,13 +793,15 @@ def find_similar_region(
             colour = _colour_result(
                 store,
                 crop,
-                limit=limit,
+                limit=capped_limit,
                 exclude_media_id=media_id,
                 cancelled=cancelled,
                 reason=(
                     encode_error
                     or "The region encoder did not finish. Showing colour only."
                 ),
+                min_score=quality.whole_colour_floor,
+                quality=quality,
             )
             colour["query_pixels"] = pixels
             return _attach_understanding(colour, understanding, selection_kind=selection_kind)
@@ -782,9 +812,9 @@ def find_similar_region(
                 modality=MODALITY_REGION,
                 pack_id=pack_id,
                 dim=dim,
-                limit=limit,
+                limit=capped_limit,
                 exclude_media_id=media_id,
-                min_score=REGION_SCORE_FLOOR,
+                min_score=quality.region_score_floor,
                 cancelled=cancelled,
             )
             if rec.get("status") != "UNAVAILABLE":
@@ -799,28 +829,34 @@ def find_similar_region(
                     "Visually similar region. Not a claim that it is the same physical object."
                 )
                 rec["note"] = "Region embedding match. Not a name and not colour."
+                rec["search_profile"] = quality.key
+                rec["search_profile_label"] = quality.label
                 return _attach_understanding(rec, understanding, selection_kind=selection_kind)
             colour = _colour_result(
                 store,
                 crop,
-                limit=limit,
+                limit=capped_limit,
                 exclude_media_id=media_id,
                 cancelled=cancelled,
                 reason=(
                     "The region encoder is installed, but these photos have no matching "
                     "region index yet. Showing colour only. Add the folder again to index regions."
                 ),
+                min_score=quality.whole_colour_floor,
+                quality=quality,
             )
             colour["query_pixels"] = pixels
             return _attach_understanding(colour, understanding, selection_kind=selection_kind)
     colour = _colour_result(
         store,
         crop,
-        limit=limit,
+        limit=capped_limit,
         exclude_media_id=media_id,
         cancelled=cancelled,
         reason=missing
         or "Region encoder is not installed. Showing colour only.",
+        min_score=quality.whole_colour_floor,
+        quality=quality,
     )
     colour["query_pixels"] = pixels
     return _attach_understanding(colour, understanding, selection_kind=selection_kind)
@@ -838,6 +874,7 @@ def remember_and_find(
     run_id: str | None = None,
     limit: int = 10,
     selection_kind: str | None = None,
+    search_quality: str = "balanced",
     cancelled=None,
 ) -> dict:
     """Persist the box, then search. Does not persist a vector or a sibling item."""
@@ -877,6 +914,7 @@ def remember_and_find(
             limit=limit,
             media_id=media_id,
             selection_kind=selection_kind,
+            search_quality=search_quality,
             cancelled=cancelled,
         )
     return {

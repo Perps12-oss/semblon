@@ -1010,6 +1010,14 @@ class ShellBridge(QObject):
     def searchModeLabel(self) -> str:
         return self._adapter.search_mode().message
 
+    @Property(str, notify=surfaceChanged)
+    def searchQuality(self) -> str:
+        return str(self._adapter.search_quality().data.get("quality") or "balanced")
+
+    @Property(str, notify=surfaceChanged)
+    def searchQualityLabel(self) -> str:
+        return str(self._adapter.search_quality().data.get("label") or "Balanced")
+
     @Property(int, notify=libraryChanged)
     def count(self) -> int:
         return self._jobs.archive_count()
@@ -1500,6 +1508,7 @@ class ShellBridge(QObject):
         parts: list[str] = []
         if self._similar_basis_label:
             parts.append(self._similar_basis_label)
+        parts.append(self.searchQualityLabel)
         if self._index_state:
             parts.append(self._index_state)
         if self._similar._rows:
@@ -3071,6 +3080,12 @@ class ShellBridge(QObject):
         self.surfaceChanged.emit()
 
     @Slot(str)
+    def setSearchQuality(self, value: str) -> None:
+        self._apply_result(self._safe_call(lambda: self._adapter.set_search_quality(value)))
+        self.surfaceChanged.emit()
+        self.similarChanged.emit()
+
+    @Slot(str)
     def setLibraryFilter(self, filter_key: str) -> None:
         self._apply_result(self._safe_call(lambda: self._adapter.set_library_filter(filter_key)))
 
@@ -3313,9 +3328,10 @@ class ShellBridge(QObject):
         self._selection_kind = ""
         self._selection_note = ""
         adapter = self._adapter
+        quality = str(adapter.search_quality().data.get("quality") or "balanced")
 
         def build(_flag):
-            return adapter.similar_media(media_id)
+            return adapter.similar_media(media_id, search_quality=quality)
 
         self._start_visual_search(basis="whole", label="Colour only", build=build)
 
@@ -3354,6 +3370,7 @@ class ShellBridge(QObject):
         kind = self._selection_kind or None
         jobs = self._jobs
         adapter = self._adapter
+        quality = str(adapter.search_quality().data.get("quality") or "balanced")
 
         def build(flag):
             from semblon.user_region import RegionError
@@ -3366,6 +3383,7 @@ class ShellBridge(QObject):
                     w,
                     h,
                     selection_kind=kind,
+                    search_quality=quality,
                     cancelled=lambda: bool(flag[0]),
                 )
             except RegionError as exc:
