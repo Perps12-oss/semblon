@@ -223,6 +223,13 @@ Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 3. Home cards: Library, Visual discovery, People. **Explore all capabilities** opens a filterable catalogue of actions the shell already runs.
 4. Primary / Advanced and Atmosphere moved into the Settings sheet. Native Windows caption follows the shell background when DWM allows it.
 
+## Behaviour landed — selection retrieval (SQ-5–SQ-7)
+
+1. A screen selection runs one local retrieval: region/image similarity, OCR substring search, and object-label search. Hits merge by photo. Each hit keeps the basis that found it (`Similar look`, `Text in photos (OCR substring)`, `COCO object detection (NanoDet)`). Text-only mode does not run visual similarity. A missing region model stays unavailable when no other door matched.
+2. Similar search reads the exact derived matrix through `index_provider.active_vector_index`. SQLite embeddings stay authoritative. ANN is named and disabled. FAISS and Chroma are not product dependencies.
+3. Object detection and the vision-language describer are optional providers (`optional_providers`). A missing weight is reported. Neither provider writes face identity.
+4. When the current search needs the object model or the local description, the shell offers one install button on that same screen. Confirmation downloads the pinned NanoDet file, or writes the local pixel-describer marker, then runs that search again. Search itself does not download. NanoDet MSI bundling stays blocked.
+
 ## What this file will not absorb
 
 Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE gates stay in `docs/FACE-GATES.md`. Product vision stays in `docs/PRODUCT.md`.

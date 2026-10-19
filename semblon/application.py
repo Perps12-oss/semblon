@@ -170,33 +170,49 @@ class Application:
         *,
         capabilities: tuple[str, ...] | None = None,
     ) -> dict:
-        """Whole-frame or region Lens query. Loads the file. No UI image object."""
-        from semblon.lens import query_image
-        from semblon.selection import format_query_lines, lens_result_summary, load_media_bgr
+        """Whole-frame or region query on a media item. Loads pixels inside the query layer."""
+        from semblon.visual_query import VisualQuery
 
-        image = load_media_bgr(self.store, media_id)
-        if image is None:
-            reason = "Could not read that photo. Nothing was searched."
-            return {
-                "status": "UNAVAILABLE",
-                "reason": reason,
-                "lines": ["Could not read that photo.", "Nothing was searched."],
-                "media_id": str(media_id) if media_id else "",
-                "region": None,
-                "item_count": 0,
-            }
-        kwargs: dict = {}
-        if rect:
-            kwargs["x"] = int(rect["x"])
-            kwargs["y"] = int(rect["y"])
-            kwargs["w"] = int(rect["w"])
-            kwargs["h"] = int(rect["h"])
-        report = query_image(image, capabilities=capabilities, **kwargs)
-        summary = lens_result_summary(report)
-        summary["lines"] = format_query_lines(report)
-        summary["region"] = dict(getattr(report, "region", {}) or {})
-        summary["media_id"] = str(media_id)
-        return summary
+        return self.query_visual(
+            VisualQuery(
+                source="media",
+                media_id=str(media_id or ""),
+                rect=dict(rect or {}),
+                capabilities=capabilities,
+            )
+        )
+
+    def query_screen(
+        self,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        *,
+        capabilities: tuple[str, ...] | None = None,
+        limit: int = 10,
+        selection_kind: str | None = None,
+        cancelled=None,
+    ) -> dict:
+        """Screen-selection query through the same visual-query door, plus local retrieval."""
+        from semblon.visual_query import VisualQuery
+
+        return self.query_visual(
+            VisualQuery(
+                source="screen",
+                screen_rect={"x": int(x), "y": int(y), "w": int(w), "h": int(h)},
+                capabilities=capabilities,
+                limit=max(1, int(limit)),
+                selection_kind=selection_kind,
+            ),
+            cancelled=cancelled,
+        )
+
+    def query_visual(self, query, *, cancelled=None) -> dict:
+        """Canonical visual-query dispatcher for media and screen sources."""
+        from semblon.visual_query import run_visual_query
+
+        return run_visual_query(self.store, query, cancelled=cancelled).as_dict()
 
     def pause_job(self) -> None:
         self.engine.pause()

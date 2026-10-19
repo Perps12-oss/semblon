@@ -18,7 +18,7 @@ Variant: NanoDet-Plus-m 416, COCO-80. Int8 zoo files are not the Semblon pin.
 |---|---|---|
 | `object_detection_nanodet_2022nov.onnx` | `4b82da9944b88577175ee23a459dce2e26e6e4be573def65b1055dc2d9720186` | 3800954 bytes |
 
-Source URL used for BYO (not an in-app download):  
+Source URL for a confirmed local install:  
 `https://github.com/opencv/opencv_zoo/raw/refs/heads/main/models/object_detection_nanodet/object_detection_nanodet_2022nov.onnx`
 
 Zoo directory claims **Apache-2.0** for files in that folder ([LICENSE](https://github.com/opencv/opencv_zoo/blob/main/models/object_detection_nanodet/LICENSE)). Recorded notice: `docs/notices/nanodet-APACHE-2.0.txt`. That is **not** MSI bundling clearance for the weight bytes.
@@ -32,9 +32,13 @@ semblon-object-pack-pin.json
 
 Probe refuses missing pin, hash mismatch, truncated/LFS pointer files, or digests other than the documented artifact.
 
-## Install (BYO, offline after download)
+## Install
 
-Semblon **never** downloads these files in product code.
+Probe and search never download weights.
+
+A confirmed install from the current search (the button on that screen) may download the pinned ONNX once, check the SHA-256, and write the pin. The same search then runs again. The user does not leave that screen to fetch the file.
+
+A manual copy still works:
 
 ```text
 %USERPROFILE%\.semblon\models\nanodet\

@@ -685,31 +685,24 @@ def _attach_understanding(rec: dict, understanding: str, *, selection_kind: str 
     return rec
 
 
-def find_similar_region(
+def _find_similar_from_crop(
     store: Path,
     *,
-    image_path: Path,
-    x: int,
-    y: int,
-    w: int,
-    h: int,
-    limit: int = 10,
-    media_id: str | None = None,
-    selection_kind: str | None = None,
-    cancelled=None,
+    crop,
+    limit: int,
+    media_id: str | None,
+    selection_kind: str | None,
+    cancelled,
+    understanding: str,
+    stored_text: str,
+    query_pixels: dict[str, int] | None,
 ) -> dict:
-    crop = crop_bgr(Path(image_path), x, y, w, h)
-    pixels = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
-    understanding = describe_selection(store, media_id or "", x, y, w, h, crop=crop)
-    stored_text = overlapping_text(store, media_id or "", x, y, w, h) if media_id else ""
-    text = stored_text
-    if not text and selection_kind == "text":
-        # Pointing at text with no stored box still reads the crop. Other selections stay visual.
-        text = _ocr_crop_text(crop)
-    token = _text_query_token(text)
+    text_only = selection_kind == "text"
+    text_priority = selection_kind in {"text", "text_priority"}
+    token = _text_query_token(stored_text)
     # A text observation is its own door. Any other selection keeps the visual search
     # and only reports the text as understanding.
-    if token and selection_kind == "text":
+    if token and text_priority:
         from semblon.search import search_text
 
         text_rec = search_text(store, token, limit=limit)
@@ -721,12 +714,25 @@ def find_similar_region(
         text_rec = {**text_rec, "items": items, "count": len(items)}
         if items:
             rec = _as_text_result(text_rec, token=token)
-            rec["query_pixels"] = pixels
+            if query_pixels is not None:
+                rec["query_pixels"] = query_pixels
             return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
         if stored_text and text_rec.get("status") in {"NO_RESULT", "SUCCESS", "UNAVAILABLE"}:
+            if not text_only:
+                understanding = f"Text: {token}. No text match; showing visual similarity."
+            else:
+                rec = _as_text_result(text_rec, token=token)
+                rec["status"] = "NO_RESULT"
+                if query_pixels is not None:
+                    rec["query_pixels"] = query_pixels
+                return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
+        if stored_text and text_rec.get("status") == "ERROR" and not text_only:
+            understanding = f"Text: {token}. Text lookup failed; showing visual similarity."
+        elif stored_text and text_rec.get("status") == "ERROR":
             rec = _as_text_result(text_rec, token=token)
-            rec["status"] = "NO_RESULT"
-            rec["query_pixels"] = pixels
+            rec["status"] = "ERROR"
+            if query_pixels is not None:
+                rec["query_pixels"] = query_pixels
             return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
 
     ready, missing = probe_region_pack()
@@ -738,7 +744,8 @@ def find_similar_region(
             exclude_media_id=media_id,
             cancelled=cancelled,
         )
-        dense["query_pixels"] = pixels
+        if query_pixels is not None:
+            dense["query_pixels"] = query_pixels
         if dense.get("status") in {"SUCCESS", "NO_RESULT"}:
             return _attach_understanding(dense, understanding, selection_kind=selection_kind)
         if dense.get("error_id") == "region.ENCODE":
@@ -750,7 +757,8 @@ def find_similar_region(
                 cancelled=cancelled,
                 reason=str(dense.get("reason") or "The region encoder did not finish. Showing colour only."),
             )
-            colour["query_pixels"] = pixels
+            if query_pixels is not None:
+                colour["query_pixels"] = query_pixels
             return _attach_understanding(colour, understanding, selection_kind=selection_kind)
     pack = active_pack() if ready else None
     if pack is not None:
@@ -773,7 +781,8 @@ def find_similar_region(
                     or "The region encoder did not finish. Showing colour only."
                 ),
             )
-            colour["query_pixels"] = pixels
+            if query_pixels is not None:
+                colour["query_pixels"] = query_pixels
             return _attach_understanding(colour, understanding, selection_kind=selection_kind)
         if blob is not None:
             rec = search_vector(
@@ -788,7 +797,8 @@ def find_similar_region(
                 cancelled=cancelled,
             )
             if rec.get("status") != "UNAVAILABLE":
-                rec["query_pixels"] = pixels
+                if query_pixels is not None:
+                    rec["query_pixels"] = query_pixels
                 rec["wrote_embedding"] = False
                 rec["similarity_basis"] = (
                     LABEL_UNKNOWN if selection_kind == "unknown" else LABEL_SIMILAR
@@ -811,7 +821,8 @@ def find_similar_region(
                     "region index yet. Showing colour only. Add the folder again to index regions."
                 ),
             )
-            colour["query_pixels"] = pixels
+            if query_pixels is not None:
+                colour["query_pixels"] = query_pixels
             return _attach_understanding(colour, understanding, selection_kind=selection_kind)
     colour = _colour_result(
         store,
@@ -822,8 +833,79 @@ def find_similar_region(
         reason=missing
         or "Region encoder is not installed. Showing colour only.",
     )
-    colour["query_pixels"] = pixels
+    if query_pixels is not None:
+        colour["query_pixels"] = query_pixels
     return _attach_understanding(colour, understanding, selection_kind=selection_kind)
+
+
+def _describe_crop(crop) -> str:
+    from semblon.visual.naming_local import name_crop_bgr
+
+    try:
+        named = name_crop_bgr(crop)
+    except Exception:  # noqa: BLE001 — naming must not replace a visual search
+        named = None
+    return str(named or "Unlabelled region.")
+
+
+def find_similar_region(
+    store: Path,
+    *,
+    image_path: Path,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    limit: int = 10,
+    media_id: str | None = None,
+    selection_kind: str | None = None,
+    cancelled=None,
+) -> dict:
+    crop = crop_bgr(Path(image_path), x, y, w, h)
+    pixels = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
+    understanding = describe_selection(store, media_id or "", x, y, w, h, crop=crop)
+    stored_text = overlapping_text(store, media_id or "", x, y, w, h) if media_id else ""
+    if not stored_text and selection_kind in {"text", "text_priority"}:
+        # Pointing at text with no stored box still reads the crop. Other selections stay visual.
+        stored_text = _ocr_crop_text(crop)
+    return _find_similar_from_crop(
+        store,
+        crop=crop,
+        limit=limit,
+        media_id=media_id,
+        selection_kind=selection_kind,
+        cancelled=cancelled,
+        understanding=understanding,
+        stored_text=stored_text,
+        query_pixels=pixels,
+    )
+
+
+def find_similar_crop(
+    store: Path,
+    *,
+    crop,
+    limit: int = 10,
+    selection_kind: str | None = None,
+    observed_text: str | None = None,
+    cancelled=None,
+) -> dict:
+    """Search the local archive from an arbitrary query crop (for example screen selection)."""
+    text = ""
+    if selection_kind in {"text", "text_priority"}:
+        text = str(observed_text or "").strip() or _ocr_crop_text(crop)
+    understanding = _describe_crop(crop)
+    return _find_similar_from_crop(
+        store,
+        crop=crop,
+        limit=limit,
+        media_id=None,
+        selection_kind=selection_kind,
+        cancelled=cancelled,
+        understanding=understanding,
+        stored_text=text,
+        query_pixels=None,
+    )
 
 
 def remember_and_find(

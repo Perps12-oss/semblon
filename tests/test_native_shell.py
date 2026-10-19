@@ -489,6 +489,14 @@ def test_focus_qml_keeps_the_strip_and_a_primary_similar_action():
     assert 'objectName: "resumeJob"' in home
     assert 'objectName: "similarAction"' in qml
     assert 'text: "Similar look"' in qml
+    assert 'objectName: "installSuggestedModel"' in qml
+    assert "shellApi.installSuggestedModel()" in qml
+    assert 'objectName: "screenQueryAction"' in qml
+    assert "shellApi.startScreenQuery()" in qml
+    assert 'sequence: "Ctrl+Shift+S"' in qml
+    assert 'objectName: "screenQueryModeAction"' in qml
+    assert "shellApi.toggleScreenQueryMode()" in qml
+    assert 'objectName: "screenQueryProgress"' in qml
     assert 'objectName: "findSimilar"' not in qml
     assert 'objectName: "similarStrip"' in qml
     assert "shell.thumbFor(mediaId)" in qml

@@ -57,6 +57,14 @@ def _clear_model_env(monkeypatch):
     ):
         monkeypatch.delenv(key, raising=False)
 
+    def _env_only(root=None):
+        import os
+
+        text = (os.environ.get("SEMBLON_VLM_MODEL") or "").strip()
+        return text or None
+
+    monkeypatch.setattr("semblon.vlm_model.vlm_model_path", _env_only)
+
 
 def test_qr_is_a_hit_and_missing_models_do_not_match(monkeypatch):
     _clear_model_env(monkeypatch)

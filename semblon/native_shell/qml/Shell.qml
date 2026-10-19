@@ -163,6 +163,11 @@ ApplicationWindow {
         }
     }
     Shortcut {
+        sequence: "Ctrl+Shift+S"
+        enabled: shellReady && shellApi.screenQueryAvailable && !shellApi.screenQueryInProgress
+        onActivated: if (shellReady) shellApi.startScreenQuery()
+    }
+    Shortcut {
         sequence: "Ctrl+,"
         onActivated: if (shellReady) shellApi.toggleSettings()
     }
@@ -2842,6 +2847,90 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    objectName: "installSuggestedModel"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady
+                             && shellApi.installSuggestionVisible
+                             && !shellApi.searchBusy
+                             && !shellApi.screenQueryInProgress
+                    radius: 6
+                    color: installSuggestedModelHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: shellReady ? shellApi.installSuggestionLabel : "Install required model"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: installSuggestedModelHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Install required model"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.installSuggestedModel()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "screenQueryAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && shellApi.screenQueryAvailable && !shellApi.searchBusy
+                    radius: 6
+                    color: screenQueryHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Query screen"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: screenQueryHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Query screen"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.startScreenQuery()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "screenQueryModeAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && shellApi.screenQueryAvailable && !shellApi.screenQueryInProgress
+                    radius: 6
+                    color: screenQueryModeHit.containsMouse ? tokenBg2 : tokenBg3
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: shellReady ? shellApi.screenQueryModeLabel : "Screen mode"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+                    MouseArea {
+                        id: screenQueryModeHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Toggle screen query mode"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.toggleScreenQueryMode()
+                    }
+                }
+
+                Rectangle {
                     width: parent.width
                     height: 32
                     radius: 6
@@ -2865,6 +2954,17 @@ ApplicationWindow {
                         Accessible.role: Accessible.Button
                         onClicked: if (shellReady) shellApi.findSimilarWhole()
                     }
+                }
+
+                Text {
+                    objectName: "screenQueryProgress"
+                    width: parent.width
+                    visible: shellReady && shellApi.screenQueryInProgress
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? shellApi.screenQueryProgressLabel : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
                 }
 
                 Text {
@@ -3280,6 +3380,41 @@ ApplicationWindow {
                     regionDrag.hasRect = false
                 }
             }
+        }
+    }
+
+    Rectangle {
+        objectName: "installSuggestedModelStage"
+        z: 40
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 28
+        width: 240
+        height: 36
+        visible: shellReady
+                 && !focusActive
+                 && shellApi.installSuggestionVisible
+                 && !shellApi.searchBusy
+                 && !shellApi.screenQueryInProgress
+        radius: 6
+        color: installSuggestedModelStageHit.containsMouse ? tokenAccentDim : tokenBg2
+        border.color: tokenAccent
+        border.width: 1
+        Text {
+            anchors.centerIn: parent
+            text: shellReady ? shellApi.installSuggestionLabel : "Install required model"
+            color: tokenText
+            font.family: "Segoe UI"
+            font.pixelSize: 13
+        }
+        MouseArea {
+            id: installSuggestedModelStageHit
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            Accessible.name: "Install required model"
+            Accessible.role: Accessible.Button
+            onClicked: if (shellReady) shellApi.installSuggestedModel()
         }
     }
 }
