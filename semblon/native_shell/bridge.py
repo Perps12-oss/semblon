@@ -77,6 +77,37 @@ SCREEN_QUERY_MODE_VISUAL = "visual"
 SCREEN_QUERY_MODE_TEXT_PRIORITY = "text_priority"
 SCREEN_QUERY_MODES = (SCREEN_QUERY_MODE_VISUAL, SCREEN_QUERY_MODE_TEXT_PRIORITY)
 
+_INSTALL_LABELS = {
+    "region_pack": "Install region model",
+    "object_pack": "Install object model",
+    "vlm_local": "Install description model",
+}
+_INSTALL_METHODS = {
+    "region_pack": "install_region_pack",
+    "object_pack": "install_object_pack",
+    "vlm_local": "install_vlm",
+}
+_INSTALL_PROMPTS = {
+    "region_pack": (
+        "Install region model?",
+        "Semblon will download the region model onto this computer.\n\n"
+        "You stay on this screen. When it finishes, this search runs again.\n\n"
+        "Continue?",
+    ),
+    "object_pack": (
+        "Install object model?",
+        "Semblon will download the object model onto this computer.\n\n"
+        "You stay on this screen. When it finishes, this search runs again.\n\n"
+        "Continue?",
+    ),
+    "vlm_local": (
+        "Install description model?",
+        "Semblon will install picture description on this computer.\n\n"
+        "You stay on this screen. When it finishes, this search runs again.\n\n"
+        "Continue?",
+    ),
+}
+
 
 def reduced_motion() -> bool:
     flag = os.environ.get("SEMBLON_REDUCE_MOTION", "").strip().lower()
@@ -178,7 +209,12 @@ class ShellBridge(QObject):
         self._search_failure = ""
         self._install_suggestion = ""
         self._install_suggestion_label = ""
+        self._install_kind = ""
+        self._install_retry = ""
+        self._install_retry_rect: tuple[int, int, int, int] | None = None
         self._install_thread: _TaskThread | None = None
+        self._screen_query_rect: tuple[int, int, int, int] | None = None
+        self._query_source = ""
         self._screen_query_mode = self._load_screen_query_mode()
         self._screen_query_state = "idle"
         self._index_state = ""
@@ -1768,12 +1804,15 @@ class ShellBridge(QObject):
         note = result.message if result.message else "Similar search could not run."
         error_id = str((result.data or {}).get("error_id") or "")
         label = str((result.data or {}).get("basis_label") or self._similar_basis_label or "Similar look")
-        install_action = ""
-        install_label = ""
-        if state == "unavailable" and error_id == "region.NO_PACK":
+        from semblon.optional_providers import install_choice
+
+        install_action, install_label = install_choice(state, error_id, result.data or {})
+        if install_action == "region_pack":
             note = f"Similar ({label}): the region model is not installed."
-            install_action = "region_pack"
-            install_label = "Install region model"
+        elif install_action == "object_pack" and state == "unavailable":
+            note = f"Similar ({label}): the object model is not installed."
+        elif install_action == "vlm_local" and state == "unavailable":
+            note = f"Similar ({label}): the description model is not installed."
         elif state == "unavailable" and error_id == "region.NO_PATCH_INDEX":
             note = f"Similar ({label}): these photos are not indexed for region search yet."
         elif error_id in {"region.ENCODE", "region.NO_IMAGE", "region.NO_STORE"}:
@@ -2874,7 +2913,13 @@ class ShellBridge(QObject):
             )
             self._apply_result(Result("empty", "Screen query cancelled."))
             return
-        x, y, w, h = rect
+        self._begin_screen_search(rect)
+
+    def _begin_screen_search(self, rect: tuple[int, int, int, int]) -> None:
+        """Run retrieval for a screen rect already chosen. Does not open the drag overlay."""
+        x, y, w, h = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+        self._screen_query_rect = (x, y, w, h)
+        self._query_source = "screen"
         mode = self._screen_query_mode
         mode_selection = (
             SCREEN_QUERY_MODE_TEXT_PRIORITY
@@ -2917,9 +2962,14 @@ class ShellBridge(QObject):
                         "engine": "screen",
                         "items": [],
                         "error_id": "screen.NO_CAPTURE",
+                        "optional_providers": rec.get("optional_providers")
+                        if isinstance(rec.get("optional_providers"), list)
+                        else [],
                     },
                 )
-            result = adapter.similar_region({"similar": similar})
+            result = adapter.similar_region(
+                {"similar": similar, "optional_providers": rec.get("optional_providers")}
+            )
             lines = rec.get("lines") or []
             observations = rec.get("observations") if isinstance(rec.get("observations"), list) else []
             understanding = _screen_understanding(lines, observations)
@@ -2928,6 +2978,8 @@ class ShellBridge(QObject):
                 data["understanding"] = understanding
             if observations:
                 data["observations"] = observations
+            if isinstance(rec.get("optional_providers"), list) and "optional_providers" not in data:
+                data["optional_providers"] = rec.get("optional_providers")
             return Result(result.state, result.message, data)
 
         self._start_visual_search(basis="region", label=mode_label, build=build)
@@ -3561,17 +3613,17 @@ class ShellBridge(QObject):
 
     @Slot(result=str)
     def installSuggestedModel(self) -> str:
-        """Install the currently suggested missing model, then retry the active query."""
-        if self._install_suggestion != "region_pack":
+        """Install the suggested model here, then run the same search again."""
+        kind = self._install_suggestion
+        prompt = _INSTALL_PROMPTS.get(kind)
+        if prompt is None:
             self._apply_result(Result("empty", "No install action is available right now."))
             return self._notice
+        title, body = prompt
         answer = QMessageBox.question(
             None,
-            "Install region model?",
-            (
-                "Semblon will download and install the pinned local region model now.\n\n"
-                "Continue?"
-            ),
+            title,
+            body,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -3581,31 +3633,50 @@ class ShellBridge(QObject):
         if self._install_thread is not None and self._install_thread.isRunning():
             self._apply_result(Result("loading", "Model install is already running."))
             return self._notice
+        self._install_kind = kind
+        self._install_retry = self._query_source
+        self._install_retry_rect = self._screen_query_rect
         basis = self._similar_basis or "region"
         label = self._similar_basis_label or "Similar look"
         self._set_install_suggestion("", "")
         self._publish_similar(
             "loading",
-            f"Similar ({label}): installing required model.",
+            f"Similar ({label}): installing. This search will run again on this screen.",
             [],
             basis=basis,
             basis_label=label,
             persist=False,
         )
-        thread = _TaskThread(lambda: self._adapter.install_region_pack(), self)
+        method_name = _INSTALL_METHODS[kind]
+        thread = _TaskThread(lambda: getattr(self._adapter, method_name)(), self)
         thread.succeeded.connect(self._on_install_suggested_ready)
         thread.failed.connect(self._on_install_suggested_failed)
         self._install_thread = thread
         thread.start()
         return self._notice
 
+    def _resume_current_query(self) -> bool:
+        """Repeat the search the user was already on. Does not open a new screen drag."""
+        if self._install_retry == "screen" and self._install_retry_rect:
+            self._begin_screen_search(self._install_retry_rect)
+            return True
+        if self._install_retry == "focus" and self._session.focus_id and self._region_norm:
+            self.findSimilar()
+            return True
+        if self._query_source == "screen" and self._screen_query_rect:
+            self._begin_screen_search(self._screen_query_rect)
+            return True
+        if self._session.focus_id and self._region_norm:
+            self.findSimilar()
+            return True
+        return False
+
     @Slot(object)
     def _on_install_suggested_ready(self, payload) -> None:
         self._install_thread = None
-        result = payload if isinstance(payload, Result) else Result("ready", "Region model installed.")
+        result = payload if isinstance(payload, Result) else Result("ready", "Model installed.")
         self._apply_result(result)
-        if self._session.focus_id and self._region_norm:
-            self.findSimilar()
+        if self._resume_current_query():
             return
         label = self._similar_basis_label or "Similar look"
         self._publish_similar(
@@ -3621,7 +3692,8 @@ class ShellBridge(QObject):
     def _on_install_suggested_failed(self, message: str) -> None:
         self._install_thread = None
         label = self._similar_basis_label or "Similar look"
-        self._set_install_suggestion("region_pack", "Install region model")
+        kind = self._install_kind or "region_pack"
+        self._set_install_suggestion(kind, _INSTALL_LABELS.get(kind, "Install required model"))
         self._publish_similar(
             "unavailable",
             f"Similar ({label}): model install failed.",
@@ -3714,6 +3786,7 @@ class ShellBridge(QObject):
                 return None
             return adapter.similar_region(rec)
 
+        self._query_source = "focus"
         self._start_visual_search(basis="region", label="Similar look", build=build)
 
     @Slot()

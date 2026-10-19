@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from semblon.optional_providers import optional_model_providers
+from semblon.optional_providers import install_choice, optional_model_providers
 
 
 def test_optional_models_are_byo_and_not_identity(monkeypatch):
@@ -16,3 +16,47 @@ def test_optional_models_are_byo_and_not_identity(monkeypatch):
         assert row["byo"] is True
         assert row["ready"] is False
         assert row["state"] != "AVAILABLE"
+
+
+def test_install_choice_offers_one_model_for_the_current_search():
+    assert install_choice(
+        "unavailable",
+        "region.NO_PACK",
+        {"optional_providers": [{"id": "object", "ready": False, "state": "MISSING"}]},
+    ) == ("region_pack", "Install region model")
+    assert install_choice(
+        "ready",
+        "",
+        {
+            "optional_providers": [
+                {"id": "object", "ready": False, "state": "MISSING"},
+                {"id": "vlm", "ready": False, "state": "MISSING"},
+            ]
+        },
+    ) == ("object_pack", "Install object model")
+    assert install_choice(
+        "ready",
+        "",
+        {"channels": [{"door": "object", "status": "UNAVAILABLE", "error_id": "object.PACK_MISSING"}]},
+    ) == ("object_pack", "Install object model")
+    assert install_choice(
+        "ready",
+        "",
+        {
+            "optional_providers": [
+                {"id": "object", "ready": True, "state": "AVAILABLE"},
+                {"id": "vlm", "ready": False, "state": "MISSING"},
+            ]
+        },
+    ) == ("vlm_local", "Install description model")
+    assert install_choice(
+        "ready",
+        "",
+        {
+            "optional_providers": [
+                {"id": "object", "ready": True, "state": "AVAILABLE"},
+                {"id": "vlm", "ready": False, "state": "DISABLED"},
+            ]
+        },
+    ) == ("", "")
+    assert install_choice("unavailable", "screen.NO_CAPTURE", {}) == ("", "")

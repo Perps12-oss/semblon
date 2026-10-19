@@ -266,7 +266,9 @@ def probe_translation() -> str:
 def probe_vlm() -> str:
     if os.environ.get("SEMBLON_VLM", "1") == "0":
         return "DISABLED"
-    return model_state_for_path(os.environ.get("SEMBLON_VLM_MODEL"))
+    from semblon.vlm_model import vlm_model_path
+
+    return model_state_for_path(vlm_model_path())
 
 
 def probe_barcode() -> str:
@@ -570,7 +572,13 @@ def describe_vlm(image: np.ndarray, *, generate=None) -> StructuredResult:
     if state != "AVAILABLE":
         result, _ = invoke("vlm", model_state=state)  # type: ignore[arg-type]
         return result
-    path = Path(os.environ["SEMBLON_VLM_MODEL"])
+    from semblon.vlm_model import vlm_model_path
+
+    located = vlm_model_path()
+    if not located:
+        result, _ = invoke("vlm", model_state="MISSING")  # type: ignore[arg-type]
+        return result
+    path = Path(located)
     pixel = _is_pixel_model(path)
     if generate is None and pixel:
         generate = lambda: describe_pixels(image)  # noqa: E731

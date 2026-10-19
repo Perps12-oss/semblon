@@ -2852,8 +2852,8 @@ ApplicationWindow {
                     height: 32
                     visible: shellReady
                              && shellApi.installSuggestionVisible
-                             && similarStateSafe === "unavailable"
                              && !shellApi.searchBusy
+                             && !shellApi.screenQueryInProgress
                     radius: 6
                     color: installSuggestedModelHit.containsMouse ? tokenAccentDim : tokenBg2
                     border.color: tokenAccent
@@ -3380,6 +3380,41 @@ ApplicationWindow {
                     regionDrag.hasRect = false
                 }
             }
+        }
+    }
+
+    Rectangle {
+        objectName: "installSuggestedModelStage"
+        z: 40
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 28
+        width: 240
+        height: 36
+        visible: shellReady
+                 && !focusActive
+                 && shellApi.installSuggestionVisible
+                 && !shellApi.searchBusy
+                 && !shellApi.screenQueryInProgress
+        radius: 6
+        color: installSuggestedModelStageHit.containsMouse ? tokenAccentDim : tokenBg2
+        border.color: tokenAccent
+        border.width: 1
+        Text {
+            anchors.centerIn: parent
+            text: shellReady ? shellApi.installSuggestionLabel : "Install required model"
+            color: tokenText
+            font.family: "Segoe UI"
+            font.pixelSize: 13
+        }
+        MouseArea {
+            id: installSuggestedModelStageHit
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            Accessible.name: "Install required model"
+            Accessible.role: Accessible.Button
+            onClicked: if (shellReady) shellApi.installSuggestedModel()
         }
     }
 }
