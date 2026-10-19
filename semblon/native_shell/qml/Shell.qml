@@ -2943,6 +2943,33 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    objectName: "nameThisArea"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.identifyBusy
+                    radius: 6
+                    color: nameAreaHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Name this area"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: nameAreaHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Name this area"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.nameSelection()
+                    }
+                }
+
+                Rectangle {
                     width: parent.width
                     height: 32
                     radius: 6
@@ -2987,6 +3014,17 @@ ApplicationWindow {
                     color: tokenMuted
                     font.family: "Segoe UI"
                     font.pixelSize: 12
+                }
+
+                Text {
+                    objectName: "nameNote"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.nameNote !== ""
+                    text: shellReady ? shellApi.nameNote : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
                 }
 
                 Text {

@@ -297,6 +297,28 @@ class Application:
 
         return name_user_region(self.store, item_id, name)
 
+    def name_selection(
+        self,
+        media_id: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        *,
+        image_path: Path | None = None,
+    ) -> dict:
+        from semblon.region_search import name_selection
+
+        return name_selection(
+            self.store,
+            media_id=media_id,
+            image_path=image_path,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
+        )
+
     def remember_and_find_region(
         self,
         media_id: str,

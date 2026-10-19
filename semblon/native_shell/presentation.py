@@ -64,6 +64,10 @@ _SAFE_PRIMARY_EXACT = {
     "Still indexing. This photo can already be searched.",
     "This photo is not indexed yet. Add its folder so search can see inside it.",
     "This photo has a coarse index only. Matches may miss the area you point at.",
+    "Naming this area.",
+    "This area could not be named.",
+    "Unlabelled region.",
+    "Face in the selection. Not a named person.",
 }
 
 _SAFE_PRIMARY_PATTERNS = (
@@ -74,6 +78,9 @@ _SAFE_PRIMARY_PATTERNS = (
     re.compile(r"^Density is [^\n]+\.$"),
     re.compile(r"^Search looks at [^\n]+\.$"),
     re.compile(r"^Search quality is [^\n]+\.$"),
+    re.compile(r"^Looks like a [^\n]+\.$"),
+    re.compile(r"^Object: [^\n]+\.$"),
+    re.compile(r"^Text: [^\n]+\.$"),
     re.compile(r"^Showing [^\n]+\.$"),
     re.compile(r"^Reset finished\. [^\n]+\.$"),
     re.compile(r"^Activity: [^\n]+\.$"),

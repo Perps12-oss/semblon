@@ -225,6 +225,245 @@ def test_keep_discovery_and_match_overlay(tmp_path, monkeypatch):
         shutdown_shell(engine)
 
 
+def test_similar_search_does_not_call_the_namer(tmp_path, monkeypatch):
+    from semblon.region_search import remember_and_find
+
+    called = {"n": 0}
+
+    def name(_crop):
+        called["n"] += 1
+        return "Looks like a tree."
+
+    monkeypatch.setattr("semblon.visual.naming_local.name_crop_bgr", name)
+    monkeypatch.setattr(
+        "semblon.region_search.probe_region_pack",
+        lambda root=None: (False, "missing"),
+    )
+    monkeypatch.setattr(
+        "semblon.region_search.search_vector",
+        lambda *_args, **_kwargs: {"status": "NO_RESULT", "items": [], "modality": "appearance"},
+    )
+    monkeypatch.setattr(
+        "semblon.region_search.crop_bgr",
+        lambda *_args, **_kwargs: np.zeros((8, 8, 3), np.uint8),
+    )
+    store = tmp_path / "s.sqlite"
+    photo = tmp_path / "a.jpg"
+    photo.write_bytes(b"x")
+    conn = connect(store)
+    init_db(conn)
+    _run(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(photo), "m1", 32, 32, 0, 1),
+    )
+    conn.commit()
+    conn.close()
+    rec = remember_and_find(
+        store,
+        media_id="m1",
+        image_path=photo,
+        x=0,
+        y=0,
+        w=8,
+        h=8,
+        search_quality="max",
+        on_first=lambda _preview: None,
+    )
+    assert called["n"] == 0
+    assert rec["persons"] == 0
+    assert rec["wrote_embedding"] is False
+
+
+def test_name_selection_uses_the_noun_and_writes_nothing(tmp_path, monkeypatch):
+    from semblon.region_search import name_selection
+    from semblon.user_region import list_user_regions
+
+    monkeypatch.setattr(
+        "semblon.visual.naming_local.name_crop_bgr",
+        lambda _crop: "Looks like a tree.",
+    )
+    monkeypatch.setattr(
+        "semblon.region_search.crop_bgr",
+        lambda *_args, **_kwargs: np.zeros((8, 8, 3), np.uint8),
+    )
+    store = tmp_path / "s.sqlite"
+    photo = tmp_path / "a.jpg"
+    photo.write_bytes(b"x")
+    conn = connect(store)
+    init_db(conn)
+    _run(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(photo), "m1", 32, 32, 0, 1),
+    )
+    conn.commit()
+    conn.close()
+    rec = name_selection(store, media_id="m1", image_path=photo, x=0, y=0, w=8, h=8)
+    assert rec["understanding"] == "Looks like a tree."
+    assert rec["status"] == "SUCCESS"
+    assert rec["persons"] == 0
+    assert rec["entity"] is False
+    assert rec["wrote_embedding"] is False
+    assert list_user_regions(store) == []
+    conn = connect(store)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM embeddings WHERE modality='face'").fetchone()[0] == 0
+    finally:
+        conn.close()
+    missing = name_selection(
+        store,
+        media_id="missing",
+        image_path=tmp_path / "gone.jpg",
+        x=0,
+        y=0,
+        w=8,
+        h=8,
+    )
+    assert missing["understanding"] == "This area could not be named."
+    assert missing["persons"] == 0
+
+
+def test_name_this_area_leaves_the_matches(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("SEMBLON_SEARCH_SYNC", "1")
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell, shutdown_shell
+    from semblon.native_shell.presentation import is_primary_safe_message
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    for media_id in ("m1", "m2"):
+        path = tmp_path / f"{media_id}.png"
+        path.write_bytes(b"\x89PNG\r\n\x1a\n")
+        conn.execute(
+            "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+            (media_id, "folder", str(path), media_id, 100, 80, 0, 1),
+        )
+    conn.commit()
+    conn.close()
+
+    def fake_similar(self, media_id, x, y, w, h, **kwargs):
+        return {
+            "region": {},
+            "similar": {
+                "status": "SUCCESS",
+                "items": [
+                    {
+                        "media_id": "m2",
+                        "score": 0.5,
+                        "match_norm": [0.1, 0.2, 0.3, 0.4],
+                    }
+                ],
+                "similarity_basis": "Similar look",
+                "engine": "dinov2-patch",
+                "understanding": "Unlabelled region.",
+            },
+            "persons": 0,
+            "wrote_embedding": False,
+        }
+
+    def fake_name(self, media_id, x, y, w, h, **kwargs):
+        return {
+            "status": "SUCCESS",
+            "understanding": "Looks like a tree.",
+            "persons": 0,
+            "entity": False,
+            "wrote_embedding": False,
+        }
+
+    monkeypatch.setattr(Application, "remember_and_find_region", fake_similar)
+    monkeypatch.setattr(Application, "name_selection", fake_name)
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    try:
+        bridge.openFocus("m1")
+        bridge.setRegion(0.1, 0.2, 0.3, 0.25)
+        bridge.findSimilar()
+        assert bridge.similarId(0) == "m2"
+        root = engine.rootObjects()[0]
+        button = root.findChild(QObject, "nameThisArea")
+        assert button is not None
+        assert button.property("visible") is True
+        bridge.nameSelection()
+        assert bridge.identifyBusy is False
+        assert bridge.nameNote == "Looks like a tree."
+        assert is_primary_safe_message(bridge.nameNote)
+        assert bridge.similarId(0) == "m2"
+        assert bridge.similarCount == 1
+        note = root.findChild(QObject, "nameNote")
+        assert note is not None
+        assert note.property("text") == "Looks like a tree."
+    finally:
+        shutdown_shell(engine)
+
+
+def test_moving_the_box_drops_a_late_name(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.delenv("SEMBLON_SEARCH_SYNC", raising=False)
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell, shutdown_shell
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    path = tmp_path / "m1.png"
+    path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(path), "m1", 100, 80, 0, 1),
+    )
+    conn.commit()
+    conn.close()
+    gate = threading.Event()
+
+    def slow_name(self, media_id, x, y, w, h, **kwargs):
+        gate.wait(2)
+        return {
+            "status": "SUCCESS",
+            "understanding": "Looks like a tree.",
+            "persons": 0,
+            "wrote_embedding": False,
+        }
+
+    monkeypatch.setattr(Application, "name_selection", slow_name)
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    try:
+        bridge.openFocus("m1")
+        bridge.setRegion(0.1, 0.2, 0.3, 0.25)
+        bridge.nameSelection()
+        assert bridge.identifyBusy is True
+        assert bridge.nameNote == "Naming this area."
+        bridge.setRegion(0.4, 0.4, 0.2, 0.2)
+        assert bridge.nameNote == ""
+        assert bridge.identifyBusy is False
+        gate.set()
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            app.processEvents()
+            time.sleep(0.02)
+        assert bridge.nameNote == ""
+        assert "tree" not in bridge.nameNote
+    finally:
+        gate.set()
+        shutdown_shell(engine)
+
+
 def test_patch_index_covers_more_than_proposals(tmp_path):
     from semblon.region_encoder import MODALITY_PATCH, probe_region_pack
 

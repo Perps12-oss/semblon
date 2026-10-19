@@ -126,6 +126,24 @@ class _VisualSearchThread(QThread):
             self.failed.emit(self._generation, str(exc) or "search failed")
 
 
+class _NameSelectionThread(QThread):
+    """Name the highlighted crop off the UI thread. Does not touch the match strip."""
+
+    succeeded = Signal(int, object)
+    failed = Signal(int, str)
+
+    def __init__(self, generation: int, fn, parent=None):
+        super().__init__(parent)
+        self._generation = generation
+        self._fn = fn
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._generation, self._fn())
+        except Exception as exc:  # noqa: BLE001 — the slot turns this into an unnamed area
+            self.failed.emit(self._generation, str(exc) or "naming failed")
+
+
 class ShellBridge(QObject):
     lensChanged = Signal()
     focusChanged = Signal()
@@ -137,6 +155,7 @@ class ShellBridge(QObject):
     resultChanged = Signal()
     similarChanged = Signal()
     selectionChanged = Signal()
+    nameChanged = Signal()
     searchBusyChanged = Signal()
     indexChanged = Signal()
     keepsChanged = Signal()
@@ -167,6 +186,10 @@ class ShellBridge(QObject):
         self._similar_phase = ""
         self._selection_note = ""
         self._selection_kind = ""
+        self._name_note = ""
+        self._identify_busy = False
+        self._identify_generation = 0
+        self._name_thread: _NameSelectionThread | None = None
         self._similar_cancel = False
         self._search_generation = 0
         self._search_busy = False
@@ -1077,6 +1100,15 @@ class ShellBridge(QObject):
         """How the current box was chosen. Plain language, not a model id."""
         return self._selection_note
 
+    @Property(str, notify=nameChanged)
+    def nameNote(self) -> str:
+        """Local name for the highlighted area. Empty until Name this area runs."""
+        return self._name_note
+
+    @Property(bool, notify=nameChanged)
+    def identifyBusy(self) -> bool:
+        return self._identify_busy
+
     @Property(bool, notify=similarChanged)
     def canBackDiscovery(self) -> bool:
         return bool(self._discovery_trail)
@@ -1739,6 +1771,7 @@ class ShellBridge(QObject):
         self._selection_kind = ""
         self._selection_note = ""
         self.selectionChanged.emit()
+        self._drop_name()
         self._result_text = ""
         self.resultChanged.emit()
         self._clear_similar()
@@ -2767,6 +2800,7 @@ class ShellBridge(QObject):
             self._query_focus_id = self._session.focus_id
         self._selection_kind = "drawn"
         self._selection_note = "Drawn region."
+        self._drop_name()
         self.selectionChanged.emit()
 
     @Slot(float, float, float, float, str, float, float, float, float, float, float, result=str)
@@ -3279,6 +3313,7 @@ class ShellBridge(QObject):
         self._selection_kind = ""
         self._selection_note = ""
         self.selectionChanged.emit()
+        self._drop_name()
         self._clear_similar()
         self._clear_focus_boxes()
         self._refresh_library()
@@ -3435,6 +3470,95 @@ class ShellBridge(QObject):
             return adapter.similar_faces(fid)
 
         self._start_visual_search(basis="face", label="Same face", build=build)
+
+    def _drop_name(self) -> None:
+        self._identify_generation += 1
+        changed = self._identify_busy or bool(self._name_note)
+        self._identify_busy = False
+        self._name_note = ""
+        if changed:
+            self.nameChanged.emit()
+
+    def _set_name(self, text: str, *, busy: bool) -> None:
+        self._identify_busy = busy
+        self._name_note = present_message(
+            self._mode,
+            text,
+            fallback="This area could not be named.",
+        )
+        self.nameChanged.emit()
+
+    def _settle_name(self) -> None:
+        thread = self._name_thread
+        if thread is not None and thread.isRunning():
+            loop = QEventLoop()
+
+            def _stop() -> None:
+                if loop.isRunning():
+                    loop.quit()
+
+            thread.finished.connect(_stop)
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(_stop)
+            timer.start(8000)
+            if thread.isRunning():
+                loop.exec()
+            timer.stop()
+            try:
+                thread.finished.disconnect(_stop)
+            except RuntimeError:
+                pass
+        app = QApplication.instance()
+        if app is None:
+            return
+        for _ in range(8):
+            app.processEvents()
+            if not self._identify_busy:
+                break
+
+    @Slot()
+    def nameSelection(self) -> None:
+        """Name the highlighted crop. Leaves the similar strip where it is."""
+        media_id = self._session.focus_id
+        if not media_id:
+            self._set_name("Open a photo first.", busy=False)
+            return
+        rect = self._pixel_rect()
+        if rect is None:
+            self._set_name("Draw a region on the photo first.", busy=False)
+            return
+        x, y, w, h = rect
+        self._identify_generation += 1
+        generation = self._identify_generation
+        jobs = self._jobs
+        self._set_name("Naming this area.", busy=True)
+
+        def work():
+            return jobs.name_selection(media_id, x, y, w, h)
+
+        thread = _NameSelectionThread(generation, work, self)
+        thread.succeeded.connect(self._on_named)
+        thread.failed.connect(self._on_name_failed)
+        self._name_thread = thread
+        thread.start()
+        if os.environ.get("SEMBLON_SEARCH_SYNC") == "1":
+            self._settle_name()
+
+    @Slot(int, object)
+    def _on_named(self, generation: int, payload) -> None:
+        if generation != self._identify_generation:
+            return
+        text = "Unlabelled region."
+        if isinstance(payload, dict):
+            text = str(payload.get("understanding") or text)
+        self._set_name(text, busy=False)
+
+    @Slot(int, str)
+    def _on_name_failed(self, generation: int, _message: str) -> None:
+        if generation != self._identify_generation:
+            return
+        self._set_name("This area could not be named.", busy=False)
 
     @Slot()
     def findSimilar(self) -> None:

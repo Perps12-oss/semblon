@@ -720,7 +720,9 @@ def find_similar_region(
     capped_limit = max(1, min(int(limit or 1), quality.max_results))
     crop = crop_bgr(Path(image_path), x, y, w, h)
     pixels = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
-    understanding = describe_selection(store, media_id or "", x, y, w, h, crop=crop)
+    # Stored face, object, and text can label the box. The local noun stays on
+    # Name this area so this search is not waiting on that model.
+    understanding = describe_selection(store, media_id or "", x, y, w, h)
     stored_text = overlapping_text(store, media_id or "", x, y, w, h) if media_id else ""
     text = stored_text
     if not text and selection_kind == "text":
@@ -860,6 +862,51 @@ def find_similar_region(
     )
     colour["query_pixels"] = pixels
     return _attach_understanding(colour, understanding, selection_kind=selection_kind)
+
+
+def name_selection(
+    store: Path,
+    *,
+    media_id: str,
+    image_path: Path | None,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+) -> dict:
+    """Name the highlighted crop. Does not search, persist, or write a person."""
+    path = Path(image_path) if image_path is not None else None
+    if path is None or not path.is_file():
+        conn = sqlite3.connect(str(store))
+        row = conn.execute("SELECT path FROM media WHERE media_id=?", (media_id,)).fetchone()
+        conn.close()
+        path = Path(row[0]) if row and row[0] else None
+    blank = {
+        "kind": "region_name",
+        "persons": 0,
+        "entity": False,
+        "wrote_embedding": False,
+    }
+    if path is None or not path.is_file():
+        return {
+            **blank,
+            "status": "UNAVAILABLE",
+            "understanding": "This area could not be named.",
+        }
+    try:
+        crop = crop_bgr(path, x, y, w, h)
+    except RegionError:
+        return {
+            **blank,
+            "status": "UNAVAILABLE",
+            "understanding": "This area could not be named.",
+        }
+    text = describe_selection(store, media_id or "", x, y, w, h, crop=crop)
+    return {
+        **blank,
+        "status": "SUCCESS",
+        "understanding": text or "Unlabelled region.",
+    }
 
 
 def _with_phase(similar: dict, phase: str) -> dict:
