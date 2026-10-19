@@ -519,9 +519,10 @@ def search_similar(
     approximate nearest-neighbour index. Otherwise the library is scanned and
     the result says so. Demanding a missing index is not an empty match.
     """
-    from semblon.ann_index import has_index, search_index
+    from semblon.index_provider import active_vector_index
 
-    if require_index and not has_index(store):
+    index = active_vector_index()
+    if require_index and not index.ready(store):
         return {
             "kind": "similar",
             "query": item_id,
@@ -555,7 +556,7 @@ def search_similar(
             raise SearchError(f"no non-identity embedding for item {item_id}")
         if row["modality"] == "face":
             raise SearchError("face identity must use search --face / identify, not --similar")
-        indexed = search_index(
+        indexed = index.search(
             store,
             item_id=item_id,
             modality=row["modality"],

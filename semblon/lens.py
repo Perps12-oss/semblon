@@ -54,6 +54,135 @@ class QueryReport:
         }
 
 
+def _region_bbox(region: dict | None) -> list[float] | None:
+    rec = dict(region or {})
+    w = int(rec.get("w") or 0)
+    h = int(rec.get("h") or 0)
+    if w <= 0 or h <= 0:
+        return None
+    x = int(rec.get("x") or 0)
+    y = int(rec.get("y") or 0)
+    return [float(x), float(y), float(x + w), float(y + h)]
+
+
+def _siglip_dim(report: QueryReport, item: ResultItem) -> int | None:
+    blob = (report.embeddings or {}).get("visual_embedding")
+    if blob:
+        return len(blob) // 4
+    detail = str(item.detail or "")
+    if detail.startswith("dim="):
+        try:
+            dim = int(detail.split("=", 1)[1].strip())
+        except ValueError:
+            return None
+        return dim if dim > 0 else None
+    return None
+
+
+def _report_item_observation(
+    report: QueryReport,
+    row: StructuredResult,
+    item: ResultItem,
+    *,
+    bbox: list[float] | None,
+) -> dict | None:
+    base = {
+        "id": str(item.id or ""),
+        "score": 1.0,
+        "source": str(report.source or ""),
+        "capability": str(row.capability_id or ""),
+    }
+    if row.capability_id == "barcode":
+        return {
+            **base,
+            "kind": "object",
+            "provider": "symbology",
+            "bbox": bbox,
+            "payload": {
+                "class": "barcode",
+                "text": str(item.label or ""),
+                "symbology": str(item.detail or ""),
+                "identity": "not facekit",
+                "contract_status": "SUCCESS",
+            },
+        }
+    if row.capability_id == "grounding":
+        return {
+            **base,
+            "kind": "object",
+            "provider": "grounding",
+            "bbox": bbox,
+            "payload": {
+                "class": "region",
+                "method": str(item.method or ""),
+                "mask": item.mask,
+                "identity": "not facekit",
+                "contract_status": "SUCCESS",
+            },
+        }
+    if row.capability_id in {"ocr", "translation", "vlm"}:
+        return {
+            **base,
+            "kind": "text",
+            "provider": str(row.provider_id or row.capability_id or "text"),
+            "bbox": bbox,
+            "payload": {
+                "text": str(item.label or ""),
+                "role": str(row.capability_id or ""),
+                "identity": "not facekit",
+                "contract_status": "SUCCESS",
+            },
+        }
+    if row.capability_id == "visual_embedding":
+        payload = {
+            "space": "siglip",
+            "identity": "not facekit",
+            "contract_status": "SUCCESS",
+        }
+        dim = _siglip_dim(report, item)
+        if dim:
+            payload["dimension"] = int(dim)
+        return {
+            **base,
+            "kind": "clip",
+            "provider": "siglip",
+            "bbox": bbox,
+            "payload": payload,
+        }
+    if row.capability_id in {"product", "logo", "landmark", "lkg"}:
+        return {
+            **base,
+            "kind": "object",
+            "provider": str(row.provider_id or "lkg"),
+            "bbox": bbox,
+            "payload": {
+                "class": str(row.capability_id or "object"),
+                "label": str(item.label or ""),
+                "identity": "not facekit",
+                "contract_status": "SUCCESS",
+            },
+        }
+    return None
+
+
+def report_observations(report: QueryReport) -> list[dict]:
+    """Normalize successful query results into observation-like rows.
+
+    This keeps screen-derived OCR/object/text in the same kind/provider/payload
+    envelope used by observation_items, without writing anything to the store.
+    """
+    rows: list[dict] = []
+    bbox = _region_bbox(getattr(report, "region", None))
+    for row in tuple(getattr(report, "results", ()) or ()):
+        if row.status != "SUCCESS":
+            continue
+        for item in tuple(row.items or ()):
+            mapped = _report_item_observation(report, row, item, bbox=bbox)
+            if mapped is not None:
+                rows.append(mapped)
+    return rows
+
+
 def model_state_for_path(path: str | Path | None, *, expected_sha256: str | None = None) -> str:
     """AVAILABLE, MISSING, or CORRUPT. Does not download. Does not partial-load."""
     if path is None or str(path).strip() == "":
@@ -137,7 +266,9 @@ def probe_translation() -> str:
 def probe_vlm() -> str:
     if os.environ.get("SEMBLON_VLM", "1") == "0":
         return "DISABLED"
-    return model_state_for_path(os.environ.get("SEMBLON_VLM_MODEL"))
+    from semblon.vlm_model import vlm_model_path
+
+    return model_state_for_path(vlm_model_path())
 
 
 def probe_barcode() -> str:
@@ -441,7 +572,13 @@ def describe_vlm(image: np.ndarray, *, generate=None) -> StructuredResult:
     if state != "AVAILABLE":
         result, _ = invoke("vlm", model_state=state)  # type: ignore[arg-type]
         return result
-    path = Path(os.environ["SEMBLON_VLM_MODEL"])
+    from semblon.vlm_model import vlm_model_path
+
+    located = vlm_model_path()
+    if not located:
+        result, _ = invoke("vlm", model_state="MISSING")  # type: ignore[arg-type]
+        return result
+    path = Path(located)
     pixel = _is_pixel_model(path)
     if generate is None and pixel:
         generate = lambda: describe_pixels(image)  # noqa: E731
@@ -684,6 +821,29 @@ def query_screen(
     blocked=None,
 ) -> QueryReport:
     """Selection on the Windows screen, then the same query pipeline as a file."""
+    report, _image = query_screen_with_image(
+        x,
+        y,
+        w,
+        h,
+        capabilities=capabilities,
+        vlm_generate=vlm_generate,
+        blocked=blocked,
+    )
+    return report
+
+
+def query_screen_with_image(
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    *,
+    capabilities: tuple[str, ...] | None = None,
+    vlm_generate=None,
+    blocked=None,
+) -> tuple[QueryReport, np.ndarray | None]:
+    """Screen selection query plus captured pixels for downstream local retrieval."""
     captured, image = capture_screen(x, y, w, h, blocked=blocked)
     region = {"x": int(x), "y": int(y), "w": int(w), "h": int(h), "translated": False}
     if image is None:
@@ -696,10 +856,13 @@ def query_screen(
             )
             for cap in wanted
         ]
-        return QueryReport(
-            source="screen",
-            results=(captured, *blocked),
-            region=region,
+        return (
+            QueryReport(
+                source="screen",
+                results=(captured, *blocked),
+                region=region,
+            ),
+            None,
         )
     inner = query_image(
         image,
@@ -707,11 +870,14 @@ def query_screen(
         source="screen",
         vlm_generate=vlm_generate,
     )
-    return QueryReport(
-        source="screen",
-        results=(captured, *inner.results),
-        region=region,
-        embeddings=inner.embeddings,
+    return (
+        QueryReport(
+            source="screen",
+            results=(captured, *inner.results),
+            region=region,
+            embeddings=inner.embeddings,
+        ),
+        image,
     )
 
 

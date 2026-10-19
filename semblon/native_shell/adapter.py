@@ -247,6 +247,9 @@ class ArchiveAdapter:
     def similar_region(self, rec: dict) -> Result:
         """Region door → same Focus strip. Basis comes from the search record."""
         similar = dict((rec or {}).get("similar") or {})
+        providers = (rec or {}).get("optional_providers")
+        if isinstance(providers, list) and "optional_providers" not in similar:
+            similar["optional_providers"] = providers
         if str(similar.get("status") or "") == "UNAVAILABLE":
             reason = str(similar.get("reason") or "")
             lowered = reason.lower()
@@ -308,6 +311,12 @@ class ArchiveAdapter:
         }
         if rec.get("search_phase"):
             meta["search_phase"] = str(rec.get("search_phase"))
+        channels = rec.get("channels")
+        if isinstance(channels, list):
+            meta["channels"] = channels
+        providers = rec.get("optional_providers")
+        if isinstance(providers, list):
+            meta["optional_providers"] = providers
         if rec.get("error_id"):
             meta["error_id"] = str(rec.get("error_id"))
         if rec.get("understanding"):
@@ -620,6 +629,76 @@ class ArchiveAdapter:
         except InstallError as exc:
             raise AdapterError("model.INSTALL", str(exc)) from exc
         return Result("ready", "Model file: installed locally.", {"path": rec.get("path"), "state": rec.get("state")})
+
+    def install_region_pack(self) -> Result:
+        """User-confirmed one-click installer for the pinned region encoder."""
+        from semblon.region_pack_install import RegionPackInstallError, install_region_pack
+
+        try:
+            rec = install_region_pack()
+        except RegionPackInstallError as exc:
+            raise AdapterError("region_pack.INSTALL", str(exc), state="unavailable") from exc
+        changed = bool(rec.get("changed"))
+        message = (
+            "Region model installed. Similar look will retry now."
+            if changed
+            else "Region model already installed. Similar look will retry now."
+        )
+        return Result(
+            "ready",
+            message,
+            {
+                "path": rec.get("path"),
+                "sha256": rec.get("sha256"),
+                "state": rec.get("state"),
+                "changed": changed,
+            },
+        )
+
+    def install_object_pack(self) -> Result:
+        """User-confirmed one-click installer for the pinned object model."""
+        from semblon.object_pack_install import ObjectPackInstallError, install_object_pack
+
+        try:
+            rec = install_object_pack()
+        except ObjectPackInstallError as exc:
+            raise AdapterError("object_pack.INSTALL", str(exc), state="unavailable") from exc
+        changed = bool(rec.get("changed"))
+        message = (
+            "Object model installed. This search will run again."
+            if changed
+            else "Object model already installed. This search will run again."
+        )
+        return Result(
+            "ready",
+            message,
+            {
+                "path": rec.get("path"),
+                "sha256": rec.get("sha256"),
+                "state": rec.get("state"),
+                "changed": changed,
+            },
+        )
+
+    def install_vlm(self) -> Result:
+        """User-confirmed install of the local description marker. No download."""
+        from semblon.vlm_model import VlmInstallError, install_local_description
+
+        try:
+            rec = install_local_description()
+        except VlmInstallError as exc:
+            raise AdapterError("vlm.INSTALL", str(exc), state="unavailable") from exc
+        changed = bool(rec.get("changed"))
+        message = (
+            "Description model installed. This search will run again."
+            if changed
+            else "Description model already installed. This search will run again."
+        )
+        return Result(
+            "ready",
+            message,
+            {"path": rec.get("path"), "state": rec.get("state"), "changed": changed},
+        )
 
     def named_items(self) -> Result:
         """User-drawn regions. These are not people and do not confirm identity."""

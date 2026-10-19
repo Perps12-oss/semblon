@@ -74,6 +74,41 @@ from semblon.ui_prefs import load_prefer_gpu, load_prefs, save_theme_mode, updat
 
 
 KEY_SHELL_MODE = "shell_mode"
+KEY_SCREEN_QUERY_MODE = "screen_query_mode"
+SCREEN_QUERY_MODE_VISUAL = "visual"
+SCREEN_QUERY_MODE_TEXT_PRIORITY = "text_priority"
+SCREEN_QUERY_MODES = (SCREEN_QUERY_MODE_VISUAL, SCREEN_QUERY_MODE_TEXT_PRIORITY)
+
+_INSTALL_LABELS = {
+    "region_pack": "Install region model",
+    "object_pack": "Install object model",
+    "vlm_local": "Install description model",
+}
+_INSTALL_METHODS = {
+    "region_pack": "install_region_pack",
+    "object_pack": "install_object_pack",
+    "vlm_local": "install_vlm",
+}
+_INSTALL_PROMPTS = {
+    "region_pack": (
+        "Install region model?",
+        "Semblon will download the region model onto this computer.\n\n"
+        "You stay on this screen. When it finishes, this search runs again.\n\n"
+        "Continue?",
+    ),
+    "object_pack": (
+        "Install object model?",
+        "Semblon will download the object model onto this computer.\n\n"
+        "You stay on this screen. When it finishes, this search runs again.\n\n"
+        "Continue?",
+    ),
+    "vlm_local": (
+        "Install description model?",
+        "Semblon will install picture description on this computer.\n\n"
+        "You stay on this screen. When it finishes, this search runs again.\n\n"
+        "Continue?",
+    ),
+}
 
 
 def reduced_motion() -> bool:
@@ -164,6 +199,23 @@ class _NameSelectionThread(QThread):
             self.failed.emit(self._generation, str(exc) or "naming failed")
 
 
+class _TaskThread(QThread):
+    """One background task that returns a Result-like object."""
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, fn, parent=None):
+        super().__init__(parent)
+        self._fn = fn
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._fn())
+        except Exception as exc:  # noqa: BLE001 — UI translates this to a safe message
+            self.failed.emit(str(exc) or "task failed")
+
+
 class ShellBridge(QObject):
     lensChanged = Signal()
     focusChanged = Signal()
@@ -183,6 +235,7 @@ class ShellBridge(QObject):
     peopleChanged = Signal()
     surfaceChanged = Signal()
     editorialChanged = Signal()
+    screenQueryChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -222,6 +275,16 @@ class ShellBridge(QObject):
         self._search_thread: _VisualSearchThread | None = None
         self._cancel_flag: list[bool] | None = None
         self._search_failure = ""
+        self._install_suggestion = ""
+        self._install_suggestion_label = ""
+        self._install_kind = ""
+        self._install_retry = ""
+        self._install_retry_rect: tuple[int, int, int, int] | None = None
+        self._install_thread: _TaskThread | None = None
+        self._screen_query_rect: tuple[int, int, int, int] | None = None
+        self._query_source = ""
+        self._screen_query_mode = self._load_screen_query_mode()
+        self._screen_query_state = "idle"
         self._index_state = ""
         self._index_note = ""
         self._progress_seen: int | None = None
@@ -310,6 +373,9 @@ class ShellBridge(QObject):
         thread = self._search_thread
         if thread is not None and thread.isRunning():
             thread.wait(2000)
+        install = self._install_thread
+        if install is not None and install.isRunning():
+            install.wait(2000)
         jobs = getattr(self, "_jobs", None)
         engine = getattr(jobs, "engine", None) if jobs is not None else None
         if engine is not None and hasattr(engine, "shutdown"):
@@ -339,6 +405,19 @@ class ShellBridge(QObject):
 
     def _save_shell_mode(self, mode: str) -> None:
         update_prefs(self._prefs_store(), **{KEY_SHELL_MODE: normalize_mode(mode)})
+
+    def _load_screen_query_mode(self) -> str:
+        prefs = load_prefs(self._prefs_store())
+        mode = str(prefs.get(KEY_SCREEN_QUERY_MODE) or "").strip().lower()
+        if mode in SCREEN_QUERY_MODES:
+            return mode
+        return SCREEN_QUERY_MODE_VISUAL
+
+    def _save_screen_query_mode(self, mode: str) -> None:
+        picked = str(mode or "").strip().lower()
+        if picked not in SCREEN_QUERY_MODES:
+            picked = SCREEN_QUERY_MODE_VISUAL
+        update_prefs(self._prefs_store(), **{KEY_SCREEN_QUERY_MODE: picked})
 
     def _load_atmosphere_id(self) -> str:
         prefs = load_prefs(self._prefs_store())
@@ -1068,6 +1147,62 @@ class ShellBridge(QObject):
     def dangerColor(self) -> str:
         return tokens_for(self._atmosphere_id)["danger"]
 
+    @Property(bool, notify=lensChanged)
+    def screenQueryAvailable(self) -> bool:
+        return sys.platform == "win32"
+
+    @Property(bool, notify=screenQueryChanged)
+    def screenQueryInProgress(self) -> bool:
+        return self._screen_query_state in {"selecting", "searching"}
+
+    @Property(str, notify=screenQueryChanged)
+    def screenQueryState(self) -> str:
+        return self._screen_query_state
+
+    @Property(str, notify=screenQueryChanged)
+    def screenQueryProgressLabel(self) -> str:
+        if self._screen_query_state == "selecting":
+            return "Screen query in progress: drag a box on your screen."
+        if self._screen_query_state == "searching":
+            return "Screen query in progress: searching your library."
+        return ""
+
+    @Property(str, notify=screenQueryChanged)
+    def screenQueryMode(self) -> str:
+        return self._screen_query_mode
+
+    @Property(str, notify=screenQueryChanged)
+    def screenQueryModeLabel(self) -> str:
+        if self._screen_query_mode == SCREEN_QUERY_MODE_TEXT_PRIORITY:
+            return "Screen mode: Text first"
+        return "Screen mode: Visual first"
+
+    @Slot()
+    def toggleScreenQueryMode(self) -> None:
+        if self.screenQueryInProgress:
+            self._apply_result(Result("unavailable", "Screen query is already in progress."))
+            return
+        nxt = (
+            SCREEN_QUERY_MODE_TEXT_PRIORITY
+            if self._screen_query_mode == SCREEN_QUERY_MODE_VISUAL
+            else SCREEN_QUERY_MODE_VISUAL
+        )
+        self.setScreenQueryMode(nxt)
+
+    @Slot(str)
+    def setScreenQueryMode(self, mode: str) -> None:
+        raw = str(mode or "").strip().lower().replace("-", "_")
+        if raw in {"text", "ocr"}:
+            raw = SCREEN_QUERY_MODE_TEXT_PRIORITY
+        if raw not in SCREEN_QUERY_MODES:
+            raw = SCREEN_QUERY_MODE_VISUAL
+        if raw == self._screen_query_mode:
+            return
+        self._screen_query_mode = raw
+        self._save_screen_query_mode(raw)
+        self.screenQueryChanged.emit()
+        self._apply_result(Result("ready", f"{self.screenQueryModeLabel}."))
+
     @Property(str, notify=peopleChanged)
     def reviewCountText(self) -> str:
         return self._review_text
@@ -1113,6 +1248,14 @@ class ShellBridge(QObject):
     def similarBasisLabel(self) -> str:
         """User-facing basis for the open results strip (distinct per door)."""
         return self._similar_basis_label
+
+    @Property(bool, notify=similarChanged)
+    def installSuggestionVisible(self) -> bool:
+        return bool(self._install_suggestion)
+
+    @Property(str, notify=similarChanged)
+    def installSuggestionLabel(self) -> str:
+        return self._install_suggestion_label or "Install required model"
 
     @Property(str, notify=similarChanged)
     def similarPhase(self) -> str:
@@ -1337,6 +1480,7 @@ class ShellBridge(QObject):
         if self._cancel_flag is not None:
             self._cancel_flag[0] = True
         self._similar_cancel = True
+        self._set_screen_query_state("idle")
         was_busy = self._search_busy
         self._search_busy = False
         if was_busy:
@@ -1369,6 +1513,7 @@ class ShellBridge(QObject):
         """Publish looking immediately, then run build(cancel_flag, report) off the UI thread."""
         if self._cancel_flag is not None:
             self._cancel_flag[0] = True
+        self._set_install_suggestion("", "")
         self._search_generation += 1
         generation = self._search_generation
         flag = [False]
@@ -1443,6 +1588,7 @@ class ShellBridge(QObject):
     def _on_visual_search(self, generation: int, payload) -> None:
         if generation != self._search_generation:
             return
+        self._set_screen_query_state("idle")
         self._search_busy = False
         self.searchBusyChanged.emit()
         if payload is None or self._similar_cancel:
@@ -1468,6 +1614,7 @@ class ShellBridge(QObject):
     def _on_visual_search_failed(self, generation: int, message: str) -> None:
         if generation != self._search_generation:
             return
+        self._set_screen_query_state("idle")
         self._search_busy = False
         self._search_failure = str(message or "search failed")
         self.searchBusyChanged.emit()
@@ -1550,7 +1697,29 @@ class ShellBridge(QObject):
         self._similar_basis = ""
         self._similar_basis_label = ""
         self._similar_phase = ""
+        self._set_install_suggestion("", "")
         self.similarChanged.emit()
+
+    def _set_install_suggestion(self, action: str, label: str = "") -> None:
+        next_action = str(action or "")
+        next_label = str(label or "")
+        if (
+            next_action == self._install_suggestion
+            and next_label == self._install_suggestion_label
+        ):
+            return
+        self._install_suggestion = next_action
+        self._install_suggestion_label = next_label
+        self.similarChanged.emit()
+
+    def _set_screen_query_state(self, state: str) -> None:
+        next_state = str(state or "").strip().lower()
+        if next_state not in {"idle", "selecting", "searching"}:
+            next_state = "idle"
+        if next_state == self._screen_query_state:
+            return
+        self._screen_query_state = next_state
+        self.screenQueryChanged.emit()
 
     def _publish_similar(
         self,
@@ -1788,21 +1957,30 @@ class ShellBridge(QObject):
         error_id = str((result.data or {}).get("error_id") or "")
         label = str((result.data or {}).get("basis_label") or self._similar_basis_label or "Similar look")
         phase = str((result.data or {}).get("search_phase") or "")
+        from semblon.optional_providers import install_choice
+
+        install_action, install_label = install_choice(state, error_id, result.data or {})
         if interim:
             phase = "first"
+            install_action, install_label = "", ""
             if rows:
                 state = "ready"
                 note = f"Similar ({label}): first look, still refining."
             else:
                 state = "loading"
                 note = f"Similar ({label}): first look found nothing yet."
-        elif state == "unavailable" and error_id == "region.NO_PACK":
+        elif install_action == "region_pack":
             note = f"Similar ({label}): the region model is not installed."
+        elif install_action == "object_pack" and state == "unavailable":
+            note = f"Similar ({label}): the object model is not installed."
+        elif install_action == "vlm_local" and state == "unavailable":
+            note = f"Similar ({label}): the description model is not installed."
         elif state == "unavailable" and error_id == "region.NO_PATCH_INDEX":
             note = f"Similar ({label}): these photos are not indexed for region search yet."
         elif error_id in {"region.ENCODE", "region.NO_IMAGE", "region.NO_STORE"}:
             state = "error"
             note = f"Similar ({label}): search failed."
+        self._set_install_suggestion(install_action, install_label)
         self._result_text = ""
         self.resultChanged.emit()
         self._publish_similar(
@@ -1818,6 +1996,7 @@ class ShellBridge(QObject):
     def _clear_query(self) -> None:
         if self._search_busy:
             self._stop_search(publish=False)
+        self._set_screen_query_state("idle")
         self._region_norm = None
         self._selection_kind = ""
         self._selection_note = ""
@@ -2840,6 +3019,138 @@ class ShellBridge(QObject):
         lines = rec.get("lines") or [rec.get("reason") or "Nothing was searched."]
         self._set_result(_ask_lines(lines, self._mode))
 
+    @Slot()
+    def startScreenQuery(self) -> None:
+        """SQ-3: transient desktop selection routed into the same discovery strip."""
+        if not self.screenQueryAvailable:
+            self._publish_similar(
+                "unavailable",
+                "Screen query: only available on Windows.",
+                [],
+                basis="region",
+                basis_label="Similar look",
+                persist=False,
+            )
+            return
+        if self._search_busy or self.screenQueryInProgress:
+            self._apply_result(Result("unavailable", "A search is already running."))
+            return
+        self._set_screen_query_state("selecting")
+        self._set_install_suggestion("", "")
+        self._publish_similar(
+            "loading",
+            "Screen query in progress: drag a box on your screen.",
+            [],
+            basis="region",
+            basis_label=(
+                "Text in the selection"
+                if self._screen_query_mode == SCREEN_QUERY_MODE_TEXT_PRIORITY
+                else "Similar look"
+            ),
+            persist=False,
+        )
+        try:
+            from semblon.native_shell.screen_query_overlay import (
+                ScreenSelectionUnavailable,
+                select_screen_region,
+            )
+
+            rect = select_screen_region()
+        except ScreenSelectionUnavailable as exc:
+            self._set_screen_query_state("idle")
+            self._set_install_suggestion("", "")
+            self._publish_similar(
+                "unavailable",
+                f"Screen query: {exc}",
+                [],
+                basis="region",
+                basis_label="Similar look",
+                persist=False,
+            )
+            return
+        if rect is None:
+            self._set_screen_query_state("idle")
+            self._publish_similar(
+                "empty",
+                "Screen query cancelled.",
+                [],
+                basis="region",
+                basis_label="Similar look",
+                persist=False,
+            )
+            self._apply_result(Result("empty", "Screen query cancelled."))
+            return
+        self._begin_screen_search(rect)
+
+    def _begin_screen_search(self, rect: tuple[int, int, int, int]) -> None:
+        """Run retrieval for a screen rect already chosen. Does not open the drag overlay."""
+        x, y, w, h = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+        self._screen_query_rect = (x, y, w, h)
+        self._query_source = "screen"
+        mode = self._screen_query_mode
+        mode_selection = (
+            SCREEN_QUERY_MODE_TEXT_PRIORITY
+            if mode == SCREEN_QUERY_MODE_TEXT_PRIORITY
+            else "region"
+        )
+        mode_label = "Text in the selection" if mode_selection == SCREEN_QUERY_MODE_TEXT_PRIORITY else "Similar look"
+        self._query_focus_id = ""
+        self._region_norm = None
+        self._selection_kind = str(mode_selection)
+        self._selection_note = (
+            "Screen selection (text first)." if mode_selection == SCREEN_QUERY_MODE_TEXT_PRIORITY else "Screen selection."
+        )
+        self.selectionChanged.emit()
+        adapter = self._adapter
+        jobs = self._jobs
+        self._set_screen_query_state("searching")
+
+        def build(flag, _report):
+            rec = jobs.query_screen(
+                x,
+                y,
+                w,
+                h,
+                limit=10,
+                selection_kind=mode_selection,
+                cancelled=lambda: bool(flag[0]),
+            )
+            if flag[0]:
+                return None
+            similar = rec.get("similar")
+            if not isinstance(similar, dict):
+                reason = str(rec.get("reason") or "Screen capture did not run. Nothing was searched.")
+                return Result(
+                    "unavailable",
+                    f"Similar ({mode_label}): {reason}",
+                    {
+                        "basis": "region",
+                        "basis_label": mode_label,
+                        "engine": "screen",
+                        "items": [],
+                        "error_id": "screen.NO_CAPTURE",
+                        "optional_providers": rec.get("optional_providers")
+                        if isinstance(rec.get("optional_providers"), list)
+                        else [],
+                    },
+                )
+            result = adapter.similar_region(
+                {"similar": similar, "optional_providers": rec.get("optional_providers")}
+            )
+            lines = rec.get("lines") or []
+            observations = rec.get("observations") if isinstance(rec.get("observations"), list) else []
+            understanding = _screen_understanding(lines, observations)
+            data = dict(result.data or {})
+            if understanding:
+                data["understanding"] = understanding
+            if observations:
+                data["observations"] = observations
+            if isinstance(rec.get("optional_providers"), list) and "optional_providers" not in data:
+                data["optional_providers"] = rec.get("optional_providers")
+            return Result(result.state, result.message, data)
+
+        self._start_visual_search(basis="region", label=mode_label, build=build)
+
     @Slot(float, float, float, float)
     def setRegion(self, nx: float, ny: float, nw: float, nh: float) -> None:
         """Normalized image-space rectangle from the focus view. Not a widget image."""
@@ -3477,6 +3788,99 @@ class ShellBridge(QObject):
         self._apply_result(result)
         return self._notice
 
+    @Slot(result=str)
+    def installSuggestedModel(self) -> str:
+        """Install the suggested model here, then run the same search again."""
+        kind = self._install_suggestion
+        prompt = _INSTALL_PROMPTS.get(kind)
+        if prompt is None:
+            self._apply_result(Result("empty", "No install action is available right now."))
+            return self._notice
+        title, body = prompt
+        answer = QMessageBox.question(
+            None,
+            title,
+            body,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self._apply_result(Result("empty", "Model install cancelled."))
+            return self._notice
+        if self._install_thread is not None and self._install_thread.isRunning():
+            self._apply_result(Result("loading", "Model install is already running."))
+            return self._notice
+        self._install_kind = kind
+        self._install_retry = self._query_source
+        self._install_retry_rect = self._screen_query_rect
+        basis = self._similar_basis or "region"
+        label = self._similar_basis_label or "Similar look"
+        self._set_install_suggestion("", "")
+        self._publish_similar(
+            "loading",
+            f"Similar ({label}): installing. This search will run again on this screen.",
+            [],
+            basis=basis,
+            basis_label=label,
+            persist=False,
+        )
+        method_name = _INSTALL_METHODS[kind]
+        thread = _TaskThread(lambda: getattr(self._adapter, method_name)(), self)
+        thread.succeeded.connect(self._on_install_suggested_ready)
+        thread.failed.connect(self._on_install_suggested_failed)
+        self._install_thread = thread
+        thread.start()
+        return self._notice
+
+    def _resume_current_query(self) -> bool:
+        """Repeat the search the user was already on. Does not open a new screen drag."""
+        if self._install_retry == "screen" and self._install_retry_rect:
+            self._begin_screen_search(self._install_retry_rect)
+            return True
+        if self._install_retry == "focus" and self._session.focus_id and self._region_norm:
+            self.findSimilar()
+            return True
+        if self._query_source == "screen" and self._screen_query_rect:
+            self._begin_screen_search(self._screen_query_rect)
+            return True
+        if self._session.focus_id and self._region_norm:
+            self.findSimilar()
+            return True
+        return False
+
+    @Slot(object)
+    def _on_install_suggested_ready(self, payload) -> None:
+        self._install_thread = None
+        result = payload if isinstance(payload, Result) else Result("ready", "Model installed.")
+        self._apply_result(result)
+        if self._resume_current_query():
+            return
+        label = self._similar_basis_label or "Similar look"
+        self._publish_similar(
+            "empty",
+            f"Similar ({label}): model is ready. Search this area again.",
+            [],
+            basis=self._similar_basis or "region",
+            basis_label=label,
+            persist=False,
+        )
+
+    @Slot(str)
+    def _on_install_suggested_failed(self, message: str) -> None:
+        self._install_thread = None
+        label = self._similar_basis_label or "Similar look"
+        kind = self._install_kind or "region_pack"
+        self._set_install_suggestion(kind, _INSTALL_LABELS.get(kind, "Install required model"))
+        self._publish_similar(
+            "unavailable",
+            f"Similar ({label}): model install failed.",
+            [],
+            basis=self._similar_basis or "region",
+            basis_label=label,
+            persist=False,
+        )
+        self._apply_result(Result("unavailable", str(message or "Model install failed.")))
+
     @Slot()
     def findSimilarWhole(self) -> None:
         self._set_door("whole")
@@ -3694,6 +4098,7 @@ class ShellBridge(QObject):
                 return None
             return adapter.similar_region(rec)
 
+        self._query_source = "focus"
         self._start_visual_search(basis="region", label="Similar look", build=build)
 
     @Slot()
@@ -3858,4 +4263,40 @@ def _ask_lines(lines, mode: str) -> str:
             continue
         kept.append(text)
     return "\n".join(kept) or "Nothing was searched."
+
+
+def _screen_text_token(text: str) -> str:
+    tokens = [part for part in str(text or "").replace("\n", " ").split() if any(ch.isalnum() for ch in part)]
+    tokens.sort(key=len, reverse=True)
+    for token in tokens:
+        cleaned = "".join(ch for ch in token if ch.isalnum())
+        if len(cleaned) >= 4:
+            return cleaned
+    return ""
+
+
+def _screen_understanding(lines, observations=None) -> str:
+    for row in observations or []:
+        if not isinstance(row, dict):
+            continue
+        kind = str(row.get("kind") or "")
+        payload = row.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+        if kind == "text":
+            token = _screen_text_token(payload.get("text") or "")
+            if token:
+                return f"Text: {token}."
+        if kind == "object":
+            label = str(payload.get("label") or payload.get("class") or "").strip()
+            if label and label.lower() not in {"region", "user_region"}:
+                return f"Object: {label}."
+    for line in lines:
+        text = str(line or "").strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if lowered == "lens" or lowered.startswith("selected area"):
+            continue
+        return text
+    return "Screen selection."
 

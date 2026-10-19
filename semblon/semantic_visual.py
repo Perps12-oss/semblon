@@ -579,12 +579,15 @@ def _vlm_image_concepts(image: np.ndarray, *, existing: set[str]) -> list[dict]:
     # for pixel-describer. Re-run describe_pixels path when available.
     try:
         from semblon.lens import describe_pixels, probe_vlm, _is_pixel_model
-        import os
+        from semblon.vlm_model import vlm_model_path
         from pathlib import Path
 
         if probe_vlm() != "AVAILABLE":
             return []
-        path = Path(os.environ["SEMBLON_VLM_MODEL"])
+        located = vlm_model_path()
+        if not located:
+            return []
+        path = Path(located)
         payload = describe_pixels(image) if _is_pixel_model(path) else None
         if not isinstance(payload, dict):
             return []
