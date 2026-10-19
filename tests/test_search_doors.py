@@ -15,6 +15,13 @@ def test_focus_shortcuts_name_each_door():
     qml = Path("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
     assert 'objectName: "similarAction"' in qml
     assert 'text: "Similar region"' in qml
+    assert 'objectName: "refineSameLook"' in qml
+    assert 'text: "Same look"' in qml
+    assert 'objectName: "refineSameKind"' in qml
+    assert 'text: "Same kind"' in qml
+    assert 'objectName: "refineWord"' in qml
+    assert "shellApi.setRefineMode" in qml
+    assert "shellApi.setRefineModifier" in qml
     assert 'objectName: "sameFaceDoor"' in qml
     assert 'objectName: "duplicatesDoor"' in qml
     assert 'objectName: "wholePhoto"' in qml

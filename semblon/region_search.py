@@ -1055,9 +1055,11 @@ def remember_and_find(
     search_quality: str = "balanced",
     cancelled=None,
     on_first=None,
+    query_spec=None,
 ) -> dict:
     """Persist the box once, then search. A fuller quality can preview Fast first.
 
+    Balanced and Max fuse the other local doors after the first look.
     Does not persist a vector or a second user box. Does not write identity.
     """
     saved = persist_user_region(
@@ -1100,10 +1102,49 @@ def remember_and_find(
         "selection_kind": selection_kind,
         "cancelled": cancelled,
     }
+    from semblon.query_spec import parse_query_spec
+    from semblon.region_parts import propose_parts, select_part
+
+    spec = parse_query_spec(query_spec)
+    crop = None
+    try:
+        crop = crop_bgr(path, x, y, w, h)
+    except Exception:
+        crop = None
+    parts = propose_parts(store, media_id=media_id, x=x, y=y, w=w, h=h, crop=crop)
+    chosen = select_part(parts, spec.part_index)
+    box = chosen.get("box") if isinstance(chosen, dict) else None
+    if spec.part_index >= 0 and isinstance(box, (list, tuple)) and len(box) == 4:
+        find_kwargs["x"], find_kwargs["y"], find_kwargs["w"], find_kwargs["h"] = (
+            int(box[0]),
+            int(box[1]),
+            int(box[2]),
+            int(box[3]),
+        )
+        try:
+            crop = crop_bgr(path, int(box[0]), int(box[1]), int(box[2]), int(box[3]))
+        except Exception:
+            pass
+
     if quality.key == "fast" or on_first is None:
         similar = find_similar_region(store, search_quality=quality.key, **find_kwargs)
+        if quality.key != "fast" and crop is not None:
+            similar = _fuse_region(
+                store,
+                similar,
+                crop=crop,
+                media_id=media_id,
+                selection_kind=selection_kind,
+                limit=limit,
+                cancelled=cancelled,
+                spec=spec,
+                parts=parts,
+            )
         if quality.key == "fast":
             similar = _with_phase(similar, "fast")
+        similar.setdefault("parts", parts)
+        similar.setdefault("query_spec", spec.as_public())
+        similar.setdefault("strip_label", similar.get("similarity_basis"))
         return _bundle(saved, similar)
 
     fast = _with_phase(
@@ -1116,8 +1157,99 @@ def remember_and_find(
         return _bundle(saved, _with_phase(fast, "kept"))
 
     full = find_similar_region(store, search_quality=quality.key, **find_kwargs)
+    if crop is not None:
+        full = _fuse_region(
+            store,
+            full,
+            crop=crop,
+            media_id=media_id,
+            selection_kind=selection_kind,
+            limit=limit,
+            cancelled=cancelled,
+            spec=spec,
+            parts=parts,
+        )
     fast_items = list(fast.get("items") or [])
     full_items = list(full.get("items") or [])
     if fast_items and not full_items:
         return _bundle(saved, _with_phase(fast, "kept"))
     return _bundle(saved, _with_phase(full, "refined"))
+
+
+def _fuse_region(
+    store: Path,
+    visual: dict,
+    *,
+    crop,
+    media_id: str,
+    selection_kind: str | None,
+    limit: int,
+    cancelled,
+    spec,
+    parts,
+) -> dict:
+    """Attach text / object / language doors without replacing a good first look."""
+    from semblon.selection_retrieval import retrieve_selection
+
+    fused = retrieve_selection(
+        store,
+        crop=crop,
+        observations=_stored_observations(store, media_id),
+        limit=limit,
+        selection_kind=selection_kind,
+        cancelled=cancelled,
+        query_spec=spec,
+        region_rec=visual,
+        media_id=media_id,
+        parts=parts,
+    )
+    if fused.get("status") == "SUCCESS" and fused.get("items"):
+        out = dict(visual)
+        out.update(
+            {
+                "status": "SUCCESS",
+                "items": fused.get("items") or [],
+                "count": fused.get("count") or 0,
+                "channels": fused.get("channels") or [],
+                "similarity_basis": visual.get("similarity_basis") or fused.get("strip_label"),
+                "strip_label": fused.get("strip_label") or visual.get("similarity_basis"),
+                "query_spec": fused.get("query_spec"),
+                "parts": fused.get("parts") or parts,
+                "engine": visual.get("engine") or fused.get("engine"),
+                "reason": fused.get("reason") or visual.get("reason"),
+            }
+        )
+        return out
+    visual = dict(visual)
+    visual["query_spec"] = spec.as_public() if hasattr(spec, "as_public") else spec
+    visual["parts"] = parts
+    visual["strip_label"] = visual.get("similarity_basis")
+    visual["channels"] = fused.get("channels") or []
+    return visual
+
+
+def _stored_observations(store: Path, media_id: str) -> list[dict]:
+    if not media_id or not Path(store).is_file():
+        return []
+    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """SELECT i.kind, i.provider, i.payload_json
+               FROM observation_items i
+               JOIN observations o ON o.observation_id = i.observation_id
+               WHERE o.media_id=? AND i.kind IN ('object', 'text')""",
+            (media_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    found = []
+    for row in rows:
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        found.append({"kind": row["kind"], "provider": row["provider"], "payload": payload})
+    return found

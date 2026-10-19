@@ -53,7 +53,7 @@ Deferred without blocking unrelated work: **02** encryption, **08** product capt
 | 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | `tools/facekit_owner_evidence.py` + `.github/workflows/facekit-owner.yml` + `docs/FACEKIT-OWNER.md`. No owner pack on this machine — evidence JSON not PASS. |
 | 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Unchanged. |
 | 08 Screen-capture privacy | P1 | DEFERRED | Decision unchanged. |
-| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18); quality expansion **PLAN ONLY** | Dense `region_patch` late interaction, not the six proposal crops. `docs/evidence/photo-region-eval.json`: 4/4 photographs, viewpoint and lighting ahead of the same-colour distractor, match box on the paste. Colour histogram remains the labelled fallback. Face Similar stays a separate door. Language door, highlight decomposition, RRF/rerank, and a refinement spec are planned in `docs/decisions/2026-10-19-lens-style-retrieval.md` and do not reopen this gate. |
+| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18); multi-leg path **IMPLEMENTED** | Dense `region_patch` late interaction remains the appearance door. Focus Similar region now fuses text/object/optional SigLIP after the first look, with Same look / Same kind / a word / part chips. Photographic eval gate is not reopened. |
 | 10 Archive continuity | P0 | **VERIFIED** | Missing Focus notice; ingest rename reconnect; copy/basename safety; Gate A journey on Unicode folder. |
 | 11 Contextual discovery | P1 | **VERIFIED** | `openFocusInContext` day scope includes same-day neighbours and excludes other days; missing-date honest. |
 | 12 Unified experience + docs | P0/P1 | **VERIFIED** (milestones 1–3) | Gate A journey + ROADMAP sync. Milestones 4–5 / Gates B–C remain. |
@@ -259,15 +259,15 @@ Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 3. Object detection and the vision-language describer are optional providers (`optional_providers`). A missing weight is reported. Neither provider writes face identity.
 4. When the current search needs the object model or the local description, the shell offers one install button on that same screen. Confirmation downloads the pinned NanoDet file, or writes the local pixel-describer marker, then runs that search again. Search itself does not download. NanoDet MSI bundling stays blocked.
 
-## Planned — multi-leg local retrieval (2026-10-19)
+## Behaviour landed — multi-leg local retrieval (2026-10-19)
 
-**Status:** PLAN ONLY. No code in this record. Branch `cursor/lens-retrieval-strategy-1388` was cut from `origin/main` `86fdcbf`.
+**Status:** IMPLEMENTED on the interactive path. Optional VLM judge and ANN stay off this path. Branch `cursor/lens-retrieval-strategy-1388`.
 
-The crop → OpenCLIP → Chroma story is not the checkout. Two recall legs already exist: DINOv2 patch late-interaction (appearance) and OCR / NanoDet (text and class). Focus **Similar region** still runs only the appearance leg. Screen selection unions the legs by photo. SigLIP and SAM 2 are optional probes, not a language door or a part splitter.
+Focus **Similar region** now accepts a query spec (`look` / `kind`, a word, a part) and, after the Fast first look, fuses DINOv2 / colour with OCR+BM25, NanoDet class, and optional SigLIP same-kind recall via Reciprocal Rank Fusion plus a cheap feature rerank. Fast stays a single visual pass. Missing packs skip that door; they do not fail the search. Chrome uses **Same look**, **Same kind**, **Add a word**, and part chips. No model names. No identity writes. No new columns. No Chroma/FAISS.
 
-The remaining gap is four Lens functions: highlight decomposition, a language-aligned SigLIP door, RRF + rerank, and a refinement query spec (part / modifier / same-look vs same-kind). Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Roadmap milestone 7.
+Command: `python3 -m pytest tests/test_lens_retrieval.py tests/test_selection_retrieval.py tests/test_discovery_slice_d.py tests/test_search_doors.py tests/test_similarity_quality.py tests/test_region_search.py tests/test_local_lens.py tests/test_discovery_slice_e.py tests/test_visual_discovery.py tests/test_discovery_workspace.py tests/test_shell_frontend.py::test_every_qml_action_maps_to_a_real_bridge_slot_or_property -q` → **67 passed, 2 skipped**.
 
-Next code slice, when authorised: query spec + existing doors on Focus Similar region (DINOv2 + crop OCR + NanoDet when ready). Highest-leverage new capability after that: SigLIP as a separate recall list (highlight + object crop + attribute text). Missing packs stay unavailable for that signal. No identity writes. No Chroma. No FAISS product dependency. No new columns. No VLM on the blocking first grid.
+Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Roadmap milestone 7.
 
 ## What this file will not absorb
 

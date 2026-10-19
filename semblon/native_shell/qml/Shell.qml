@@ -3192,6 +3192,120 @@ ApplicationWindow {
                 }
 
                 Text {
+                    objectName: "refineHint"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.selectionOnFocus
+                    text: shellReady ? shellApi.refineHint : ""
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                Row {
+                    objectName: "refineModeRow"
+                    width: parent.width
+                    spacing: 6
+                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.searchBusy
+
+                    Rectangle {
+                        objectName: "refineSameLook"
+                        width: (parent.width - 6) / 2
+                        height: 28
+                        radius: 6
+                        color: shellReady && shellApi.refineMode === "look" ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Same look"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Same look"
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.setRefineMode("look")
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "refineSameKind"
+                        width: (parent.width - 6) / 2
+                        height: 28
+                        radius: 6
+                        color: shellReady && shellApi.refineMode === "kind" ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Same kind"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Same kind"
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.setRefineMode("kind")
+                        }
+                    }
+                }
+
+                TextField {
+                    objectName: "refineWord"
+                    width: parent.width
+                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.searchBusy
+                    placeholderText: "Add a word, like red"
+                    text: shellReady ? shellApi.refineModifier : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                    background: Rectangle {
+                        color: tokenBg2
+                        border.color: tokenMuted
+                        border.width: 1
+                        radius: 6
+                    }
+                    onEditingFinished: if (shellReady) shellApi.setRefineModifier(text)
+                }
+
+                Repeater {
+                    model: shellReady ? shellApi.refineParts : []
+                    delegate: Rectangle {
+                        width: 220
+                        height: 26
+                        visible: shellReady && shellApi.selectionOnFocus && (modelData.index !== -1 || shellApi.refineParts.length > 1)
+                        radius: 6
+                        color: modelData.selected ? tokenAccentDim : tokenBg3
+                        border.color: tokenMuted
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData.label
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: modelData.label
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.setRefinePart(modelData.index)
+                        }
+                    }
+                }
+
+                Text {
                     objectName: "searchDoorLabel"
                     width: parent.width
                     wrapMode: Text.WordWrap

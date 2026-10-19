@@ -1,7 +1,7 @@
 # Decision — local Lens-style retrieval is a ranking system, not a model swap
 
 **Date:** 2026-10-19  
-**Status:** current — **PLAN ONLY**. No retrieval behaviour changes in this record.  
+**Status:** current — interactive path **IMPLEMENTED** (query spec, BM25, RRF, feature rerank, part/word chrome). Optional VLM judge and ANN remain off the path.  
 **Branch:** `cursor/lens-retrieval-strategy-1388` (cut from `origin/main` `86fdcbf`)  
 **Related:** `docs/PRODUCT.md`, `docs/BUILD-STATUS.md`, `docs/ROADMAP.md`, `docs/SEM-ARCH-V1.4.md`, `docs/decisions/2026-10-18-local-visual-discovery.md`, `docs/REGION-PACK.md`, `docs/OBJECT-PACK.md`
 
@@ -290,15 +290,15 @@ These are implementation slices on this decision. They are not a FACE-n, OBS, SI
 
 | # | Slice | Lands in | Acceptance (evidence in BUILD-STATUS) |
 |---|---|---|---|
-| 1 | Query spec + existing doors on Focus Similar region | `Application`, `remember_and_find`, `selection_retrieval` | Highlight runs DINOv2 + crop OCR + NanoDet when ready. Spec carries region / doors / modifiers. Missing pack ≠ failed search. Fast may skip extras. No identity writes. |
-| 2 | Language-aligned SigLIP door | `lens.embed_siglip`, existing `embeddings` `modality=siglip` | Highlight + object crop (+ mask when present) recalled as a separate ranked list and fused. Caption / attribute / modifier strings use the SigLIP text encoder when that encoder is present. Not a DINOv2 swap. |
-| 3 | Highlight decomposition | NanoDet on the crop; optional SAM 2 / Grounding DINO | Top-3 parts inside the user box. User can search a part. Library-wide segment is out of scope. |
-| 4 | BM25 over stored OCR | `search_text` + derived sidecar | Token retrieval beats substring on a labelled text holdout. SQLite payloads stay authoritative. |
-| 5 | RRF fuse at `media_id` | `selection_retrieval` and the Focus region door | Independent ranked lists; per-hit bases kept; text-only still skips visual. |
-| 6 | Feature rerank top-20 | same merge path | Object-crop + text overlap + class + colour. Weights locked on the new eval. Optional GBDT after labels exist. |
-| 7 | Refinement UI | Focus | Part picker, text modifier, same-look vs same-kind. Re-queries the spec. No model names in chrome. |
-| 8 | Async VLM judge (optional) | refine pass / Max | Reorders the first grid. Never blocks it. ColQwen / ColPali remain Max or offline. |
-| 9 | ANN provider | `index_provider.active_vector_index` | Only after a measured exact-scan bottleneck. FAISS may appear as one provider. Chroma stays out. |
+| 1 | Query spec + existing doors on Focus Similar region | `Application`, `remember_and_find`, `selection_retrieval` | **IMPLEMENTED.** Highlight runs DINOv2 + crop OCR + NanoDet when ready. Spec carries region / doors / modifiers. Missing pack ≠ failed search. Fast may skip extras. No identity writes. |
+| 2 | Language-aligned SigLIP door | `lens.embed_siglip`, existing `embeddings` `modality=siglip` | **IMPLEMENTED** as an optional door. Missing pack is skipped. Not a DINOv2 swap. |
+| 3 | Highlight decomposition | NanoDet on the crop + stored boxes | **IMPLEMENTED** for top-3 parts plus Whole area. Grounding DINO still optional later. |
+| 4 | BM25 over stored OCR | `search_text` + `text_index` | **IMPLEMENTED** in memory from SQLite payloads. No new columns. |
+| 5 | RRF fuse at `media_id` | `selection_retrieval` and the Focus region door | **IMPLEMENTED.** Independent ranked lists; per-hit bases kept; text-only still skips visual. |
+| 6 | Feature rerank top-20 | same merge path | **IMPLEMENTED** as a weighted sum. Learned GBDT still later. |
+| 7 | Refinement UI | Focus | **IMPLEMENTED.** Part picker, text modifier, Same look / Same kind. No model names. |
+| 8 | Async VLM judge (optional) | refine pass / Max | **NOT STARTED.** Stays off the blocking first grid. |
+| 9 | ANN provider | `index_provider.active_vector_index` | **NOT STARTED.** Only after a measured exact-scan bottleneck. |
 
 Slice 1 is the next code path (use the legs already on disk). Slice 2 is the highest-leverage *new* capability. Start the eval harness as soon as slice 2 has a list to score. Do not start slice 9 first. Do not implement a parallel search stack.
 

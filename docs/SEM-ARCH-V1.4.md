@@ -280,7 +280,7 @@ Identity firewall remains:
 
 > optional modalities must never silently change face identity decisions.
 
-Planned retrieval structure (not implemented in this file): decompose the highlight, then parallel recall over DINOv2 `region_patch`, a language-aligned SigLIP door, BM25 over stored OCR, and cheap metadata; Reciprocal Rank Fusion; feature rerank; optional async judge; refinement query spec. Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Vector DB, Chroma, and a required FAISS product index stay parked. VLM / ColQwen stay off the blocking first grid.
+Interactive retrieval structure (landed): decompose the highlight, then parallel recall over DINOv2 `region_patch`, optional SigLIP same-kind, BM25 over stored OCR, and object class; Reciprocal Rank Fusion; feature rerank; refinement query spec. Optional async VLM judge and ANN stay off. Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Vector DB, Chroma, and a required FAISS product index stay parked.
 
 ---
 
@@ -414,8 +414,8 @@ CURRENT MAIN
   -> NEXT: product construction (Field + Focus). Not another shell.
   -> Still open as engineering, not architecture: PERF ARM64 · workers default · MSI (no weights) — see COMPLETION-MATRIX
   -> video/live UX expansion
-  -> multimodal retrieval expansion — PLAN ONLY: `docs/decisions/2026-10-19-lens-style-retrieval.md`
-     (decompose highlight → DINOv2 + SigLIP language door + BM25 → RRF → rerank → refine spec).
+  -> multimodal retrieval expansion — interactive path landed: `docs/decisions/2026-10-19-lens-style-retrieval.md`
+     (decompose highlight → DINOv2 + optional SigLIP + BM25 → RRF → rerank → refine spec).
      Keep DINOv2 `region_patch`. No Chroma. No vector DB. No identity writes.
      No VLM on the blocking first grid.
   -> scale/performance hardening

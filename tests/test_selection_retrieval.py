@@ -59,7 +59,10 @@ def test_merge_keeps_each_basis(monkeypatch, tmp_path):
     assert "Text in photos (OCR substring)" in rec["similarity_basis"]
     assert "COCO object detection (NanoDet)" in rec["similarity_basis"]
     doors = {row["door"]: row["status"] for row in rec["channels"]}
-    assert doors == {"region": "SUCCESS", "text": "SUCCESS", "object": "SUCCESS"}
+    assert doors["region"] == "SUCCESS"
+    assert doors["text"] == "SUCCESS"
+    assert doors["object"] == "SUCCESS"
+    assert doors.get("kind") in {None, "SKIPPED", "NO_QUERY"}
 
 
 def test_text_only_skips_visual_similarity(monkeypatch, tmp_path):

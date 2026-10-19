@@ -350,6 +350,7 @@ class Application:
         search_quality: str = "balanced",
         cancelled=None,
         on_first=None,
+        query_spec=None,
     ) -> dict:
         from semblon.region_search import remember_and_find
 
@@ -367,5 +368,34 @@ class Application:
             search_quality=search_quality,
             cancelled=cancelled,
             on_first=on_first,
+            query_spec=query_spec,
         )
+
+    def preview_region_parts(
+        self,
+        media_id: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        *,
+        image_path: Path | None = None,
+    ) -> dict:
+        """Parts inside the highlight. Whole area plus up to three labels."""
+        from semblon.query_spec import empty_parts
+        from semblon.region_parts import propose_parts
+        from semblon.region_search import crop_bgr
+
+        crop = None
+        path = Path(image_path) if image_path is not None else None
+        if path is None or not path.is_file():
+            item = self.media(media_id)
+            path = Path(item.path) if item is not None and item.path else None
+        if path is not None and path.is_file():
+            try:
+                crop = crop_bgr(path, x, y, w, h)
+            except Exception:
+                crop = None
+        parts = propose_parts(self.store, media_id=media_id, x=x, y=y, w=w, h=h, crop=crop)
+        return {"parts": parts or empty_parts(), "count": max(0, len(parts) - 1)}
 
