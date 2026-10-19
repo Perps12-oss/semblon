@@ -203,7 +203,7 @@ def test_text_priority_falls_back_to_visual(monkeypatch, tmp_path):
     monkeypatch.setattr(
         rs,
         "_colour_result",
-        lambda store, crop, *, limit, exclude_media_id, cancelled, reason: {
+        lambda store, crop, *, limit, exclude_media_id, cancelled, reason, **_kwargs: {
             "kind": "region_similar",
             "status": "SUCCESS",
             "reason": reason,

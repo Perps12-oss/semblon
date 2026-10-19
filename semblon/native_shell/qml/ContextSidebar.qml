@@ -591,7 +591,7 @@ Item {
                         hoverEnabled: true
                         cursorShape: shellReady && shellApi.similarActionReady
                                      ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: if (shellReady) shellApi.findSimilarWhole()
+                        onClicked: if (shellReady) shellApi.findSimilar()
                     }
                 }
                 Text {

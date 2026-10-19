@@ -488,7 +488,10 @@ def test_focus_qml_keeps_the_strip_and_a_primary_similar_action():
     assert "shell.resumeJob()" in home or "resumeJob()" in home
     assert 'objectName: "resumeJob"' in home
     assert 'objectName: "similarAction"' in qml
-    assert 'text: "Similar look"' in qml
+    assert 'text: "Similar region"' in qml
+    assert 'objectName: "sameFaceDoor"' in qml
+    assert 'objectName: "duplicatesDoor"' in qml
+    assert 'text: "Whole photo"' in qml
     assert 'objectName: "installSuggestedModel"' in qml
     assert "shellApi.installSuggestedModel()" in qml
     assert 'objectName: "screenQueryAction"' in qml

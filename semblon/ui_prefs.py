@@ -12,6 +12,7 @@ Canonical defaults (absent file / absent key):
   theme            → mica_dark
   grid_density     → comfortable
   search_mode      → people
+  search_quality   → balanced
   library_filter   → all
   prefer_gpu       → unset (product_prefer_gpu at runtime)
   window_geometry  → unset (WINDOW_DEFAULT)
@@ -32,6 +33,11 @@ from semblon.atmosphere import (
     palette_for,
 )
 from semblon.process import default_store_path
+from semblon.similarity_profile import (
+    DEFAULT_SEARCH_QUALITY,
+    SEARCH_QUALITIES,
+    normalize_search_quality,
+)
 from semblon.ui_tokens import Palette
 
 _FILE_NAME = "appearance.json"
@@ -47,6 +53,7 @@ _SYSTEM_DARK_UNSET = _SystemDarkUnset()
 KEY_THEME = "theme"
 KEY_GRID_DENSITY = "grid_density"
 KEY_SEARCH_MODE = "search_mode"
+KEY_SEARCH_QUALITY = "search_quality"
 KEY_LIBRARY_FILTER = "library_filter"
 KEY_PREFER_GPU = "prefer_gpu"
 
@@ -65,10 +72,12 @@ __all__ = [
     "THEME_MODES",
     "GRID_DENSITIES",
     "SEARCH_MODES",
+    "SEARCH_QUALITIES",
     "LIBRARY_FILTERS",
     "KEY_THEME",
     "KEY_GRID_DENSITY",
     "KEY_SEARCH_MODE",
+    "KEY_SEARCH_QUALITY",
     "KEY_LIBRARY_FILTER",
     "KEY_PREFER_GPU",
     "KEY_WINDOW_GEOMETRY",
@@ -83,6 +92,8 @@ __all__ = [
     "save_grid_density",
     "load_search_mode",
     "save_search_mode",
+    "load_search_quality",
+    "save_search_quality",
     "load_library_filter",
     "save_library_filter",
     "load_prefer_gpu",
@@ -193,6 +204,17 @@ def save_search_mode(mode: str, store: Path | None = None) -> str:
     if key not in SEARCH_MODES:
         key = "people"
     update_prefs(store, **{KEY_SEARCH_MODE: key})
+    return key
+
+
+def load_search_quality(store: Path | None = None) -> str:
+    raw = load_prefs(store).get(KEY_SEARCH_QUALITY)
+    return normalize_search_quality(str(raw) if raw is not None else DEFAULT_SEARCH_QUALITY)
+
+
+def save_search_quality(value: str, store: Path | None = None) -> str:
+    key = normalize_search_quality(value)
+    update_prefs(store, **{KEY_SEARCH_QUALITY: key})
     return key
 
 

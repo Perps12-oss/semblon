@@ -22,7 +22,6 @@ import numpy as np
 from semblon.compare import CompareError, compare_space
 from semblon.observers import APPEARANCE_DIM, APPEARANCE_PACK, color_histogram
 from semblon.region_encoder import (
-    COLOUR_SCORE_FLOOR,
     KNOWN_SHA256,
     LABEL_COLOUR,
     LABEL_SIMILAR,
@@ -30,11 +29,7 @@ from semblon.region_encoder import (
     LABEL_UNKNOWN,
     MODALITY_PATCH,
     MODALITY_REGION,
-    PATCH_COVERAGE_FLOOR,
-    PATCH_SCORE_FLOOR,
-    PATCH_TOKEN_FLOOR,
     PROVIDER,
-    REGION_SCORE_FLOOR,
     WEIGHT_NAME,
     RegionPackError,
     active_pack,
@@ -43,6 +38,7 @@ from semblon.region_encoder import (
     pack_id_patches,
     probe_region_pack,
 )
+from semblon.similarity_profile import SimilarityProfile, resolve_search_quality
 from semblon.user_region import RegionError, persist_user_region
 
 
@@ -340,7 +336,7 @@ def _text_query_token(text: str) -> str:
     return ""
 
 
-def _as_text_result(rec: dict, *, token: str) -> dict:
+def _as_text_result(rec: dict, *, token: str, quality: SimilarityProfile) -> dict:
     items = []
     for item in rec.get("items") or []:
         media_id = str(item.get("media_id") or "")
@@ -370,13 +366,25 @@ def _as_text_result(rec: dict, *, token: str) -> dict:
         "similarity_basis": LABEL_TEXT,
         "engine": "ocr",
         "note": "Text in the selection is not a person and not a colour match.",
+        "search_profile": quality.key,
+        "search_profile_label": quality.label,
     }
     if out["status"] == "SUCCESS" and not items:
         out["status"] = "NO_RESULT"
     return out
 
 
-def _colour_result(store: Path, crop, *, limit: int, exclude_media_id: str | None, cancelled, reason: str) -> dict:
+def _colour_result(
+    store: Path,
+    crop,
+    *,
+    limit: int,
+    exclude_media_id: str | None,
+    cancelled,
+    reason: str,
+    min_score: float,
+    quality: SimilarityProfile,
+) -> dict:
     blob = appearance_vector(crop)
     rec = search_vector(
         store,
@@ -386,7 +394,7 @@ def _colour_result(store: Path, crop, *, limit: int, exclude_media_id: str | Non
         dim=APPEARANCE_DIM,
         limit=limit,
         exclude_media_id=exclude_media_id,
-        min_score=COLOUR_SCORE_FLOOR,
+        min_score=min_score,
         cancelled=cancelled,
     )
     rec["wrote_embedding"] = False
@@ -395,7 +403,21 @@ def _colour_result(store: Path, crop, *, limit: int, exclude_media_id: str | Non
     rec["fallback"] = "colour"
     rec["reason"] = reason
     rec["note"] = "Colour only. This is not a region embedding and not a named person."
+    rec["search_profile"] = quality.key
+    rec["search_profile_label"] = quality.label
     return rec
+
+
+def _unit_confidence(value) -> float | None:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    if score < 0:
+        return None
+    if score > 1:
+        return 1.0
+    return score
 
 
 def describe_selection(
@@ -407,29 +429,46 @@ def describe_selection(
     h: int,
     crop: np.ndarray | None = None,
 ) -> str:
-    """What this selection is, in plain language. Never a person name.
+    """What this selection is, in plain language. Never a person name."""
+    return str(describe_selection_detail(store, media_id, x, y, w, h, crop=crop)["understanding"])
+
+
+def describe_selection_detail(
+    store: Path,
+    media_id: str,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    crop: np.ndarray | None = None,
+) -> dict:
+    """Selection label plus the model's own score, when it has one.
 
     Order: a face box that contains the centre, then a detector class
     (contour boxes are geometry, not a class), then overlapping OCR text,
     then one local noun that beats "no specific name". Otherwise unlabelled.
     The noun does not choose which archive photos match.
     """
+
+    def pack(text: str, confidence=None) -> dict:
+        return {"understanding": text, "confidence": _unit_confidence(confidence)}
+
     path = Path(store)
     if not path.is_file() or not media_id:
-        return "Unlabelled region."
+        return pack("Unlabelled region.")
     cx = float(x) + float(w) / 2.0
     cy = float(y) + float(h) / 2.0
     conn = _open_ro(path)
     try:
         faces = conn.execute(
-            """SELECT f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2
+            """SELECT f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2, f.det_score
                FROM faces f
                JOIN observations o ON o.observation_id = f.observation_id
                WHERE o.media_id=?""",
             (media_id,),
         ).fetchall()
         objects = conn.execute(
-            """SELECT i.payload_json, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2, i.provider
+            """SELECT i.payload_json, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2, i.provider, i.score
                FROM observation_items i
                JOIN observations o ON o.observation_id = i.observation_id
                WHERE o.media_id=? AND i.kind='object'""",
@@ -439,7 +478,7 @@ def describe_selection(
         conn.close()
     for row in faces:
         if _point_in_box(cx, cy, row["bbox_x1"], row["bbox_y1"], row["bbox_x2"], row["bbox_y2"]):
-            return "Face in the selection. Not a named person."
+            return pack("Face in the selection. Not a named person.", row["det_score"])
     for row in objects:
         if row["bbox_x1"] is None:
             continue
@@ -456,21 +495,21 @@ def describe_selection(
         label = str(payload.get("label") or payload.get("class") or "").strip()
         if not label or label.lower() in {"region", "user_region"}:
             continue
-        return f"Object: {label}."
+        return pack(f"Object: {label}.", row["score"])
     text = overlapping_text(store, media_id, x, y, w, h)
     token = _text_query_token(text)
     if token:
-        return f"Text: {token}."
+        return pack(f"Text: {token}.")
     if crop is not None:
-        from semblon.visual.naming_local import name_crop_bgr
+        from semblon.visual.naming_local import name_crop_detail
 
         try:
-            named = name_crop_bgr(crop)
+            named, score = name_crop_detail(crop)
         except Exception:  # noqa: BLE001 — naming must not replace a visual search
-            named = None
+            named, score = None, None
         if named:
-            return named
-    return "Unlabelled region."
+            return pack(named, score)
+    return pack("Unlabelled region.")
 
 
 def _point_in_box(px: float, py: float, x1, y1, x2, y2) -> bool:
@@ -507,6 +546,10 @@ def search_patches(
     exclude_media_id: str | None = None,
     cancelled=None,
     keep_weak: bool = False,
+    token_stride: int = 1,
+    token_floor: float = 0.35,
+    score_floor: float = 0.28,
+    coverage_floor: float = 0.28,
 ) -> dict:
     """Late interaction of the query crop against stored content patches.
 
@@ -539,6 +582,9 @@ def search_patches(
         empty["error_id"] = "region.ENCODE"
         return empty
     query = np.stack([np.frombuffer(record["blob"], dtype=np.float32).copy() for record in records])
+    stride = max(1, int(token_stride))
+    if stride > 1 and query.shape[0] > stride:
+        query = query[::stride]
     if query.size == 0:
         empty["reason"] = "The selection produced no patches."
         return empty
@@ -590,15 +636,15 @@ def search_patches(
         sims = query @ matrix.T
         maxes = sims.max(axis=1)
         score = float(maxes.mean())
-        coverage = float((maxes >= PATCH_TOKEN_FLOOR).mean())
-        above = score >= PATCH_SCORE_FLOOR and coverage >= PATCH_COVERAGE_FLOOR
+        coverage = float((maxes >= float(token_floor)).mean())
+        above = score >= float(score_floor) and coverage >= float(coverage_floor)
         if not above and not keep_weak:
             continue
         winners: list[tuple[float, tuple[float, float, float, float]]] = []
         chosen = sims.argmax(axis=1)
         for index, column in enumerate(chosen):
             weight = float(sims[index, column])
-            if weight >= PATCH_TOKEN_FLOOR:
+            if weight >= float(token_floor):
                 winners.append((weight, bucket["boxes"][int(column)]))
         if not winners:
             if not keep_weak:
@@ -696,7 +742,10 @@ def _find_similar_from_crop(
     understanding: str,
     stored_text: str,
     query_pixels: dict[str, int] | None,
+    search_quality: str = "balanced",
 ) -> dict:
+    quality = resolve_search_quality(search_quality)
+    capped_limit = max(1, min(int(limit or 1), quality.max_results))
     text_only = selection_kind == "text"
     text_priority = selection_kind in {"text", "text_priority"}
     token = _text_query_token(stored_text)
@@ -705,7 +754,7 @@ def _find_similar_from_crop(
     if token and text_priority:
         from semblon.search import search_text
 
-        text_rec = search_text(store, token, limit=limit)
+        text_rec = search_text(store, token, limit=capped_limit)
         items = [
             item
             for item in (text_rec.get("items") or [])
@@ -713,7 +762,7 @@ def _find_similar_from_crop(
         ]
         text_rec = {**text_rec, "items": items, "count": len(items)}
         if items:
-            rec = _as_text_result(text_rec, token=token)
+            rec = _as_text_result(text_rec, token=token, quality=quality)
             if query_pixels is not None:
                 rec["query_pixels"] = query_pixels
             return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
@@ -721,7 +770,7 @@ def _find_similar_from_crop(
             if not text_only:
                 understanding = f"Text: {token}. No text match; showing visual similarity."
             else:
-                rec = _as_text_result(text_rec, token=token)
+                rec = _as_text_result(text_rec, token=token, quality=quality)
                 rec["status"] = "NO_RESULT"
                 if query_pixels is not None:
                     rec["query_pixels"] = query_pixels
@@ -729,7 +778,7 @@ def _find_similar_from_crop(
         if stored_text and text_rec.get("status") == "ERROR" and not text_only:
             understanding = f"Text: {token}. Text lookup failed; showing visual similarity."
         elif stored_text and text_rec.get("status") == "ERROR":
-            rec = _as_text_result(text_rec, token=token)
+            rec = _as_text_result(text_rec, token=token, quality=quality)
             rec["status"] = "ERROR"
             if query_pixels is not None:
                 rec["query_pixels"] = query_pixels
@@ -740,10 +789,16 @@ def _find_similar_from_crop(
         dense = search_patches(
             store,
             crop,
-            limit=limit,
+            limit=capped_limit,
             exclude_media_id=media_id,
             cancelled=cancelled,
+            token_stride=quality.patch_token_stride,
+            token_floor=quality.patch_token_floor,
+            score_floor=quality.patch_score_floor,
+            coverage_floor=quality.patch_coverage_floor,
         )
+        dense["search_profile"] = quality.key
+        dense["search_profile_label"] = quality.label
         if query_pixels is not None:
             dense["query_pixels"] = query_pixels
         if dense.get("status") in {"SUCCESS", "NO_RESULT"}:
@@ -752,10 +807,12 @@ def _find_similar_from_crop(
             colour = _colour_result(
                 store,
                 crop,
-                limit=limit,
+                limit=capped_limit,
                 exclude_media_id=media_id,
                 cancelled=cancelled,
                 reason=str(dense.get("reason") or "The region encoder did not finish. Showing colour only."),
+                min_score=quality.whole_colour_floor,
+                quality=quality,
             )
             if query_pixels is not None:
                 colour["query_pixels"] = query_pixels
@@ -773,13 +830,15 @@ def _find_similar_from_crop(
             colour = _colour_result(
                 store,
                 crop,
-                limit=limit,
+                limit=capped_limit,
                 exclude_media_id=media_id,
                 cancelled=cancelled,
                 reason=(
                     encode_error
                     or "The region encoder did not finish. Showing colour only."
                 ),
+                min_score=quality.whole_colour_floor,
+                quality=quality,
             )
             if query_pixels is not None:
                 colour["query_pixels"] = query_pixels
@@ -791,9 +850,9 @@ def _find_similar_from_crop(
                 modality=MODALITY_REGION,
                 pack_id=pack_id,
                 dim=dim,
-                limit=limit,
+                limit=capped_limit,
                 exclude_media_id=media_id,
-                min_score=REGION_SCORE_FLOOR,
+                min_score=quality.region_score_floor,
                 cancelled=cancelled,
             )
             if rec.get("status") != "UNAVAILABLE":
@@ -809,17 +868,21 @@ def _find_similar_from_crop(
                     "Visually similar region. Not a claim that it is the same physical object."
                 )
                 rec["note"] = "Region embedding match. Not a name and not colour."
+                rec["search_profile"] = quality.key
+                rec["search_profile_label"] = quality.label
                 return _attach_understanding(rec, understanding, selection_kind=selection_kind)
             colour = _colour_result(
                 store,
                 crop,
-                limit=limit,
+                limit=capped_limit,
                 exclude_media_id=media_id,
                 cancelled=cancelled,
                 reason=(
                     "The region encoder is installed, but these photos have no matching "
                     "region index yet. Showing colour only. Add the folder again to index regions."
                 ),
+                min_score=quality.whole_colour_floor,
+                quality=quality,
             )
             if query_pixels is not None:
                 colour["query_pixels"] = query_pixels
@@ -827,15 +890,79 @@ def _find_similar_from_crop(
     colour = _colour_result(
         store,
         crop,
-        limit=limit,
+        limit=capped_limit,
         exclude_media_id=media_id,
         cancelled=cancelled,
         reason=missing
         or "Region encoder is not installed. Showing colour only.",
+        min_score=quality.whole_colour_floor,
+        quality=quality,
     )
     if query_pixels is not None:
         colour["query_pixels"] = query_pixels
     return _attach_understanding(colour, understanding, selection_kind=selection_kind)
+
+
+def name_selection(
+    store: Path,
+    *,
+    media_id: str,
+    image_path: Path | None,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+) -> dict:
+    """Name the highlighted crop. Does not search, persist, or write a person."""
+    path = Path(image_path) if image_path is not None else None
+    if path is None or not path.is_file():
+        conn = sqlite3.connect(str(store))
+        row = conn.execute("SELECT path FROM media WHERE media_id=?", (media_id,)).fetchone()
+        conn.close()
+        path = Path(row[0]) if row and row[0] else None
+    blank = {
+        "kind": "region_name",
+        "persons": 0,
+        "entity": False,
+        "wrote_embedding": False,
+    }
+    if path is None or not path.is_file():
+        return {
+            **blank,
+            "status": "UNAVAILABLE",
+            "understanding": "This area could not be named.",
+        }
+    try:
+        crop = crop_bgr(path, x, y, w, h)
+    except RegionError:
+        return {
+            **blank,
+            "status": "UNAVAILABLE",
+            "understanding": "This area could not be named.",
+        }
+    detail = describe_selection_detail(store, media_id or "", x, y, w, h, crop=crop)
+    return {
+        **blank,
+        "status": "SUCCESS",
+        "understanding": str(detail.get("understanding") or "Unlabelled region."),
+        "confidence": detail.get("confidence"),
+    }
+
+
+def _with_phase(similar: dict, phase: str) -> dict:
+    stamped = dict(similar)
+    stamped["search_phase"] = phase
+    return stamped
+
+
+def _bundle(saved: dict, similar: dict) -> dict:
+    return {
+        "region": saved,
+        "similar": similar,
+        "persons": 0,
+        "entity": False,
+        "wrote_embedding": False,
+    }
 
 
 def _describe_crop(crop) -> str:
@@ -859,14 +986,16 @@ def find_similar_region(
     limit: int = 10,
     media_id: str | None = None,
     selection_kind: str | None = None,
+    search_quality: str = "balanced",
     cancelled=None,
 ) -> dict:
     crop = crop_bgr(Path(image_path), x, y, w, h)
     pixels = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
-    understanding = describe_selection(store, media_id or "", x, y, w, h, crop=crop)
+    # Stored face, object, and text can label the box. The local noun stays on
+    # Name this area so this search is not waiting on that model.
+    understanding = describe_selection(store, media_id or "", x, y, w, h)
     stored_text = overlapping_text(store, media_id or "", x, y, w, h) if media_id else ""
     if not stored_text and selection_kind in {"text", "text_priority"}:
-        # Pointing at text with no stored box still reads the crop. Other selections stay visual.
         stored_text = _ocr_crop_text(crop)
     return _find_similar_from_crop(
         store,
@@ -878,6 +1007,7 @@ def find_similar_region(
         understanding=understanding,
         stored_text=stored_text,
         query_pixels=pixels,
+        search_quality=search_quality,
     )
 
 
@@ -888,6 +1018,7 @@ def find_similar_crop(
     limit: int = 10,
     selection_kind: str | None = None,
     observed_text: str | None = None,
+    search_quality: str = "balanced",
     cancelled=None,
 ) -> dict:
     """Search the local archive from an arbitrary query crop (for example screen selection)."""
@@ -905,6 +1036,7 @@ def find_similar_crop(
         understanding=understanding,
         stored_text=text,
         query_pixels=None,
+        search_quality=search_quality,
     )
 
 
@@ -920,9 +1052,14 @@ def remember_and_find(
     run_id: str | None = None,
     limit: int = 10,
     selection_kind: str | None = None,
+    search_quality: str = "balanced",
     cancelled=None,
+    on_first=None,
 ) -> dict:
-    """Persist the box, then search. Does not persist a vector or a sibling item."""
+    """Persist the box once, then search. A fuller quality can preview Fast first.
+
+    Does not persist a vector or a second user box. Does not write identity.
+    """
     saved = persist_user_region(
         store,
         media_id=media_id,
@@ -948,23 +1085,39 @@ def remember_and_find(
         "items": [],
         "wrote_embedding": False,
     }
-    if path is not None and path.is_file():
-        similar = find_similar_region(
-            store,
-            image_path=path,
-            x=x,
-            y=y,
-            w=w,
-            h=h,
-            limit=limit,
-            media_id=media_id,
-            selection_kind=selection_kind,
-            cancelled=cancelled,
-        )
-    return {
-        "region": saved,
-        "similar": similar,
-        "persons": 0,
-        "entity": False,
-        "wrote_embedding": False,
+    if path is None or not path.is_file():
+        return _bundle(saved, similar)
+
+    quality = resolve_search_quality(search_quality)
+    find_kwargs = {
+        "image_path": path,
+        "x": x,
+        "y": y,
+        "w": w,
+        "h": h,
+        "limit": limit,
+        "media_id": media_id,
+        "selection_kind": selection_kind,
+        "cancelled": cancelled,
     }
+    if quality.key == "fast" or on_first is None:
+        similar = find_similar_region(store, search_quality=quality.key, **find_kwargs)
+        if quality.key == "fast":
+            similar = _with_phase(similar, "fast")
+        return _bundle(saved, similar)
+
+    fast = _with_phase(
+        find_similar_region(store, search_quality="fast", **find_kwargs),
+        "first",
+    )
+    if on_first is not None and not (cancelled is not None and cancelled()):
+        on_first(_bundle(saved, fast))
+    if cancelled is not None and cancelled():
+        return _bundle(saved, _with_phase(fast, "kept"))
+
+    full = find_similar_region(store, search_quality=quality.key, **find_kwargs)
+    fast_items = list(fast.get("items") or [])
+    full_items = list(full.get("items") or [])
+    if fast_items and not full_items:
+        return _bundle(saved, _with_phase(fast, "kept"))
+    return _bundle(saved, _with_phase(full, "refined"))

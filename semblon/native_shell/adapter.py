@@ -230,10 +230,12 @@ class ArchiveAdapter:
             {**meta, "count": len(media_ids) or len(items), "items": items[:20]},
         )
 
-    def similar_media(self, media_id: str) -> Result:
+    def similar_media(self, media_id: str, *, search_quality: str | None = None) -> Result:
         from semblon.search import search_similar_media
+        from semblon.ui_prefs import load_search_quality
 
-        rec = search_similar_media(self.store, media_id)
+        quality = search_quality or load_search_quality(self.store)
+        rec = search_similar_media(self.store, media_id, search_quality=quality)
         return self._similar_result(rec, basis="whole")
 
     def similar_faces(self, face_id: str) -> Result:
@@ -296,7 +298,19 @@ class ArchiveAdapter:
                 empty_msg = f"Similar ({basis_label}): nothing close enough."
                 noun = "match" if len(items) == 1 else "matches"
                 ready_msg = f"Similar ({basis_label}): {len(items)} {noun}."
-        meta = {"basis": basis, "basis_label": basis_label, "engine": engine, "items": []}
+        from semblon.similarity_profile import resolve_search_quality
+
+        profile = resolve_search_quality(str(rec.get("search_profile") or "balanced"))
+        meta = {
+            "basis": basis,
+            "basis_label": basis_label,
+            "engine": engine,
+            "items": [],
+            "search_profile": str(rec.get("search_profile") or profile.key),
+            "search_profile_label": str(rec.get("search_profile_label") or profile.label),
+        }
+        if rec.get("search_phase"):
+            meta["search_phase"] = str(rec.get("search_phase"))
         channels = rec.get("channels")
         if isinstance(channels, list):
             meta["channels"] = channels
@@ -321,7 +335,7 @@ class ArchiveAdapter:
         return Result(
             "ready",
             ready_msg,
-            {**meta, "items": items[:8]},
+            {**meta, "items": items[: profile.max_results]},
         )
 
     def review_counts(self) -> Result:
@@ -542,6 +556,25 @@ class ArchiveAdapter:
             "region": "Search looks at a region you draw.",
         }
         return Result("ready", labels.get(key, labels["people"]), {"mode": key})
+
+    def set_search_quality(self, value: str) -> Result:
+        from semblon.similarity_profile import SEARCH_QUALITIES, search_quality_label
+        from semblon.ui_prefs import save_search_quality
+
+        key = str(value or "").strip().lower()
+        if key not in SEARCH_QUALITIES:
+            raise AdapterError("search.QUALITY", f"Unknown search quality {value}.")
+        saved = save_search_quality(key, self.store)
+        label = search_quality_label(saved)
+        return Result("ready", f"Search quality is {label}.", {"quality": saved, "label": label})
+
+    def search_quality(self) -> Result:
+        from semblon.similarity_profile import search_quality_label
+        from semblon.ui_prefs import load_search_quality
+
+        key = load_search_quality(self.store)
+        label = search_quality_label(key)
+        return Result("ready", f"Search quality is {label}.", {"quality": key, "label": label})
 
     def set_library_filter(self, filter_key: str) -> Result:
         key = str(filter_key or "").strip().lower()

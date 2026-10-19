@@ -127,25 +127,31 @@ def prepare_naming() -> PreparedNaming:
     return PreparedNaming(siglip_capability())
 
 
-def name_crop_bgr(bgr) -> str | None:
-    """One grounded noun for this crop, or None when the model abstains or is absent.
-
-    The noun has to beat "no specific name". A missing weight file stays silent.
-    This does not write a person and does not decide which archive photos match.
-    """
+def name_crop_detail(bgr) -> tuple[str | None, float | None]:
+    """Noun plus the score that beat abstain. None when the model is absent or abstains."""
     cap = siglip_capability()
     if cap.get("state") != "READY":
-        return None
+        return None, None
     weights = str(cap.get("weights") or "")
     try:
         bundle = _load_bundle(weights, cap.get("runtime"))
         noun, score = _best_noun(bgr, bundle)
     except Exception as exc:  # noqa: BLE001 — a naming failure stays unlabelled
         mark_naming_failed(weights, f"{type(exc).__name__}: {exc}")
-        return None
+        return None, None
     if not noun or score <= 0:
-        return None
-    return f"Looks like a {noun}."
+        return None, None
+    return f"Looks like a {noun}.", float(score)
+
+
+def name_crop_bgr(bgr) -> str | None:
+    """One grounded noun for this crop, or None when the model abstains or is absent.
+
+    The noun has to beat "no specific name". A missing weight file stays silent.
+    This does not write a person and does not decide which archive photos match.
+    """
+    text, _score = name_crop_detail(bgr)
+    return text
 
 
 def _best_noun(bgr, bundle) -> tuple[str | None, float]:

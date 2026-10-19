@@ -313,6 +313,28 @@ class Application:
 
         return name_user_region(self.store, item_id, name)
 
+    def name_selection(
+        self,
+        media_id: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        *,
+        image_path: Path | None = None,
+    ) -> dict:
+        from semblon.region_search import name_selection
+
+        return name_selection(
+            self.store,
+            media_id=media_id,
+            image_path=image_path,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
+        )
+
     def remember_and_find_region(
         self,
         media_id: str,
@@ -325,7 +347,9 @@ class Application:
         run_id: str | None = None,
         limit: int = 10,
         selection_kind: str | None = None,
+        search_quality: str = "balanced",
         cancelled=None,
+        on_first=None,
     ) -> dict:
         from semblon.region_search import remember_and_find
 
@@ -340,6 +364,8 @@ class Application:
             run_id=run_id,
             limit=limit,
             selection_kind=selection_kind,
+            search_quality=search_quality,
             cancelled=cancelled,
+            on_first=on_first,
         )
 
