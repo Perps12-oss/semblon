@@ -887,10 +887,13 @@ def find_similar_crop(
     crop,
     limit: int = 10,
     selection_kind: str | None = None,
+    observed_text: str | None = None,
     cancelled=None,
 ) -> dict:
     """Search the local archive from an arbitrary query crop (for example screen selection)."""
-    text = _ocr_crop_text(crop) if selection_kind in {"text", "text_priority"} else ""
+    text = ""
+    if selection_kind in {"text", "text_priority"}:
+        text = str(observed_text or "").strip() or _ocr_crop_text(crop)
     understanding = _describe_crop(crop)
     return _find_similar_from_crop(
         store,

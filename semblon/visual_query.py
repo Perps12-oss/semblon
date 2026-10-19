@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from semblon.lens import query_image, query_screen_with_image
+from semblon.lens import query_image, query_screen_with_image, report_observations
 from semblon.selection import format_query_lines, lens_result_summary, load_media_bgr
 
 VisualQuerySource = Literal["media", "screen"]
@@ -42,7 +42,24 @@ def _summary(report, *, media_id: str = "") -> dict:
     rec["lines"] = format_query_lines(report)
     rec["region"] = dict(getattr(report, "region", {}) or {})
     rec["media_id"] = str(media_id or "")
+    rec["observations"] = report_observations(report)
     return rec
+
+
+def _observed_text(observations: list[dict] | None) -> str:
+    if not observations:
+        return ""
+    chunks: list[str] = []
+    for item in observations:
+        if str(item.get("kind") or "") != "text":
+            continue
+        payload = item.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        text = str(payload.get("text") or "").strip()
+        if text:
+            chunks.append(text)
+    return " ".join(chunks).strip()
 
 
 def run_visual_query(store: Path, query: VisualQuery, *, cancelled=None) -> VisualQueryResult:
@@ -93,6 +110,7 @@ def run_visual_query(store: Path, query: VisualQuery, *, cancelled=None) -> Visu
         crop=crop,
         limit=max(1, int(query.limit)),
         selection_kind=query.selection_kind,
+        observed_text=_observed_text(summary.get("observations") if isinstance(summary, dict) else None),
         cancelled=cancelled,
     )
     return VisualQueryResult(source="screen", summary=summary, similar=similar)

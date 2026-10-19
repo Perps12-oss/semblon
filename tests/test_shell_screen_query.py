@@ -43,6 +43,13 @@ def test_start_screen_query_populates_similar_strip(tmp_path, monkeypatch):
         return {
             "source": "screen",
             "lines": ["Lens", "Selected area · 30×40", "Text: watch."],
+            "observations": [
+                {
+                    "kind": "text",
+                    "provider": "ocr",
+                    "payload": {"text": "watch", "role": "ocr"},
+                }
+            ],
             "similar": {
                 "status": "SUCCESS",
                 "reason": "Matching region in your archive.",
@@ -67,6 +74,54 @@ def test_start_screen_query_populates_similar_strip(tmp_path, monkeypatch):
         assert bridge.similarId(0) == "m2"
         assert bridge.selectionNote == "Text: watch."
         assert bridge.screenQueryState == "idle"
+    finally:
+        shutdown_shell(engine)
+
+
+def test_start_screen_query_uses_promoted_observations_for_understanding(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    import semblon.native_shell.bridge as shell_bridge
+    import semblon.native_shell.screen_query_overlay as overlay
+    from semblon.application import Application
+    from semblon.native_shell.host import build_shell, shutdown_shell
+
+    monkeypatch.setattr(shell_bridge.sys, "platform", "win32")
+    monkeypatch.setattr(overlay, "select_screen_region", lambda parent=None: (10, 20, 30, 40))
+
+    def fake_screen(self, x, y, w, h, **kwargs):
+        return {
+            "source": "screen",
+            "lines": ["Lens", "Selected area · 30×40"],
+            "observations": [
+                {
+                    "kind": "text",
+                    "provider": "ocr",
+                    "payload": {"text": "watch strap", "role": "ocr"},
+                }
+            ],
+            "similar": {
+                "status": "SUCCESS",
+                "reason": "Matching region in your archive.",
+                "count": 1,
+                "items": [{"media_id": "m2", "score": 0.91, "match_norm": [0.1, 0.2, 0.3, 0.4]}],
+                "similarity_basis": "Similar look",
+                "engine": "dinov2-patch",
+            },
+        }
+
+    monkeypatch.setattr(Application, "query_screen", fake_screen)
+    store = _store(tmp_path)
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    bridge = engine._semblon_bridge
+    try:
+        bridge.startScreenQuery()
+        app.processEvents()
+        assert bridge.similarState == "ready"
+        assert bridge.selectionNote == "Text: watch."
     finally:
         shutdown_shell(engine)
 

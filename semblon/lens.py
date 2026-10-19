@@ -54,6 +54,135 @@ class QueryReport:
         }
 
 
+def _region_bbox(region: dict | None) -> list[float] | None:
+    rec = dict(region or {})
+    w = int(rec.get("w") or 0)
+    h = int(rec.get("h") or 0)
+    if w <= 0 or h <= 0:
+        return None
+    x = int(rec.get("x") or 0)
+    y = int(rec.get("y") or 0)
+    return [float(x), float(y), float(x + w), float(y + h)]
+
+
+def _siglip_dim(report: QueryReport, item: ResultItem) -> int | None:
+    blob = (report.embeddings or {}).get("visual_embedding")
+    if blob:
+        return len(blob) // 4
+    detail = str(item.detail or "")
+    if detail.startswith("dim="):
+        try:
+            dim = int(detail.split("=", 1)[1].strip())
+        except ValueError:
+            return None
+        return dim if dim > 0 else None
+    return None
+
+
+def _report_item_observation(
+    report: QueryReport,
+    row: StructuredResult,
+    item: ResultItem,
+    *,
+    bbox: list[float] | None,
+) -> dict | None:
+    base = {
+        "id": str(item.id or ""),
+        "score": 1.0,
+        "source": str(report.source or ""),
+        "capability": str(row.capability_id or ""),
+    }
+    if row.capability_id == "barcode":
+        return {
+            **base,
+            "kind": "object",
+            "provider": "symbology",
+            "bbox": bbox,
+            "payload": {
+                "class": "barcode",
+                "text": str(item.label or ""),
+                "symbology": str(item.detail or ""),
+                "identity": "not facekit",
+                "contract_status": "SUCCESS",
+            },
+        }
+    if row.capability_id == "grounding":
+        return {
+            **base,
+            "kind": "object",
+            "provider": "grounding",
+            "bbox": bbox,
+            "payload": {
+                "class": "region",
+                "method": str(item.method or ""),
+                "mask": item.mask,
+                "identity": "not facekit",
+                "contract_status": "SUCCESS",
+            },
+        }
+    if row.capability_id in {"ocr", "translation", "vlm"}:
+        return {
+            **base,
+            "kind": "text",
+            "provider": str(row.provider_id or row.capability_id or "text"),
+            "bbox": bbox,
+            "payload": {
+                "text": str(item.label or ""),
+                "role": str(row.capability_id or ""),
+                "identity": "not facekit",
+                "contract_status": "SUCCESS",
+            },
+        }
+    if row.capability_id == "visual_embedding":
+        payload = {
+            "space": "siglip",
+            "identity": "not facekit",
+            "contract_status": "SUCCESS",
+        }
+        dim = _siglip_dim(report, item)
+        if dim:
+            payload["dimension"] = int(dim)
+        return {
+            **base,
+            "kind": "clip",
+            "provider": "siglip",
+            "bbox": bbox,
+            "payload": payload,
+        }
+    if row.capability_id in {"product", "logo", "landmark", "lkg"}:
+        return {
+            **base,
+            "kind": "object",
+            "provider": str(row.provider_id or "lkg"),
+            "bbox": bbox,
+            "payload": {
+                "class": str(row.capability_id or "object"),
+                "label": str(item.label or ""),
+                "identity": "not facekit",
+                "contract_status": "SUCCESS",
+            },
+        }
+    return None
+
+
+def report_observations(report: QueryReport) -> list[dict]:
+    """Normalize successful query results into observation-like rows.
+
+    This keeps screen-derived OCR/object/text in the same kind/provider/payload
+    envelope used by observation_items, without writing anything to the store.
+    """
+    rows: list[dict] = []
+    bbox = _region_bbox(getattr(report, "region", None))
+    for row in tuple(getattr(report, "results", ()) or ()):
+        if row.status != "SUCCESS":
+            continue
+        for item in tuple(row.items or ()):
+            mapped = _report_item_observation(report, row, item, bbox=bbox)
+            if mapped is not None:
+                rows.append(mapped)
+    return rows
+
+
 def model_state_for_path(path: str | Path | None, *, expected_sha256: str | None = None) -> str:
     """AVAILABLE, MISSING, or CORRUPT. Does not download. Does not partial-load."""
     if path is None or str(path).strip() == "":

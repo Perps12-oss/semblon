@@ -2921,10 +2921,13 @@ class ShellBridge(QObject):
                 )
             result = adapter.similar_region({"similar": similar})
             lines = rec.get("lines") or []
-            understanding = _screen_understanding(lines)
+            observations = rec.get("observations") if isinstance(rec.get("observations"), list) else []
+            understanding = _screen_understanding(lines, observations)
             data = dict(result.data or {})
             if understanding:
                 data["understanding"] = understanding
+            if observations:
+                data["observations"] = observations
             return Result(result.state, result.message, data)
 
         self._start_visual_search(basis="region", label=mode_label, build=build)
@@ -3877,7 +3880,31 @@ def _ask_lines(lines, mode: str) -> str:
     return "\n".join(kept) or "Nothing was searched."
 
 
-def _screen_understanding(lines) -> str:
+def _screen_text_token(text: str) -> str:
+    tokens = [part for part in str(text or "").replace("\n", " ").split() if any(ch.isalnum() for ch in part)]
+    tokens.sort(key=len, reverse=True)
+    for token in tokens:
+        cleaned = "".join(ch for ch in token if ch.isalnum())
+        if len(cleaned) >= 4:
+            return cleaned
+    return ""
+
+
+def _screen_understanding(lines, observations=None) -> str:
+    for row in observations or []:
+        if not isinstance(row, dict):
+            continue
+        kind = str(row.get("kind") or "")
+        payload = row.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+        if kind == "text":
+            token = _screen_text_token(payload.get("text") or "")
+            if token:
+                return f"Text: {token}."
+        if kind == "object":
+            label = str(payload.get("label") or payload.get("class") or "").strip()
+            if label and label.lower() not in {"region", "user_region"}:
+                return f"Object: {label}."
     for line in lines:
         text = str(line or "").strip()
         if not text:
