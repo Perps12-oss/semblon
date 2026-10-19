@@ -90,20 +90,38 @@ def reduced_motion() -> bool:
         return False
 
 
+_PHASE_LABELS = {
+    "first": "First look",
+    "refined": "Refined",
+    "fast": "Fast look",
+    "kept": "Kept the first look",
+}
+
+
+def _stamp_phase(result: Result, phase: str) -> Result:
+    data = dict(result.data or {})
+    data["search_phase"] = phase
+    return Result(result.state, result.message, data)
+
+
 class _VisualSearchThread(QThread):
     """Region and similar lookups off the UI thread. The slot applies the result."""
 
     succeeded = Signal(int, object)
     failed = Signal(int, str)
+    progressed = Signal(int, object)
 
     def __init__(self, generation: int, fn, parent=None):
         super().__init__(parent)
         self._generation = generation
         self._fn = fn
 
+    def _emit_progress(self, payload) -> None:
+        self.progressed.emit(self._generation, payload)
+
     def run(self) -> None:
         try:
-            self.succeeded.emit(self._generation, self._fn())
+            self.succeeded.emit(self._generation, self._fn(self._emit_progress))
         except Exception as exc:  # noqa: BLE001 — the UI slot turns this into search failed
             self.failed.emit(self._generation, str(exc) or "search failed")
 
@@ -146,6 +164,7 @@ class ShellBridge(QObject):
         self._similar_note = ""
         self._similar_basis = ""
         self._similar_basis_label = ""
+        self._similar_phase = ""
         self._selection_note = ""
         self._selection_kind = ""
         self._similar_cancel = False
@@ -1045,6 +1064,15 @@ class ShellBridge(QObject):
         return self._similar_basis_label
 
     @Property(str, notify=similarChanged)
+    def similarPhase(self) -> str:
+        """first, refined, fast, or kept. Empty when this search has no phase."""
+        return self._similar_phase
+
+    @Property(str, notify=similarChanged)
+    def similarPhaseLabel(self) -> str:
+        return _PHASE_LABELS.get(self._similar_phase, "")
+
+    @Property(str, notify=similarChanged)
     def selectionNote(self) -> str:
         """How the current box was chosen. Plain language, not a model id."""
         return self._selection_note
@@ -1237,6 +1265,17 @@ class ShellBridge(QObject):
         if not publish:
             return
         label = self._similar_basis_label or "Similar look"
+        if self._similar_phase == "first" and self._similar.rowCount() > 0:
+            self._similar_phase = "kept"
+            self._similar_state = "ready"
+            self._similar_note = present_message(
+                self._mode,
+                f"Similar ({label}): kept the first look.",
+                fallback="Similar search could not run.",
+            )
+            self.similarChanged.emit()
+            self._persist_discovery()
+            return
         self._publish_similar(
             "empty",
             f"Similar ({label}): cancelled.",
@@ -1244,10 +1283,11 @@ class ShellBridge(QObject):
             basis=self._similar_basis or "region",
             basis_label=label,
             persist=False,
+            phase="",
         )
 
     def _start_visual_search(self, *, basis: str, label: str, build) -> None:
-        """Publish looking immediately, then run build(cancel_flag) off the UI thread."""
+        """Publish looking immediately, then run build(cancel_flag, report) off the UI thread."""
         if self._cancel_flag is not None:
             self._cancel_flag[0] = True
         self._search_generation += 1
@@ -1255,6 +1295,7 @@ class ShellBridge(QObject):
         flag = [False]
         self._cancel_flag = flag
         self._similar_cancel = False
+        self._similar_phase = ""
         self._search_failure = ""
         self._search_busy = True
         self.searchBusyChanged.emit()
@@ -1265,9 +1306,11 @@ class ShellBridge(QObject):
             basis=basis,
             basis_label=label,
             persist=False,
+            phase="",
         )
-        thread = _VisualSearchThread(generation, lambda: build(flag), self)
+        thread = _VisualSearchThread(generation, lambda report: build(flag, report), self)
         thread.succeeded.connect(self._on_visual_search)
+        thread.progressed.connect(self._on_visual_progress)
         thread.failed.connect(self._on_visual_search_failed)
         self._search_thread = thread
         thread.start()
@@ -1305,12 +1348,24 @@ class ShellBridge(QObject):
                 break
 
     @Slot(int, object)
+    def _on_visual_progress(self, generation: int, payload) -> None:
+        if generation != self._search_generation or self._similar_cancel or payload is None:
+            return
+        if isinstance(payload, Result):
+            result = payload
+        else:
+            result = self._safe_call(lambda: self._adapter.similar_region(payload))
+        self._publish_similar_result(result, interim=True)
+
+    @Slot(int, object)
     def _on_visual_search(self, generation: int, payload) -> None:
         if generation != self._search_generation:
             return
         self._search_busy = False
         self.searchBusyChanged.emit()
         if payload is None or self._similar_cancel:
+            if self._similar_phase == "first" and self._similar.rowCount() > 0:
+                return
             self._publish_similar(
                 "empty",
                 f"Similar ({self._similar_basis_label or 'Similar look'}): cancelled.",
@@ -1318,6 +1373,7 @@ class ShellBridge(QObject):
                 basis=self._similar_basis or "region",
                 basis_label=self._similar_basis_label or "Similar look",
                 persist=False,
+                phase="",
             )
             return
         if isinstance(payload, Result):
@@ -1341,6 +1397,7 @@ class ShellBridge(QObject):
             basis=self._similar_basis or "region",
             basis_label=label,
             persist=False,
+            phase="",
         )
 
     def _refresh_index_note(self) -> None:
@@ -1410,6 +1467,7 @@ class ShellBridge(QObject):
         self._similar_note = ""
         self._similar_basis = ""
         self._similar_basis_label = ""
+        self._similar_phase = ""
         self.similarChanged.emit()
 
     def _publish_similar(
@@ -1421,12 +1479,14 @@ class ShellBridge(QObject):
         basis: str = "",
         basis_label: str = "",
         persist: bool = True,
+        phase: str = "",
     ) -> None:
         self._similar.set_rows(rows)
         self._similar_state = state
         self._similar_note = present_message(self._mode, note, fallback="Similar search could not run.")
         self._similar_basis = str(basis or "")
         self._similar_basis_label = str(basis_label or "")
+        self._similar_phase = str(phase or "")
         self.similarChanged.emit()
         if persist and state in {"ready", "empty"}:
             self._persist_discovery()
@@ -1621,10 +1681,10 @@ class ShellBridge(QObject):
             basis_label=str(item.get("basis_label") or "Similar look"),
         )
 
-    def _publish_similar_result(self, result) -> None:
+    def _publish_similar_result(self, result, *, interim: bool = False) -> None:
         """Shared Focus strip publish for whole / region / face doors."""
         understanding = str((result.data or {}).get("understanding") or "")
-        if understanding:
+        if understanding and not interim:
             self._selection_note = understanding
         rows = []
         for item in (result.data.get("items") or []):
@@ -1644,7 +1704,16 @@ class ShellBridge(QObject):
         note = result.message if result.message else "Similar search could not run."
         error_id = str((result.data or {}).get("error_id") or "")
         label = str((result.data or {}).get("basis_label") or self._similar_basis_label or "Similar look")
-        if state == "unavailable" and error_id == "region.NO_PACK":
+        phase = str((result.data or {}).get("search_phase") or "")
+        if interim:
+            phase = "first"
+            if rows:
+                state = "ready"
+                note = f"Similar ({label}): first look, still refining."
+            else:
+                state = "loading"
+                note = f"Similar ({label}): first look found nothing yet."
+        elif state == "unavailable" and error_id == "region.NO_PACK":
             note = f"Similar ({label}): the region model is not installed."
         elif state == "unavailable" and error_id == "region.NO_PATCH_INDEX":
             note = f"Similar ({label}): these photos are not indexed for region search yet."
@@ -1659,6 +1728,8 @@ class ShellBridge(QObject):
             rows,
             basis=str(result.data.get("basis") or ""),
             basis_label=str(result.data.get("basis_label") or ""),
+            persist=not interim,
+            phase=phase,
         )
 
     def _clear_query(self) -> None:
@@ -3330,8 +3401,22 @@ class ShellBridge(QObject):
         adapter = self._adapter
         quality = str(adapter.search_quality().data.get("quality") or "balanced")
 
-        def build(_flag):
-            return adapter.similar_media(media_id, search_quality=quality)
+        def build(flag, report):
+            if quality == "fast":
+                return _stamp_phase(adapter.similar_media(media_id, search_quality="fast"), "fast")
+            first = adapter.similar_media(media_id, search_quality="fast")
+            if not flag[0]:
+                report(_stamp_phase(first, "first"))
+            if flag[0]:
+                return None
+            full = adapter.similar_media(media_id, search_quality=quality)
+            if flag[0]:
+                return None
+            first_items = list((first.data or {}).get("items") or [])
+            full_items = list((full.data or {}).get("items") or [])
+            if first_items and not full_items:
+                return _stamp_phase(first, "kept")
+            return _stamp_phase(full, "refined")
 
         self._start_visual_search(basis="whole", label="Colour only", build=build)
 
@@ -3346,7 +3431,7 @@ class ShellBridge(QObject):
             self._push_discovery()
         adapter = self._adapter
 
-        def build(_flag):
+        def build(_flag, _report):
             return adapter.similar_faces(fid)
 
         self._start_visual_search(basis="face", label="Same face", build=build)
@@ -3372,8 +3457,13 @@ class ShellBridge(QObject):
         adapter = self._adapter
         quality = str(adapter.search_quality().data.get("quality") or "balanced")
 
-        def build(flag):
+        def build(flag, report):
             from semblon.user_region import RegionError
+
+            def on_first(rec):
+                if flag[0]:
+                    return
+                report(adapter.similar_region(rec))
 
             try:
                 rec = jobs.remember_and_find_region(
@@ -3385,6 +3475,7 @@ class ShellBridge(QObject):
                     selection_kind=kind,
                     search_quality=quality,
                     cancelled=lambda: bool(flag[0]),
+                    on_first=None if quality == "fast" else on_first,
                 )
             except RegionError as exc:
                 return Result(

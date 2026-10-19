@@ -2979,6 +2979,17 @@ ApplicationWindow {
                 }
 
                 Text {
+                    objectName: "searchPhaseFocus"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.similarPhaseLabel !== ""
+                    text: shellReady ? shellApi.similarPhaseLabel : ""
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                Text {
                     objectName: "selectionNote"
                     width: parent.width
                     visible: shellReady && shellApi.selectionNote !== ""

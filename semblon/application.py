@@ -311,6 +311,7 @@ class Application:
         selection_kind: str | None = None,
         search_quality: str = "balanced",
         cancelled=None,
+        on_first=None,
     ) -> dict:
         from semblon.region_search import remember_and_find
 
@@ -327,5 +328,6 @@ class Application:
             selection_kind=selection_kind,
             search_quality=search_quality,
             cancelled=cancelled,
+            on_first=on_first,
         )
 

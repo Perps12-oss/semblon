@@ -862,6 +862,22 @@ def find_similar_region(
     return _attach_understanding(colour, understanding, selection_kind=selection_kind)
 
 
+def _with_phase(similar: dict, phase: str) -> dict:
+    stamped = dict(similar)
+    stamped["search_phase"] = phase
+    return stamped
+
+
+def _bundle(saved: dict, similar: dict) -> dict:
+    return {
+        "region": saved,
+        "similar": similar,
+        "persons": 0,
+        "entity": False,
+        "wrote_embedding": False,
+    }
+
+
 def remember_and_find(
     store: Path,
     *,
@@ -876,8 +892,12 @@ def remember_and_find(
     selection_kind: str | None = None,
     search_quality: str = "balanced",
     cancelled=None,
+    on_first=None,
 ) -> dict:
-    """Persist the box, then search. Does not persist a vector or a sibling item."""
+    """Persist the box once, then search. A fuller quality can preview Fast first.
+
+    Does not persist a vector or a second user box. Does not write identity.
+    """
     saved = persist_user_region(
         store,
         media_id=media_id,
@@ -903,24 +923,39 @@ def remember_and_find(
         "items": [],
         "wrote_embedding": False,
     }
-    if path is not None and path.is_file():
-        similar = find_similar_region(
-            store,
-            image_path=path,
-            x=x,
-            y=y,
-            w=w,
-            h=h,
-            limit=limit,
-            media_id=media_id,
-            selection_kind=selection_kind,
-            search_quality=search_quality,
-            cancelled=cancelled,
-        )
-    return {
-        "region": saved,
-        "similar": similar,
-        "persons": 0,
-        "entity": False,
-        "wrote_embedding": False,
+    if path is None or not path.is_file():
+        return _bundle(saved, similar)
+
+    quality = resolve_search_quality(search_quality)
+    find_kwargs = {
+        "image_path": path,
+        "x": x,
+        "y": y,
+        "w": w,
+        "h": h,
+        "limit": limit,
+        "media_id": media_id,
+        "selection_kind": selection_kind,
+        "cancelled": cancelled,
     }
+    if quality.key == "fast" or on_first is None:
+        similar = find_similar_region(store, search_quality=quality.key, **find_kwargs)
+        if quality.key == "fast":
+            similar = _with_phase(similar, "fast")
+        return _bundle(saved, similar)
+
+    fast = _with_phase(
+        find_similar_region(store, search_quality="fast", **find_kwargs),
+        "first",
+    )
+    if on_first is not None and not (cancelled is not None and cancelled()):
+        on_first(_bundle(saved, fast))
+    if cancelled is not None and cancelled():
+        return _bundle(saved, _with_phase(fast, "kept"))
+
+    full = find_similar_region(store, search_quality=quality.key, **find_kwargs)
+    fast_items = list(fast.get("items") or [])
+    full_items = list(full.get("items") or [])
+    if fast_items and not full_items:
+        return _bundle(saved, _with_phase(fast, "kept"))
+    return _bundle(saved, _with_phase(full, "refined"))

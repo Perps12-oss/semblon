@@ -306,6 +306,8 @@ class ArchiveAdapter:
             "search_profile": str(rec.get("search_profile") or profile.key),
             "search_profile_label": str(rec.get("search_profile_label") or profile.label),
         }
+        if rec.get("search_phase"):
+            meta["search_phase"] = str(rec.get("search_phase"))
         if rec.get("error_id"):
             meta["error_id"] = str(rec.get("error_id"))
         if rec.get("understanding"):

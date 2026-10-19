@@ -216,6 +216,13 @@ Visible shell grab: `docs/evidence/visual-discovery-shell-windows.png` shows **S
 
 Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 
+## Behaviour landed — progressive similar search (2026-10-19)
+
+1. Balanced and Max publish a Fast first look, then replace it with the fuller pass. Fast stays a single pass. The phase is named in Focus: First look, Refined, Fast look, or Kept the first look.
+2. The highlighted box is stored once. The refine pass does not write a second user region, a face, or an embedding.
+3. Cancel during refine keeps the first look on the strip. A fuller pass that comes back empty keeps those hits too.
+4. Command: `python3 -m pytest tests/test_similarity_quality.py tests/test_discovery_workspace.py tests/test_discovery_slice_d.py tests/test_shell_frontend.py::test_qml_has_no_hardcoded_chrome_colors tests/test_shell_frontend.py::test_every_qml_action_maps_to_a_real_bridge_slot_or_property tests/test_region_search.py tests/test_visual_discovery.py -q` → **37 passed, 1 skipped**.
+
 ## Behaviour landed — search quality profiles (2026-10-19)
 
 1. Settings and Focus expose **Fast**, **Balanced**, and **Max**. The choice is stored in `appearance.json` as `search_quality`. It is not a schema column and it does not change face identity.
