@@ -1142,6 +1142,8 @@ def remember_and_find(
             )
         if quality.key == "fast":
             similar = _with_phase(similar, "fast")
+        elif crop is not None:
+            similar = _check_matches(store, similar, crop=crop, cancelled=cancelled)
         similar.setdefault("parts", parts)
         similar.setdefault("query_spec", spec.as_public())
         similar.setdefault("strip_label", similar.get("similarity_basis"))
@@ -1173,7 +1175,39 @@ def remember_and_find(
     full_items = list(full.get("items") or [])
     if fast_items and not full_items:
         return _bundle(saved, _with_phase(fast, "kept"))
-    return _bundle(saved, _with_phase(full, "refined"))
+    if on_first is not None and full_items and not (cancelled is not None and cancelled()):
+        on_first(_bundle(saved, _with_phase(full, "refined")))
+    if cancelled is not None and cancelled():
+        return _bundle(saved, _with_phase(full, "refined"))
+    checked = _check_matches(store, full, crop=crop, cancelled=cancelled)
+    return _bundle(saved, checked)
+
+
+def _check_matches(store: Path, similar: dict, *, crop, cancelled) -> dict:
+    """Reorder the fused list after the first grid. Never blocks Fast."""
+    from semblon.match_judge import judge_matches
+
+    items = list(similar.get("items") or [])
+    if crop is None or not items:
+        return _with_phase(similar, similar.get("search_phase") or "refined")
+    judged = judge_matches(
+        store,
+        crop=crop,
+        items=items,
+        cancelled=cancelled,
+    )
+    out = dict(similar)
+    if judged.get("items"):
+        out["items"] = judged["items"]
+        out["count"] = len(judged["items"])
+    out["judge"] = judged.get("judge") or "skipped"
+    if judged.get("status") == "CANCELLED":
+        return _with_phase(out, out.get("search_phase") or "refined")
+    if judged.get("judge") == "ready":
+        return _with_phase(out, "checked")
+    if out.get("search_phase"):
+        return out
+    return out
 
 
 def _fuse_region(

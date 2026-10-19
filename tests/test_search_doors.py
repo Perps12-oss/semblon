@@ -26,6 +26,9 @@ def test_focus_shortcuts_name_each_door():
     assert 'objectName: "duplicatesDoor"' in qml
     assert 'objectName: "wholePhoto"' in qml
     assert 'objectName: "searchPhaseBadge"' in qml
+    from semblon.native_shell.bridge import _PHASE_LABELS
+
+    assert _PHASE_LABELS["checked"] == "Checked the matches"
     assert 'objectName: "nameConfidence"' in qml
     assert 'objectName: "searchTiming"' in qml
     assert 'sequence: "S"' in qml

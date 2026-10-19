@@ -1,7 +1,7 @@
 # Decision — local Lens-style retrieval is a ranking system, not a model swap
 
 **Date:** 2026-10-19  
-**Status:** current — interactive path **IMPLEMENTED** (query spec, BM25, RRF, feature rerank, part/word chrome). Optional VLM judge and ANN remain off the path.  
+**Status:** current — interactive path **IMPLEMENTED** (query spec, BM25, RRF, feature rerank, part/word chrome, after-grid match check). Heavy VLM/ColQwen and ANN remain off the path.  
 **Branch:** `cursor/lens-retrieval-strategy-1388` (cut from `origin/main` `86fdcbf`)  
 **Related:** `docs/PRODUCT.md`, `docs/BUILD-STATUS.md`, `docs/ROADMAP.md`, `docs/SEM-ARCH-V1.4.md`, `docs/decisions/2026-10-18-local-visual-discovery.md`, `docs/REGION-PACK.md`, `docs/OBJECT-PACK.md`
 
@@ -297,7 +297,7 @@ These are implementation slices on this decision. They are not a FACE-n, OBS, SI
 | 5 | RRF fuse at `media_id` | `selection_retrieval` and the Focus region door | **IMPLEMENTED.** Independent ranked lists; per-hit bases kept; text-only still skips visual. |
 | 6 | Feature rerank top-20 | same merge path | **IMPLEMENTED** as a weighted sum. Learned GBDT still later. |
 | 7 | Refinement UI | Focus | **IMPLEMENTED.** Part picker, text modifier, Same look / Same kind. No model names. |
-| 8 | Async VLM judge (optional) | refine pass / Max | **NOT STARTED.** Stays off the blocking first grid. |
+| 8 | Async match check | refine pass after the first grid | **IMPLEMENTED** as a colour + local pixel-describer reorder. VLM/ColQwen stay off the blocking path. Phase: Checked the matches. |
 | 9 | ANN provider | `index_provider.active_vector_index` | **NOT STARTED.** Only after a measured exact-scan bottleneck. |
 
 Slice 1 is the next code path (use the legs already on disk). Slice 2 is the highest-leverage *new* capability. Start the eval harness as soon as slice 2 has a list to score. Do not start slice 9 first. Do not implement a parallel search stack.

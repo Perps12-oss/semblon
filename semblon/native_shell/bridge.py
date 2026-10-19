@@ -132,6 +132,7 @@ _PHASE_LABELS = {
     "refined": "Refined",
     "fast": "Fast look",
     "kept": "Kept the first look",
+    "checked": "Checked the matches",
 }
 
 _DOOR_LABELS = {
@@ -2061,14 +2062,28 @@ class ShellBridge(QObject):
             self.selectionChanged.emit()
         install_action, install_label = install_choice(state, error_id, result.data or {})
         if interim:
-            phase = "first"
             install_action, install_label = "", ""
-            if rows:
-                state = "ready"
-                note = f"Similar ({label}): first look, still refining."
+            if phase == "refined":
+                if rows:
+                    state = "ready"
+                    note = f"Similar ({label}): still checking the top matches."
+                else:
+                    state = "loading"
+                    note = f"Similar ({label}): first look found nothing yet."
             else:
-                state = "loading"
-                note = f"Similar ({label}): first look found nothing yet."
+                phase = "first"
+                if rows:
+                    state = "ready"
+                    note = f"Similar ({label}): first look, still refining."
+                else:
+                    state = "loading"
+                    note = f"Similar ({label}): first look found nothing yet."
+        elif phase == "checked" and state in {"ready", "empty"}:
+            note = (
+                f"Similar ({label}): checked the matches."
+                if rows
+                else f"Similar ({label}): nothing close enough."
+            )
         elif install_action == "region_pack":
             note = f"Similar ({label}): the region model is not installed."
         elif install_action == "object_pack" and state == "unavailable":

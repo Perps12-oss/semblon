@@ -399,3 +399,39 @@ class Application:
         parts = propose_parts(self.store, media_id=media_id, x=x, y=y, w=w, h=h, crop=crop)
         return {"parts": parts or empty_parts(), "count": max(0, len(parts) - 1)}
 
+    def judge_region_matches(
+        self,
+        media_id: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        items: list[dict],
+        *,
+        image_path: Path | None = None,
+        cancelled=None,
+    ) -> dict:
+        """Reorder already-found matches. Does not search again. Not a person."""
+        from semblon.match_judge import judge_matches
+        from semblon.region_search import crop_bgr
+
+        crop = None
+        path = Path(image_path) if image_path is not None else None
+        if path is None or not path.is_file():
+            item = self.media(media_id)
+            path = Path(item.path) if item is not None and item.path else None
+        if path is not None and path.is_file():
+            try:
+                crop = crop_bgr(path, x, y, w, h)
+            except Exception:
+                crop = None
+        rec = judge_matches(
+            self.store,
+            crop=crop,
+            items=items,
+            cancelled=cancelled,
+        )
+        rec["persons"] = 0
+        rec["wrote_embedding"] = False
+        return rec
+

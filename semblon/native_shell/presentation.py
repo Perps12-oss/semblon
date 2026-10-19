@@ -68,6 +68,7 @@ _SAFE_PRIMARY_EXACT = {
     "This area could not be named.",
     "Unlabelled region.",
     "Face in the selection. Not a named person.",
+    "Checked the matches.",
 }
 
 _SAFE_PRIMARY_PATTERNS = (

@@ -265,7 +265,9 @@ Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 
 Focus **Similar region** now accepts a query spec (`look` / `kind`, a word, a part) and, after the Fast first look, fuses DINOv2 / colour with OCR+BM25, NanoDet class, and optional SigLIP same-kind recall via Reciprocal Rank Fusion plus a cheap feature rerank. Fast stays a single visual pass. Missing packs skip that door; they do not fail the search. Chrome uses **Same look**, **Same kind**, **Add a word**, and part chips. No model names. No identity writes. No new columns. No Chroma/FAISS.
 
-Command: `python3 -m pytest tests/test_lens_retrieval.py tests/test_selection_retrieval.py tests/test_discovery_slice_d.py tests/test_search_doors.py tests/test_similarity_quality.py tests/test_region_search.py tests/test_local_lens.py tests/test_discovery_slice_e.py tests/test_visual_discovery.py tests/test_discovery_workspace.py tests/test_shell_frontend.py::test_every_qml_action_maps_to_a_real_bridge_slot_or_property -q` → **67 passed, 2 skipped**.
+After the fused list is on screen, a cheap match check can reorder the top hits (colour + local pixel description). The strip says **Checked the matches**. Fast skips this. A missing VLM does not block the grid. No identity writes.
+
+Command: `python3 -m pytest tests/test_lens_retrieval.py tests/test_selection_retrieval.py tests/test_discovery_slice_d.py tests/test_search_doors.py tests/test_similarity_quality.py tests/test_region_search.py tests/test_local_lens.py tests/test_discovery_slice_e.py tests/test_visual_discovery.py tests/test_discovery_workspace.py tests/test_shell_frontend.py::test_every_qml_action_maps_to_a_real_bridge_slot_or_property -q` → **69 passed, 2 skipped**.
 
 Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Roadmap milestone 7.
 

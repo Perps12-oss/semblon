@@ -207,3 +207,53 @@ def test_remember_and_find_stays_non_identity(tmp_path, monkeypatch):
     assert rec["similar"]["parts"][0]["label"] == "Whole area"
     before = connect(store).execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
     assert before == 0
+
+
+def test_judge_reorders_without_writing(tmp_path):
+    import cv2
+
+    from semblon.match_judge import judge_matches
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    _run(conn)
+    red = tmp_path / "red.png"
+    blue = tmp_path / "blue.png"
+    cv2.imwrite(str(red), np.full((24, 24, 3), (20, 20, 200), dtype=np.uint8))
+    cv2.imwrite(str(blue), np.full((24, 24, 3), (200, 20, 20), dtype=np.uint8))
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("red", "folder", str(red), "red", 24, 24, 0, 1),
+    )
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("blue", "folder", str(blue), "blue", 24, 24, 0, 1),
+    )
+    conn.commit()
+    conn.close()
+    query = np.full((16, 16, 3), (20, 20, 200), dtype=np.uint8)
+    rec = judge_matches(
+        store,
+        crop=query,
+        items=[
+            {"media_id": "blue", "score": 0.9, "match_norm": [0, 0, 1, 1]},
+            {"media_id": "red", "score": 0.4, "match_norm": [0, 0, 1, 1]},
+        ],
+    )
+    assert rec["judge"] == "ready"
+    assert rec["items"][0]["media_id"] == "red"
+    assert connect(store).execute("SELECT COUNT(*) FROM embeddings").fetchone()[0] == 0
+    assert connect(store).execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+
+
+def test_judge_skips_when_there_is_nothing_to_compare(tmp_path):
+    from semblon.match_judge import judge_matches
+
+    rec = judge_matches(
+        tmp_path / "missing.sqlite",
+        crop=None,
+        items=[{"media_id": "m1", "score": 0.5}],
+    )
+    assert rec["status"] == "SKIPPED"
+    assert rec["items"][0]["media_id"] == "m1"
