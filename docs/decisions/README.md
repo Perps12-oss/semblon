@@ -4,6 +4,7 @@ Material product and architecture decisions, plus superseded statements. The cur
 
 | Date | Record | Status |
 |---|---|---|
+| 2026-10-19 | [Multi-leg region recall](2026-10-19-multi-leg-region-recall.md) | PLAN ONLY. No retrieval change. |
 | 2026-10-16 | [Python support policy](2026-10-16-python-support-policy.md) | Current |
 | 2026-10-16 | [Identity engine redistribution](2026-10-16-identity-engine-redistribution.md) | Current |
 | 2026-10-16 | [Identity engine evaluation (YuNet / AuraFace)](2026-10-16-identity-engine-evaluation.md) | Current — **NO ENGINE CHANGE APPROVED** (production) |
