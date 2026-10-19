@@ -16,12 +16,12 @@ This file lists the product-completion sequence. It does not redefine the vision
 | 4 | Keep a discovery | **VERIFIED** | Kept finds sit beside the library in `{store}.discoveries.json`. No new table. |
 | 5 | Trust and release | **IN PROGRESS** / Gate C **BLOCKED** | YuNet+SFace runtime landed (buffalo_l retired from deps). Still need: L PASS or permanent BYO ship stance, Q Semblon eval, native ARM64, GHA green, Authenticode cert, lockfile refresh without insightface. |
 | 6 | Face → archive discovery | **IN PROGRESS** (slices A–E code; Q/L ops open) | A–E: face similar, review handoff, person→Time, unified results, OCR→Field, NanoDet BYO. Plan: `docs/decisions/2026-10-16-yunet-sface-discovery-plan.md`. Q calibration + MSI weight L PASS remain external. |
-| 7 | Multi-leg local retrieval — decompose highlight, language door, RRF + rerank, refinement spec | **IMPLEMENTED** (interactive path) | Query spec + RRF/rerank + BM25 + part/word chrome + after-grid match check. Heavy VLM and ANN still off the path. `docs/decisions/2026-10-19-lens-style-retrieval.md`. |
+| 7 | Multi-leg local retrieval — decompose highlight, language door, RRF + rerank, refinement spec | **IMPLEMENTED** (interactive path + eval harness) | Query spec + RRF/rerank + BM25 + part/word chrome + after-grid match check + labelled rank harness. Heavy VLM and ANN still off the path. `docs/decisions/2026-10-19-lens-style-retrieval.md`. |
 
 ## Pass verdict
 
 Milestones **1–3 are COMPLETE** for the acceptance criteria that can be evidenced in this environment (offscreen production shell + unit tests).  
-Milestone **7** is implemented on the interactive path (query spec, fuse, refine chrome). It does not reopen milestone 2.  
+Milestone **7** is implemented on the interactive path (query spec, fuse, refine chrome) plus the labelled eval harness. It does not reopen milestone 2. ANN stays off.  
 The overall product is **NOT COMPLETE** until Gates B and C close. See BUILD-STATUS dual verdict.
 
 ## Rule

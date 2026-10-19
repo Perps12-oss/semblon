@@ -53,7 +53,7 @@ Deferred without blocking unrelated work: **02** encryption, **08** product capt
 | 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | `tools/facekit_owner_evidence.py` + `.github/workflows/facekit-owner.yml` + `docs/FACEKIT-OWNER.md`. No owner pack on this machine — evidence JSON not PASS. |
 | 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Unchanged. |
 | 08 Screen-capture privacy | P1 | DEFERRED | Decision unchanged. |
-| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18); multi-leg path **IMPLEMENTED** | Dense `region_patch` late interaction remains the appearance door. Focus Similar region now fuses text/object/optional SigLIP after the first look, with Same look / Same kind / a word / part chips. Photographic eval gate is not reopened. |
+| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18); multi-leg path **IMPLEMENTED**; eval harness **IMPLEMENTED** | Dense `region_patch` late interaction remains the appearance door. Focus Similar region now fuses text/object/optional SigLIP after the first look, with Same look / Same kind / a word / part chips. Labelled rank harness is `tools/eval_lens_retrieval.py`. Photographic eval gate is not reopened. ANN not started. |
 | 10 Archive continuity | P0 | **VERIFIED** | Missing Focus notice; ingest rename reconnect; copy/basename safety; Gate A journey on Unicode folder. |
 | 11 Contextual discovery | P1 | **VERIFIED** | `openFocusInContext` day scope includes same-day neighbours and excludes other days; missing-date honest. |
 | 12 Unified experience + docs | P0/P1 | **VERIFIED** (milestones 1–3) | Gate A journey + ROADMAP sync. Milestones 4–5 / Gates B–C remain. |
@@ -267,7 +267,9 @@ Focus **Similar region** now accepts a query spec (`look` / `kind`, a word, a pa
 
 After the fused list is on screen, a cheap match check can reorder the top hits (colour + local pixel description). The strip says **Checked the matches**. Fast skips this. A missing VLM does not block the grid. No identity writes.
 
-Command: `python3 -m pytest tests/test_lens_retrieval.py tests/test_selection_retrieval.py tests/test_discovery_slice_d.py tests/test_search_doors.py tests/test_similarity_quality.py tests/test_region_search.py tests/test_local_lens.py tests/test_discovery_slice_e.py tests/test_visual_discovery.py tests/test_discovery_workspace.py tests/test_shell_frontend.py::test_every_qml_action_maps_to_a_real_bridge_slot_or_property -q` → **69 passed, 2 skipped**.
+Labelled eval harness (`semblon/lens_eval.py`, `tools/eval_lens_retrieval.py`) scores highlight / relevant / hard-negative tuples: brand text, same kind, same look, part vs whole, same-colour confuser. `--eval-set synthetic` prints ranks and `relevant_above_hard_neg` only. Precision stays refused without `--eval-set confirmatory`. No frozen confirmatory Lens set exists. RRF / floors / S1 were not retuned. Exact-scan timing does not justify ANN.
+
+Command: `python3 -m pytest tests/test_lens_eval.py tests/test_lens_retrieval.py tests/test_selection_retrieval.py tests/test_discovery_slice_d.py tests/test_search_doors.py -q` → pending this revision.
 
 Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Roadmap milestone 7.
 

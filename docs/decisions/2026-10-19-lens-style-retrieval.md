@@ -1,7 +1,7 @@
 # Decision — local Lens-style retrieval is a ranking system, not a model swap
 
 **Date:** 2026-10-19  
-**Status:** current — interactive path **IMPLEMENTED** (query spec, BM25, RRF, feature rerank, part/word chrome, after-grid match check). Heavy VLM/ColQwen and ANN remain off the path.  
+**Status:** current — interactive path **IMPLEMENTED** (query spec, BM25, RRF, feature rerank, part/word chrome, after-grid match check). Eval harness **IMPLEMENTED** (labelled highlight / relevant / hard-neg tuples; ranks on synthetic; precision refused unless `--eval-set confirmatory`). Heavy VLM/ColQwen and ANN remain off the path.  
 **Branch:** `cursor/lens-retrieval-strategy-1388` (cut from `origin/main` `86fdcbf`)  
 **Related:** `docs/PRODUCT.md`, `docs/BUILD-STATUS.md`, `docs/ROADMAP.md`, `docs/SEM-ARCH-V1.4.md`, `docs/decisions/2026-10-18-local-visual-discovery.md`, `docs/REGION-PACK.md`, `docs/OBJECT-PACK.md`
 
@@ -272,15 +272,15 @@ For a personal library, Lens-style interaction and ranking is the target. For op
 
 The photographic patch eval (`docs/evidence/photo-region-eval.json`, `tools/eval_photo_regions.py`) stays the appearance regression. It is not enough for “near-exact.”
 
-Add tuples `(highlight, relevant media_ids, hard negatives)` that cover:
+**IMPLEMENTED.** Labelled tuples `(highlight, relevant media_ids, hard negatives)` live in `semblon/lens_eval.py`. The runner is `tools/eval_lens_retrieval.py` → `docs/evidence/lens-retrieval-eval.json`. Families:
 
-- same object, different viewpoint / lighting (already present);
-- same kind, different instance (language door; DINOv2 should not be the only scorer);
-- logo / part vs whole object (decomposition);
-- readable brand / label (BM25);
-- hard negatives that are visually close and semantically wrong (DINOv2 will return these confidently).
+- same object, different viewpoint / lighting (already present on the photographic patch eval; not reopened here);
+- same kind, different instance (`kind-cup`; object class, not DINOv2 alone);
+- logo / part vs whole object (`part-logo`);
+- readable brand / label (`brand-acme`; BM25);
+- hard negatives that are visually close and semantically wrong (`colour-confuser`, plus the injected look lists on the other families).
 
-Do not tune RRF weights, GBDT, or floors until that harness exists. Do not retune S1 identity constants. Do not print precision without `--eval-set confirmatory` where that flag applies.
+`--eval-set synthetic` reports ranks and `relevant_above_hard_neg` only. `--eval-set confirmatory` is required for precision; there is no frozen confirmatory Lens set yet, so precision stays refused. Do not tune RRF weights, GBDT, or floors from the first synthetic run. Do not retune S1 identity constants. Exact-scan timing is recorded as evidence that ANN is not justified on this corpus. Slice 9 stays **NOT STARTED**.
 
 ---
 
@@ -298,9 +298,9 @@ These are implementation slices on this decision. They are not a FACE-n, OBS, SI
 | 6 | Feature rerank top-20 | same merge path | **IMPLEMENTED** as a weighted sum. Learned GBDT still later. |
 | 7 | Refinement UI | Focus | **IMPLEMENTED.** Part picker, text modifier, Same look / Same kind. No model names. |
 | 8 | Async match check | refine pass after the first grid | **IMPLEMENTED** as a colour + local pixel-describer reorder. VLM/ColQwen stay off the blocking path. Phase: Checked the matches. |
-| 9 | ANN provider | `index_provider.active_vector_index` | **NOT STARTED.** Only after a measured exact-scan bottleneck. |
+| 9 | ANN provider | `index_provider.active_vector_index` | **NOT STARTED.** Only after a measured exact-scan bottleneck. The synthetic eval records exact-scan timing and does not justify ANN. |
 
-Slice 1 is the next code path (use the legs already on disk). Slice 2 is the highest-leverage *new* capability. Start the eval harness as soon as slice 2 has a list to score. Do not start slice 9 first. Do not implement a parallel search stack.
+Eval harness (not a numbered door slice): **IMPLEMENTED.** `semblon/lens_eval.py`, `tools/eval_lens_retrieval.py`. Do not start slice 9. Do not implement a parallel search stack. Do not retune ranking from the first synthetic report.
 
 ---
 

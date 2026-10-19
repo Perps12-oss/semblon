@@ -4,7 +4,7 @@ Material product and architecture decisions, plus superseded statements. The cur
 
 | Date | Record | Status |
 |---|---|---|
-| 2026-10-19 | [Local Lens-style retrieval](2026-10-19-lens-style-retrieval.md) | Current — interactive path implemented. VLM judge and ANN still off. |
+| 2026-10-19 | [Local Lens-style retrieval](2026-10-19-lens-style-retrieval.md) | Current — interactive path and eval harness implemented. VLM judge and ANN still off. |
 | 2026-10-18 | [Local visual discovery is the product](2026-10-18-local-visual-discovery.md) | Current |
 | 2026-10-16 | [Python support policy](2026-10-16-python-support-policy.md) | Current |
 | 2026-10-16 | [Identity engine redistribution](2026-10-16-identity-engine-redistribution.md) | Current |
