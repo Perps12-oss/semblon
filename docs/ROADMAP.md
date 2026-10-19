@@ -16,7 +16,7 @@ This file lists the product-completion sequence. It does not redefine the vision
 | 4 | Keep a discovery | **VERIFIED** | Kept finds sit beside the library in `{store}.discoveries.json`. No new table. |
 | 5 | Trust and release | **IN PROGRESS** / Gate C **BLOCKED** | YuNet+SFace runtime landed (buffalo_l retired from deps). Still need: L PASS or permanent BYO ship stance, Q Semblon eval, native ARM64, GHA green, Authenticode cert, lockfile refresh without insightface. |
 | 6 | Face → archive discovery | **IN PROGRESS** (slices A–E code; Q/L ops open) | A–E: face similar, review handoff, person→Time, unified results, OCR→Field, NanoDet BYO. Plan: `docs/decisions/2026-10-16-yunet-sface-discovery-plan.md`. Q calibration + MSI weight L PASS remain external. |
-| 7 | Multi-leg local retrieval — detect + OCR → parallel recall → RRF → lightweight rerank | **NOT STARTED** | Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Does not reopen milestone 2. Does not swap DINOv2, add Chroma/FAISS as a product dependency, or touch identity. |
+| 7 | Multi-leg local retrieval — decompose highlight, language door, RRF + rerank, refinement spec | **NOT STARTED** | Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Does not reopen milestone 2. Keeps DINOv2 appearance; adds SigLIP as a language door; no Chroma/FAISS product dependency; no identity writes. |
 
 ## Pass verdict
 

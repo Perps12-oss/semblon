@@ -53,7 +53,7 @@ Deferred without blocking unrelated work: **02** encryption, **08** product capt
 | 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | `tools/facekit_owner_evidence.py` + `.github/workflows/facekit-owner.yml` + `docs/FACEKIT-OWNER.md`. No owner pack on this machine — evidence JSON not PASS. |
 | 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Unchanged. |
 | 08 Screen-capture privacy | P1 | DEFERRED | Decision unchanged. |
-| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18); quality expansion **PLAN ONLY** | Dense `region_patch` late interaction, not the six proposal crops. `docs/evidence/photo-region-eval.json`: 4/4 photographs, viewpoint and lighting ahead of the same-colour distractor, match box on the paste. Colour histogram remains the labelled fallback. Face Similar stays a separate door. Multi-leg recall (detect + OCR → RRF → rerank) is planned in `docs/decisions/2026-10-19-lens-style-retrieval.md` and does not reopen this gate. |
+| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18); quality expansion **PLAN ONLY** | Dense `region_patch` late interaction, not the six proposal crops. `docs/evidence/photo-region-eval.json`: 4/4 photographs, viewpoint and lighting ahead of the same-colour distractor, match box on the paste. Colour histogram remains the labelled fallback. Face Similar stays a separate door. Language door, highlight decomposition, RRF/rerank, and a refinement spec are planned in `docs/decisions/2026-10-19-lens-style-retrieval.md` and do not reopen this gate. |
 | 10 Archive continuity | P0 | **VERIFIED** | Missing Focus notice; ingest rename reconnect; copy/basename safety; Gate A journey on Unicode folder. |
 | 11 Contextual discovery | P1 | **VERIFIED** | `openFocusInContext` day scope includes same-day neighbours and excludes other days; missing-date honest. |
 | 12 Unified experience + docs | P0/P1 | **VERIFIED** (milestones 1–3) | Gate A journey + ROADMAP sync. Milestones 4–5 / Gates B–C remain. |
@@ -263,9 +263,11 @@ Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 
 **Status:** PLAN ONLY. No code in this record. Branch `cursor/lens-retrieval-strategy-1388` was cut from `origin/main` `86fdcbf`.
 
-The crop → OpenCLIP → Chroma story is not the checkout. Focus **Similar region** is DINOv2 patch late-interaction (colour fallback). Screen selection already runs region + OCR substring + NanoDet and merges by photo. The remaining gap is Lens-style *structure*: query-time detect + OCR, BM25 over stored text, Reciprocal Rank Fusion, then a cheap rerank. Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Roadmap milestone 7.
+The crop → OpenCLIP → Chroma story is not the checkout. Two recall legs already exist: DINOv2 patch late-interaction (appearance) and OCR / NanoDet (text and class). Focus **Similar region** still runs only the appearance leg. Screen selection unions the legs by photo. SigLIP and SAM 2 are optional probes, not a language door or a part splitter.
 
-Next code slice, when authorised: query signals on Focus Similar region (crop OCR + NanoDet when ready, in parallel with the visual embed). Missing packs stay unavailable for that signal. No identity writes. No Chroma. No FAISS product dependency. No new columns.
+The remaining gap is four Lens functions: highlight decomposition, a language-aligned SigLIP door, RRF + rerank, and a refinement query spec (part / modifier / same-look vs same-kind). Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Roadmap milestone 7.
+
+Next code slice, when authorised: query spec + existing doors on Focus Similar region (DINOv2 + crop OCR + NanoDet when ready). Highest-leverage new capability after that: SigLIP as a separate recall list (highlight + object crop + attribute text). Missing packs stay unavailable for that signal. No identity writes. No Chroma. No FAISS product dependency. No new columns. No VLM on the blocking first grid.
 
 ## What this file will not absorb
 

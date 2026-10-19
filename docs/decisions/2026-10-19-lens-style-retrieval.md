@@ -5,25 +5,66 @@
 **Branch:** `cursor/lens-retrieval-strategy-1388` (cut from `origin/main` `86fdcbf`)  
 **Related:** `docs/PRODUCT.md`, `docs/BUILD-STATUS.md`, `docs/ROADMAP.md`, `docs/SEM-ARCH-V1.4.md`, `docs/decisions/2026-10-18-local-visual-discovery.md`, `docs/REGION-PACK.md`, `docs/OBJECT-PACK.md`
 
-This is the enhancement strategy for “point, understand, and find.” It does not reopen `docs/ARCHITECTURE.md`, identity thresholds, or the identity firewall. Geometry, colour, objects, text, and region matches still do not write `faces.person_id` or `embeddings.modality='face'`.
+This is the enhancement strategy for “point, understand, and find.” It does not reopen `docs/ARCHITECTURE.md`, identity thresholds, or the identity firewall. Geometry, colour, objects, text, language vectors, and region matches still do not write `faces.person_id` or `embeddings.modality='face'`.
 
 ---
 
 ## Verdict
 
-Do not try to “do better” by swapping one embedding. Do better by changing the retrieval structure:
+Semblon already has two of the three recall legs: DINOv2 patch late-interaction (appearance) and OCR / NanoDet (text and class). A near-exact local Lens is not one more model swap. It is four functions on those legs:
 
 ```text
-detect + OCR on the crop
-  → parallel recall (dense visual + sparse text + cheap metadata)
-  → Reciprocal Rank Fusion
-  → lightweight rerank of the top ~50
-  → optional heavy describe / late-interaction mode on demand
+1. Region decomposition — what part of the highlight did the user mean?
+2. Multi-modal recall     — appearance, language, and text in parallel
+3. Fuse + rerank          — RRF, then rescore the top candidates
+4. Refinement loop        — a query spec the user can change
 ```
 
-That is the local, low-end-laptop version of the Lens pattern. A single crop vector asked to do everything is one retrieval leg. Lens is several independent evidence channels, fused and then reranked.
+End-to-end:
 
-Semblon already has most of those channels. The gap is that the product door still treats one of them as the search, and merges the others by union. The work is to make query understanding, multi-leg recall, fusion, and rerank the default Similar-region path — on the existing store, packs, and shell.
+```text
+User highlight
+   │
+   ├─ cheap detect / optional Grounded SAM 2 → object, part, text-block regions
+   ├─ OCR → strings + boxes
+   └─ optional caption / attributes (async; not a product name)
+          │
+          ▼
+   Query spec: {region, object_crop, text, attributes, doors, modifiers}
+          │
+   ┌──────┼──────────────┬────────────────┐
+   ▼      ▼              ▼                ▼
+ DINOv2  SigLIP        BM25 over OCR    SigLIP text of
+ patch   image +       (stored text)    caption / attributes
+ late    object crop
+   │      │              │                │
+   └──────┴──────┬───────┴────────────────┘
+                 ▼
+            RRF fusion → top-20
+                 │
+                 ▼
+       Feature rerank now; optional VLM judge async
+                 │
+                 ▼
+          Result grid + refinement (other part / modifier / door)
+```
+
+Do not collapse this into one crop vector. Do not replace DINOv2 with SigLIP. You need both: DINOv2 wins on the same object at another angle; SigLIP wins on “same kind, different instance.”
+
+---
+
+## What “near-exact local Lens” means
+
+Google Lens is a pipeline, not a retrieval model. Locally, “near-exact” means those four functions on **this** archive. It does not mean Google’s web index, shopping graph, or freshness.
+
+| Function | Lens does | Semblon on `main` | Gap |
+|---|---|---|---|
+| Region decomposition | object / part / logo / text inside the highlight | User box, stored face / NanoDet / OCR boxes, optional SAM 2 mask of the whole crop | No open-vocab part split. No “search the logo, not the shirt.” |
+| Multi-modal recall | appearance + language + text in parallel | DINOv2 patches + OCR substring + NanoDet class. SigLIP exists as an optional embed / naming probe, not a recall door. | No language-aligned door. Focus Similar region still runs appearance only. |
+| Fuse + rerank | RRF then cross-encoder / judge | Union by `media_id`, max score, bonus for more bases | No RRF. No rerank. |
+| Refinement | “this part,” “similar but red,” exact vs category | Fast / Balanced / Max are latency profiles. Separate doors exist (Similar region, Same face, Whole photo, Duplicates). | No query spec. No text modifier. No exact-instance vs same-kind toggle. |
+
+SightRAG and similar local visual-RAG stacks are **references for orchestration** (detect → embed → index → retrieve, OCR + optional Grounding DINO, ONNX). They are not a second product stack. Do not import FastAPI, Chroma, or their application boundary.
 
 ---
 
@@ -39,6 +80,7 @@ The brief that starts `crop → OpenCLIP single vector → ChromaDB top-k` does 
 | Moondream / VLM in the hot path | **Name this area** is a button. Similar search does not wait on the naming model. |
 | No text channel | OCR substring search exists (`search_text` over `observation_items kind=text`). Crop OCR can feed that door. |
 | No object channel | NanoDet BYO class search exists (`search_object`). Contours stay geometry, not a class. |
+| No language channel | `lens.embed_siglip` and `visual.naming.siglip` are optional probes. They do not run as a Focus recall door. |
 | No merge | Screen-selection retrieval already runs region + text + object and merges by `media_id`. Focus **Similar region** still does not. |
 
 Citations on `main`:
@@ -47,6 +89,8 @@ Citations on `main`:
 - Index seam: `semblon/index_provider.py` (ANN unwired; FAISS/Chroma refused until a measured bottleneck)
 - Multi-door merge: `semblon/selection_retrieval.py` (union by photo; max score; bonus for more bases)
 - Focus door: `Application.remember_and_find_region` → `region_search.remember_and_find` (visual first; text is a door only when the selection is text-priority)
+- SigLIP probe: `semblon/lens.py` `embed_siglip` / `probe_siglip`; naming in `semblon/visual/naming_local.py`
+- SAM 2: `semblon/sam2_runtime.py`, `lens.ground_selection` (mask of the crop, not open-vocab parts)
 - Identity firewall: Face Similar stays a separate door (`search_similar_faces`)
 
 Milestone 2 on the photographic set stays **VERIFIED**. This decision does not reopen that gate. It names the quality gap that remains after it.
@@ -55,114 +99,141 @@ Milestone 2 on the photographic set stays **VERIFIED**. This decision does not r
 
 ## Why the current structure still underperforms Lens
 
-The remaining weakness is not “we picked the wrong single vector.” It is that one channel still has to carry the search.
+The remaining weakness is not “we picked the wrong single vector.” Two recall legs exist and the product door still treats one of them as the search.
 
 1. **Focus Similar region is one visual leg.** `remember_and_find` embeds the highlighted box (patch late-interaction when the pack is ready) and only falls through to colour. Stored OCR and NanoDet labels are understanding, not recall, unless the selection is text-priority.
-2. **Query understanding is incomplete on the crop.** Crop OCR exists. Query-time NanoDet on the highlight does not. There is no high-confidence tighter object crop used as a second visual query.
-3. **Text recall is substring, not tokens.** `search_text` requires the query string to appear inside the stored payload. Brand fragments, OCR noise, and word order miss. There is no BM25 inverted index over extracted text.
-4. **Fusion is a union, not rank fusion.** `selection_retrieval._merged` groups by `media_id`, keeps the max score, and prefers hits that appeared on more doors. Scores from cosine, substring, and class match are not comparable. Reciprocal Rank Fusion is the honest combine.
-5. **There is no rerank stage.** Nothing rescores the top fused candidates with object-crop similarity, OCR token overlap, class consistency, or colour/layout distance.
-6. **A late-interaction visual scorer already exists** (`region_patch` MaxSim-style). That is the local stand-in for ColPali-class patch correspondence. It must stay the dense visual engine, not be replaced by a whole-image SigLIP vector.
-
-Google Lens extracts object regions, text, and visual semantics, retrieves from several indexes, then reranks. Closing that gap means adopting that *structure* on Semblon's existing legs — not importing Chroma, YOLO11n, or a second identity engine.
+2. **There is no language-aligned door.** DINOv2 is an appearance matcher. It cannot answer “other chairs like this one” when the other chair is a different instance. SigLIP (or SigLIP-2) is the missing third recall leg: image + object crop + text embeddings of caption / attributes.
+3. **The highlight is not decomposed.** The user box is the query. There is no “the logo / the handle / the text block” split, so a shirt search averages away the mark on it. SAM 2 can mask the whole crop; it does not propose parts.
+4. **Query understanding is incomplete on the crop.** Crop OCR exists. Query-time NanoDet on the highlight does not. There is no high-confidence tighter object crop used as a second visual query. Caption / attributes, when they exist, name the area; they do not expand the query.
+5. **Text recall is substring, not tokens.** `search_text` requires the query string to appear inside the stored payload. Brand fragments, OCR noise, and word order miss.
+6. **Fusion is a union, not rank fusion.** `selection_retrieval._merged` groups by `media_id`, keeps the max score, and prefers hits that appeared on more doors. Scores from cosine, substring, and class match are not comparable.
+7. **There is no rerank stage.** Nothing rescores the top fused candidates against the original region.
+8. **Search is one-shot.** Fast / Balanced / Max change floors and limits. They are not a refinement loop (other part, text modifier, exact-instance vs same-kind).
 
 ---
 
 ## Target architecture (mapped onto Semblon)
 
-Keep the production path: PySide6 `semblon shell` → `Application` → domain / storage / providers. No second shell. No new schema columns. No vector database as a product dependency.
+Keep the production path: PySide6 `semblon shell` → `Application` → domain / storage / providers. No second shell. No new schema columns. No vector database as a product dependency. No FastAPI orchestration layer.
 
-### 1. Query understanding — do not skip this
+### 0. Query spec
 
-When the user highlights a box, do not pass the whole crop to one model and hope. Run two cheap signals in parallel with the existing visual embed. Neither signal writes identity.
+Retrieval accepts a specification, not a raw crop:
+
+| Field | Meaning |
+|---|---|
+| `region` | The active box or mask (user highlight, or one proposed part) |
+| `object_crop` | Tighter crop when a detector is confident |
+| `text` | OCR strings from that region |
+| `attributes` | Honest local tokens (colour, material, category, style). Not a product, landmark, or species name. |
+| `doors` | Which recall legs to run |
+| `modifiers` | Extra text (“red”, “wooden”, “same brand”) folded into BM25 and SigLIP text |
+| `mode` | `exact` (DINOv2 up, SigLIP down) or `kind` (SigLIP + attributes up, DINOv2 down) |
+
+This lives on `Application`, same session. It is not a hidden model picker. The shell shows the choices as “this part,” “same look,” “same kind,” and a modifier field.
+
+Fast / Balanced / Max stay latency profiles. They do not replace the query spec.
+
+### 1. Query understanding — decompose the highlight
+
+When the user highlights a box, do not pass the whole crop to one model and hope. Run cheap extractors in parallel. Heavy captioning is async and must not block the first grid.
 
 | Signal | Semblon provider | Output | Notes |
 |---|---|---|---|
-| Object detection | NanoDet BYO (`docs/OBJECT-PACK.md`) | main class + box, when confidence is high | YOLO11n / YOLOv8n is **not** a required swap. A later BYO detector may sit behind the same object-pack probe. Missing pack = that signal unavailable, not a failed search. |
-| OCR | Tesseract BYO (`observers` / `probe_ocr_status`) | text strings + boxes | PaddleOCR / Florence-2 is **not** a required swap. Same honesty rule. |
-| Visual embed | DINOv2 ViT-S/14 region pack | patch tokens of the full crop, and of the tighter object crop when NanoDet confidence is high | SigLIP is an optional second dense channel when its pack is ready. It does not replace DINOv2. |
+| Closed-set object | NanoDet BYO (`docs/OBJECT-PACK.md`) | main class + box, when confidence is high | Default cheap detector. YOLO11n is **not** a required swap. |
+| Open-vocab parts | Optional Grounding DINO + existing SAM 2 (`sam2_runtime`, `lens.ground_selection`) | top-3 boxes/masks inside the highlight (“object”, “part”, “text block”) | Run **only on the user highlight**, only top-3. Missing pack = no parts, search the user box. Do not library-wide segment. |
+| OCR | Tesseract BYO (`probe_ocr_status`) | strings + boxes | PaddleOCR / Florence-2 OCR is **not** a required swap. |
+| Caption / attributes | Existing **Name this area** / local noun / optional Florence-2 or Qwen2-VL-2B | short caption + attribute tokens | Query expansion only. A local model does not invent a product, landmark, or species (`docs/PRODUCT.md`). Async. Not the default first-grid blocker. |
+| Visual embed | DINOv2 ViT-S/14 + optional SigLIP | patch tokens of the full crop, the object crop, and (when a mask exists) the masked object | SigLIP does not replace DINOv2. |
 
-Do not put a VLM, Moondream, or **Name this area** on this path. Describe / name stays a button.
+Do not put Moondream, ColQwen, or **Name this area** on the blocking path. Describe / name stays a button. Caption tokens may join a later refine pass when that pack is ready.
 
-Fast quality may skip the detector/OCR pair and publish the first visual look. Balanced and Max run the cheap signals on the refine pass that already exists.
+### 2. Recall doors — offline indexes, derived from the store
 
-### 2. Indexes — offline, derived from the store
+The library is not a flat Chroma collection. It must not become one.
 
-The library is not a flat Chroma collection of full-image CLIP vectors. It must not become one. Build (or keep) three recall sources from rows Semblon already stores.
-
-**A. Dense visual index (exists; keep)**
+**A. Appearance — DINOv2 `region_patch` (exists; keep)**
 
 - Engine: DINOv2 ViT-S/14 ONNX, `modality=region_patch`, pack id ending `/patch`.
 - Compare: late interaction (mean of each query patch's best cosine in the other photo). Match box = union of winning patches.
-- Why this stays: it already does the job the brief assigns to “tile-level embeddings with overlap.” Adding a second 1024×1024 tile index on top of content patches is a cost, not a gain, until a measurement says otherwise.
-- Whole-image / scene / `clip` vectors remain supporting channels for **Whole photo**, not the region door.
-- Optional later: SigLIP crop/scene vectors in the existing `embeddings` table (`modality` already used for clip/siglip/scene). Second list, same fuse. Not a swap.
+- This already is the tile-level / local-layout / exact-instance leg. Do not add a second 1024×1024 tile index on top of it until a measurement says otherwise.
+- Interactive multi-vector scorer. ColQwen / ColPali stays off this path (see §3).
 
-**B. Sparse text index (upgrade)**
+**B. Language — SigLIP / SigLIP-2 (the biggest missing leg)**
+
+- Engine: existing SigLIP ONNX probe (`lens.embed_siglip`, `SEMBLON_SIGLIP_ONNX`) or a later SigLIP-2 / SO400M BYO pin. INT8 ONNX, `CPUExecutionProvider`.
+- Store: existing `embeddings` rows (`modality` already used for `siglip` / `clip` / `scene`). No new columns. Never `modality='face'`.
+- Granularity: embed the full highlight, the detected object crop, and optionally the masked object (background zeroed in memory). Do not embed only one crop.
+- Query expansion: embed the caption and each attribute / modifier with the **same** SigLIP text encoder. That is text-controllable retrieval without a separate text-to-image model.
+- Index: exact derived matrix first (`index_provider.active_vector_index`). FAISS HNSW is allowed later only as one ANN provider behind that seam, only after a measured exact-scan bottleneck. Chroma stays out.
+
+This is the door that makes “similar but red” and “same category, different instance” possible. DINOv2 still wins on “same object, different angle.”
+
+**C. Sparse text — BM25 over stored OCR (upgrade)**
 
 - Offline: OCR already writes `observation_items kind=text`.
-- Query: OCR the crop (and any overlapping stored text on that photo).
-- Recall: BM25 over the extracted text, derived from those payloads. No new table.
-- Persistence: an exact derived sidecar, the same pattern as `ann_index` (SQLite remains authoritative; the sidecar can be rebuilt).
-- This is the largest remaining accuracy lever. Substring search misses the brand / label / price-tag cases CLIP also misses.
+- Query: OCR of the active region, plus attribute / modifier tokens.
+- Recall: BM25 over those payloads. No new table. Sidecar rebuildable from SQLite, same pattern as `ann_index`.
 
-**C. Cheap metadata index (filter / rescore, not a neural model)**
+**D. Cheap metadata (filter / rescore)**
 
-- NanoDet class on the library item (already stored).
-- Colour histogram (`appearance/rgb8@1`, already stored).
-- Aspect / layout from existing bbox payloads.
+- NanoDet class, colour histogram (`appearance/rgb8@1`), aspect / layout from existing bbox payloads.
 - Optional later: logo or barcode as their own observation kind, still not identity.
 
-These let the fuse/rerank stage filter or bonus without another forward pass.
+### 3. Multi-stage ranking
 
-### 3. Retrieve in parallel, then fuse
+Do not skip the second stage. Doors are not calibrated to each other; do not average raw scores.
 
-At query time:
+**Stage 1 — parallel recall (interactive)**
 
-1. Run NanoDet and OCR on the crop when those packs are ready.
-2. Embed the full crop with DINOv2 patches. If detector confidence is high, embed the tighter object crop too.
-3. Query the patch index with both visual embeddings.
-4. Query BM25 with the crop text.
-5. Query `search_object` with the detected class.
-6. Optionally restrict or bonus by class / colour / layout.
-7. Fuse the ranked lists with Reciprocal Rank Fusion at `media_id`.
+- DINOv2 patch late-interaction → top-50
+- SigLIP image (highlight + object crop) → top-50, when the pack is ready
+- BM25 over OCR → top-50, when text exists
+- Optional: SigLIP text of attributes / modifiers → top-50
+- NanoDet class search remains a cheap extra list
 
-Each hit keeps the bases that found it (`Similar look`, `Text in photos`, `COCO object detection (NanoDet)`). Primary chrome still names the door. A fused score is not a name and is not proof it is the same object.
+**Stage 2 — fuse**
 
-Promote this path into Focus **Similar region**. Do not leave multi-leg recall only on screen-selection retrieval.
+- Reciprocal Rank Fusion at `media_id`.
+- Each hit keeps the bases that found it. A fused score is not a name and is not proof it is the same object.
+- Promote this into Focus **Similar region**. Do not leave multi-leg recall only on screen-selection retrieval.
 
-### 4. Rerank the top candidates
+**Stage 3 — rerank (semi-interactive / async)**
 
-Take the top ~50 fused `media_id`s and rescore them with a cheap weighted sum, tuned on a small validation set (the existing photographic region eval plus a labelled text/object holdout).
+- Take the top-20 fused candidates.
+- **CPU default:** feature ranker over SigLIP similarity on the object crop, DINOv2 patch score, OCR token overlap, class consistency, colour histogram, layout. A hand-weighted sum first; a logistic / GBDT ranker once a labelled set exists. Even a few hundred labelled queries beat hand-tuned RRF weights.
+- **Optional async judge:** a small VLM (Qwen2-VL-2B or Florence-2) that sees the original highlight and the candidate and scores same-object / same-kind / same-part. Reorders the grid in place after first render.
+- **Not in the interactive path:** ColQwen2.5 / ColPali-family (3B-class, ~4 GB VRAM, ~100× slower on CPU). Offline index of a high-value subset, or optional Max / high-accuracy mode after the first grid. DINOv2 patch late-interaction remains the interactive multi-vector scorer.
 
-Low-end-friendly terms:
+### 4. Refinement loop
 
-- DINOv2 (or SigLIP if that pack is the one that is ready) similarity on the **detected object crop**, not the whole highlighted box.
-- OCR token overlap (BM25 score or Jaccard on tokens).
-- NanoDet class-consistency bonus.
-- Colour histogram distance.
-- Layout / aspect agreement from stored boxes.
+After the first grid the user can:
 
-This is not as strong as a new late-interaction model, but the visual term can reuse the patch scorer Semblon already runs. It fixes the cases where the highlighted box is larger than the object, or where text/class should break a visual tie.
+- select a different detected region (the logo instead of the shirt);
+- add a text modifier (“red”, “wooden”, “same brand”);
+- switch to **same look** (exact-instance: DINOv2 up, language door down);
+- switch to **same kind** (semantic: SigLIP + attributes up, DINOv2 down).
 
-Late-interaction beyond the current DINOv2 patch MaxSim (ColPali / ColQwen-style) stays **off** the default interactive path. It is an optional Max or offline mode if a GPU-class pack is present. It must not become the Balanced laptop path.
+The orchestration re-queries from the query spec. This is the difference between a search box and Lens. Face Similar stays its own door and is not a refinement of region search.
 
 ### 5. Latency budget (target, not a claim)
 
-Interactive Similar region on a low-end Intel/AMD laptop, ONNX Runtime, Fast first look already on screen:
+Never block the first grid on a 3B VLM. Render the fused top-20, then let a reranker reorder.
 
 | Step | Budget | Already on `main`? |
 |---|---|---|
 | Crop | <10 ms | yes |
 | NanoDet on the crop | 10–30 ms | pack exists; not on this door |
+| Grounding DINO + SAM 2 on highlight, top-3 | 50–150 ms | SAM 2 optional; Grounding DINO not present; not on this door |
 | OCR on a small crop | 50–200 ms | crop OCR exists; not fused on this door |
-| DINOv2 1–2 crops | 30–100 ms typical after warm-up | one crop today |
-| Exact derived / later ANN top-50 | 1–5 ms once the matrix is in memory | exact scan today; ANN still unwired |
+| Florence-2 / Qwen caption | 200–500 ms **async** | Name this area is a button |
+| DINOv2 1–2 crops | 30–100 ms after warm-up | one crop today |
+| SigLIP image 1–2 crops | 30–80 ms | probe exists; not a recall door |
+| Exact derived / later ANN top-50 | 1–5 ms in memory | exact scan today; ANN still unwired |
 | BM25 | <5 ms | no |
-| RRF + lightweight rerank top-50 | 50–200 ms | no (union merge only) |
-| Total interactive path | ~0.15–0.6 s after warm-up | Fast first look already splits this |
-
-Show visual results immediately. Run **Name this area** only on button click. Balanced/Max refine may add detector + OCR + rerank without blocking the first look.
+| RRF + feature rerank | 30–100 ms | union merge only |
+| First grid | ~0.2–0.5 s after warm-up | Fast first look already splits this |
+| VLM judge top-20 | 0.5–2 s **async** | no |
 
 Full Google Lens parity on a low-end CPU laptop is not realistic. This structure should beat a single-vector crop search and stay responsive. It will be measured, not asserted.
 
@@ -172,14 +243,44 @@ Full Google Lens parity on a low-end CPU laptop is not realistic. This structure
 
 Biggest remaining gains, in order, after the work already on `main`:
 
-1. **OCR + BM25 as a first-class recall channel** — text is the discriminative signal the visual encoder still drops (brands, labels, price tags).
-2. **Query-time object crop + class** — compare the object, not the whole highlighted box; use the class as recall and as a rerank bonus.
-3. **RRF + lightweight rerank** — stop asking incomparable scores to share a max.
-4. **Keep DINOv2 patch late-interaction** — this already is the tile-level / local-layout leg. Do not discard it for a whole-image SigLIP vector.
-5. **SigLIP as an optional second dense list** — better single-vector quality when the pack is present; never the only index; never an identity embedding.
-6. **Heavier late-interaction reranker** — best extra accuracy, GPU-class cost, optional Max / offline only.
+1. **Language-aligned SigLIP door** — the missing third recall leg. Same kind, different instance; text-controllable modifiers.
+2. **Highlight decomposition** — search the logo, not the shirt. NanoDet + optional Grounded SAM 2 on the user box only.
+3. **OCR + BM25** — brands, labels, price tags the visual encoder drops.
+4. **Wire the legs you have onto Focus Similar region** — appearance + text + class must actually run on the product door.
+5. **RRF + feature rerank, then an optional async judge** — stop asking incomparable scores to share a max; rescore against the original region.
+6. **Refinement query spec** — the interaction that makes it feel like Lens.
+7. **Keep DINOv2 patch late-interaction** — exact-instance / local layout. Do not discard it for a whole-image SigLIP vector.
+8. **ColQwen-class late-interaction** — best extra accuracy, GPU-class cost, Max / offline only.
 
-Do not spend the next slice swapping DINOv2 for SigLIP, NanoDet for YOLO11n, or Tesseract for PaddleOCR. Provider swaps are later BYO options behind the same probes.
+Do not spend the next slice swapping DINOv2 for SigLIP, NanoDet for YOLO11n, Tesseract for PaddleOCR, or SAM 2 for a library-wide segmenter. Provider swaps are later BYO options behind the same probes.
+
+---
+
+## What “near-exact” still cannot match locally
+
+A local pipeline can match Lens on region understanding, multi-modal recall, ranking, and refinement UX. It cannot match Lens on:
+
+- **Web-scale index.** Semblon searches this person’s archive. Public lookup stays out of the product (`docs/PRODUCT.md`).
+- **Shopping / SKU graph.** Exact-product matching needs a catalog Semblon does not have. A local model must not invent a product name.
+- **Continuous freshness.** There is no remote index to refresh.
+
+For a personal library, Lens-style interaction and ranking is the target. For open-world arbitrary images, no local system matches Google’s index. Do not claim otherwise.
+
+---
+
+## Eval harness — before tuning
+
+The photographic patch eval (`docs/evidence/photo-region-eval.json`, `tools/eval_photo_regions.py`) stays the appearance regression. It is not enough for “near-exact.”
+
+Add tuples `(highlight, relevant media_ids, hard negatives)` that cover:
+
+- same object, different viewpoint / lighting (already present);
+- same kind, different instance (language door; DINOv2 should not be the only scorer);
+- logo / part vs whole object (decomposition);
+- readable brand / label (BM25);
+- hard negatives that are visually close and semantically wrong (DINOv2 will return these confidently).
+
+Do not tune RRF weights, GBDT, or floors until that harness exists. Do not retune S1 identity constants. Do not print precision without `--eval-set confirmatory` where that flag applies.
 
 ---
 
@@ -189,14 +290,17 @@ These are implementation slices on this decision. They are not a FACE-n, OBS, SI
 
 | # | Slice | Lands in | Acceptance (evidence in BUILD-STATUS) |
 |---|---|---|---|
-| 1 | Query signals on Focus Similar region | `remember_and_find` / `find_similar_from_crop` | Highlight runs crop OCR + NanoDet when ready, in parallel with the visual embed. Missing pack ≠ failed search. No identity writes. Fast may skip them. |
-| 2 | BM25 over stored OCR | `search_text` + derived sidecar | Token retrieval beats substring on a labelled text holdout. SQLite payloads stay authoritative. No new columns. |
-| 3 | RRF fuse at `media_id` | `selection_retrieval` and the Focus region door | Independent ranked lists; per-hit bases kept; text-only still skips visual. |
-| 4 | Lightweight rerank top ~50 | same merge path | Object-crop rescore + text overlap + class consistency + colour. Weights locked on a recorded eval. |
-| 5 | Optional SigLIP second dense list | existing `embeddings` rows | Only when the SigLIP pack probes ready. Fused, not swapped. |
-| 6 | ANN provider | `index_provider.active_vector_index` | Only after a measured exact-scan bottleneck on a large library. FAISS may appear as one provider. Chroma stays out. |
+| 1 | Query spec + existing doors on Focus Similar region | `Application`, `remember_and_find`, `selection_retrieval` | Highlight runs DINOv2 + crop OCR + NanoDet when ready. Spec carries region / doors / modifiers. Missing pack ≠ failed search. Fast may skip extras. No identity writes. |
+| 2 | Language-aligned SigLIP door | `lens.embed_siglip`, existing `embeddings` `modality=siglip` | Highlight + object crop (+ mask when present) recalled as a separate ranked list and fused. Caption / attribute / modifier strings use the SigLIP text encoder when that encoder is present. Not a DINOv2 swap. |
+| 3 | Highlight decomposition | NanoDet on the crop; optional SAM 2 / Grounding DINO | Top-3 parts inside the user box. User can search a part. Library-wide segment is out of scope. |
+| 4 | BM25 over stored OCR | `search_text` + derived sidecar | Token retrieval beats substring on a labelled text holdout. SQLite payloads stay authoritative. |
+| 5 | RRF fuse at `media_id` | `selection_retrieval` and the Focus region door | Independent ranked lists; per-hit bases kept; text-only still skips visual. |
+| 6 | Feature rerank top-20 | same merge path | Object-crop + text overlap + class + colour. Weights locked on the new eval. Optional GBDT after labels exist. |
+| 7 | Refinement UI | Focus | Part picker, text modifier, same-look vs same-kind. Re-queries the spec. No model names in chrome. |
+| 8 | Async VLM judge (optional) | refine pass / Max | Reorders the first grid. Never blocks it. ColQwen / ColPali remain Max or offline. |
+| 9 | ANN provider | `index_provider.active_vector_index` | Only after a measured exact-scan bottleneck. FAISS may appear as one provider. Chroma stays out. |
 
-Slice 1 is the next code path. Do not start slice 6 first. Do not implement a parallel search stack.
+Slice 1 is the next code path (use the legs already on disk). Slice 2 is the highest-leverage *new* capability. Start the eval harness as soon as slice 2 has a list to score. Do not start slice 9 first. Do not implement a parallel search stack.
 
 ---
 
@@ -207,11 +311,13 @@ This decision **does not**:
 - Adopt ChromaDB, or make FAISS/HNSW a product dependency.
 - Replace the exact derived SQLite index with a vector database. Vector DB stays parked (`docs/SEM-ARCH-V1.4.md` §I.4).
 - Invent schema columns, a discoveries table, or `embeddings.modality='face'`.
-- Let objects, OCR, colour, SigLIP, or region scores vote on identity or change S1 thresholds.
-- Put YOLO11n, PaddleOCR, Florence-2, or Moondream2 on the default path.
+- Let objects, OCR, colour, SigLIP, SAM 2, language vectors, or region scores vote on identity or change S1 thresholds.
+- Put YOLO11n, PaddleOCR, Florence-2, Qwen, Moondream2, or ColQwen on the **blocking** first-grid path.
+- Require Grounding DINO or library-wide segmentation.
+- Copy SightRAG, AURA, or any FastAPI / second application boundary.
+- Claim web identification, product names, landmarks, species, or SKU matching.
 - Retune clustering, re-ingest the S1 golden dump, or silent-swap the identity engine.
 - Resurrect Tk Home, `review-ui`, `canvas`, `lens_home`, or a second Application/storage path.
-- Claim web identification, product names, landmarks, or species.
 - Rewrite `docs/PRODUCT.md` to match work that has not landed.
 
 ANN remains a named, disabled seam (`semblon/index_provider.py`). A later FAISS provider is allowed only behind that seam, only after measurement, and only as an approximate over the same SQLite embeddings.
@@ -220,6 +326,6 @@ ANN remains a named, disabled seam (`semblon/index_provider.py`). A later FAISS 
 
 ## What success looks like
 
-A person highlights a logo, a mug, or a labelled box. Semblon says what it can say (text, a detector class, or an unlabelled region). Other photos in *this* archive appear because visual patches, readable text, and object class agreed, or because one of those channels was strong and the others did not contradict it. Each result still shows where the match sits. A missing model, an unindexed photo, and a genuine empty match stay different outcomes. Identity stays a separate door.
+A person highlights a shirt with a logo. Semblon can offer the logo as a part. They search that part. Other photos in *this* archive appear because appearance patches, language similarity, readable text, or object class agreed — or because one channel was strong and the others did not contradict it. They can then say “same kind” or add “red” and the query spec runs again. Each result still shows where the match sits. A missing model, an unindexed photo, and a genuine empty match stay different outcomes. Identity stays a separate door.
 
-Evidence for each slice is a command plus a BUILD-STATUS row. The photographic patch eval remains the visual regression. A new text/object holdout is required before claiming BM25 or rerank improved anything.
+Evidence for each slice is a command plus a BUILD-STATUS row. The photographic patch eval remains the appearance regression. Language, part, and hard-negative tuples are required before claiming SigLIP, BM25, or rerank improved anything.
