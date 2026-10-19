@@ -67,32 +67,40 @@ def test_screen_query_attaches_local_retrieval(monkeypatch, tmp_path):
         lambda _report: {"status": "SUCCESS", "item_count": 1, "summary": "1 result"},
     )
     monkeypatch.setattr("semblon.visual_query.format_query_lines", lambda _report: ["Lens", "ok"])
-    monkeypatch.setattr(
-        "semblon.region_search.find_similar_crop",
-        lambda store, *, crop, limit, selection_kind, observed_text, cancelled: {
+    seen = {}
+
+    def fake_find(store, *, crop, limit, selection_kind, observed_text, cancelled):
+        seen["limit"] = limit
+        seen["selection_kind"] = selection_kind
+        seen["observed_text"] = observed_text
+        return {
             "status": "SUCCESS",
             "count": 1,
-            "items": [{"media_id": "m1", "score": 0.9}],
-            "selection_kind": selection_kind,
-            "limit": limit,
-            "observed_text": observed_text,
-        },
-    )
+            "items": [{"media_id": "m1", "score": 0.9, "match_norm": [0.1, 0.2, 0.3, 0.4]}],
+            "similarity_basis": "Similar look",
+            "engine": "dinov2-patch",
+        }
+
+    monkeypatch.setattr("semblon.region_search.find_similar_crop", fake_find)
     rec = run_visual_query(
         tmp_path / "s.sqlite",
         VisualQuery(
             source="screen",
             screen_rect={"x": 2, "y": 3, "w": 40, "h": 22},
             limit=7,
-            selection_kind="text",
+            selection_kind="region",
         ),
     ).as_dict()
     assert rec["source"] == "screen"
     assert rec["status"] == "SUCCESS"
     assert rec["similar"]["count"] == 1
-    assert rec["similar"]["selection_kind"] == "text"
-    assert rec["similar"]["limit"] == 7
-    assert rec["similar"]["observed_text"] == ""
+    assert rec["similar"]["selection_kind"] == "region"
+    assert rec["similar"]["items"][0]["media_id"] == "m1"
+    assert rec["similar"]["similarity_basis"] == "Similar look"
+    assert seen["limit"] == 7
+    assert seen["selection_kind"] == "region"
+    assert seen["observed_text"] == ""
+    assert "optional_providers" in rec
 
 
 def test_screen_query_promotes_observations_and_reuses_ocr_text(monkeypatch, tmp_path):
@@ -137,15 +145,21 @@ def test_screen_query_promotes_observations_and_reuses_ocr_text(monkeypatch, tmp
     seen: dict[str, str] = {}
 
     def fake_find(_store, *, crop, limit, selection_kind, observed_text, cancelled):
+        seen["visual_kind"] = selection_kind
         seen["observed_text"] = observed_text
         return {
             "status": "NO_RESULT",
             "count": 0,
             "items": [],
-            "selection_kind": selection_kind,
+            "similarity_basis": "Similar look",
         }
 
+    def fake_text(_store, query, limit=50, **kwargs):
+        seen["text_query"] = query
+        return {"status": "NO_RESULT", "items": [], "media_ids": [], "similarity_basis": "Text in photos (OCR substring)"}
+
     monkeypatch.setattr("semblon.region_search.find_similar_crop", fake_find)
+    monkeypatch.setattr("semblon.search.search_text", fake_text)
     rec = run_visual_query(
         tmp_path / "s.sqlite",
         VisualQuery(
@@ -160,5 +174,7 @@ def test_screen_query_promotes_observations_and_reuses_ocr_text(monkeypatch, tmp
     kinds = [str(item.get("kind") or "") for item in rec["observations"]]
     assert "text" in kinds
     assert "object" in kinds
-    assert seen["observed_text"] == "Nike Air Max"
+    assert seen["visual_kind"] == "region"
+    assert seen["observed_text"] == ""
+    assert seen["text_query"] == "Nike"
 

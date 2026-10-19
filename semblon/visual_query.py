@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from semblon.lens import query_image, query_screen_with_image, report_observations
+from semblon.optional_providers import optional_model_providers
 from semblon.selection import format_query_lines, lens_result_summary, load_media_bgr
 
 VisualQuerySource = Literal["media", "screen"]
@@ -43,6 +44,7 @@ def _summary(report, *, media_id: str = "") -> dict:
     rec["region"] = dict(getattr(report, "region", {}) or {})
     rec["media_id"] = str(media_id or "")
     rec["observations"] = report_observations(report)
+    rec["optional_providers"] = optional_model_providers()
     return rec
 
 
@@ -103,15 +105,18 @@ def run_visual_query(store: Path, query: VisualQuery, *, cancelled=None) -> Visu
     summary = _summary(report)
     if crop is None:
         return VisualQueryResult(source="screen", summary=summary, similar=None)
-    from semblon.region_search import find_similar_crop
+    from semblon.selection_retrieval import retrieve_selection
 
-    similar = find_similar_crop(
+    similar = retrieve_selection(
         store,
         crop=crop,
+        observations=summary.get("observations") if isinstance(summary, dict) else None,
         limit=max(1, int(query.limit)),
         selection_kind=query.selection_kind,
-        observed_text=_observed_text(summary.get("observations") if isinstance(summary, dict) else None),
         cancelled=cancelled,
     )
+    observed = _observed_text(summary.get("observations") if isinstance(summary, dict) else None)
+    if observed and not similar.get("understanding"):
+        similar = {**similar, "understanding": observed}
     return VisualQueryResult(source="screen", summary=summary, similar=similar)
 
