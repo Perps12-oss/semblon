@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -43,6 +44,7 @@ from semblon.native_shell.presentation import (
     ADVANCED,
     PRIMARY,
     decision_success,
+    is_primary_safe_message,
     normalize_mode,
     present_message,
     summarize_people_results,
@@ -96,6 +98,24 @@ _PHASE_LABELS = {
     "fast": "Fast look",
     "kept": "Kept the first look",
 }
+
+_DOOR_LABELS = {
+    "region": "Similar region",
+    "face": "Same face",
+    "whole": "Whole photo",
+    "duplicate": "Duplicates",
+}
+
+
+def _confidence_label(value) -> str:
+    if value is None:
+        return ""
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return ""
+    percent = max(0, min(100, int(round(score * 100))))
+    return f"Confidence {percent}%."
 
 
 def _stamp_phase(result: Result, phase: str) -> Result:
@@ -156,6 +176,7 @@ class ShellBridge(QObject):
     similarChanged = Signal()
     selectionChanged = Signal()
     nameChanged = Signal()
+    doorChanged = Signal()
     searchBusyChanged = Signal()
     indexChanged = Signal()
     keepsChanged = Signal()
@@ -187,9 +208,14 @@ class ShellBridge(QObject):
         self._selection_note = ""
         self._selection_kind = ""
         self._name_note = ""
+        self._name_confidence = ""
         self._identify_busy = False
         self._identify_generation = 0
         self._name_thread: _NameSelectionThread | None = None
+        self._search_door = ""
+        self._search_started = 0.0
+        self._search_first_ms = -1
+        self._search_refined_ms = -1
         self._similar_cancel = False
         self._search_generation = 0
         self._search_busy = False
@@ -835,9 +861,11 @@ class ShellBridge(QObject):
 
     @Property(str, notify=surfaceChanged)
     def similarActionHint(self) -> str:
-        if self._session.focus_id:
-            return "Find visually similar memories from the open photo."
-        return "Open a photo first, then find similar memories."
+        if not self._session.focus_id:
+            return "Open a photo first, then find similar memories."
+        if self._region_norm:
+            return "Search the highlighted area for a similar region."
+        return "Draw a region on the photo, then search that area."
 
     @Slot(str, result="QVariantList")
     def timelinePreviewIds(self, label: str):
@@ -1105,9 +1133,28 @@ class ShellBridge(QObject):
         """Local name for the highlighted area. Empty until Name this area runs."""
         return self._name_note
 
+    @Property(str, notify=nameChanged)
+    def nameConfidenceLabel(self) -> str:
+        """Model score for the name. Empty when the name abstains or has no score."""
+        return self._name_confidence
+
     @Property(bool, notify=nameChanged)
     def identifyBusy(self) -> bool:
         return self._identify_busy
+
+    @Property(str, notify=doorChanged)
+    def searchDoorLabel(self) -> str:
+        """Which Focus door is open: Similar region, Same face, Whole photo, or Duplicates."""
+        return _DOOR_LABELS.get(self._search_door, "")
+
+    @Property(str, notify=similarChanged)
+    def searchTimingLabel(self) -> str:
+        """Time to the first visible look, then time to the refined result."""
+        if self._search_first_ms < 0:
+            return ""
+        if self._search_refined_ms < 0:
+            return f"First look {self._search_first_ms} ms."
+        return f"First look {self._search_first_ms} ms. Refined {self._search_refined_ms} ms."
 
     @Property(bool, notify=similarChanged)
     def canBackDiscovery(self) -> bool:
@@ -1329,6 +1376,9 @@ class ShellBridge(QObject):
         self._similar_cancel = False
         self._similar_phase = ""
         self._search_failure = ""
+        self._search_started = time.monotonic()
+        self._search_first_ms = -1
+        self._search_refined_ms = -1
         self._search_busy = True
         self.searchBusyChanged.emit()
         self._publish_similar(
@@ -1715,6 +1765,7 @@ class ShellBridge(QObject):
 
     def _publish_similar_result(self, result, *, interim: bool = False) -> None:
         """Shared Focus strip publish for whole / region / face doors."""
+        self._note_search_timing(final=not interim)
         understanding = str((result.data or {}).get("understanding") or "")
         if understanding and not interim:
             self._selection_note = understanding
@@ -1772,6 +1823,8 @@ class ShellBridge(QObject):
         self._selection_note = ""
         self.selectionChanged.emit()
         self._drop_name()
+        self._search_door = ""
+        self.doorChanged.emit()
         self._result_text = ""
         self.resultChanged.emit()
         self._clear_similar()
@@ -2802,6 +2855,7 @@ class ShellBridge(QObject):
         self._selection_note = "Drawn region."
         self._drop_name()
         self.selectionChanged.emit()
+        self.surfaceChanged.emit()
 
     @Slot(float, float, float, float, str, float, float, float, float, float, float, result=str)
     def adjustSelectionBox(
@@ -3221,6 +3275,7 @@ class ShellBridge(QObject):
 
     @Slot()
     def scanDuplicates(self) -> None:
+        self._set_door("duplicate")
         self._apply_result(self._safe_call(self._adapter.duplicates))
 
     @Property(bool, notify=surfaceChanged)
@@ -3424,6 +3479,7 @@ class ShellBridge(QObject):
 
     @Slot()
     def findSimilarWhole(self) -> None:
+        self._set_door("whole")
         media_id = self._session.focus_id
         if not media_id:
             self._publish_similar("unavailable", "Open a photo first.", [])
@@ -3458,6 +3514,7 @@ class ShellBridge(QObject):
     @Slot(str)
     def findSimilarFaces(self, face_id: str = "") -> None:
         """Focus face → ranked same-pack face hits. Not colour-histogram Similar; no auto-name."""
+        self._set_door("face")
         fid = str(face_id or self._selected_observation or "").strip()
         if not fid:
             self._publish_similar("unavailable", "Select a face on the photo first.", [])
@@ -3471,21 +3528,39 @@ class ShellBridge(QObject):
 
         self._start_visual_search(basis="face", label="Same face", build=build)
 
+    def _set_door(self, key: str) -> None:
+        self._search_door = key
+        self.doorChanged.emit()
+
+    def _note_search_timing(self, *, final: bool) -> None:
+        if not self._search_started:
+            return
+        elapsed = max(0, int((time.monotonic() - self._search_started) * 1000))
+        if self._search_first_ms < 0:
+            self._search_first_ms = elapsed
+        if final:
+            self._search_refined_ms = elapsed
+
     def _drop_name(self) -> None:
         self._identify_generation += 1
-        changed = self._identify_busy or bool(self._name_note)
+        changed = self._identify_busy or bool(self._name_note) or bool(self._name_confidence)
         self._identify_busy = False
         self._name_note = ""
+        self._name_confidence = ""
         if changed:
             self.nameChanged.emit()
 
-    def _set_name(self, text: str, *, busy: bool) -> None:
+    def _set_name(self, text: str, *, busy: bool, confidence: str = "") -> None:
         self._identify_busy = busy
         self._name_note = present_message(
             self._mode,
             text,
             fallback="This area could not be named.",
         )
+        if busy or not confidence or not is_primary_safe_message(confidence):
+            self._name_confidence = ""
+        else:
+            self._name_confidence = confidence
         self.nameChanged.emit()
 
     def _settle_name(self) -> None:
@@ -3550,9 +3625,11 @@ class ShellBridge(QObject):
         if generation != self._identify_generation:
             return
         text = "Unlabelled region."
+        confidence = ""
         if isinstance(payload, dict):
             text = str(payload.get("understanding") or text)
-        self._set_name(text, busy=False)
+            confidence = _confidence_label(payload.get("confidence"))
+        self._set_name(text, busy=False, confidence=confidence)
 
     @Slot(int, str)
     def _on_name_failed(self, generation: int, _message: str) -> None:
@@ -3563,6 +3640,7 @@ class ShellBridge(QObject):
     @Slot()
     def findSimilar(self) -> None:
         """Region search door for a drawn rect. The Focus strip calls this on release."""
+        self._set_door("region")
         media_id = self._session.focus_id
         if not media_id:
             self._publish_similar("unavailable", "Open a photo first.", [])

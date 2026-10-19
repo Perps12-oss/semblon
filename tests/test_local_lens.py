@@ -112,7 +112,10 @@ def test_selection_understanding_is_not_a_person_name(tmp_path):
     assert plain == "Unlabelled region."
     crop = np.zeros((8, 8, 3), np.uint8)
     naming = pytest.MonkeyPatch()
-    naming.setattr("semblon.visual.naming_local.name_crop_bgr", lambda _crop: "Looks like a tree.")
+    naming.setattr(
+        "semblon.visual.naming_local.name_crop_detail",
+        lambda _crop: ("Looks like a tree.", 0.81),
+    )
     try:
         assert describe_selection(store, "m1", 70, 40, 8, 8, crop=crop) == "Looks like a tree."
         assert describe_selection(store, "m1", 6, 6, 10, 10, crop=crop) == (
@@ -143,7 +146,7 @@ def test_absent_namer_stays_unlabelled(tmp_path, monkeypatch):
     _media(conn, "m1")
     conn.commit()
     conn.close()
-    monkeypatch.setattr("semblon.visual.naming_local.name_crop_bgr", lambda _crop: None)
+    monkeypatch.setattr("semblon.visual.naming_local.name_crop_detail", lambda _crop: (None, None))
     crop = np.zeros((8, 8, 3), np.uint8)
     assert describe_selection(store, "m1", 4, 4, 8, 8, crop=crop) == "Unlabelled region."
 
@@ -232,9 +235,9 @@ def test_similar_search_does_not_call_the_namer(tmp_path, monkeypatch):
 
     def name(_crop):
         called["n"] += 1
-        return "Looks like a tree."
+        return "Looks like a tree.", 0.5
 
-    monkeypatch.setattr("semblon.visual.naming_local.name_crop_bgr", name)
+    monkeypatch.setattr("semblon.visual.naming_local.name_crop_detail", name)
     monkeypatch.setattr(
         "semblon.region_search.probe_region_pack",
         lambda root=None: (False, "missing"),
@@ -280,8 +283,8 @@ def test_name_selection_uses_the_noun_and_writes_nothing(tmp_path, monkeypatch):
     from semblon.user_region import list_user_regions
 
     monkeypatch.setattr(
-        "semblon.visual.naming_local.name_crop_bgr",
-        lambda _crop: "Looks like a tree.",
+        "semblon.visual.naming_local.name_crop_detail",
+        lambda _crop: ("Looks like a tree.", 0.81),
     )
     monkeypatch.setattr(
         "semblon.region_search.crop_bgr",
@@ -301,6 +304,7 @@ def test_name_selection_uses_the_noun_and_writes_nothing(tmp_path, monkeypatch):
     conn.close()
     rec = name_selection(store, media_id="m1", image_path=photo, x=0, y=0, w=8, h=8)
     assert rec["understanding"] == "Looks like a tree."
+    assert rec["confidence"] == pytest.approx(0.81)
     assert rec["status"] == "SUCCESS"
     assert rec["persons"] == 0
     assert rec["entity"] is False

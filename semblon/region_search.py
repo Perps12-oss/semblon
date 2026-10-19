@@ -408,6 +408,18 @@ def _colour_result(
     return rec
 
 
+def _unit_confidence(value) -> float | None:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    if score < 0:
+        return None
+    if score > 1:
+        return 1.0
+    return score
+
+
 def describe_selection(
     store: Path,
     media_id: str,
@@ -417,29 +429,46 @@ def describe_selection(
     h: int,
     crop: np.ndarray | None = None,
 ) -> str:
-    """What this selection is, in plain language. Never a person name.
+    """What this selection is, in plain language. Never a person name."""
+    return str(describe_selection_detail(store, media_id, x, y, w, h, crop=crop)["understanding"])
+
+
+def describe_selection_detail(
+    store: Path,
+    media_id: str,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    crop: np.ndarray | None = None,
+) -> dict:
+    """Selection label plus the model's own score, when it has one.
 
     Order: a face box that contains the centre, then a detector class
     (contour boxes are geometry, not a class), then overlapping OCR text,
     then one local noun that beats "no specific name". Otherwise unlabelled.
     The noun does not choose which archive photos match.
     """
+
+    def pack(text: str, confidence=None) -> dict:
+        return {"understanding": text, "confidence": _unit_confidence(confidence)}
+
     path = Path(store)
     if not path.is_file() or not media_id:
-        return "Unlabelled region."
+        return pack("Unlabelled region.")
     cx = float(x) + float(w) / 2.0
     cy = float(y) + float(h) / 2.0
     conn = _open_ro(path)
     try:
         faces = conn.execute(
-            """SELECT f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2
+            """SELECT f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2, f.det_score
                FROM faces f
                JOIN observations o ON o.observation_id = f.observation_id
                WHERE o.media_id=?""",
             (media_id,),
         ).fetchall()
         objects = conn.execute(
-            """SELECT i.payload_json, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2, i.provider
+            """SELECT i.payload_json, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2, i.provider, i.score
                FROM observation_items i
                JOIN observations o ON o.observation_id = i.observation_id
                WHERE o.media_id=? AND i.kind='object'""",
@@ -449,7 +478,7 @@ def describe_selection(
         conn.close()
     for row in faces:
         if _point_in_box(cx, cy, row["bbox_x1"], row["bbox_y1"], row["bbox_x2"], row["bbox_y2"]):
-            return "Face in the selection. Not a named person."
+            return pack("Face in the selection. Not a named person.", row["det_score"])
     for row in objects:
         if row["bbox_x1"] is None:
             continue
@@ -466,21 +495,21 @@ def describe_selection(
         label = str(payload.get("label") or payload.get("class") or "").strip()
         if not label or label.lower() in {"region", "user_region"}:
             continue
-        return f"Object: {label}."
+        return pack(f"Object: {label}.", row["score"])
     text = overlapping_text(store, media_id, x, y, w, h)
     token = _text_query_token(text)
     if token:
-        return f"Text: {token}."
+        return pack(f"Text: {token}.")
     if crop is not None:
-        from semblon.visual.naming_local import name_crop_bgr
+        from semblon.visual.naming_local import name_crop_detail
 
         try:
-            named = name_crop_bgr(crop)
+            named, score = name_crop_detail(crop)
         except Exception:  # noqa: BLE001 — naming must not replace a visual search
-            named = None
+            named, score = None, None
         if named:
-            return named
-    return "Unlabelled region."
+            return pack(named, score)
+    return pack("Unlabelled region.")
 
 
 def _point_in_box(px: float, py: float, x1, y1, x2, y2) -> bool:
@@ -901,11 +930,12 @@ def name_selection(
             "status": "UNAVAILABLE",
             "understanding": "This area could not be named.",
         }
-    text = describe_selection(store, media_id or "", x, y, w, h, crop=crop)
+    detail = describe_selection_detail(store, media_id or "", x, y, w, h, crop=crop)
     return {
         **blank,
         "status": "SUCCESS",
-        "understanding": text or "Unlabelled region.",
+        "understanding": str(detail.get("understanding") or "Unlabelled region."),
+        "confidence": detail.get("confidence"),
     }
 
 

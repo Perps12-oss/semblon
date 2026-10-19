@@ -169,7 +169,22 @@ ApplicationWindow {
     Shortcut {
         sequence: "S"
         enabled: focusActive && !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.findSimilar()
+    }
+    Shortcut {
+        sequence: "W"
+        enabled: focusActive && !commandField.activeFocus && !searchField.activeFocus
         onActivated: if (shellReady) shellApi.findSimilarWhole()
+    }
+    Shortcut {
+        sequence: "F"
+        enabled: focusActive && !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.findSimilarFaces()
+    }
+    Shortcut {
+        sequence: "Ctrl+D"
+        enabled: focusActive && !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.scanDuplicates()
     }
     Shortcut {
         sequence: "Alt+Left"
@@ -928,6 +943,7 @@ ApplicationWindow {
                     width: parent.width
                     spacing: 6
                     Rectangle {
+                        id: qualityFastButton
                         objectName: "qualityFast"
                         width: (parent.width - 12) / 3
                         height: 28
@@ -939,7 +955,7 @@ ApplicationWindow {
                         Text {
                             anchors.centerIn: parent
                             text: "Fast"
-                            color: selected ? tokenText : tokenMuted
+                            color: qualityFastButton.selected ? tokenText : tokenMuted
                             font.pixelSize: 12
                             font.family: "Segoe UI"
                         }
@@ -952,6 +968,7 @@ ApplicationWindow {
                         }
                     }
                     Rectangle {
+                        id: qualityBalancedButton
                         objectName: "qualityBalanced"
                         width: (parent.width - 12) / 3
                         height: 28
@@ -963,7 +980,7 @@ ApplicationWindow {
                         Text {
                             anchors.centerIn: parent
                             text: "Balanced"
-                            color: selected ? tokenText : tokenMuted
+                            color: qualityBalancedButton.selected ? tokenText : tokenMuted
                             font.pixelSize: 12
                             font.family: "Segoe UI"
                         }
@@ -976,6 +993,7 @@ ApplicationWindow {
                         }
                     }
                     Rectangle {
+                        id: qualityMaxButton
                         objectName: "qualityMax"
                         width: (parent.width - 12) / 3
                         height: 28
@@ -987,7 +1005,7 @@ ApplicationWindow {
                         Text {
                             anchors.centerIn: parent
                             text: "Max"
-                            color: selected ? tokenText : tokenMuted
+                            color: qualityMaxButton.selected ? tokenText : tokenMuted
                             font.pixelSize: 12
                             font.family: "Segoe UI"
                         }
@@ -2881,6 +2899,7 @@ ApplicationWindow {
 
             Column {
                 objectName: "focusInspector"
+                z: 8
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom
                 anchors.leftMargin: 22
@@ -2978,7 +2997,7 @@ ApplicationWindow {
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
-                        text: "Similar look"
+                        text: "Similar region"
                         color: tokenText
                         font.family: "Segoe UI"
                         font.pixelSize: 13
@@ -2989,7 +3008,85 @@ ApplicationWindow {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Similar look"
+                        Accessible.name: "Similar region"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.findSimilar()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "sameFaceDoor"
+                    width: parent.width
+                    height: 32
+                    radius: 6
+                    color: sameFaceHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Same face"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: sameFaceHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Same face"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.findSimilarFaces()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "duplicatesDoor"
+                    width: parent.width
+                    height: 32
+                    radius: 6
+                    color: duplicatesHit.containsMouse ? tokenBg3 : tokenBg2
+                    border.color: tokenMuted
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Duplicates"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: duplicatesHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Duplicates"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.scanDuplicates()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "wholePhoto"
+                    width: parent.width
+                    height: 32
+                    radius: 6
+                    color: wholePhotoHit.containsMouse ? tokenBg3 : tokenBg2
+                    border.color: tokenMuted
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Whole photo"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: wholePhotoHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Whole photo"
                         Accessible.role: Accessible.Button
                         onClicked: if (shellReady) shellApi.findSimilarWhole()
                     }
@@ -3000,6 +3097,28 @@ ApplicationWindow {
                     width: parent.width
                     wrapMode: Text.WordWrap
                     text: shellReady ? ("Quality: " + shellApi.searchQualityLabel) : ""
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    objectName: "searchDoorLabel"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.searchDoorLabel !== ""
+                    text: shellReady ? shellApi.searchDoorLabel : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                }
+
+                Text {
+                    objectName: "searchTiming"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.searchTimingLabel !== ""
+                    text: shellReady ? shellApi.searchTimingLabel : ""
                     color: tokenMuted
                     font.family: "Segoe UI"
                     font.pixelSize: 12
@@ -3025,6 +3144,25 @@ ApplicationWindow {
                     color: tokenText
                     font.family: "Segoe UI"
                     font.pixelSize: 13
+                }
+
+                Rectangle {
+                    objectName: "nameConfidence"
+                    visible: shellReady && shellApi.nameConfidenceLabel !== ""
+                    height: 22
+                    width: nameConfidenceText.implicitWidth + 16
+                    radius: 11
+                    color: tokenBg3
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        id: nameConfidenceText
+                        anchors.centerIn: parent
+                        text: shellReady ? shellApi.nameConfidenceLabel : ""
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
                 }
 
                 Text {
@@ -3315,6 +3453,28 @@ ApplicationWindow {
                 color: tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
+            }
+
+            Rectangle {
+                objectName: "searchPhaseBadge"
+                visible: shellReady && shellApi.similarPhaseLabel !== ""
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: matchStrip.visible ? matchStrip.top : similarNote.top
+                anchors.bottomMargin: 8
+                height: 22
+                width: phaseBadgeText.implicitWidth + 16
+                radius: 11
+                color: tokenBg2
+                border.color: tokenAccent
+                border.width: 1
+                Text {
+                    id: phaseBadgeText
+                    anchors.centerIn: parent
+                    text: shellReady ? shellApi.similarPhaseLabel : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
             }
 
             ListView {

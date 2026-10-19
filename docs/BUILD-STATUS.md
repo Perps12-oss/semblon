@@ -216,6 +216,14 @@ Visible shell grab: `docs/evidence/visual-discovery-shell-windows.png` shows **S
 
 Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 
+## Behaviour landed — three search doors (2026-10-19)
+
+1. Focus has separate controls for **Similar region**, **Same face**, **Duplicates**, and **Whole photo**. Similar region searches the highlighted area. Duplicates stays an exact and near-copy scan and does not replace that strip.
+2. The result strip carries a phase badge. Focus also shows the time to the first look and the time to the refined result.
+3. **Name this area** shows a confidence chip when the face, detector, or local noun has a score. An unlabelled area has no invented score.
+4. Keys in Focus: S similar region, W whole photo, F same face, Ctrl+D duplicates.
+5. Command: `python3 -m pytest tests/test_search_doors.py tests/test_local_lens.py tests/test_discovery_slice_d.py::test_unified_basis_messages_are_allowlisted tests/test_native_shell.py::test_focus_qml_keeps_the_strip_and_a_primary_similar_action tests/test_shell_frontend.py::test_qml_has_no_hardcoded_chrome_colors tests/test_shell_adapter.py::test_qml_exposes_four_operations_and_hides_places tests/test_discovery_workspace.py -q` → **20 passed, 1 skipped**.
+
 ## Behaviour landed — name the highlighted area (2026-10-19)
 
 1. **Name this area** reads the highlighted crop and shows a face, a detector class, text, one local noun, or an unlabelled region. The similar strip stays as it is.
