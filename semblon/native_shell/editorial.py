@@ -57,6 +57,8 @@ _FOLDER_GROUP_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 FIELD_SECTION_PREVIEW_CAP = 24
+CALENDAR_PREVIEW_CAP = 6
+UNDATED_DAY = "Unknown day"
 
 SAVED_VIEWS_NOTE = ALBUMS_DEFERRED_LINES[0] if ALBUMS_DEFERRED_LINES else "Saved views are not stored yet."
 SPATIAL_NOTE = (
@@ -336,6 +338,34 @@ def day_section_label(day: str) -> str:
     return f"{stamp.strftime('%A')} {stamp.day} {stamp.strftime('%B %Y')}"
 
 
+def day_section_short_label(day: str) -> str:
+    """Compact day heading for the photo column (e.g. ``Oct 15, 2024``)."""
+    text = str(day or "").strip()[:10]
+    if len(text) < 10:
+        return day_section_label(day)
+    try:
+        stamp = datetime.strptime(text, "%Y-%m-%d")
+    except ValueError:
+        return day_section_label(day)
+    months = (
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    )
+    return f"{months[stamp.month - 1]} {stamp.day}, {stamp.year}"
+
+
+def parse_iso_day(label: str) -> str:
+    """Return ``YYYY-MM-DD`` or an empty string when the text is not a real day."""
+    text = str(label or "").strip()[:10]
+    if len(text) != 10 or text[4:5] != "-" or text[7:8] != "-":
+        return ""
+    try:
+        datetime.strptime(text, "%Y-%m-%d")
+    except ValueError:
+        return ""
+    return text
+
+
 def field_sections(day_map: dict[str, list[str]], media_ids: list[str]) -> list[dict]:
     """Group already-ordered media ids into day sections (order preserved).
 
@@ -364,6 +394,7 @@ def field_sections(day_map: dict[str, list[str]], media_ids: list[str]) -> list[
             {
                 "day": day,
                 "label": day_section_label(day) if day != "unknown" else "Unknown date",
+                "shortLabel": day_section_short_label(day) if day != "unknown" else "Unknown date",
                 "count": len(ids),
                 "mediaIds": ids,
                 "previewIds": ids[:preview_cap],
@@ -415,24 +446,34 @@ def default_calendar_month(day_map: dict[str, list[str]]) -> str:
 
 
 def calendar_month_cells(
-    month_label: str, day_map: dict[str, list[str]]
+    month_label: str,
+    day_map: dict[str, list[str]],
+    *,
+    video_ids: set[str] | None = None,
+    emphasis_days: set[str] | None = None,
 ) -> list[dict]:
     """Monday-first month grid cells (usually 35 or 42) from real day buckets.
 
     Empty calendar days are present with count 0 and no fabricated thumb.
     Days outside the displayed month are marked ``inMonth=False``.
+    ``previewIds`` is capped at ``CALENDAR_PREVIEW_CAP``. ``overflow`` is the
+    remainder. ``video`` marks a video representative. ``emphasized`` is a
+    highlight supplied by the caller (person or folder filter).
     """
     parsed = _parse_month(month_label)
     if parsed is None:
         return []
     year, month = parsed
     today = date.today().isoformat()
+    videos = video_ids or set()
+    emphasis = emphasis_days or set()
     cal = calendar.Calendar(firstweekday=calendar.MONDAY)
     cells: list[dict] = []
     for day in cal.itermonthdates(year, month):
         key = day.isoformat()
         ids = [str(i) for i in day_map.get(key, [])]
         count = len(ids)
+        preview = ids[:CALENDAR_PREVIEW_CAP]
         cells.append(
             {
                 "day": key,
@@ -443,7 +484,10 @@ def calendar_month_cells(
                 "exactCount": count,
                 "isToday": key == today,
                 "thumbId": ids[0] if ids else "",
-                "previewIds": ids[:3],
+                "previewIds": preview,
+                "overflow": max(0, count - len(preview)),
+                "video": bool(ids) and ids[0] in videos,
+                "emphasized": key in emphasis,
                 "accessibleName": (
                     f"{day.strftime('%A')} {day.day} {day.strftime('%B %Y')}, "
                     f"{format_count_exact(count)} photos"
@@ -453,3 +497,64 @@ def calendar_month_cells(
             }
         )
     return cells
+
+
+def _heat_by_day(day_map: dict[str, list[str]], year: str) -> dict[str, int]:
+    """1 for a day with media, 2 for the busier third of that year. Empty days stay 0."""
+    counts: list[tuple[str, int]] = []
+    prefix = f"{year}-"
+    for day, ids in day_map.items():
+        key = str(day)[:10]
+        if key.startswith(prefix) and ids:
+            counts.append((key, len(ids)))
+    if not counts:
+        return {}
+    ranked = sorted(count for _, count in counts)
+    cut = ranked[max(0, (len(ranked) * 2) // 3)]
+    return {day: (2 if count >= cut else 1) for day, count in counts}
+
+
+def year_matrix(
+    year: str,
+    day_map: dict[str, list[str]],
+    *,
+    emphasis_days: set[str] | None = None,
+) -> list[dict]:
+    """Twelve month cards for one year. Dots only — no thumbnail ids."""
+    text = str(year or "").strip()[:4]
+    if len(text) != 4 or not text.isdigit():
+        return []
+    heat = _heat_by_day(day_map, text)
+    emphasis = emphasis_days or set()
+    months: list[dict] = []
+    for month in range(1, 13):
+        label = f"{text}-{month:02d}"
+        cells = calendar_month_cells(label, day_map, emphasis_days=emphasis)
+        total = 0
+        slim: list[dict] = []
+        for cell in cells:
+            if cell["inMonth"]:
+                total += int(cell["count"])
+            slim.append(
+                {
+                    "day": cell["day"],
+                    "dayNum": cell["dayNum"],
+                    "inMonth": cell["inMonth"],
+                    "count": cell["count"],
+                    "heat": heat.get(cell["day"], 0) if cell["inMonth"] else 0,
+                    "emphasized": cell["emphasized"],
+                }
+            )
+        months.append(
+            {
+                "label": label,
+                "title": datetime.strptime(label, "%Y-%m").strftime("%B"),
+                "count": total,
+                "cells": slim,
+            }
+        )
+    return months
+
+
+def undated_count(day_map: dict[str, list[str]]) -> int:
+    return len(list(day_map.get(UNDATED_DAY, [])))

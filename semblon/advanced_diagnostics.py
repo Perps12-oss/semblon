@@ -224,9 +224,8 @@ def _section_processing() -> list[str]:
 
     w = weights_status()
     lines = [_heading("Processing")]
-    # FaceKit / buffalo_l presence (same strings Settings used to dump).
     lines.append("Identity: YuNet + SFace (OpenCV Zoo); buffalo_l retired from production")
-    lines.append(f"pack_family: insightface/buffalo_l")
+    lines.append(f"pack_family: {w['pack_family']}")
     lines.append(f"Weights dir: {w['dir']}")
     lines.append(f"onnx files: {w['onnx_count']}  bundled={w['bundled']}")
     present = w.get("present") or []

@@ -1,20 +1,26 @@
 # Visual Memory Calendar — locked contract
 
-**Status:** locked on `grok/visual-timeline`  
+**Status:** locked on `grok/visual-timeline`; photo column and density views updated 2026-10-20  
 **Shell:** `semblon shell` → `Application` → `ShellBridge` / `Shell.qml`  
 **Theme:** `semblon/native_shell/tokens.py` (no Quiet Studio hard-coded hex, no vault/padlock/blur)
 
 ## Product shape
 
 ```text
-+-- LEFT NAV: Home · Library · People · Add folder · Settings · Browse (when Library) -----+
-+-- HOME launchpad (permanent) OR Library stage: -----------------------------------------+
-|     HERO DENSITY TIMELINE · MEMORY CALENDAR · FIELD                                    |
++-- LEFT NAV: Home · Library · People · Add folder · Settings · Browse (when Library) --+
++-- HOME launchpad (permanent) OR Library stage: ----------------------------------------+
+|  CALENDAR COLUMN                         |  PHOTO FIELD                               |
+|  Years · Months · Days                   |  sticky heading · day groups or flat grid  |
+|  timeline (Months and Days)              |                                            |
+|  year matrix OR month grid               |                                            |
++------------------------------------------+--------------------------------------------+
 ```
 
 Home is a permanent editorial launchpad (`HomeLaunchpad.qml`); Library is this timeline contract. One density timeline only. The bottom year scrubber was removed (product design). Archive browse (media type, folders, Moments, Similar) lives in the left navigation column when Library is open — there is no right-hand “Explore your archive” panel. Primary / Advanced and Atmosphere live in Settings.
 
-Archive uses a single column: `archiveHeaderBand` (timeline + clipped `MemoryCalendar` + sticky/zero) then `fieldViewport` below it. Calendar day cells size to fit inside the calendar height (including the empty-month line) so they cannot overflow into the Field.
+On a library stage at least 900 px wide, `archiveHeaderBand` is the left column (density segment, timeline, year matrix or `MemoryCalendar`) and `fieldViewport` is the photo column on its right (`archiveSplit` adjusts the ratio, remembered in appearance prefs). Narrower stages stack the field under the calendar. The field is the same grids as before. Focus, Home, People, and Settings still replace the whole stage. File details (`focusDetails`) open inside Focus when a photo opens, and Close hides that rail only.
+
+Calendar day cells size to the left column. Month cells show at most six cropped thumbs. The overflow count is a `+N` mark. Days view keeps the same month grid with numbers only. Years view is twelve month cards of activity dots from real day buckets.
 
 Elevation (Phase 1–2): cool-slate `bg0` canvas → `bg1` nav chrome → `bg2` content wells. Calendar empty days use ghost gradients + dashed borders; media days use bottom readability gradient, dark count pills, and soft under-shadows. Timeline month bars are accent-on-recessed with Jan–Dec ticks. Browse media kinds use a segmented control. Duotone icons + hover/selected accent bars stay on left nav. No right Explore panel.
 
@@ -40,7 +46,14 @@ Under primary destinations, a **Browse** block (objectName `archiveSidebar`) pro
 | Action | Behavior |
 |---|---|
 | Prev / next month / Today | Shift `calendarMonth` only |
-| Click day | `selectDay` (toggle → `clearScope`) |
+| Click day number or empty card | `selectDay` (toggle → `clearScope`) |
+| Double-click a day | Days density, then `focusDay` (stays selected) |
+| Drag across day cards or year-month cards | Inclusive `selectRange` |
+| Click a thumb in a day card | `openFocus` for that id |
+| Go to date (`calendarJump`) | `revealDay` — calendar month and highlight only |
+| No date chip | `showUndated` for the `Unknown day` bucket |
+| Scrolling the photo column | `setStickyDay` also moves `calendarMonth`; scope stays |
+| Years / Months / Days, or Ctrl+wheel / pinch | `calendarView` only. Bands use hysteresis. Default `months` |
 | Click timeline year | Newest month with media in that year + `selectYear` |
 | Click timeline month | `selectMonth` (not `selectDay`) |
 | Drag timeline across months | Inclusive `selectRange` (month start → month end; either direction) |
@@ -52,10 +65,13 @@ Under primary destinations, a **Browse** block (objectName `archiveSidebar`) pro
 
 ## Day cells
 
-- Clear thumbnails via `image://archive/`; one representative id per day
+- Clear thumbnails via `image://archive/`; one representative id per day, plus up to six `previewIds`
+- A colored block stands in until that thumb's image is ready. Decode stays on `ArchiveImageProvider`
 - Compact count (`1.3k`) + exact accessible name (`1,282 photos`)
-- Outside-month days subdued; today outlined; keyboard focus ≠ selected
-- Preview capped at three thumbs; full day opens via scope / Field
+- Outside-month days have no numeral; today and keyboard focus stay distinct from the scope selection
+- `emphasized` dots days that intersect the active person filter or folder scope
+- A video representative is labelled Video
+- `revealDay` highlights a cell without changing scope. People in Time and a kept find call it
 
 ## Keyboard
 
@@ -65,14 +81,16 @@ Under primary destinations, a **Browse** block (objectName `archiveSidebar`) pro
 
 ## Performance notes
 
-Measured 2026-10-15 (offscreen Qt): high-volume day (1,282 ids) cell build **2.8 ms**, preview ids capped at **3**, label `1.3k`; synthetic **1,372** media → shell open **731 ms**; `selectDay` **279 ms**; year `selectRange` **1140 ms** / 10 sections; 12× `calendarNextMonth` **573 ms**. High-volume day cells keep one thumb + ≤3 preview ids regardless of count (structural bound).
+Measured 2026-10-15 (offscreen Qt): high-volume day (1,282 ids) cell build **2.8 ms**, preview ids were capped at **3**, label `1.3k`; synthetic **1,372** media → shell open **731 ms**; `selectDay` **279 ms**; year `selectRange` **1140 ms** / 10 sections; 12× `calendarNextMonth` **573 ms**. The cap is now **6** preview ids plus `overflow`. The structural bound remains: a cell never requests one image per file.
+
+Ctrl+wheel and a pinch on the archive pane move `calendarView` across Years (low scale), Months, and Days (high scale). The segment buttons follow. The gesture does not change `calendarMonth` or `scopeKind`. Focus keeps its own 1×–8× photo zoom.
 
 ## Deferred
 
-- Pinch/zoom Years ↔ Months ↔ Days morph
 - Vault / padlock / blurred “hidden” treatments (out of product)
 - Day-resolution segments drawn on the density strip (calendar owns day pick)
+- A shared-element morph from a month cell into the photo column (the density change is a short opacity fade)
 
 ## Object names
 
-`navSidebar`, `homeButton`, `libraryButton`, `emptyState` (Home launchpad), `archiveBrowseFlick`, `archiveSidebar` (left-nav Browse block), `contextSidebarSearch`, `sidebarFolder_*`, `sidebarMoments`, `sidebarSimilar`, `sidebarKind_*`, `timelineHero`, `timelineYear_*`, `timelineMonth_*`, `archiveHeaderBand`, `memoryCalendar`, `calendarPrev`, `calendarNext`, `calendarGoHome`, `calendarTitle`, `calendarDay_*`, `fieldSections`, `fieldSection_*`, `stickyHeader`, `zeroResultFilter`, `fieldGrid`
+`navSidebar`, `homeButton`, `libraryButton`, `emptyState` (Home launchpad), `archiveBrowseFlick`, `archiveSidebar` (left-nav Browse block), `contextSidebarSearch`, `sidebarFolder_*`, `sidebarMoments`, `sidebarSimilar`, `sidebarKind_*`, `timelineHero`, `timelineYear_*`, `timelineMonth_*`, `archiveHeaderBand`, `archiveSplit`, `timelineDensitySegment`, `densityYears`, `densityMonths`, `densityDays`, `yearMatrix`, `yearMonth_*`, `memoryCalendar`, `calendarPrev`, `calendarNext`, `calendarGoHome`, `calendarTitle`, `calendarJump`, `calendarUndated`, `calendarDay_*`, `fieldSections`, `fieldSection_*`, `stickyHeader`, `zeroResultFilter`, `fieldGrid`, `focusDetails`, `focusDetailsClose`

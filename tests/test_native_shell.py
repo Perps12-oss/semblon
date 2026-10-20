@@ -22,9 +22,18 @@ def test_native_shell_package_has_no_identity_or_ingest_imports():
     for name in ("archive_session.py",):
         text = (root.parents[0] / name).read_text(encoding="utf-8")
         assert "person_id" not in text
-    for name in ("bridge.py", "host.py", "model.py", "images.py", "run.py"):
+    for name in ("host.py", "model.py", "images.py", "run.py"):
         text = (root / name).read_text(encoding="utf-8")
         assert "person_id" not in text
+    # People reads the board member key to open that person's days.
+    # The shell must not stamp the faces column or load the identity engine.
+    bridge = (root / "bridge.py").read_text(encoding="utf-8")
+    assert "faces.person_id" not in bridge
+    assert "UPDATE faces" not in bridge
+    assert "INSERT INTO faces" not in bridge
+    assert "from semblon.identify" not in bridge
+    assert "from semblon.cluster" not in bridge
+    assert "from semblon.ingest" not in bridge
 
 
 def test_shell_command_loads_qml_archive_not_the_widget_columns():

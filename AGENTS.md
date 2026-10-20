@@ -49,3 +49,14 @@ Windows ARM64 native and Windows x64 native are first-class. x64-on-ARM64 is `em
 ## How to work
 
 One slice, one path, branch `grok/<slice>`. Cite file:line or a command you ran. Stop before push. Do not start a Cursor Cloud Agent.
+
+## Cursor Cloud specific instructions
+
+Linux Cloud Agents use the Ubuntu job in `.github/workflows/ci.yml`. The production UI is still the PySide6 archive (`semblon shell`). Nothing listens on a port, so there is no boot service.
+
+- System packages: `libegl1`, `libpulse0`, `xvfb`, `python3-venv`. Python 3.12 is the lock baseline (`docs/decisions/2026-10-16-python-support-policy.md`).
+- Interpreter: repo-root `.venv`. Install `requirements-dev.txt`, then `pip install -e ".[dev]"`, then force `opencv-python-headless==5.0.0.93` and run `python tools/assert_one_opencv.py`.
+- Tests: `xvfb-run -a .venv/bin/python -m pytest -q` from the repo root. `tests/conftest.py` sets `QT_QPA_PLATFORM=offscreen`.
+- CLI: `.venv/bin/python -m semblon --help`. A headless lens check that does not need identity weights: `.venv/bin/python -m semblon lab query --image docs/evidence/visual-discovery-corpus/a0.png`.
+- Identity weights are bring-your-own (`docs/IDENTITY-PACK.md`). Do not download them. Pytest does not need `~/.semblon/models`.
+- Optional extras (`ocr`, `clip`, `pose`, `sam2`) stay uninstalled. `semblon lab providers` reports them unavailable.
