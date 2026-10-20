@@ -129,7 +129,23 @@ def test_qml_has_no_hardcoded_chrome_colors():
     qml = Path("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
     literals = re.findall(r'"#[0-9a-fA-F]{6,8}"', qml)
     # Only the token fallbacks used before the bridge is ready may remain.
-    assert len(literals) == 12
+    # ok and warn joined that set with the calendar density heat marks.
+    assert literals == [
+        '"#0b0c0e"',
+        '"#131417"',
+        '"#4f8cff"',
+        '"#f2f3f5"',
+        '"#a8adb7"',
+        '"#a15cf5"',
+        '"#1b1d21"',
+        '"#24272c"',
+        '"#2a2d33"',
+        '"#6b7280"',
+        '"#2b4d8f"',
+        '"#e5484d"',
+        '"#30a46c"',
+        '"#f5a524"',
+    ]
 
 
 def test_sidebar_scopes_library_by_year_and_folder_and_clears(shell, tmp_path):

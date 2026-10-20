@@ -55,13 +55,16 @@ from semblon.native_shell.editorial import (
     VIDEO_NOTE,
     YEAR_NOTE,
     MEDIA_KINDS,
+    UNDATED_DAY,
     calendar_month_cells,
+    day_section_short_label,
     default_calendar_month,
     field_sections,
     format_count,
     format_count_exact,
     month_end_day,
     month_heading,
+    parse_iso_day,
     range_media_ids,
     rows_from_scope,
     scope_ids,
@@ -69,11 +72,28 @@ from semblon.native_shell.editorial import (
     sort_ids_newest_first,
     source_counts,
     timeline_density,
+    undated_count,
+    video_ids,
+    year_matrix,
 )
 from semblon.ui_prefs import load_prefer_gpu, load_prefs, save_theme_mode, update_prefs
 
 
 KEY_SHELL_MODE = "shell_mode"
+KEY_CALENDAR_VIEW = "calendar_view"
+KEY_ARCHIVE_SPLIT = "archive_split"
+CALENDAR_VIEWS = ("years", "months", "days")
+
+
+def _format_bytes(size: int) -> str:
+    value = int(size or 0)
+    if value <= 0:
+        return "Not in this file"
+    if value < 1024:
+        return f"{value} B"
+    if value < 1024 * 1024:
+        return f"{value / 1024:.1f} KB"
+    return f"{value / (1024 * 1024):.1f} MB"
 KEY_SCREEN_QUERY_MODE = "screen_query_mode"
 SCREEN_QUERY_MODE_VISUAL = "visual"
 SCREEN_QUERY_MODE_TEXT_PRIORITY = "text_priority"
@@ -332,6 +352,12 @@ class ShellBridge(QObject):
         self._sticky_heading = ""
         self._calendar_month = ""
         self._calendar_cells: list[dict] = []
+        self._year_matrix: list[dict] = []
+        self._undated_count = 0
+        self._revealed_day = ""
+        self._video_ids: set[str] = set()
+        self._calendar_view = self._load_calendar_view()
+        self._archive_split = self._load_archive_split()
         self._field_sections: list[dict] = []
         self._scope_ids: dict[str, dict[str, list[str]]] = {
             "year": {},
@@ -426,6 +452,20 @@ class ShellBridge(QObject):
             return chosen
         return "mica_dark"
 
+    def _load_calendar_view(self) -> str:
+        raw = str(load_prefs(self._prefs_store()).get(KEY_CALENDAR_VIEW) or "").strip().lower()
+        if raw in CALENDAR_VIEWS:
+            return raw
+        return "months"
+
+    def _load_archive_split(self) -> float:
+        raw = load_prefs(self._prefs_store()).get(KEY_ARCHIVE_SPLIT, 0.46)
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return 0.46
+        return max(0.32, min(0.68, value))
+
     @Property(str, notify=lensChanged)
     def mode(self) -> str:
         return self._mode
@@ -499,6 +539,34 @@ class ShellBridge(QObject):
     def focusName(self) -> str:
         item = self._jobs.media(self._session.focus_id or "")
         return item.name if item else ""
+
+    @Property("QVariantMap", notify=focusChanged)
+    def focusFileFacts(self):
+        """Read-only file facts for the open photo. Missing facts stay unnamed."""
+        item = self._jobs.media(self._session.focus_id or "")
+        if item is None:
+            return {}
+        path = Path(item.path) if item.path else None
+        size_text = "Not in this file"
+        if path is not None:
+            try:
+                if path.is_file():
+                    size_text = _format_bytes(path.stat().st_size)
+            except OSError:
+                size_text = "Not in this file"
+        if item.width and item.height:
+            dimensions = f"{int(item.width)} × {int(item.height)}"
+        else:
+            dimensions = "Not in this file"
+        taken = day_section_short_label(item.day) if item.day else "Not in this file"
+        return {
+            "name": item.name or "Not in this file",
+            "date": taken,
+            "dimensions": dimensions,
+            "size": size_text,
+            "camera": "Not in this file",
+            "location": "No location stored",
+        }
 
     @Property(str, notify=focusChanged)
     def focusUrl(self) -> str:
@@ -742,13 +810,13 @@ class ShellBridge(QObject):
         self._days = rows_from_scope(self._scope_ids["day"], newest_first=True)
         self._folders = rows_from_scope(self._scope_ids["folder"])
         self._timeline_density = timeline_density(store, self._media_kind)
+        self._video_ids = video_ids(store)
         if self._scope_kind and self._scope_label not in self._scope_ids.get(self._scope_kind, {}):
             self._scope_kind = ""
             self._scope_label = ""
         day_map = self._scope_ids.get("day", {})
         if not self._calendar_month:
             self._calendar_month = default_calendar_month(day_map)
-        self._calendar_cells = calendar_month_cells(self._calendar_month, day_map)
         self._apply_scope_view()
         self._timeline_loading = False
         self.editorialChanged.emit()
@@ -761,9 +829,7 @@ class ShellBridge(QObject):
             return
         self._calendar_month = label
         if rebuild:
-            self._calendar_cells = calendar_month_cells(
-                self._calendar_month, self._scope_ids.get("day", {})
-            )
+            self._paint_calendar()
         self.editorialChanged.emit()
 
     def _ordered_ids(self, ids: list[str]) -> list[str]:
@@ -809,6 +875,41 @@ class ShellBridge(QObject):
                 self._model.set_media_ids(None)
         self._refresh_field_sections(ordered)
         self._sticky_heading = ""
+        self._paint_calendar()
+
+    def _emphasis_days(self) -> set[str]:
+        """Days that intersect the active person filter or the folder scope."""
+        wanted: set[str] = set()
+        if self._person_field_filter and self._person_field_ids:
+            wanted.update(str(media_id) for media_id in self._person_field_ids)
+        if self._scope_kind == "folder":
+            wanted.update(
+                str(media_id)
+                for media_id in self._scope_ids.get("folder", {}).get(self._scope_label, [])
+            )
+        if not wanted:
+            return set()
+        days: set[str] = set()
+        for day, members in self._scope_ids.get("day", {}).items():
+            if wanted.intersection(str(media_id) for media_id in members):
+                days.add(str(day))
+        return days
+
+    def _paint_calendar(self) -> None:
+        day_map = self._scope_ids.get("day", {})
+        emphasis = self._emphasis_days()
+        self._calendar_cells = calendar_month_cells(
+            self._calendar_month,
+            day_map,
+            video_ids=self._video_ids,
+            emphasis_days=emphasis,
+        )
+        self._year_matrix = year_matrix(
+            (self._calendar_month or "")[:4],
+            day_map,
+            emphasis_days=emphasis,
+        )
+        self._undated_count = undated_count(day_map)
 
     @Property(str, notify=editorialChanged)
     def mediaKind(self) -> str:
@@ -846,6 +947,7 @@ class ShellBridge(QObject):
         self._model.set_media_ids(ordered)
         self._refresh_field_sections(ordered)
         self._sticky_heading = ""
+        self._paint_calendar()
         self.editorialChanged.emit()
         self._apply_result(Result("ready", f"Showing {label}."))
 
@@ -883,11 +985,92 @@ class ShellBridge(QObject):
             self._scope_kind == "day"
             and self._scope_label == day
         ):
+            self._revealed_day = ""
             self.clearScope()
             return
+        self._revealed_day = day
         if len(day) >= 7:
             self._sync_calendar_month(day[:7])
         self._select_scope("day", day)
+
+    @Slot(str)
+    def focusDay(self, label: str) -> None:
+        """Select a day and keep it selected when it is already the scope."""
+        day = str(label or "").strip()[:10]
+        if self._scope_kind == "day" and self._scope_label == day:
+            self._revealed_day = day
+            if len(day) >= 7:
+                self._sync_calendar_month(day[:7])
+            else:
+                self.editorialChanged.emit()
+            return
+        self.selectDay(day)
+
+    @Slot(str)
+    def revealDay(self, label: str) -> None:
+        """Move the calendar to a real day without changing the media scope."""
+        day = parse_iso_day(label)
+        if not day:
+            return
+        self._revealed_day = day
+        self._sync_calendar_month(day[:7])
+
+    @Slot()
+    def showUndated(self) -> None:
+        """Show photos with no stored day. The calendar month stays put."""
+        ids = self._scope_ids.get("day", {}).get(UNDATED_DAY)
+        if not ids:
+            return
+        if self._scope_kind == "day" and self._scope_label == UNDATED_DAY:
+            self.clearScope()
+            return
+        self._select_scope("day", UNDATED_DAY)
+
+    @Property(str, notify=editorialChanged)
+    def calendarView(self) -> str:
+        return self._calendar_view
+
+    @Slot(str)
+    def setCalendarView(self, view: str) -> None:
+        picked = str(view or "").strip().lower()
+        if picked not in CALENDAR_VIEWS or picked == self._calendar_view:
+            return
+        self._calendar_view = picked
+        update_prefs(self._prefs_store(), **{KEY_CALENDAR_VIEW: picked})
+        self.editorialChanged.emit()
+
+    @Property(float, notify=editorialChanged)
+    def archiveSplit(self) -> float:
+        return float(self._archive_split)
+
+    @Slot(float)
+    def setArchiveSplit(self, ratio: float) -> None:
+        try:
+            value = float(ratio)
+        except (TypeError, ValueError):
+            return
+        value = max(0.32, min(0.68, value))
+        if abs(value - float(self._archive_split)) < 0.001:
+            return
+        self._archive_split = value
+        update_prefs(self._prefs_store(), **{KEY_ARCHIVE_SPLIT: value})
+        self.editorialChanged.emit()
+
+    @Property(str, notify=editorialChanged)
+    def calendarYear(self) -> str:
+        return (self._calendar_month or "")[:4]
+
+    @Property(str, notify=editorialChanged)
+    def revealedDay(self) -> str:
+        return self._revealed_day
+
+    @Property(int, notify=editorialChanged)
+    def undatedCount(self) -> int:
+        return int(self._undated_count)
+
+    @Property("QVariantList", notify=editorialChanged)
+    def yearMatrix(self):
+        return list(self._year_matrix)
 
     @Slot(str, str)
     def selectRange(self, start: str, end: str) -> None:
@@ -962,11 +1145,18 @@ class ShellBridge(QObject):
 
     @Slot(str)
     def setStickyDay(self, day: str) -> None:
-        heading = month_heading(str(day or ""))
-        if heading == self._sticky_heading:
+        """Update the sticky heading and follow the visible month. Scope stays."""
+        text = str(day or "").strip()
+        heading = month_heading(text)
+        heading_changed = heading != self._sticky_heading
+        if heading_changed:
+            self._sticky_heading = heading
+        month = text[:7] if len(text) >= 7 and text[4:5] == "-" else ""
+        if month and month != self._calendar_month:
+            self._sync_calendar_month(month)
             return
-        self._sticky_heading = heading
-        self.editorialChanged.emit()
+        if heading_changed:
+            self.editorialChanged.emit()
 
     @Slot(int, result=str)
     def dayAt(self, index: int) -> str:
@@ -1146,6 +1336,14 @@ class ShellBridge(QObject):
     @Property(str, notify=lensChanged)
     def dangerColor(self) -> str:
         return tokens_for(self._atmosphere_id)["danger"]
+
+    @Property(str, notify=lensChanged)
+    def okColor(self) -> str:
+        return tokens_for(self._atmosphere_id)["ok"]
+
+    @Property(str, notify=lensChanged)
+    def warnColor(self) -> str:
+        return tokens_for(self._atmosphere_id)["warn"]
 
     @Property(bool, notify=lensChanged)
     def screenQueryAvailable(self) -> bool:
@@ -1371,6 +1569,10 @@ class ShellBridge(QObject):
             missing = True
         if missing:
             self._report_missing_original()
+        if item.day:
+            self._revealed_day = item.day
+            if len(item.day) >= 7:
+                self._sync_calendar_month(item.day[:7])
         self.focusChanged.emit()
         self.similarChanged.emit()
         self.diagnosticsChanged.emit()
@@ -2109,6 +2311,7 @@ class ShellBridge(QObject):
         self.openFocus(media_id)
         if day:
             # Scope neighbours without inventing a date when mtime is missing.
+            self._revealed_day = day
             if len(day) >= 7:
                 self._sync_calendar_month(day[:7])
             self._select_scope("day", day)
@@ -3642,8 +3845,11 @@ class ShellBridge(QObject):
     def resetDefaults(self) -> None:
         result = self._safe_call(self._adapter.reset_defaults)
         self._atmosphere_id = self._load_atmosphere_id()
+        self._calendar_view = self._load_calendar_view()
+        self._archive_split = self._load_archive_split()
         self._apply_result(result)
         self.lensChanged.emit()
+        self.editorialChanged.emit()
 
     @Slot()
     def clearLibrary(self) -> None:

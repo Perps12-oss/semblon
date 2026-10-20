@@ -7,7 +7,7 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-18 (editorial Home launchpad) |
+| Evidence date | 2026-10-20 (calendar column + photo field) |
 | Branch | `grok/home-launchpad` |
 | Parent HEAD | (see git log on branch) |
 | Working tree at evidence | Permanent Home stage + capability catalogue; shell journey updated |
@@ -258,6 +258,13 @@ Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 2. Similar search reads the exact derived matrix through `index_provider.active_vector_index`. SQLite embeddings stay authoritative. ANN is named and disabled. FAISS and Chroma are not product dependencies.
 3. Object detection and the vision-language describer are optional providers (`optional_providers`). A missing weight is reported. Neither provider writes face identity.
 4. When the current search needs the object model or the local description, the shell offers one install button on that same screen. Confirmation downloads the pinned NanoDet file, or writes the local pixel-describer marker, then runs that search again. Search itself does not download. NanoDet MSI bundling stays blocked.
+
+## Behaviour landed — calendar column and photo field (2026-10-20)
+
+1. Library stage at least 900 px wide places the calendar column on the left and the existing photo field on the right. `archiveSplit` remembers the ratio. Narrower windows stack the field underneath. Scope, Focus, Home, People, and Settings keep their current actions.
+2. Years, Months, and Days change only the left column. Month cells show at most six thumbs. Years are twelve real month cards. Pinch or Ctrl+wheel moves between those densities and does not change the media scope. Scrolling the photos follows the visible month only.
+3. `revealDay` highlights a date without filtering. A no-date chip opens the undated bucket. Person and folder filters can mark days. Opening a photo shows file name, archive day, pixel size, and byte size inside Focus.
+4. Command: `QT_QPA_PLATFORM=offscreen python3 -m pytest tests/test_timeline_view.py -q` → **13 passed**.
 
 ## What this file will not absorb
 
