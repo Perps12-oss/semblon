@@ -230,10 +230,12 @@ class ArchiveAdapter:
             {**meta, "count": len(media_ids) or len(items), "items": items[:20]},
         )
 
-    def similar_media(self, media_id: str) -> Result:
+    def similar_media(self, media_id: str, *, search_quality: str | None = None) -> Result:
         from semblon.search import search_similar_media
+        from semblon.ui_prefs import load_search_quality
 
-        rec = search_similar_media(self.store, media_id)
+        quality = search_quality or load_search_quality(self.store)
+        rec = search_similar_media(self.store, media_id, search_quality=quality)
         return self._similar_result(rec, basis="whole")
 
     def similar_faces(self, face_id: str) -> Result:
@@ -245,6 +247,9 @@ class ArchiveAdapter:
     def similar_region(self, rec: dict) -> Result:
         """Region door → same Focus strip. Basis comes from the search record."""
         similar = dict((rec or {}).get("similar") or {})
+        providers = (rec or {}).get("optional_providers")
+        if isinstance(providers, list) and "optional_providers" not in similar:
+            similar["optional_providers"] = providers
         if str(similar.get("status") or "") == "UNAVAILABLE":
             reason = str(similar.get("reason") or "")
             lowered = reason.lower()
@@ -293,11 +298,39 @@ class ArchiveAdapter:
                 empty_msg = f"Similar ({basis_label}): nothing close enough."
                 noun = "match" if len(items) == 1 else "matches"
                 ready_msg = f"Similar ({basis_label}): {len(items)} {noun}."
-        meta = {"basis": basis, "basis_label": basis_label, "engine": engine, "items": []}
+        from semblon.similarity_profile import resolve_search_quality
+
+        profile = resolve_search_quality(str(rec.get("search_profile") or "balanced"))
+        meta = {
+            "basis": basis,
+            "basis_label": basis_label,
+            "engine": engine,
+            "items": [],
+            "search_profile": str(rec.get("search_profile") or profile.key),
+            "search_profile_label": str(rec.get("search_profile_label") or profile.label),
+        }
+        if rec.get("search_phase"):
+            meta["search_phase"] = str(rec.get("search_phase"))
+        channels = rec.get("channels")
+        if isinstance(channels, list):
+            meta["channels"] = channels
+        providers = rec.get("optional_providers")
+        if isinstance(providers, list):
+            meta["optional_providers"] = providers
         if rec.get("error_id"):
             meta["error_id"] = str(rec.get("error_id"))
         if rec.get("understanding"):
             meta["understanding"] = str(rec.get("understanding"))
+        strip = str(rec.get("strip_label") or "").strip()
+        if strip:
+            basis_label = strip
+            meta["basis_label"] = strip
+        spec = rec.get("query_spec")
+        if isinstance(spec, dict):
+            meta["query_spec"] = spec
+        parts = rec.get("parts")
+        if isinstance(parts, list):
+            meta["parts"] = parts
         if status == "UNAVAILABLE":
             reason = str(rec.get("reason") or "Similar search could not run.").strip()
             if not reason.endswith("."):
@@ -312,7 +345,7 @@ class ArchiveAdapter:
         return Result(
             "ready",
             ready_msg,
-            {**meta, "items": items[:8]},
+            {**meta, "items": items[: profile.max_results]},
         )
 
     def review_counts(self) -> Result:
@@ -534,6 +567,25 @@ class ArchiveAdapter:
         }
         return Result("ready", labels.get(key, labels["people"]), {"mode": key})
 
+    def set_search_quality(self, value: str) -> Result:
+        from semblon.similarity_profile import SEARCH_QUALITIES, search_quality_label
+        from semblon.ui_prefs import save_search_quality
+
+        key = str(value or "").strip().lower()
+        if key not in SEARCH_QUALITIES:
+            raise AdapterError("search.QUALITY", f"Unknown search quality {value}.")
+        saved = save_search_quality(key, self.store)
+        label = search_quality_label(saved)
+        return Result("ready", f"Search quality is {label}.", {"quality": saved, "label": label})
+
+    def search_quality(self) -> Result:
+        from semblon.similarity_profile import search_quality_label
+        from semblon.ui_prefs import load_search_quality
+
+        key = load_search_quality(self.store)
+        label = search_quality_label(key)
+        return Result("ready", f"Search quality is {label}.", {"quality": key, "label": label})
+
     def set_library_filter(self, filter_key: str) -> Result:
         key = str(filter_key or "").strip().lower()
         if key not in LIBRARY_FILTERS:
@@ -587,6 +639,76 @@ class ArchiveAdapter:
         except InstallError as exc:
             raise AdapterError("model.INSTALL", str(exc)) from exc
         return Result("ready", "Model file: installed locally.", {"path": rec.get("path"), "state": rec.get("state")})
+
+    def install_region_pack(self) -> Result:
+        """User-confirmed one-click installer for the pinned region encoder."""
+        from semblon.region_pack_install import RegionPackInstallError, install_region_pack
+
+        try:
+            rec = install_region_pack()
+        except RegionPackInstallError as exc:
+            raise AdapterError("region_pack.INSTALL", str(exc), state="unavailable") from exc
+        changed = bool(rec.get("changed"))
+        message = (
+            "Region model installed. Similar look will retry now."
+            if changed
+            else "Region model already installed. Similar look will retry now."
+        )
+        return Result(
+            "ready",
+            message,
+            {
+                "path": rec.get("path"),
+                "sha256": rec.get("sha256"),
+                "state": rec.get("state"),
+                "changed": changed,
+            },
+        )
+
+    def install_object_pack(self) -> Result:
+        """User-confirmed one-click installer for the pinned object model."""
+        from semblon.object_pack_install import ObjectPackInstallError, install_object_pack
+
+        try:
+            rec = install_object_pack()
+        except ObjectPackInstallError as exc:
+            raise AdapterError("object_pack.INSTALL", str(exc), state="unavailable") from exc
+        changed = bool(rec.get("changed"))
+        message = (
+            "Object model installed. This search will run again."
+            if changed
+            else "Object model already installed. This search will run again."
+        )
+        return Result(
+            "ready",
+            message,
+            {
+                "path": rec.get("path"),
+                "sha256": rec.get("sha256"),
+                "state": rec.get("state"),
+                "changed": changed,
+            },
+        )
+
+    def install_vlm(self) -> Result:
+        """User-confirmed install of the local description marker. No download."""
+        from semblon.vlm_model import VlmInstallError, install_local_description
+
+        try:
+            rec = install_local_description()
+        except VlmInstallError as exc:
+            raise AdapterError("vlm.INSTALL", str(exc), state="unavailable") from exc
+        changed = bool(rec.get("changed"))
+        message = (
+            "Description model installed. This search will run again."
+            if changed
+            else "Description model already installed. This search will run again."
+        )
+        return Result(
+            "ready",
+            message,
+            {"path": rec.get("path"), "state": rec.get("state"), "changed": changed},
+        )
 
     def named_items(self) -> Result:
         """User-drawn regions. These are not people and do not confirm identity."""

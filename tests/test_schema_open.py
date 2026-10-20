@@ -53,6 +53,14 @@ def _clear(monkeypatch):
         "SEMBLON_LKG_PACK",
     ):
         monkeypatch.delenv(key, raising=False)
+
+    def _env_only(root=None):
+        import os
+
+        text = (os.environ.get("SEMBLON_VLM_MODEL") or "").strip()
+        return text or None
+
+    monkeypatch.setattr("semblon.vlm_model.vlm_model_path", _env_only)
     reset_circuits()
 
 

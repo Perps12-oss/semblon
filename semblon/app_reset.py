@@ -28,6 +28,7 @@ RESET_MANIFEST: tuple[tuple[str, str, str], ...] = (
     ("appearance.json theme", "YES", "Canonical default = missing → system"),
     ("appearance.json grid_density", "YES", "Canonical default = comfortable"),
     ("appearance.json search_mode", "YES", "Canonical default = people"),
+    ("appearance.json search_quality", "YES", "Canonical default = balanced"),
     ("appearance.json library_filter", "YES", "Canonical default = all"),
     ("appearance.json prefer_gpu", "YES", "Canonical default = unset → product_prefer_gpu()"),
     ("appearance.json (library file removed)", "YES", "All library-scoped presentation prefs"),

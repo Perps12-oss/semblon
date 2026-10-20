@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from semblon.observers import observe_bgr
 from semblon.region_search import remember_and_find, search_vector
@@ -187,3 +188,59 @@ def test_region_similar_unicode_path_finds_colour_match(tmp_path):
     if similar["status"] == "SUCCESS":
         ids = {str(it.get("media_id") or "") for it in similar.get("items") or []}
         assert "m1" in ids or "m2" in ids or any(similar.get("items") or [])
+
+
+def test_text_priority_falls_back_to_visual(monkeypatch, tmp_path):
+    import semblon.region_search as rs
+
+    monkeypatch.setattr(rs, "_describe_crop", lambda crop: "Unlabelled region.")
+    monkeypatch.setattr(rs, "_ocr_crop_text", lambda crop: "watch")
+    monkeypatch.setattr(rs, "probe_region_pack", lambda: (False, "Region model missing."))
+    monkeypatch.setattr(
+        "semblon.search.search_text",
+        lambda store, token, limit: {"status": "NO_RESULT", "items": [], "media_ids": []},
+    )
+    monkeypatch.setattr(
+        rs,
+        "_colour_result",
+        lambda store, crop, *, limit, exclude_media_id, cancelled, reason, **_kwargs: {
+            "kind": "region_similar",
+            "status": "SUCCESS",
+            "reason": reason,
+            "items": [{"media_id": "m2", "score": 0.8}],
+            "count": 1,
+            "engine": "color-hist",
+            "similarity_basis": "Colour only",
+        },
+    )
+    rec = rs.find_similar_crop(
+        tmp_path / "s.sqlite",
+        crop=np.zeros((8, 8, 3), dtype=np.uint8),
+        selection_kind="text_priority",
+    )
+    assert rec["status"] == "SUCCESS"
+    assert rec["engine"] == "color-hist"
+    assert "No text match" in rec["understanding"]
+
+
+def test_text_mode_stays_text_only_without_fallback(monkeypatch, tmp_path):
+    import semblon.region_search as rs
+
+    monkeypatch.setattr(rs, "_describe_crop", lambda crop: "Unlabelled region.")
+    monkeypatch.setattr(rs, "_ocr_crop_text", lambda crop: "watch")
+    monkeypatch.setattr(
+        "semblon.search.search_text",
+        lambda store, token, limit: {"status": "NO_RESULT", "items": [], "media_ids": []},
+    )
+    monkeypatch.setattr(
+        rs,
+        "_colour_result",
+        lambda *args, **kwargs: pytest.fail("text-only mode should not fall back to colour"),
+    )
+    rec = rs.find_similar_crop(
+        tmp_path / "s.sqlite",
+        crop=np.zeros((8, 8, 3), dtype=np.uint8),
+        selection_kind="text",
+    )
+    assert rec["status"] == "NO_RESULT"
+    assert rec["similarity_basis"] == "Text in the selection"

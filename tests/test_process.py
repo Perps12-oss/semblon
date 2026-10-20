@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from semblon.cli import main
+from semblon.cluster import DEFAULT_EPS, DEFAULT_MIN_SAMPLES
 from semblon.process import (
     ProcessError,
     default_review_out,
@@ -76,8 +77,11 @@ def test_process_folder_orchestrates_and_owns_run_id(tmp_path):
     clu.assert_called_once()
     assert clu.call_args.args[0] == store
     assert clu.call_args.args[1] == "RUN-ABC"
-    assert clu.call_args.kwargs["eps"] == 0.40
-    assert clu.call_args.kwargs["min_samples"] == 2
+    # Active provisional eps from identity_config. Buffalo 0.40 stays frozen
+    # in identity_buffalo_frozen and is not what process_folder passes.
+    assert DEFAULT_EPS == 0.45
+    assert clu.call_args.kwargs["eps"] == DEFAULT_EPS
+    assert clu.call_args.kwargs["min_samples"] == DEFAULT_MIN_SAMPLES
     assert rec["run_id"] == "RUN-ABC"
     assert rec["out"] is None
     assert not out.is_file()

@@ -87,6 +87,29 @@ ApplicationWindow {
     readonly property color tokenFaint: shellReady ? shellApi.text3 : "#6b7280"
     readonly property color tokenAccentDim: shellReady ? shellApi.accentDim : "#2b4d8f"
     readonly property color tokenDanger: shellReady ? shellApi.dangerColor : "#e5484d"
+    readonly property color tokenOk: shellReady ? shellApi.okColor : "#30a46c"
+    readonly property color tokenWarn: shellReady ? shellApi.warnColor : "#f5a524"
+    readonly property string calendarViewSafe: shellReady ? shellApi.calendarView : "months"
+    readonly property bool returnOpensPhoto: {
+        if (focusActive || emptySafe)
+            return false
+        var item = activeFocusItem
+        if (!item)
+            return true
+        var name = item.objectName || ""
+        return name !== "memoryCalendar" && name !== "timelineHero" && name !== "calendarJump"
+    }
+    property bool focusDetailsOpen: false
+    property bool focusWasOpen: false
+    onFocusIdSafeChanged: {
+        if (focusIdSafe === "")
+            focusDetailsOpen = false
+        else if (!focusWasOpen)
+            focusDetailsOpen = true
+        focusWasOpen = focusIdSafe !== ""
+        if (focusIdSafe !== "")
+            focusLayer.forceActiveFocus()
+    }
     readonly property var primarySettingCalls: ["cycleDensity", "libraryHealth", "showActivity", "modePeople", "modeText", "modeObject", "rescan", "resetDefaults", "clearLibrary"]
     readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Search objects", "Rescan", "Reset defaults", "Clear library"]
     readonly property var advancedSettingCalls: ["scanDuplicates", "showCapabilities", "gpuAuto", "gpuOff", "namedItems", "knowledgePack", "installModel"]
@@ -122,8 +145,18 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequences: [StandardKey.Cancel, "Escape"]
+        sequence: "Escape"
         onActivated: if (shellReady) shellApi.escape()
+    }
+    Shortcut {
+        sequence: "Ctrl+Right"
+        enabled: !focusActive && !homeOpenSafe
+        onActivated: grid.forceActiveFocus()
+    }
+    Shortcut {
+        sequence: "Ctrl+Left"
+        enabled: !focusActive && !homeOpenSafe
+        onActivated: memoryCalendar.forceActiveFocus()
     }
     Shortcut {
         sequence: "Right"
@@ -148,7 +181,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Return"
-        enabled: !focusActive && !emptySafe
+        enabled: returnOpensPhoto
         onActivated: if (shellReady) shellApi.openIndex(grid.currentIndex)
     }
     Shortcut {
@@ -163,13 +196,33 @@ ApplicationWindow {
         }
     }
     Shortcut {
+        sequence: "Ctrl+Shift+S"
+        enabled: shellReady && shellApi.screenQueryAvailable && !shellApi.screenQueryInProgress
+        onActivated: if (shellReady) shellApi.startScreenQuery()
+    }
+    Shortcut {
         sequence: "Ctrl+,"
         onActivated: if (shellReady) shellApi.toggleSettings()
     }
     Shortcut {
         sequence: "S"
         enabled: focusActive && !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.findSimilar()
+    }
+    Shortcut {
+        sequence: "W"
+        enabled: focusActive && !commandField.activeFocus && !searchField.activeFocus
         onActivated: if (shellReady) shellApi.findSimilarWhole()
+    }
+    Shortcut {
+        sequence: "F"
+        enabled: focusActive && !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.findSimilarFaces()
+    }
+    Shortcut {
+        sequence: "Ctrl+D"
+        enabled: focusActive && !commandField.activeFocus && !searchField.activeFocus
+        onActivated: if (shellReady) shellApi.scanDuplicates()
     }
     Shortcut {
         sequence: "Alt+Left"
@@ -896,6 +949,110 @@ ApplicationWindow {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: if (shellReady) shellApi.setMode("advanced")
+                        }
+                    }
+                }
+                Text {
+                    width: parent.width
+                    text: "Search quality"
+                    color: tokenFaint
+                    font.pixelSize: 11
+                    font.letterSpacing: 0.4
+                    font.family: "Segoe UI"
+                }
+                Text {
+                    objectName: "searchQualityLabel"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? ("Search quality is " + shellApi.searchQualityLabel + ".") : ""
+                    color: tokenMuted
+                    font.pixelSize: 12
+                    font.family: "Segoe UI"
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "Fast stays snappy. Max looks harder. Neither path is a duplicate scan."
+                    color: tokenFaint
+                    font.pixelSize: 11
+                    font.family: "Segoe UI"
+                }
+                Row {
+                    width: parent.width
+                    spacing: 6
+                    Rectangle {
+                        id: qualityFastButton
+                        objectName: "qualityFast"
+                        width: (parent.width - 12) / 3
+                        height: 28
+                        radius: 6
+                        property bool selected: shellReady && shellApi.searchQuality === "fast"
+                        color: selected ? tokenAccentDim : (qualityFastHit.containsMouse ? tokenBg3 : tokenBg2)
+                        border.color: selected ? tokenAccent : tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Fast"
+                            color: qualityFastButton.selected ? tokenText : tokenMuted
+                            font.pixelSize: 12
+                            font.family: "Segoe UI"
+                        }
+                        MouseArea {
+                            id: qualityFastHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.setSearchQuality("fast")
+                        }
+                    }
+                    Rectangle {
+                        id: qualityBalancedButton
+                        objectName: "qualityBalanced"
+                        width: (parent.width - 12) / 3
+                        height: 28
+                        radius: 6
+                        property bool selected: shellReady && shellApi.searchQuality === "balanced"
+                        color: selected ? tokenAccentDim : (qualityBalancedHit.containsMouse ? tokenBg3 : tokenBg2)
+                        border.color: selected ? tokenAccent : tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Balanced"
+                            color: qualityBalancedButton.selected ? tokenText : tokenMuted
+                            font.pixelSize: 12
+                            font.family: "Segoe UI"
+                        }
+                        MouseArea {
+                            id: qualityBalancedHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.setSearchQuality("balanced")
+                        }
+                    }
+                    Rectangle {
+                        id: qualityMaxButton
+                        objectName: "qualityMax"
+                        width: (parent.width - 12) / 3
+                        height: 28
+                        radius: 6
+                        property bool selected: shellReady && shellApi.searchQuality === "max"
+                        color: selected ? tokenAccentDim : (qualityMaxHit.containsMouse ? tokenBg3 : tokenBg2)
+                        border.color: selected ? tokenAccent : tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Max"
+                            color: qualityMaxButton.selected ? tokenText : tokenMuted
+                            font.pixelSize: 12
+                            font.family: "Segoe UI"
+                        }
+                        MouseArea {
+                            id: qualityMaxHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.setSearchQuality("max")
                         }
                     }
                 }
@@ -1666,7 +1823,7 @@ ApplicationWindow {
             }
         }
 
-        // Single archive column: header (timeline+calendar) then Field. No z-overlap.
+        // Calendar column on the left, photo field on the right. Narrow windows stack them.
         Item {
             id: archivePane
             anchors.left: parent.left
@@ -1678,6 +1835,88 @@ ApplicationWindow {
             anchors.topMargin: 12
             anchors.bottomMargin: 12
             visible: !homeOpenSafe && !emptySafe && !peopleVisible && !focusActive
+            property bool stacked: width < 900
+            property real splitRatio: 0.46
+            property real zoomScale: 0.50
+            property string zoomBand: "months"
+            readonly property real calendarWidth: {
+                var room = Math.max(0, width - 288)
+                return Math.max(520, Math.min(room, width * splitRatio))
+            }
+
+            function midpoint(view) {
+                if (view === "years") return 0.12
+                if (view === "days") return 0.88
+                return 0.50
+            }
+
+            function bandFor(scale) {
+                var current = zoomBand
+                if (current === "years") {
+                    if (scale > 0.29) return scale >= 0.80 ? "days" : "months"
+                    return "years"
+                }
+                if (current === "days") {
+                    if (scale < 0.72) return scale <= 0.21 ? "years" : "months"
+                    return "days"
+                }
+                if (scale <= 0.21) return "years"
+                if (scale >= 0.80) return "days"
+                return "months"
+            }
+
+            function adjustZoom(delta) {
+                zoomScale = Math.max(0, Math.min(1, zoomScale + delta))
+                var next = bandFor(zoomScale)
+                if (next === zoomBand)
+                    return
+                zoomBand = next
+                if (shellReady)
+                    shellApi.setCalendarView(next)
+            }
+
+            function selectCalendarView(view) {
+                zoomBand = view
+                zoomScale = midpoint(view)
+                if (shellReady)
+                    shellApi.setCalendarView(view)
+            }
+
+            Component.onCompleted: {
+                zoomBand = calendarViewSafe
+                zoomScale = midpoint(calendarViewSafe)
+                if (shellReady)
+                    splitRatio = shellApi.archiveSplit
+            }
+
+            Connections {
+                target: shellReady ? shellApi : null
+                function onEditorialChanged() {
+                    if (!splitHandle.pressed && shellReady)
+                        archivePane.splitRatio = shellApi.archiveSplit
+                }
+            }
+
+            WheelHandler {
+                objectName: "archiveZoomWheel"
+                acceptedModifiers: Qt.ControlModifier
+                onWheel: function(event) {
+                    archivePane.adjustZoom(event.angleDelta.y / 1200)
+                }
+            }
+
+            PinchHandler {
+                objectName: "archivePinch"
+                target: null
+                property real origin: 1
+                onActiveChanged: if (active) origin = 1
+                onActiveScaleChanged: {
+                    if (!active)
+                        return
+                    archivePane.adjustZoom((activeScale - origin) * 0.35)
+                    origin = activeScale
+                }
+            }
 
             // Soft center lift (Phase 2 atmosphere) — edges stay on canvas floor.
             Rectangle {
@@ -1696,64 +1935,224 @@ ApplicationWindow {
                 id: archiveHeaderBand
                 objectName: "archiveHeaderBand"
                 z: 1
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                height: headerColumn.height
+                x: 0
+                y: 0
+                width: archivePane.stacked ? parent.width : archivePane.calendarWidth
+                height: archivePane.stacked ? parent.height * 0.46 : parent.height
+                clip: true
 
                 Column {
                     id: headerColumn
                     width: parent.width
                     spacing: 8
 
-                    TimelineLandscape {
-                        id: timelineHero
+                    Row {
+                        id: densityBar
+                        objectName: "timelineDensitySegment"
                         width: parent.width
-                        shellApi: window.shellApi
-                        shellReady: window.shellReady
-                        yearModel: window.shellReady ? window.shellApi.timelineDensity : []
-                        loading: window.timelineLoadingSafe
-                        scopeKind: window.shellReady ? window.shellApi.scopeKind : ""
-                        scopeLabel: window.shellReady ? window.shellApi.scopeLabel : ""
-                        tokenBg: window.tokenBg
-                        tokenBg2: window.tokenBg2
-                        tokenAccent: window.tokenAccent
-                        tokenAccentDim: window.tokenAccentDim
-                        tokenText: window.tokenText
-                        tokenMuted: window.tokenMuted
-                        tokenFaint: window.tokenFaint
-                        tokenBorder: window.tokenBorder
-                        motion: window.motion
-                        onYearClicked: (label) => { if (window.shellReady) window.shellApi.selectYear(label) }
-                        onMonthClicked: (label) => { if (window.shellReady) window.shellApi.selectMonth(label) }
-                        onRangeSelected: (startDay, endDay) => { if (window.shellReady) window.shellApi.selectRange(startDay, endDay) }
+                        height: 32
+                        layoutDirection: Qt.RightToLeft
+                        spacing: 0
+
+                        Rectangle {
+                            width: densityRow.width + 6
+                            height: 30
+                            radius: 8
+                            color: tokenBg3
+
+                            Row {
+                                id: densityRow
+                                x: 3
+                                y: 3
+                                spacing: 2
+                                height: 24
+
+                                Repeater {
+                                    model: [
+                                        { key: "years", label: "Years" },
+                                        { key: "months", label: "Months" },
+                                        { key: "days", label: "Days" }
+                                    ]
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        width: densityLabel.implicitWidth + 18
+                                        height: 24
+                                        radius: 6
+                                        color: calendarViewSafe === modelData.key ? tokenAccent : "transparent"
+                                        Text {
+                                            id: densityLabel
+                                            anchors.centerIn: parent
+                                            text: modelData.label
+                                            color: calendarViewSafe === modelData.key ? tokenText : tokenMuted
+                                            font.family: "Segoe UI"
+                                            font.pixelSize: 12
+                                            font.weight: Font.DemiBold
+                                        }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            objectName: modelData.key === "years"
+                                                       ? "densityYears"
+                                                       : (modelData.key === "months" ? "densityMonths" : "densityDays")
+                                            onClicked: archivePane.selectCalendarView(modelData.key)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    MemoryCalendar {
-                        id: memoryCalendar
+                    Item {
+                        id: timelineBlock
                         width: parent.width
-                        height: Math.max(240, Math.min(380, Math.floor((archivePane.height - timelineHero.height - 160) * 0.48)))
-                        shellApi: window.shellApi
-                        shellReady: window.shellReady
-                        cells: window.shellReady ? window.shellApi.calendarCells : []
-                        title: window.shellReady ? window.shellApi.calendarTitle : ""
-                        scopeKind: window.shellReady ? window.shellApi.scopeKind : ""
-                        scopeLabel: window.shellReady ? window.shellApi.scopeLabel : ""
-                        tokenBg: window.tokenBg
-                        tokenBg1: window.tokenBg1
-                        tokenBg2: window.tokenBg2
-                        tokenAccent: window.tokenAccent
-                        tokenAccentDim: window.tokenAccentDim
-                        tokenText: window.tokenText
-                        tokenMuted: window.tokenMuted
-                        tokenFaint: window.tokenFaint
-                        tokenBorder: window.tokenBorder
-                        motion: window.motion
-                        onDayClicked: (day) => { if (window.shellReady) window.shellApi.selectDay(day) }
-                        onPrevMonth: { if (window.shellReady) window.shellApi.calendarPrevMonth() }
-                        onNextMonth: { if (window.shellReady) window.shellApi.calendarNextMonth() }
-                        onGoHome: { if (window.shellReady) window.shellApi.calendarGoHome() }
+                        height: calendarViewSafe === "years" ? 0 : timelineHero.height
+                        visible: height > 0
+                        clip: true
+                        TimelineLandscape {
+                            id: timelineHero
+                            width: parent.width
+                            shellApi: window.shellApi
+                            shellReady: window.shellReady
+                            yearModel: window.shellReady ? window.shellApi.timelineDensity : []
+                            loading: window.timelineLoadingSafe
+                            scopeKind: window.shellReady ? window.shellApi.scopeKind : ""
+                            scopeLabel: window.shellReady ? window.shellApi.scopeLabel : ""
+                            tokenBg: window.tokenBg
+                            tokenBg2: window.tokenBg2
+                            tokenAccent: window.tokenAccent
+                            tokenAccentDim: window.tokenAccentDim
+                            tokenText: window.tokenText
+                            tokenMuted: window.tokenMuted
+                            tokenFaint: window.tokenFaint
+                            tokenBorder: window.tokenBorder
+                            motion: window.motion
+                            onYearClicked: (label) => { if (window.shellReady) window.shellApi.selectYear(label) }
+                            onMonthClicked: (label) => { if (window.shellReady) window.shellApi.selectMonth(label) }
+                            onRangeSelected: (startDay, endDay) => { if (window.shellReady) window.shellApi.selectRange(startDay, endDay) }
+                        }
                     }
+
+                    Item {
+                        id: calendarStage
+                        width: parent.width
+                        height: Math.max(160, archiveHeaderBand.height - densityBar.height - timelineBlock.height - headerColumn.spacing * 2)
+
+                        YearMatrix {
+                            anchors.fill: parent
+                            visible: calendarViewSafe === "years"
+                            enabled: calendarViewSafe === "years"
+                            title: shellReady ? shellApi.calendarYear : ""
+                            months: shellReady ? shellApi.yearMatrix : []
+                            tokenBg2: window.tokenBg2
+                            tokenAccent: window.tokenAccent
+                            tokenText: window.tokenText
+                            tokenMuted: window.tokenMuted
+                            tokenFaint: window.tokenFaint
+                            tokenBorder: window.tokenBorder
+                            tokenOk: window.tokenOk
+                            tokenWarn: window.tokenWarn
+                            opacity: calendarViewSafe === "years" ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: window.motion } }
+                            onMonthClicked: (label) => {
+                                if (!window.shellReady)
+                                    return
+                                archivePane.selectCalendarView("months")
+                                shellApi.selectMonth(label)
+                            }
+                            onRangeChosen: (startDay, endDay) => {
+                                if (window.shellReady)
+                                    shellApi.selectRange(startDay, endDay)
+                            }
+                        }
+
+                        MemoryCalendar {
+                            id: memoryCalendar
+                            anchors.fill: parent
+                            visible: calendarViewSafe !== "years"
+                            enabled: calendarViewSafe !== "years"
+                            opacity: calendarViewSafe === "years" ? 0 : 1
+                            Behavior on opacity { NumberAnimation { duration: window.motion } }
+                            numbersOnly: calendarViewSafe === "days"
+                            shellApi: window.shellApi
+                            shellReady: window.shellReady
+                            cells: window.shellReady ? window.shellApi.calendarCells : []
+                            title: window.shellReady ? window.shellApi.calendarTitle : ""
+                            scopeKind: window.shellReady ? window.shellApi.scopeKind : ""
+                            scopeLabel: window.shellReady ? window.shellApi.scopeLabel : ""
+                            revealedDay: window.shellReady ? window.shellApi.revealedDay : ""
+                            undatedCount: window.shellReady ? window.shellApi.undatedCount : 0
+                            tokenBg: window.tokenBg
+                            tokenBg1: window.tokenBg1
+                            tokenBg2: window.tokenBg2
+                            tokenBg3: window.tokenBg3
+                            tokenAccent: window.tokenAccent
+                            tokenAccentDim: window.tokenAccentDim
+                            tokenText: window.tokenText
+                            tokenMuted: window.tokenMuted
+                            tokenFaint: window.tokenFaint
+                            tokenBorder: window.tokenBorder
+                            motion: window.motion
+                            onDayClicked: (day) => { if (window.shellReady) window.shellApi.selectDay(day) }
+                            onDayDoubleClicked: (day) => {
+                                if (!window.shellReady)
+                                    return
+                                archivePane.selectCalendarView("days")
+                                shellApi.focusDay(day)
+                            }
+                            onThumbClicked: (mediaId) => {
+                                if (!window.shellReady)
+                                    return
+                                shellApi.setScroll(fieldSectionsActiveSafe ? fieldSectionsView.contentY : grid.contentY)
+                                shellApi.openFocus(mediaId)
+                            }
+                            onRangeChosen: (startDay, endDay) => {
+                                if (window.shellReady)
+                                    shellApi.selectRange(startDay, endDay)
+                            }
+                            onJumpRequested: (text) => { if (window.shellReady) window.shellApi.revealDay(text) }
+                            onUndatedClicked: { if (window.shellReady) window.shellApi.showUndated() }
+                            onPrevMonth: { if (window.shellReady) window.shellApi.calendarPrevMonth() }
+                            onNextMonth: { if (window.shellReady) window.shellApi.calendarNextMonth() }
+                            onGoHome: { if (window.shellReady) window.shellApi.calendarGoHome() }
+                        }
+                    }
+                }
+            }
+
+            MouseArea {
+                id: splitHandle
+                objectName: "archiveSplit"
+                visible: !archivePane.stacked
+                x: archiveHeaderBand.width - 3
+                y: 0
+                width: 8
+                height: parent.height
+                z: 4
+                cursorShape: Qt.SplitHCursor
+                onPositionChanged: function(mouse) {
+                    if (!pressed)
+                        return
+                    var local = mapToItem(archivePane, mouse.x, mouse.y)
+                    archivePane.splitRatio = Math.max(0.32, Math.min(0.68, local.x / Math.max(1, archivePane.width)))
+                }
+                onReleased: if (shellReady) shellApi.setArchiveSplit(archivePane.splitRatio)
+            }
+
+            Item {
+                id: fieldViewport
+                objectName: "fieldViewport"
+                x: archivePane.stacked ? 0 : archiveHeaderBand.width + 8
+                y: archivePane.stacked ? archiveHeaderBand.height + 8 : 0
+                width: Math.max(0, parent.width - x)
+                height: Math.max(0, parent.height - y)
+                clip: true
+                z: 1
+
+                Column {
+                    id: fieldChrome
+                    width: parent.width
+                    spacing: 4
 
                     Text {
                         id: stickyHeader
@@ -1783,26 +2182,19 @@ ApplicationWindow {
                         }
                     }
                 }
-            }
-
-            Item {
-                id: fieldViewport
-                objectName: "fieldViewport"
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: archiveHeaderBand.bottom
-                anchors.bottom: parent.bottom
-                anchors.topMargin: 8
-                clip: true
-                z: 1
 
             ListView {
                 id: fieldSectionsView
                 objectName: "fieldSections"
-                anchors.fill: parent
+                property string latchedScope: ""
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: fieldChrome.bottom
+                anchors.bottom: parent.bottom
                 visible: fieldSectionsActiveSafe
                 clip: true
                 spacing: 14
+                cacheBuffer: 800
                 boundsBehavior: Flickable.StopAtBounds
                 model: shellReady ? shellApi.fieldSections : []
                 enabled: !focusActive
@@ -1817,78 +2209,84 @@ ApplicationWindow {
                 Text {
                     objectName: "fieldSection_" + sectionCol.sectionDay
                     width: parent.width
-                    text: section && section.label ? section.label : sectionCol.sectionDay
+                    text: section && section.shortLabel ? section.shortLabel
+                          : (section && section.label ? section.label : sectionCol.sectionDay)
                     color: tokenText
                     font.family: "Segoe UI"
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
-                    Accessible.name: text
+                    Accessible.name: section && section.label ? section.label : text
                 }
 
-                Flow {
+                GridView {
+                    id: sectionGrid
                     width: parent.width
-                    spacing: 0
-                    Repeater {
-                        // Cap visible thumbs so section scrolling stays virtualized-friendly.
-                        model: section && section.previewIds ? section.previewIds
-                               : (section && section.mediaIds ? section.mediaIds.slice(0, 24) : [])
-                        delegate: Item {
-                            width: shellReady ? shellApi.cellSize : 160
-                            height: shellReady ? shellApi.cellSize : 160
+                    interactive: false
+                    clip: true
+                    cellWidth: shellReady ? shellApi.cellSize : 160
+                    cellHeight: cellWidth
+                    readonly property int columns: Math.max(1, Math.floor(width / Math.max(1, cellWidth)))
+                    model: section && section.previewIds ? section.previewIds
+                           : (section && section.mediaIds ? section.mediaIds.slice(0, 24) : [])
+                    height: Math.ceil(Math.max(1, count) / columns) * cellHeight
+                    boundsBehavior: Flickable.StopAtBounds
+                    delegate: Item {
+                        width: sectionGrid.cellWidth
+                        height: sectionGrid.cellHeight
+
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            color: tokenBg2
+                            radius: 8
+                            border.width: sectionTile.containsMouse ? 1 : 0
+                            border.color: tokenAccent
 
                             Rectangle {
                                 anchors.fill: parent
-                                anchors.margins: 6
-                                color: tokenBg2
-                                radius: 4
-                                border.width: sectionTile.containsMouse ? 1 : 0
-                                border.color: Qt.rgba(1, 1, 1, 0.2)
+                                anchors.margins: 1
+                                radius: 8
+                                color: tokenBg3
+                                visible: sectionImage.status !== Image.Ready
+                            }
 
-                                Image {
-                                    anchors.fill: parent
-                                    anchors.margins: 1
-                                    source: "image://archive/t/" + modelData
-                                    fillMode: Image.PreserveAspectCrop
-                                    asynchronous: true
-                                    cache: true
-                                }
+                            Image {
+                                id: sectionImage
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                source: "image://archive/t/" + modelData
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                cache: true
+                            }
 
-                                Rectangle {
-                                    anchors.fill: parent
-                                    color: "transparent"
-                                    border.width: sectionTile.containsMouse ? 2 : 0
-                                    border.color: tokenAccent
-                                    radius: 4
-                                    opacity: sectionTile.containsMouse ? 0.85 : 0
-                                }
-
-                                MouseArea {
-                                    id: sectionTile
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (!shellReady)
-                                            return
-                                        shellApi.setScroll(fieldSectionsView.contentY)
-                                        shellApi.openFocus(modelData)
-                                    }
+                            MouseArea {
+                                id: sectionTile
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (!shellReady)
+                                        return
+                                    shellApi.setScroll(fieldSectionsView.contentY)
+                                    shellApi.openFocus(modelData)
                                 }
                             }
                         }
                     }
-                    Text {
-                        visible: section && Number(section.count || 0) > (section.previewIds ? section.previewIds.length : 24)
-                        text: "Show this day (" + String(section.count) + ")"
-                        color: tokenAccent
-                        font.family: "Segoe UI"
-                        font.pixelSize: 12
-                        MouseArea {
-                            anchors.fill: parent
-                            anchors.margins: -2
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (shellReady && section) shellApi.selectDay(String(section.day))
-                        }
+                }
+
+                Text {
+                    visible: section && Number(section.count || 0) > (section.previewIds ? section.previewIds.length : 24)
+                    text: "Show this day (" + String(section.count) + ")"
+                    color: tokenAccent
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -2
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (shellReady && section) shellApi.selectDay(String(section.day))
                     }
                 }
             }
@@ -1912,6 +2310,10 @@ ApplicationWindow {
             Connections {
                 target: shellReady ? shellApi : null
                 function onEditorialChanged() {
+                    var key = shellReady ? (shellApi.scopeKind + ":" + shellApi.scopeLabel) : ""
+                    if (key === fieldSectionsView.latchedScope)
+                        return
+                    fieldSectionsView.latchedScope = key
                     if (!focusActive && fieldSectionsActiveSafe)
                         fieldSectionsView.contentY = 0
                 }
@@ -1921,7 +2323,11 @@ ApplicationWindow {
             GridView {
                 id: grid
                 objectName: "fieldGrid"
-                anchors.fill: parent
+                property string latchedScope: ""
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: fieldChrome.bottom
+                anchors.bottom: parent.bottom
                 visible: !fieldSectionsActiveSafe
                 clip: true
                 cellWidth: shellReady ? shellApi.cellSize : 160
@@ -1943,7 +2349,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     anchors.margins: 6
                     color: tokenBg2
-                    radius: 4
+                    radius: 8
                     border.width: tileSelected ? 2 : (tile.containsMouse ? 1 : 0)
                     border.color: tileSelected
                                  ? tokenAccent
@@ -2007,6 +2413,10 @@ ApplicationWindow {
                         grid.contentY = shellApi.scrollY
                 }
                 function onEditorialChanged() {
+                    var key = shellReady ? (shellApi.scopeKind + ":" + shellApi.scopeLabel) : ""
+                    if (key === grid.latchedScope)
+                        return
+                    grid.latchedScope = key
                     if (!focusActive)
                         grid.contentY = 0
                 }
@@ -2046,6 +2456,12 @@ ApplicationWindow {
             objectName: "focusLayer"
             anchors.fill: parent
             visible: focusActive
+            focus: true
+            Keys.onEscapePressed: function(event) {
+                if (shellReady)
+                    shellApi.escape()
+                event.accepted = true
+            }
             opacity: focusActive ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: window.motion } }
 
@@ -2115,7 +2531,10 @@ ApplicationWindow {
                 id: photoViewport
                 objectName: "photoViewport"
                 anchors.fill: parent
-                anchors.margins: 48
+                anchors.leftMargin: 48
+                anchors.topMargin: 48
+                anchors.bottomMargin: 48
+                anchors.rightMargin: window.focusDetailsOpen ? 308 : 48
                 clip: true
 
                 Item {
@@ -2749,6 +3168,121 @@ ApplicationWindow {
                 font.pixelSize: 15
             }
 
+            Rectangle {
+                objectName: "focusDetails"
+                visible: window.focusDetailsOpen && focusActive
+                width: 280
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                z: 6
+                color: tokenBg1
+                border.color: tokenBorder
+                border.width: 1
+
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 10
+
+                    Row {
+                        width: parent.width
+                        height: 24
+                        Text {
+                            text: "Details"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Item { width: parent.width - 80; height: 1 }
+                        Text {
+                            objectName: "focusDetailsClose"
+                            text: "Close"
+                            color: detailsClose.containsMouse ? tokenText : tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            MouseArea {
+                                id: detailsClose
+                                anchors.fill: parent
+                                anchors.margins: -6
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: window.focusDetailsOpen = false
+                            }
+                        }
+                    }
+
+                    Image {
+                        width: parent.width
+                        height: 180
+                        source: focusActive ? ("image://archive/t/" + focusIdSafe) : ""
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        cache: true
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                        text: "File Name: " + (shellReady ? shellApi.focusFileFacts.name : "")
+                    }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                        text: "Date Taken: " + (shellReady ? shellApi.focusFileFacts.date : "")
+                    }
+                    Text {
+                        width: parent.width
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                        text: "Dimensions: " + (shellReady ? shellApi.focusFileFacts.dimensions : "")
+                    }
+                    Text {
+                        width: parent.width
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                        text: "Size: " + (shellReady ? shellApi.focusFileFacts.size : "")
+                    }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                        text: "Camera: " + (shellReady ? shellApi.focusFileFacts.camera : "")
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 72
+                        radius: 8
+                        color: tokenBg2
+                        border.color: tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            wrapMode: Text.WordWrap
+                            color: tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            text: "Location\n" + (shellReady ? shellApi.focusFileFacts.location : "")
+                        }
+                    }
+                }
+            }
+
             Text {
                 anchors.left: parent.left
                 anchors.top: parent.top
@@ -2780,6 +3314,7 @@ ApplicationWindow {
 
             Column {
                 objectName: "focusInspector"
+                z: 8
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom
                 anchors.leftMargin: 22
@@ -2842,6 +3377,117 @@ ApplicationWindow {
                 }
 
                 Rectangle {
+                    objectName: "nameThisArea"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.identifyBusy
+                    radius: 6
+                    color: nameAreaHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Name this area"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: nameAreaHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Name this area"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.nameSelection()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "installSuggestedModel"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady
+                             && shellApi.installSuggestionVisible
+                             && !shellApi.searchBusy
+                             && !shellApi.screenQueryInProgress
+                    radius: 6
+                    color: installSuggestedModelHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: shellReady ? shellApi.installSuggestionLabel : "Install required model"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: installSuggestedModelHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Install required model"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.installSuggestedModel()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "screenQueryAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && shellApi.screenQueryAvailable && !shellApi.searchBusy
+                    radius: 6
+                    color: screenQueryHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Query screen"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: screenQueryHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Query screen"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.startScreenQuery()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "screenQueryModeAction"
+                    width: parent.width
+                    height: 32
+                    visible: shellReady && shellApi.screenQueryAvailable && !shellApi.screenQueryInProgress
+                    radius: 6
+                    color: screenQueryModeHit.containsMouse ? tokenBg2 : tokenBg3
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: shellReady ? shellApi.screenQueryModeLabel : "Screen mode"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+                    MouseArea {
+                        id: screenQueryModeHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Toggle screen query mode"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.toggleScreenQueryMode()
+                    }
+                }
+
+                Rectangle {
                     width: parent.width
                     height: 32
                     radius: 6
@@ -2850,7 +3496,7 @@ ApplicationWindow {
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
-                        text: "Similar look"
+                        text: "Similar region"
                         color: tokenText
                         font.family: "Segoe UI"
                         font.pixelSize: 13
@@ -2861,9 +3507,285 @@ ApplicationWindow {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Similar look"
+                        Accessible.name: "Similar region"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.findSimilar()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "sameFaceDoor"
+                    width: parent.width
+                    height: 32
+                    radius: 6
+                    color: sameFaceHit.containsMouse ? tokenAccentDim : tokenBg2
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Same face"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: sameFaceHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Same face"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.findSimilarFaces()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "duplicatesDoor"
+                    width: parent.width
+                    height: 32
+                    radius: 6
+                    color: duplicatesHit.containsMouse ? tokenBg3 : tokenBg2
+                    border.color: tokenMuted
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Duplicates"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: duplicatesHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Duplicates"
+                        Accessible.role: Accessible.Button
+                        onClicked: if (shellReady) shellApi.scanDuplicates()
+                    }
+                }
+
+                Rectangle {
+                    objectName: "wholePhoto"
+                    width: parent.width
+                    height: 32
+                    radius: 6
+                    color: wholePhotoHit.containsMouse ? tokenBg3 : tokenBg2
+                    border.color: tokenMuted
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Whole photo"
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: wholePhotoHit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        Accessible.name: "Whole photo"
                         Accessible.role: Accessible.Button
                         onClicked: if (shellReady) shellApi.findSimilarWhole()
+                    }
+                }
+
+                Text {
+                    objectName: "searchQualityFocus"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? ("Quality: " + shellApi.searchQualityLabel) : ""
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    objectName: "refineHint"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.selectionOnFocus
+                    text: shellReady ? shellApi.refineHint : ""
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                Row {
+                    objectName: "refineModeRow"
+                    width: parent.width
+                    spacing: 6
+                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.searchBusy
+
+                    Rectangle {
+                        objectName: "refineSameLook"
+                        width: (parent.width - 6) / 2
+                        height: 28
+                        radius: 6
+                        color: shellReady && shellApi.refineMode === "look" ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Same look"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Same look"
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.setRefineMode("look")
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "refineSameKind"
+                        width: (parent.width - 6) / 2
+                        height: 28
+                        radius: 6
+                        color: shellReady && shellApi.refineMode === "kind" ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Same kind"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Same kind"
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.setRefineMode("kind")
+                        }
+                    }
+                }
+
+                TextField {
+                    objectName: "refineWord"
+                    width: parent.width
+                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.searchBusy
+                    placeholderText: "Add a word, like red"
+                    text: shellReady ? shellApi.refineModifier : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                    background: Rectangle {
+                        color: tokenBg2
+                        border.color: tokenMuted
+                        border.width: 1
+                        radius: 6
+                    }
+                    onEditingFinished: if (shellReady) shellApi.setRefineModifier(text)
+                }
+
+                Repeater {
+                    model: shellReady ? shellApi.refineParts : []
+                    delegate: Rectangle {
+                        width: 220
+                        height: 26
+                        visible: shellReady && shellApi.selectionOnFocus && (modelData.index !== -1 || shellApi.refineParts.length > 1)
+                        radius: 6
+                        color: modelData.selected ? tokenAccentDim : tokenBg3
+                        border.color: tokenMuted
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData.label
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: modelData.label
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.setRefinePart(modelData.index)
+                        }
+                    }
+                }
+
+                Text {
+                    objectName: "searchDoorLabel"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.searchDoorLabel !== ""
+                    text: shellReady ? shellApi.searchDoorLabel : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                }
+
+                Text {
+                    objectName: "searchTiming"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.searchTimingLabel !== ""
+                    text: shellReady ? shellApi.searchTimingLabel : ""
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    objectName: "screenQueryProgress"
+                    width: parent.width
+                    visible: shellReady && shellApi.screenQueryInProgress
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? shellApi.screenQueryProgressLabel : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    objectName: "searchPhaseFocus"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.similarPhaseLabel !== ""
+                    text: shellReady ? shellApi.similarPhaseLabel : ""
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    objectName: "nameNote"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.nameNote !== ""
+                    text: shellReady ? shellApi.nameNote : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                }
+
+                Rectangle {
+                    objectName: "nameConfidence"
+                    visible: shellReady && shellApi.nameConfidenceLabel !== ""
+                    height: 22
+                    width: nameConfidenceText.implicitWidth + 16
+                    radius: 11
+                    color: tokenBg3
+                    border.color: tokenAccent
+                    border.width: 1
+                    Text {
+                        id: nameConfidenceText
+                        anchors.centerIn: parent
+                        text: shellReady ? shellApi.nameConfidenceLabel : ""
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
                     }
                 }
 
@@ -3157,6 +4079,28 @@ ApplicationWindow {
                 font.pixelSize: 13
             }
 
+            Rectangle {
+                objectName: "searchPhaseBadge"
+                visible: shellReady && shellApi.similarPhaseLabel !== ""
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: matchStrip.visible ? matchStrip.top : similarNote.top
+                anchors.bottomMargin: 8
+                height: 22
+                width: phaseBadgeText.implicitWidth + 16
+                radius: 11
+                color: tokenBg2
+                border.color: tokenAccent
+                border.width: 1
+                Text {
+                    id: phaseBadgeText
+                    anchors.centerIn: parent
+                    text: shellReady ? shellApi.similarPhaseLabel : ""
+                    color: tokenText
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
+                }
+            }
+
             ListView {
                 id: matchStrip
                 objectName: "similarStrip"
@@ -3280,6 +4224,41 @@ ApplicationWindow {
                     regionDrag.hasRect = false
                 }
             }
+        }
+    }
+
+    Rectangle {
+        objectName: "installSuggestedModelStage"
+        z: 40
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 28
+        width: 240
+        height: 36
+        visible: shellReady
+                 && !focusActive
+                 && shellApi.installSuggestionVisible
+                 && !shellApi.searchBusy
+                 && !shellApi.screenQueryInProgress
+        radius: 6
+        color: installSuggestedModelStageHit.containsMouse ? tokenAccentDim : tokenBg2
+        border.color: tokenAccent
+        border.width: 1
+        Text {
+            anchors.centerIn: parent
+            text: shellReady ? shellApi.installSuggestionLabel : "Install required model"
+            color: tokenText
+            font.family: "Segoe UI"
+            font.pixelSize: 13
+        }
+        MouseArea {
+            id: installSuggestedModelStageHit
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            Accessible.name: "Install required model"
+            Accessible.role: Accessible.Button
+            onClicked: if (shellReady) shellApi.installSuggestedModel()
         }
     }
 }

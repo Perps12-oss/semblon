@@ -170,33 +170,49 @@ class Application:
         *,
         capabilities: tuple[str, ...] | None = None,
     ) -> dict:
-        """Whole-frame or region Lens query. Loads the file. No UI image object."""
-        from semblon.lens import query_image
-        from semblon.selection import format_query_lines, lens_result_summary, load_media_bgr
+        """Whole-frame or region query on a media item. Loads pixels inside the query layer."""
+        from semblon.visual_query import VisualQuery
 
-        image = load_media_bgr(self.store, media_id)
-        if image is None:
-            reason = "Could not read that photo. Nothing was searched."
-            return {
-                "status": "UNAVAILABLE",
-                "reason": reason,
-                "lines": ["Could not read that photo.", "Nothing was searched."],
-                "media_id": str(media_id) if media_id else "",
-                "region": None,
-                "item_count": 0,
-            }
-        kwargs: dict = {}
-        if rect:
-            kwargs["x"] = int(rect["x"])
-            kwargs["y"] = int(rect["y"])
-            kwargs["w"] = int(rect["w"])
-            kwargs["h"] = int(rect["h"])
-        report = query_image(image, capabilities=capabilities, **kwargs)
-        summary = lens_result_summary(report)
-        summary["lines"] = format_query_lines(report)
-        summary["region"] = dict(getattr(report, "region", {}) or {})
-        summary["media_id"] = str(media_id)
-        return summary
+        return self.query_visual(
+            VisualQuery(
+                source="media",
+                media_id=str(media_id or ""),
+                rect=dict(rect or {}),
+                capabilities=capabilities,
+            )
+        )
+
+    def query_screen(
+        self,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        *,
+        capabilities: tuple[str, ...] | None = None,
+        limit: int = 10,
+        selection_kind: str | None = None,
+        cancelled=None,
+    ) -> dict:
+        """Screen-selection query through the same visual-query door, plus local retrieval."""
+        from semblon.visual_query import VisualQuery
+
+        return self.query_visual(
+            VisualQuery(
+                source="screen",
+                screen_rect={"x": int(x), "y": int(y), "w": int(w), "h": int(h)},
+                capabilities=capabilities,
+                limit=max(1, int(limit)),
+                selection_kind=selection_kind,
+            ),
+            cancelled=cancelled,
+        )
+
+    def query_visual(self, query, *, cancelled=None) -> dict:
+        """Canonical visual-query dispatcher for media and screen sources."""
+        from semblon.visual_query import run_visual_query
+
+        return run_visual_query(self.store, query, cancelled=cancelled).as_dict()
 
     def pause_job(self) -> None:
         self.engine.pause()
@@ -297,6 +313,28 @@ class Application:
 
         return name_user_region(self.store, item_id, name)
 
+    def name_selection(
+        self,
+        media_id: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        *,
+        image_path: Path | None = None,
+    ) -> dict:
+        from semblon.region_search import name_selection
+
+        return name_selection(
+            self.store,
+            media_id=media_id,
+            image_path=image_path,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
+        )
+
     def remember_and_find_region(
         self,
         media_id: str,
@@ -309,7 +347,10 @@ class Application:
         run_id: str | None = None,
         limit: int = 10,
         selection_kind: str | None = None,
+        search_quality: str = "balanced",
         cancelled=None,
+        on_first=None,
+        query_spec=None,
     ) -> dict:
         from semblon.region_search import remember_and_find
 
@@ -324,6 +365,73 @@ class Application:
             run_id=run_id,
             limit=limit,
             selection_kind=selection_kind,
+            search_quality=search_quality,
+            cancelled=cancelled,
+            on_first=on_first,
+            query_spec=query_spec,
+        )
+
+    def preview_region_parts(
+        self,
+        media_id: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        *,
+        image_path: Path | None = None,
+    ) -> dict:
+        """Parts inside the highlight. Whole area plus up to three labels."""
+        from semblon.query_spec import empty_parts
+        from semblon.region_parts import propose_parts
+        from semblon.region_search import crop_bgr
+
+        crop = None
+        path = Path(image_path) if image_path is not None else None
+        if path is None or not path.is_file():
+            item = self.media(media_id)
+            path = Path(item.path) if item is not None and item.path else None
+        if path is not None and path.is_file():
+            try:
+                crop = crop_bgr(path, x, y, w, h)
+            except Exception:
+                crop = None
+        parts = propose_parts(self.store, media_id=media_id, x=x, y=y, w=w, h=h, crop=crop)
+        return {"parts": parts or empty_parts(), "count": max(0, len(parts) - 1)}
+
+    def judge_region_matches(
+        self,
+        media_id: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        items: list[dict],
+        *,
+        image_path: Path | None = None,
+        cancelled=None,
+    ) -> dict:
+        """Reorder already-found matches. Does not search again. Not a person."""
+        from semblon.match_judge import judge_matches
+        from semblon.region_search import crop_bgr
+
+        crop = None
+        path = Path(image_path) if image_path is not None else None
+        if path is None or not path.is_file():
+            item = self.media(media_id)
+            path = Path(item.path) if item is not None and item.path else None
+        if path is not None and path.is_file():
+            try:
+                crop = crop_bgr(path, x, y, w, h)
+            except Exception:
+                crop = None
+        rec = judge_matches(
+            self.store,
+            crop=crop,
+            items=items,
             cancelled=cancelled,
         )
+        rec["persons"] = 0
+        rec["wrote_embedding"] = False
+        return rec
 

@@ -1,10 +1,10 @@
 import QtQuick
+import QtQuick.Controls
 
 Item {
     id: root
     objectName: "memoryCalendar"
     Accessible.name: "Memory calendar"
-    // Day grid must not paint outside this item into the Field below.
     clip: true
 
     property var shellApi: null
@@ -13,9 +13,13 @@ Item {
     property string title: ""
     property string scopeKind: ""
     property string scopeLabel: ""
+    property string revealedDay: ""
+    property bool numbersOnly: false
+    property int undatedCount: 0
     property color tokenBg: "#0b0c0e"
     property color tokenBg1: "#131417"
     property color tokenBg2: "#1b1d21"
+    property color tokenBg3: "#2c303a"
     property color tokenAccent: "#4f8cff"
     property color tokenAccentDim: "#2b4d8f"
     property color tokenText: "#f2f3f5"
@@ -25,6 +29,11 @@ Item {
     property int motion: 180
 
     signal dayClicked(string day)
+    signal dayDoubleClicked(string day)
+    signal thumbClicked(string mediaId)
+    signal rangeChosen(string startDay, string endDay)
+    signal jumpRequested(string text)
+    signal undatedClicked()
     signal prevMonth()
     signal nextMonth()
     signal goHome()
@@ -36,7 +45,11 @@ Item {
     property real hoverX: 0
     property real hoverY: 0
     property bool popoverVisible: false
-    property string hoverGeneration: ""
+    property string dragAnchor: ""
+    property string dragTip: ""
+    property bool dragMoved: false
+    property string pendingClick: ""
+    property bool suppressClick: false
 
     readonly property int cellCount: cells && cells.length ? cells.length : 0
     readonly property int monthMediaCount: {
@@ -48,12 +61,13 @@ Item {
         }
         return n
     }
-    // Title + weekdays + optional empty-month line + Column spacings.
-    readonly property real chromeHeight: 32 + 8 + 18 + 8
+    readonly property real chromeHeight: 36 + 8 + 18 + 8
+        + (undatedCount > 0 ? 22 : 0)
         + (cellCount > 0 && monthMediaCount === 0 ? 20 + 8 : 0)
     readonly property real cellW: Math.max(48, (width - 14) / 7)
-    readonly property real cellH: Math.max(48, Math.min(108,
-        (height - chromeHeight) / Math.max(1, Math.ceil(cellCount / 7))))
+    readonly property real cellH: numbersOnly
+        ? Math.max(36, Math.min(64, (height - chromeHeight) / Math.max(1, Math.ceil(cellCount / 7))))
+        : Math.max(72, Math.min(168, (height - chromeHeight) / Math.max(1, Math.ceil(cellCount / 7))))
 
     readonly property var weekdayLabels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -67,6 +81,17 @@ Item {
                 return
             root.hoverPreviewIds = root.shellApi.timelinePreviewIds(root.hoverDay)
             root.popoverVisible = true
+        }
+    }
+
+    Timer {
+        id: clickTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            if (root.pendingClick !== "")
+                root.dayClicked(root.pendingClick)
+            root.pendingClick = ""
         }
     }
 
@@ -102,6 +127,71 @@ Item {
         return false
     }
 
+    function marked(day) {
+        if (dragMoved && dragAnchor !== "" && dragTip !== "") {
+            var a = dragAnchor < dragTip ? dragAnchor : dragTip
+            var b = dragAnchor < dragTip ? dragTip : dragAnchor
+            if (day >= a && day <= b)
+                return true
+        }
+        return isSelected(day)
+    }
+
+    function cancelDrag() {
+        dragAnchor = ""
+        dragTip = ""
+        dragMoved = false
+        pendingClick = ""
+        clickTimer.stop()
+    }
+
+    function cellAt(x, y) {
+        var local = dayGrid.mapFromItem(root, x, y)
+        for (var i = 0; i < dayGrid.children.length; i++) {
+            var child = dayGrid.children[i]
+            if (!child || !child.dayKey)
+                continue
+            if (local.x >= child.x && local.x < child.x + child.width
+                    && local.y >= child.y && local.y < child.y + child.height)
+                return String(child.dayKey)
+        }
+        return ""
+    }
+
+    function beginDrag(day) {
+        cancelHover()
+        dragAnchor = day
+        dragTip = day
+        dragMoved = false
+    }
+
+    function moveDrag(x, y) {
+        if (dragAnchor === "")
+            return
+        dragMoved = true
+        var hit = cellAt(x, y)
+        if (hit !== "")
+            dragTip = hit
+    }
+
+    function endDrag(day) {
+        if (suppressClick) {
+            suppressClick = false
+            cancelDrag()
+            return
+        }
+        if (dragMoved && dragAnchor !== "" && dragTip !== "" && dragAnchor !== dragTip) {
+            rangeChosen(dragAnchor, dragTip)
+            cancelDrag()
+            return
+        }
+        pendingClick = day
+        clickTimer.restart()
+        dragAnchor = ""
+        dragTip = ""
+        dragMoved = false
+    }
+
     function moveFocus(delta) {
         if (cellCount <= 0)
             return
@@ -123,14 +213,6 @@ Item {
         focusIndex = next
     }
 
-    function countText(cell) {
-        if (!cell || !cell.count)
-            return ""
-        if (cell.countLabel)
-            return String(cell.countLabel)
-        return shellReady ? shellApi.formatCount(Number(cell.count)) : String(cell.count)
-    }
-
     Connections {
         target: shellReady ? shellApi : null
         function onEditorialChanged() { root.cancelHover() }
@@ -142,8 +224,8 @@ Item {
 
         Row {
             width: parent.width
-            spacing: 10
-            height: 32
+            spacing: 8
+            height: 36
 
             Text {
                 id: titleText
@@ -151,11 +233,38 @@ Item {
                 text: root.title || ""
                 color: tokenText
                 font.family: "Segoe UI Variable"
-                font.pixelSize: 24
+                font.pixelSize: 22
                 font.weight: Font.DemiBold
                 verticalAlignment: Text.AlignVCenter
-                height: 32
-                opacity: 0.92
+                height: 36
+            }
+
+            TextField {
+                id: jumpField
+                objectName: "calendarJump"
+                placeholderText: "YYYY-MM-DD"
+                color: tokenText
+                placeholderTextColor: tokenFaint
+                font.family: "Segoe UI"
+                font.pixelSize: 12
+                implicitWidth: 112
+                implicitHeight: 28
+                verticalAlignment: Text.AlignVCenter
+                selectByMouse: true
+                background: Rectangle {
+                    radius: 6
+                    color: tokenBg
+                    border.color: jumpField.activeFocus ? tokenAccent : tokenBorder
+                    border.width: 1
+                }
+                onAccepted: {
+                    root.jumpRequested(text)
+                    text = ""
+                }
+                Keys.onEscapePressed: {
+                    text = ""
+                    root.forceActiveFocus()
+                }
             }
 
             Text {
@@ -164,7 +273,7 @@ Item {
                 color: homeArea.containsMouse ? tokenText : tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 12
-                height: 32
+                height: 36
                 verticalAlignment: Text.AlignVCenter
                 Accessible.name: "Go to current archive month"
                 MouseArea {
@@ -177,7 +286,7 @@ Item {
                 }
             }
 
-            Item { width: Math.max(0, parent.width - titleText.width - 160); height: 1 }
+            Item { width: Math.max(0, parent.width - titleText.width - jumpField.width - 210); height: 1 }
 
             Text {
                 objectName: "calendarPrev"
@@ -186,7 +295,7 @@ Item {
                 font.family: "Segoe UI"
                 font.pixelSize: 22
                 width: 28
-                height: 32
+                height: 36
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 Accessible.name: "Previous month"
@@ -205,7 +314,7 @@ Item {
                 font.family: "Segoe UI"
                 font.pixelSize: 22
                 width: 28
-                height: 32
+                height: 36
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 Accessible.name: "Next month"
@@ -216,6 +325,24 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.nextMonth()
                 }
+            }
+        }
+
+        Text {
+            objectName: "calendarUndated"
+            visible: root.undatedCount > 0
+            width: parent.width
+            height: visible ? 18 : 0
+            text: "No date (" + root.undatedCount + ")"
+            color: undatedArea.containsMouse ? tokenText : tokenMuted
+            font.family: "Segoe UI"
+            font.pixelSize: 12
+            MouseArea {
+                id: undatedArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.undatedClicked()
             }
         }
 
@@ -257,182 +384,42 @@ Item {
 
             Repeater {
                 model: root.cells
-                delegate: Item {
+                delegate: DayCell {
                     id: dayCell
-                    property var cell: modelData
-                    property string dayKey: cell ? String(cell.day) : ""
-                    property bool inMonth: cell ? !!cell.inMonth : false
-                    property int count: cell ? Number(cell.count || 0) : 0
-                    property string thumbId: cell ? String(cell.thumbId || "") : ""
-                    property bool hasMedia: thumbId !== "" || count > 0
-                    property bool selected: root.isSelected(dayKey)
-                    property bool focused: root.focusIndex === index
-                    property bool isToday: cell ? !!cell.isToday : false
                     width: root.cellW
                     height: root.cellH
-                    objectName: "calendarDay_" + dayKey
-                    opacity: inMonth ? 1 : 0.42
-                    Accessible.name: cell && cell.accessibleName ? cell.accessibleName : dayKey
-
-                    // Soft under-shadow for media tiles (print-on-desk feel).
-                    Rectangle {
-                        anchors.fill: daySurface
-                        anchors.margins: -2
-                        anchors.topMargin: 0
-                        radius: 10
-                        color: "#80000000"
-                        visible: dayCell.hasMedia
-                        z: 0
+                    cell: modelData
+                    showThumbs: !root.numbersOnly
+                    marked: root.marked(dayKey)
+                    revealed: root.revealedDay === dayKey && !marked
+                    focused: root.focusIndex === index
+                    tokenBg2: root.tokenBg2
+                    tokenBg3: root.tokenBg3
+                    tokenAccent: root.tokenAccent
+                    tokenAccentDim: root.tokenAccentDim
+                    tokenText: root.tokenText
+                    tokenMuted: root.tokenMuted
+                    tokenFaint: root.tokenFaint
+                    tokenBorder: root.tokenBorder
+                    onDayPressed: function(day) { root.beginDrag(day) }
+                    onDayDragged: function(x, y) {
+                        var mapped = dayCell.mapToItem(root, x, y)
+                        root.moveDrag(mapped.x, mapped.y)
                     }
-
-                    Rectangle {
-                        id: daySurface
-                        anchors.fill: parent
-                        anchors.margins: 1
-                        radius: 8
-                        z: 1
-                        clip: true
-                        border.width: selected ? 2 : 1
-                        border.color: selected
-                                     ? tokenAccent
-                                     : (dayHover.containsMouse
-                                        ? (dayCell.hasMedia ? Qt.rgba(1, 1, 1, 0.28) : tokenAccent)
-                                        : (focused ? tokenText : (isToday ? tokenMuted : "transparent")))
-
-                        // Empty ghost: elevated card gradient; media wells stay flat under the photo.
-                        gradient: Gradient {
-                            GradientStop {
-                                position: 0.0
-                                color: dayCell.hasMedia
-                                       ? tokenBg2
-                                       : (dayHover.containsMouse ? Qt.lighter(tokenBg2, 1.18) : "#18181b")
-                            }
-                            GradientStop {
-                                position: 1.0
-                                color: dayCell.hasMedia
-                                       ? tokenBg2
-                                       : (dayHover.containsMouse ? Qt.lighter(tokenBg2, 1.08) : "#1c1c21")
-                            }
-                        }
-
-                        // Dashed ghost border for empty reserved days.
-                        Canvas {
-                            anchors.fill: parent
-                            visible: !dayCell.hasMedia && !selected
-                            onPaint: {
-                                var ctx = getContext("2d")
-                                ctx.reset()
-                                var inset = 1.5
-                                ctx.strokeStyle = dayHover.containsMouse
-                                    ? String(tokenAccent)
-                                    : "rgba(255,255,255,0.08)"
-                                ctx.lineWidth = 1
-                                ctx.setLineDash(dayHover.containsMouse ? [] : [3, 3])
-                                ctx.beginPath()
-                                var r = 7
-                                var x = inset, y = inset
-                                var w = width - inset * 2, h = height - inset * 2
-                                ctx.moveTo(x + r, y)
-                                ctx.lineTo(x + w - r, y)
-                                ctx.quadraticCurveTo(x + w, y, x + w, y + r)
-                                ctx.lineTo(x + w, y + h - r)
-                                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
-                                ctx.lineTo(x + r, y + h)
-                                ctx.quadraticCurveTo(x, y + h, x, y + h - r)
-                                ctx.lineTo(x, y + r)
-                                ctx.quadraticCurveTo(x, y, x + r, y)
-                                ctx.stroke()
-                            }
-                            Connections {
-                                target: dayHover
-                                function onContainsMouseChanged() { parent.requestPaint() }
-                            }
-                            Component.onCompleted: requestPaint()
-                        }
-
-                        Image {
-                            anchors.fill: parent
-                            visible: thumbId !== ""
-                            source: thumbId !== "" ? ("image://archive/t/" + thumbId) : ""
-                            fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                            cache: true
-                        }
-
-                        // Bottom readability gradient for date + count on media.
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            height: Math.max(28, parent.height * 0.42)
-                            visible: thumbId !== ""
-                            z: 2
-                            gradient: Gradient {
-                                GradientStop { position: 0.0; color: "#00000000" }
-                                GradientStop { position: 0.45; color: "#66000000" }
-                                GradientStop { position: 1.0; color: "#B3000000" }
-                            }
-                        }
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.bottom: parent.bottom
-                            anchors.leftMargin: 8
-                            anchors.bottomMargin: 7
-                            text: cell ? String(cell.dayNum) : ""
-                            color: thumbId !== "" ? "#ffffff" : (inMonth ? tokenText : tokenFaint)
-                            font.family: "Segoe UI Variable"
-                            font.pixelSize: thumbId !== "" ? 16 : 15
-                            font.weight: Font.Bold
-                            z: 3
-                        }
-
-                        Rectangle {
-                            visible: count > 0
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            anchors.margins: 6
-                            width: Math.max(24, countLabel.implicitWidth + 12)
-                            height: 18
-                            radius: 9
-                            color: "#2A2C31"
-                            border.color: Qt.rgba(1, 1, 1, 0.06)
-                            border.width: 1
-                            z: 3
-                            Text {
-                                id: countLabel
-                                anchors.centerIn: parent
-                                text: root.countText(cell)
-                                color: "#E1E3E6"
-                                font.family: "Segoe UI"
-                                font.pixelSize: 10
-                                font.weight: Font.Medium
-                            }
-                        }
-
-                        MouseArea {
-                            id: dayHover
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            z: 4
-                            onEntered: {
-                                root.focusIndex = index
-                                root.armHover(
-                                    dayKey,
-                                    count,
-                                    mapToItem(root, width / 2, 0).x,
-                                    mapToItem(root, height, 0).y
-                                )
-                            }
-                            onExited: root.cancelHover()
-                            onClicked: {
-                                root.cancelHover()
-                                root.focusIndex = index
-                                root.dayClicked(dayKey)
-                            }
-                        }
+                    onDayReleased: function(day) { root.endDrag(day) }
+                    onDayDouble: function(day) {
+                        root.suppressClick = true
+                        root.clickTimer.stop()
+                        root.pendingClick = ""
+                        root.dayDoubleClicked(day)
                     }
+                    onThumbActivated: function(mediaId) { root.thumbClicked(mediaId) }
+                    onEnteredDay: function(day, count) {
+                        root.focusIndex = index
+                        var mapped = dayCell.mapToItem(root, dayCell.width / 2, 0)
+                        root.armHover(day, count, mapped.x, mapped.y)
+                    }
+                    onExitedDay: root.cancelHover()
                 }
             }
         }
@@ -444,7 +431,6 @@ Item {
         width: 176
         height: previewRow.visible ? 96 : 48
         x: Math.max(4, Math.min(root.width - width - 4, hoverX - width / 2))
-        // Prefer below the cell so weekday headers stay clear.
         y: Math.min(root.height - height - 4, Math.max(weekdayRow.y + weekdayRow.height + 4, hoverY + 6))
         radius: 8
         color: tokenBg1
@@ -487,6 +473,13 @@ Item {
     }
 
     Keys.onPressed: (event) => {
+        if (dragAnchor !== "") {
+            if (event.key === Qt.Key_Escape) {
+                cancelDrag()
+                event.accepted = true
+            }
+            return
+        }
         if (cellCount <= 0)
             return
         if (event.key === Qt.Key_Left) {

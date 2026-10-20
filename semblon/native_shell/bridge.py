@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -43,6 +44,7 @@ from semblon.native_shell.presentation import (
     ADVANCED,
     PRIMARY,
     decision_success,
+    is_primary_safe_message,
     normalize_mode,
     present_message,
     summarize_people_results,
@@ -53,13 +55,16 @@ from semblon.native_shell.editorial import (
     VIDEO_NOTE,
     YEAR_NOTE,
     MEDIA_KINDS,
+    UNDATED_DAY,
     calendar_month_cells,
+    day_section_short_label,
     default_calendar_month,
     field_sections,
     format_count,
     format_count_exact,
     month_end_day,
     month_heading,
+    parse_iso_day,
     range_media_ids,
     rows_from_scope,
     scope_ids,
@@ -67,11 +72,63 @@ from semblon.native_shell.editorial import (
     sort_ids_newest_first,
     source_counts,
     timeline_density,
+    undated_count,
+    video_ids,
+    year_matrix,
 )
 from semblon.ui_prefs import load_prefer_gpu, load_prefs, save_theme_mode, update_prefs
 
 
 KEY_SHELL_MODE = "shell_mode"
+KEY_CALENDAR_VIEW = "calendar_view"
+KEY_ARCHIVE_SPLIT = "archive_split"
+CALENDAR_VIEWS = ("years", "months", "days")
+
+
+def _format_bytes(size: int) -> str:
+    value = int(size or 0)
+    if value <= 0:
+        return "Not in this file"
+    if value < 1024:
+        return f"{value} B"
+    if value < 1024 * 1024:
+        return f"{value / 1024:.1f} KB"
+    return f"{value / (1024 * 1024):.1f} MB"
+KEY_SCREEN_QUERY_MODE = "screen_query_mode"
+SCREEN_QUERY_MODE_VISUAL = "visual"
+SCREEN_QUERY_MODE_TEXT_PRIORITY = "text_priority"
+SCREEN_QUERY_MODES = (SCREEN_QUERY_MODE_VISUAL, SCREEN_QUERY_MODE_TEXT_PRIORITY)
+
+_INSTALL_LABELS = {
+    "region_pack": "Install region model",
+    "object_pack": "Install object model",
+    "vlm_local": "Install description model",
+}
+_INSTALL_METHODS = {
+    "region_pack": "install_region_pack",
+    "object_pack": "install_object_pack",
+    "vlm_local": "install_vlm",
+}
+_INSTALL_PROMPTS = {
+    "region_pack": (
+        "Install region model?",
+        "Semblon will download the region model onto this computer.\n\n"
+        "You stay on this screen. When it finishes, this search runs again.\n\n"
+        "Continue?",
+    ),
+    "object_pack": (
+        "Install object model?",
+        "Semblon will download the object model onto this computer.\n\n"
+        "You stay on this screen. When it finishes, this search runs again.\n\n"
+        "Continue?",
+    ),
+    "vlm_local": (
+        "Install description model?",
+        "Semblon will install picture description on this computer.\n\n"
+        "You stay on this screen. When it finishes, this search runs again.\n\n"
+        "Continue?",
+    ),
+}
 
 
 def reduced_motion() -> bool:
@@ -90,8 +147,63 @@ def reduced_motion() -> bool:
         return False
 
 
+_PHASE_LABELS = {
+    "first": "First look",
+    "refined": "Refined",
+    "fast": "Fast look",
+    "kept": "Kept the first look",
+    "checked": "Checked the matches",
+}
+
+_DOOR_LABELS = {
+    "region": "Similar region",
+    "face": "Same face",
+    "whole": "Whole photo",
+    "duplicate": "Duplicates",
+}
+
+
+def _confidence_label(value) -> str:
+    if value is None:
+        return ""
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return ""
+    percent = max(0, min(100, int(round(score * 100))))
+    return f"Confidence {percent}%."
+
+
+def _stamp_phase(result: Result, phase: str) -> Result:
+    data = dict(result.data or {})
+    data["search_phase"] = phase
+    return Result(result.state, result.message, data)
+
+
 class _VisualSearchThread(QThread):
     """Region and similar lookups off the UI thread. The slot applies the result."""
+
+    succeeded = Signal(int, object)
+    failed = Signal(int, str)
+    progressed = Signal(int, object)
+
+    def __init__(self, generation: int, fn, parent=None):
+        super().__init__(parent)
+        self._generation = generation
+        self._fn = fn
+
+    def _emit_progress(self, payload) -> None:
+        self.progressed.emit(self._generation, payload)
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._generation, self._fn(self._emit_progress))
+        except Exception as exc:  # noqa: BLE001 — the UI slot turns this into search failed
+            self.failed.emit(self._generation, str(exc) or "search failed")
+
+
+class _NameSelectionThread(QThread):
+    """Name the highlighted crop off the UI thread. Does not touch the match strip."""
 
     succeeded = Signal(int, object)
     failed = Signal(int, str)
@@ -104,8 +216,25 @@ class _VisualSearchThread(QThread):
     def run(self) -> None:
         try:
             self.succeeded.emit(self._generation, self._fn())
-        except Exception as exc:  # noqa: BLE001 — the UI slot turns this into search failed
-            self.failed.emit(self._generation, str(exc) or "search failed")
+        except Exception as exc:  # noqa: BLE001 — the slot turns this into an unnamed area
+            self.failed.emit(self._generation, str(exc) or "naming failed")
+
+
+class _TaskThread(QThread):
+    """One background task that returns a Result-like object."""
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, fn, parent=None):
+        super().__init__(parent)
+        self._fn = fn
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._fn())
+        except Exception as exc:  # noqa: BLE001 — UI translates this to a safe message
+            self.failed.emit(str(exc) or "task failed")
 
 
 class ShellBridge(QObject):
@@ -119,12 +248,15 @@ class ShellBridge(QObject):
     resultChanged = Signal()
     similarChanged = Signal()
     selectionChanged = Signal()
+    nameChanged = Signal()
+    doorChanged = Signal()
     searchBusyChanged = Signal()
     indexChanged = Signal()
     keepsChanged = Signal()
     peopleChanged = Signal()
     surfaceChanged = Signal()
     editorialChanged = Signal()
+    screenQueryChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -146,14 +278,38 @@ class ShellBridge(QObject):
         self._similar_note = ""
         self._similar_basis = ""
         self._similar_basis_label = ""
+        self._similar_phase = ""
         self._selection_note = ""
         self._selection_kind = ""
+        self._refine_mode = "look"
+        self._refine_modifier = ""
+        self._refine_part_index = -1
+        self._refine_parts: list[dict] = []
+        self._name_note = ""
+        self._name_confidence = ""
+        self._identify_busy = False
+        self._identify_generation = 0
+        self._name_thread: _NameSelectionThread | None = None
+        self._search_door = ""
+        self._search_started = 0.0
+        self._search_first_ms = -1
+        self._search_refined_ms = -1
         self._similar_cancel = False
         self._search_generation = 0
         self._search_busy = False
         self._search_thread: _VisualSearchThread | None = None
         self._cancel_flag: list[bool] | None = None
         self._search_failure = ""
+        self._install_suggestion = ""
+        self._install_suggestion_label = ""
+        self._install_kind = ""
+        self._install_retry = ""
+        self._install_retry_rect: tuple[int, int, int, int] | None = None
+        self._install_thread: _TaskThread | None = None
+        self._screen_query_rect: tuple[int, int, int, int] | None = None
+        self._query_source = ""
+        self._screen_query_mode = self._load_screen_query_mode()
+        self._screen_query_state = "idle"
         self._index_state = ""
         self._index_note = ""
         self._progress_seen: int | None = None
@@ -201,6 +357,12 @@ class ShellBridge(QObject):
         self._sticky_heading = ""
         self._calendar_month = ""
         self._calendar_cells: list[dict] = []
+        self._year_matrix: list[dict] = []
+        self._undated_count = 0
+        self._revealed_day = ""
+        self._video_ids: set[str] = set()
+        self._calendar_view = self._load_calendar_view()
+        self._archive_split = self._load_archive_split()
         self._field_sections: list[dict] = []
         self._scope_ids: dict[str, dict[str, list[str]]] = {
             "year": {},
@@ -242,6 +404,9 @@ class ShellBridge(QObject):
         thread = self._search_thread
         if thread is not None and thread.isRunning():
             thread.wait(2000)
+        install = self._install_thread
+        if install is not None and install.isRunning():
+            install.wait(2000)
         jobs = getattr(self, "_jobs", None)
         engine = getattr(jobs, "engine", None) if jobs is not None else None
         if engine is not None and hasattr(engine, "shutdown"):
@@ -272,12 +437,39 @@ class ShellBridge(QObject):
     def _save_shell_mode(self, mode: str) -> None:
         update_prefs(self._prefs_store(), **{KEY_SHELL_MODE: normalize_mode(mode)})
 
+    def _load_screen_query_mode(self) -> str:
+        prefs = load_prefs(self._prefs_store())
+        mode = str(prefs.get(KEY_SCREEN_QUERY_MODE) or "").strip().lower()
+        if mode in SCREEN_QUERY_MODES:
+            return mode
+        return SCREEN_QUERY_MODE_VISUAL
+
+    def _save_screen_query_mode(self, mode: str) -> None:
+        picked = str(mode or "").strip().lower()
+        if picked not in SCREEN_QUERY_MODES:
+            picked = SCREEN_QUERY_MODE_VISUAL
+        update_prefs(self._prefs_store(), **{KEY_SCREEN_QUERY_MODE: picked})
+
     def _load_atmosphere_id(self) -> str:
         prefs = load_prefs(self._prefs_store())
         chosen = str(prefs.get("theme") or "").strip().lower()
         if chosen in ATMOSPHERE_IDS:
             return chosen
         return "mica_dark"
+
+    def _load_calendar_view(self) -> str:
+        raw = str(load_prefs(self._prefs_store()).get(KEY_CALENDAR_VIEW) or "").strip().lower()
+        if raw in CALENDAR_VIEWS:
+            return raw
+        return "months"
+
+    def _load_archive_split(self) -> float:
+        raw = load_prefs(self._prefs_store()).get(KEY_ARCHIVE_SPLIT, 0.46)
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return 0.46
+        return max(0.32, min(0.68, value))
 
     @Property(str, notify=lensChanged)
     def mode(self) -> str:
@@ -352,6 +544,34 @@ class ShellBridge(QObject):
     def focusName(self) -> str:
         item = self._jobs.media(self._session.focus_id or "")
         return item.name if item else ""
+
+    @Property("QVariantMap", notify=focusChanged)
+    def focusFileFacts(self):
+        """Read-only file facts for the open photo. Missing facts stay unnamed."""
+        item = self._jobs.media(self._session.focus_id or "")
+        if item is None:
+            return {}
+        path = Path(item.path) if item.path else None
+        size_text = "Not in this file"
+        if path is not None:
+            try:
+                if path.is_file():
+                    size_text = _format_bytes(path.stat().st_size)
+            except OSError:
+                size_text = "Not in this file"
+        if item.width and item.height:
+            dimensions = f"{int(item.width)} × {int(item.height)}"
+        else:
+            dimensions = "Not in this file"
+        taken = day_section_short_label(item.day) if item.day else "Not in this file"
+        return {
+            "name": item.name or "Not in this file",
+            "date": taken,
+            "dimensions": dimensions,
+            "size": size_text,
+            "camera": "Not in this file",
+            "location": "No location stored",
+        }
 
     @Property(str, notify=focusChanged)
     def focusUrl(self) -> str:
@@ -595,13 +815,13 @@ class ShellBridge(QObject):
         self._days = rows_from_scope(self._scope_ids["day"], newest_first=True)
         self._folders = rows_from_scope(self._scope_ids["folder"])
         self._timeline_density = timeline_density(store, self._media_kind)
+        self._video_ids = video_ids(store)
         if self._scope_kind and self._scope_label not in self._scope_ids.get(self._scope_kind, {}):
             self._scope_kind = ""
             self._scope_label = ""
         day_map = self._scope_ids.get("day", {})
         if not self._calendar_month:
             self._calendar_month = default_calendar_month(day_map)
-        self._calendar_cells = calendar_month_cells(self._calendar_month, day_map)
         self._apply_scope_view()
         self._timeline_loading = False
         self.editorialChanged.emit()
@@ -614,9 +834,7 @@ class ShellBridge(QObject):
             return
         self._calendar_month = label
         if rebuild:
-            self._calendar_cells = calendar_month_cells(
-                self._calendar_month, self._scope_ids.get("day", {})
-            )
+            self._paint_calendar()
         self.editorialChanged.emit()
 
     def _ordered_ids(self, ids: list[str]) -> list[str]:
@@ -662,6 +880,41 @@ class ShellBridge(QObject):
                 self._model.set_media_ids(None)
         self._refresh_field_sections(ordered)
         self._sticky_heading = ""
+        self._paint_calendar()
+
+    def _emphasis_days(self) -> set[str]:
+        """Days that intersect the active person filter or the folder scope."""
+        wanted: set[str] = set()
+        if self._person_field_filter and self._person_field_ids:
+            wanted.update(str(media_id) for media_id in self._person_field_ids)
+        if self._scope_kind == "folder":
+            wanted.update(
+                str(media_id)
+                for media_id in self._scope_ids.get("folder", {}).get(self._scope_label, [])
+            )
+        if not wanted:
+            return set()
+        days: set[str] = set()
+        for day, members in self._scope_ids.get("day", {}).items():
+            if wanted.intersection(str(media_id) for media_id in members):
+                days.add(str(day))
+        return days
+
+    def _paint_calendar(self) -> None:
+        day_map = self._scope_ids.get("day", {})
+        emphasis = self._emphasis_days()
+        self._calendar_cells = calendar_month_cells(
+            self._calendar_month,
+            day_map,
+            video_ids=self._video_ids,
+            emphasis_days=emphasis,
+        )
+        self._year_matrix = year_matrix(
+            (self._calendar_month or "")[:4],
+            day_map,
+            emphasis_days=emphasis,
+        )
+        self._undated_count = undated_count(day_map)
 
     @Property(str, notify=editorialChanged)
     def mediaKind(self) -> str:
@@ -699,6 +952,7 @@ class ShellBridge(QObject):
         self._model.set_media_ids(ordered)
         self._refresh_field_sections(ordered)
         self._sticky_heading = ""
+        self._paint_calendar()
         self.editorialChanged.emit()
         self._apply_result(Result("ready", f"Showing {label}."))
 
@@ -736,11 +990,92 @@ class ShellBridge(QObject):
             self._scope_kind == "day"
             and self._scope_label == day
         ):
+            self._revealed_day = ""
             self.clearScope()
             return
+        self._revealed_day = day
         if len(day) >= 7:
             self._sync_calendar_month(day[:7])
         self._select_scope("day", day)
+
+    @Slot(str)
+    def focusDay(self, label: str) -> None:
+        """Select a day and keep it selected when it is already the scope."""
+        day = str(label or "").strip()[:10]
+        if self._scope_kind == "day" and self._scope_label == day:
+            self._revealed_day = day
+            if len(day) >= 7:
+                self._sync_calendar_month(day[:7])
+            else:
+                self.editorialChanged.emit()
+            return
+        self.selectDay(day)
+
+    @Slot(str)
+    def revealDay(self, label: str) -> None:
+        """Move the calendar to a real day without changing the media scope."""
+        day = parse_iso_day(label)
+        if not day:
+            return
+        self._revealed_day = day
+        self._sync_calendar_month(day[:7])
+
+    @Slot()
+    def showUndated(self) -> None:
+        """Show photos with no stored day. The calendar month stays put."""
+        ids = self._scope_ids.get("day", {}).get(UNDATED_DAY)
+        if not ids:
+            return
+        if self._scope_kind == "day" and self._scope_label == UNDATED_DAY:
+            self.clearScope()
+            return
+        self._select_scope("day", UNDATED_DAY)
+
+    @Property(str, notify=editorialChanged)
+    def calendarView(self) -> str:
+        return self._calendar_view
+
+    @Slot(str)
+    def setCalendarView(self, view: str) -> None:
+        picked = str(view or "").strip().lower()
+        if picked not in CALENDAR_VIEWS or picked == self._calendar_view:
+            return
+        self._calendar_view = picked
+        update_prefs(self._prefs_store(), **{KEY_CALENDAR_VIEW: picked})
+        self.editorialChanged.emit()
+
+    @Property(float, notify=editorialChanged)
+    def archiveSplit(self) -> float:
+        return float(self._archive_split)
+
+    @Slot(float)
+    def setArchiveSplit(self, ratio: float) -> None:
+        try:
+            value = float(ratio)
+        except (TypeError, ValueError):
+            return
+        value = max(0.32, min(0.68, value))
+        if abs(value - float(self._archive_split)) < 0.001:
+            return
+        self._archive_split = value
+        update_prefs(self._prefs_store(), **{KEY_ARCHIVE_SPLIT: value})
+        self.editorialChanged.emit()
+
+    @Property(str, notify=editorialChanged)
+    def calendarYear(self) -> str:
+        return (self._calendar_month or "")[:4]
+
+    @Property(str, notify=editorialChanged)
+    def revealedDay(self) -> str:
+        return self._revealed_day
+
+    @Property(int, notify=editorialChanged)
+    def undatedCount(self) -> int:
+        return int(self._undated_count)
+
+    @Property("QVariantList", notify=editorialChanged)
+    def yearMatrix(self):
+        return list(self._year_matrix)
 
     @Slot(str, str)
     def selectRange(self, start: str, end: str) -> None:
@@ -793,9 +1128,11 @@ class ShellBridge(QObject):
 
     @Property(str, notify=surfaceChanged)
     def similarActionHint(self) -> str:
-        if self._session.focus_id:
-            return "Find visually similar memories from the open photo."
-        return "Open a photo first, then find similar memories."
+        if not self._session.focus_id:
+            return "Open a photo first, then find similar memories."
+        if self._region_norm:
+            return "Search the highlighted area for a similar region."
+        return "Draw a region on the photo, then search that area."
 
     @Slot(str, result="QVariantList")
     def timelinePreviewIds(self, label: str):
@@ -813,11 +1150,18 @@ class ShellBridge(QObject):
 
     @Slot(str)
     def setStickyDay(self, day: str) -> None:
-        heading = month_heading(str(day or ""))
-        if heading == self._sticky_heading:
+        """Update the sticky heading and follow the visible month. Scope stays."""
+        text = str(day or "").strip()
+        heading = month_heading(text)
+        heading_changed = heading != self._sticky_heading
+        if heading_changed:
+            self._sticky_heading = heading
+        month = text[:7] if len(text) >= 7 and text[4:5] == "-" else ""
+        if month and month != self._calendar_month:
+            self._sync_calendar_month(month)
             return
-        self._sticky_heading = heading
-        self.editorialChanged.emit()
+        if heading_changed:
+            self.editorialChanged.emit()
 
     @Slot(int, result=str)
     def dayAt(self, index: int) -> str:
@@ -998,6 +1342,70 @@ class ShellBridge(QObject):
     def dangerColor(self) -> str:
         return tokens_for(self._atmosphere_id)["danger"]
 
+    @Property(str, notify=lensChanged)
+    def okColor(self) -> str:
+        return tokens_for(self._atmosphere_id)["ok"]
+
+    @Property(str, notify=lensChanged)
+    def warnColor(self) -> str:
+        return tokens_for(self._atmosphere_id)["warn"]
+
+    @Property(bool, notify=lensChanged)
+    def screenQueryAvailable(self) -> bool:
+        return sys.platform == "win32"
+
+    @Property(bool, notify=screenQueryChanged)
+    def screenQueryInProgress(self) -> bool:
+        return self._screen_query_state in {"selecting", "searching"}
+
+    @Property(str, notify=screenQueryChanged)
+    def screenQueryState(self) -> str:
+        return self._screen_query_state
+
+    @Property(str, notify=screenQueryChanged)
+    def screenQueryProgressLabel(self) -> str:
+        if self._screen_query_state == "selecting":
+            return "Screen query in progress: drag a box on your screen."
+        if self._screen_query_state == "searching":
+            return "Screen query in progress: searching your library."
+        return ""
+
+    @Property(str, notify=screenQueryChanged)
+    def screenQueryMode(self) -> str:
+        return self._screen_query_mode
+
+    @Property(str, notify=screenQueryChanged)
+    def screenQueryModeLabel(self) -> str:
+        if self._screen_query_mode == SCREEN_QUERY_MODE_TEXT_PRIORITY:
+            return "Screen mode: Text first"
+        return "Screen mode: Visual first"
+
+    @Slot()
+    def toggleScreenQueryMode(self) -> None:
+        if self.screenQueryInProgress:
+            self._apply_result(Result("unavailable", "Screen query is already in progress."))
+            return
+        nxt = (
+            SCREEN_QUERY_MODE_TEXT_PRIORITY
+            if self._screen_query_mode == SCREEN_QUERY_MODE_VISUAL
+            else SCREEN_QUERY_MODE_VISUAL
+        )
+        self.setScreenQueryMode(nxt)
+
+    @Slot(str)
+    def setScreenQueryMode(self, mode: str) -> None:
+        raw = str(mode or "").strip().lower().replace("-", "_")
+        if raw in {"text", "ocr"}:
+            raw = SCREEN_QUERY_MODE_TEXT_PRIORITY
+        if raw not in SCREEN_QUERY_MODES:
+            raw = SCREEN_QUERY_MODE_VISUAL
+        if raw == self._screen_query_mode:
+            return
+        self._screen_query_mode = raw
+        self._save_screen_query_mode(raw)
+        self.screenQueryChanged.emit()
+        self._apply_result(Result("ready", f"{self.screenQueryModeLabel}."))
+
     @Property(str, notify=peopleChanged)
     def reviewCountText(self) -> str:
         return self._review_text
@@ -1009,6 +1417,106 @@ class ShellBridge(QObject):
     @Property(str, notify=surfaceChanged)
     def searchModeLabel(self) -> str:
         return self._adapter.search_mode().message
+
+    @Property(str, notify=surfaceChanged)
+    def searchQuality(self) -> str:
+        return str(self._adapter.search_quality().data.get("quality") or "balanced")
+
+    @Property(str, notify=surfaceChanged)
+    def searchQualityLabel(self) -> str:
+        return str(self._adapter.search_quality().data.get("label") or "Balanced")
+
+    @Property(str, notify=selectionChanged)
+    def refineMode(self) -> str:
+        return self._refine_mode
+
+    @Property(str, notify=selectionChanged)
+    def refineModeLabel(self) -> str:
+        from semblon.query_spec import mode_label
+
+        return mode_label(self._refine_mode)
+
+    @Property(str, notify=selectionChanged)
+    def refineHint(self) -> str:
+        from semblon.query_spec import QuerySpec, refine_hint
+
+        return refine_hint(
+            QuerySpec(
+                mode=self._refine_mode,
+                modifier=self._refine_modifier,
+                part_index=self._refine_part_index,
+            )
+        )
+
+    @Property(str, notify=selectionChanged)
+    def refineModifier(self) -> str:
+        return self._refine_modifier
+
+    @Property(int, notify=selectionChanged)
+    def refinePartIndex(self) -> int:
+        return int(self._refine_part_index)
+
+    @Property("QVariantList", notify=selectionChanged)
+    def refineParts(self) -> list:
+        return list(self._refine_parts)
+
+    @Slot(str)
+    def setRefineMode(self, mode: str) -> None:
+        from semblon.query_spec import MODE_KIND, normalize_mode
+
+        key = normalize_mode(mode)
+        if key == self._refine_mode:
+            return
+        self._refine_mode = key
+        self.selectionChanged.emit()
+        note = (
+            "Search looks at the same kind of thing."
+            if key == MODE_KIND
+            else "Search looks at the same thing."
+        )
+        self._apply_result(Result("ready", note))
+        if self.selectionOnFocus:
+            self.findSimilar()
+
+    @Slot(str)
+    def setRefineModifier(self, word: str) -> None:
+        from semblon.query_spec import normalize_modifier
+
+        text = normalize_modifier(word)
+        if text == self._refine_modifier:
+            return
+        self._refine_modifier = text
+        self.selectionChanged.emit()
+        if text:
+            self._apply_result(Result("ready", f"Search looks at photos with the word {text}."))
+        else:
+            self._apply_result(Result("ready", "Search looks at the highlighted area."))
+        if self.selectionOnFocus:
+            self.findSimilar()
+
+    @Slot(int)
+    def setRefinePart(self, index: int) -> None:
+        from semblon.region_parts import select_part
+
+        try:
+            part_index = int(index)
+        except (TypeError, ValueError):
+            part_index = -1
+        self._refine_part_index = part_index
+        chosen = select_part(self._refine_parts, part_index)
+        norm = chosen.get("norm") if isinstance(chosen, dict) else None
+        if isinstance(norm, (list, tuple)) and len(norm) == 4:
+            self._region_norm = (
+                max(0.0, min(1.0, float(norm[0]))),
+                max(0.0, min(1.0, float(norm[1]))),
+                max(0.0, min(1.0, float(norm[2]))),
+                max(0.0, min(1.0, float(norm[3]))),
+            )
+        self.selectionChanged.emit()
+        label = str(chosen.get("label") or "Whole area")
+        self._apply_result(Result("ready", f"Showing {label}."))
+        if self.selectionOnFocus:
+            self.findSimilar()
 
     @Property(int, notify=libraryChanged)
     def count(self) -> int:
@@ -1036,10 +1544,55 @@ class ShellBridge(QObject):
         """User-facing basis for the open results strip (distinct per door)."""
         return self._similar_basis_label
 
+    @Property(bool, notify=similarChanged)
+    def installSuggestionVisible(self) -> bool:
+        return bool(self._install_suggestion)
+
+    @Property(str, notify=similarChanged)
+    def installSuggestionLabel(self) -> str:
+        return self._install_suggestion_label or "Install required model"
+
+    @Property(str, notify=similarChanged)
+    def similarPhase(self) -> str:
+        """first, refined, fast, or kept. Empty when this search has no phase."""
+        return self._similar_phase
+
+    @Property(str, notify=similarChanged)
+    def similarPhaseLabel(self) -> str:
+        return _PHASE_LABELS.get(self._similar_phase, "")
+
     @Property(str, notify=similarChanged)
     def selectionNote(self) -> str:
         """How the current box was chosen. Plain language, not a model id."""
         return self._selection_note
+
+    @Property(str, notify=nameChanged)
+    def nameNote(self) -> str:
+        """Local name for the highlighted area. Empty until Name this area runs."""
+        return self._name_note
+
+    @Property(str, notify=nameChanged)
+    def nameConfidenceLabel(self) -> str:
+        """Model score for the name. Empty when the name abstains or has no score."""
+        return self._name_confidence
+
+    @Property(bool, notify=nameChanged)
+    def identifyBusy(self) -> bool:
+        return self._identify_busy
+
+    @Property(str, notify=doorChanged)
+    def searchDoorLabel(self) -> str:
+        """Which Focus door is open: Similar region, Same face, Whole photo, or Duplicates."""
+        return _DOOR_LABELS.get(self._search_door, "")
+
+    @Property(str, notify=similarChanged)
+    def searchTimingLabel(self) -> str:
+        """Time to the first visible look, then time to the refined result."""
+        if self._search_first_ms < 0:
+            return ""
+        if self._search_refined_ms < 0:
+            return f"First look {self._search_first_ms} ms."
+        return f"First look {self._search_first_ms} ms. Refined {self._search_refined_ms} ms."
 
     @Property(bool, notify=similarChanged)
     def canBackDiscovery(self) -> bool:
@@ -1113,6 +1666,10 @@ class ShellBridge(QObject):
             missing = True
         if missing:
             self._report_missing_original()
+        if item.day:
+            self._revealed_day = item.day
+            if len(item.day) >= 7:
+                self._sync_calendar_month(item.day[:7])
         self.focusChanged.emit()
         self.similarChanged.emit()
         self.diagnosticsChanged.emit()
@@ -1222,6 +1779,7 @@ class ShellBridge(QObject):
         if self._cancel_flag is not None:
             self._cancel_flag[0] = True
         self._similar_cancel = True
+        self._set_screen_query_state("idle")
         was_busy = self._search_busy
         self._search_busy = False
         if was_busy:
@@ -1229,6 +1787,17 @@ class ShellBridge(QObject):
         if not publish:
             return
         label = self._similar_basis_label or "Similar look"
+        if self._similar_phase == "first" and self._similar.rowCount() > 0:
+            self._similar_phase = "kept"
+            self._similar_state = "ready"
+            self._similar_note = present_message(
+                self._mode,
+                f"Similar ({label}): kept the first look.",
+                fallback="Similar search could not run.",
+            )
+            self.similarChanged.emit()
+            self._persist_discovery()
+            return
         self._publish_similar(
             "empty",
             f"Similar ({label}): cancelled.",
@@ -1236,18 +1805,24 @@ class ShellBridge(QObject):
             basis=self._similar_basis or "region",
             basis_label=label,
             persist=False,
+            phase="",
         )
 
     def _start_visual_search(self, *, basis: str, label: str, build) -> None:
-        """Publish looking immediately, then run build(cancel_flag) off the UI thread."""
+        """Publish looking immediately, then run build(cancel_flag, report) off the UI thread."""
         if self._cancel_flag is not None:
             self._cancel_flag[0] = True
+        self._set_install_suggestion("", "")
         self._search_generation += 1
         generation = self._search_generation
         flag = [False]
         self._cancel_flag = flag
         self._similar_cancel = False
+        self._similar_phase = ""
         self._search_failure = ""
+        self._search_started = time.monotonic()
+        self._search_first_ms = -1
+        self._search_refined_ms = -1
         self._search_busy = True
         self.searchBusyChanged.emit()
         self._publish_similar(
@@ -1257,9 +1832,11 @@ class ShellBridge(QObject):
             basis=basis,
             basis_label=label,
             persist=False,
+            phase="",
         )
-        thread = _VisualSearchThread(generation, lambda: build(flag), self)
+        thread = _VisualSearchThread(generation, lambda report: build(flag, report), self)
         thread.succeeded.connect(self._on_visual_search)
+        thread.progressed.connect(self._on_visual_progress)
         thread.failed.connect(self._on_visual_search_failed)
         self._search_thread = thread
         thread.start()
@@ -1297,12 +1874,25 @@ class ShellBridge(QObject):
                 break
 
     @Slot(int, object)
+    def _on_visual_progress(self, generation: int, payload) -> None:
+        if generation != self._search_generation or self._similar_cancel or payload is None:
+            return
+        if isinstance(payload, Result):
+            result = payload
+        else:
+            result = self._safe_call(lambda: self._adapter.similar_region(payload))
+        self._publish_similar_result(result, interim=True)
+
+    @Slot(int, object)
     def _on_visual_search(self, generation: int, payload) -> None:
         if generation != self._search_generation:
             return
+        self._set_screen_query_state("idle")
         self._search_busy = False
         self.searchBusyChanged.emit()
         if payload is None or self._similar_cancel:
+            if self._similar_phase == "first" and self._similar.rowCount() > 0:
+                return
             self._publish_similar(
                 "empty",
                 f"Similar ({self._similar_basis_label or 'Similar look'}): cancelled.",
@@ -1310,6 +1900,7 @@ class ShellBridge(QObject):
                 basis=self._similar_basis or "region",
                 basis_label=self._similar_basis_label or "Similar look",
                 persist=False,
+                phase="",
             )
             return
         if isinstance(payload, Result):
@@ -1322,6 +1913,7 @@ class ShellBridge(QObject):
     def _on_visual_search_failed(self, generation: int, message: str) -> None:
         if generation != self._search_generation:
             return
+        self._set_screen_query_state("idle")
         self._search_busy = False
         self._search_failure = str(message or "search failed")
         self.searchBusyChanged.emit()
@@ -1333,6 +1925,7 @@ class ShellBridge(QObject):
             basis=self._similar_basis or "region",
             basis_label=label,
             persist=False,
+            phase="",
         )
 
     def _refresh_index_note(self) -> None:
@@ -1402,7 +1995,30 @@ class ShellBridge(QObject):
         self._similar_note = ""
         self._similar_basis = ""
         self._similar_basis_label = ""
+        self._similar_phase = ""
+        self._set_install_suggestion("", "")
         self.similarChanged.emit()
+
+    def _set_install_suggestion(self, action: str, label: str = "") -> None:
+        next_action = str(action or "")
+        next_label = str(label or "")
+        if (
+            next_action == self._install_suggestion
+            and next_label == self._install_suggestion_label
+        ):
+            return
+        self._install_suggestion = next_action
+        self._install_suggestion_label = next_label
+        self.similarChanged.emit()
+
+    def _set_screen_query_state(self, state: str) -> None:
+        next_state = str(state or "").strip().lower()
+        if next_state not in {"idle", "selecting", "searching"}:
+            next_state = "idle"
+        if next_state == self._screen_query_state:
+            return
+        self._screen_query_state = next_state
+        self.screenQueryChanged.emit()
 
     def _publish_similar(
         self,
@@ -1413,12 +2029,14 @@ class ShellBridge(QObject):
         basis: str = "",
         basis_label: str = "",
         persist: bool = True,
+        phase: str = "",
     ) -> None:
         self._similar.set_rows(rows)
         self._similar_state = state
         self._similar_note = present_message(self._mode, note, fallback="Similar search could not run.")
         self._similar_basis = str(basis or "")
         self._similar_basis_label = str(basis_label or "")
+        self._similar_phase = str(phase or "")
         self.similarChanged.emit()
         if persist and state in {"ready", "empty"}:
             self._persist_discovery()
@@ -1500,6 +2118,7 @@ class ShellBridge(QObject):
         parts: list[str] = []
         if self._similar_basis_label:
             parts.append(self._similar_basis_label)
+        parts.append(self.searchQualityLabel)
         if self._index_state:
             parts.append(self._index_state)
         if self._similar._rows:
@@ -1612,10 +2231,11 @@ class ShellBridge(QObject):
             basis_label=str(item.get("basis_label") or "Similar look"),
         )
 
-    def _publish_similar_result(self, result) -> None:
+    def _publish_similar_result(self, result, *, interim: bool = False) -> None:
         """Shared Focus strip publish for whole / region / face doors."""
+        self._note_search_timing(final=not interim)
         understanding = str((result.data or {}).get("understanding") or "")
-        if understanding:
+        if understanding and not interim:
             self._selection_note = understanding
         rows = []
         for item in (result.data.get("items") or []):
@@ -1635,13 +2255,49 @@ class ShellBridge(QObject):
         note = result.message if result.message else "Similar search could not run."
         error_id = str((result.data or {}).get("error_id") or "")
         label = str((result.data or {}).get("basis_label") or self._similar_basis_label or "Similar look")
-        if state == "unavailable" and error_id == "region.NO_PACK":
+        phase = str((result.data or {}).get("search_phase") or "")
+        from semblon.optional_providers import install_choice
+
+        parts = (result.data or {}).get("parts")
+        if isinstance(parts, list) and parts:
+            self._refine_parts = [row for row in parts if isinstance(row, dict)]
+            self.selectionChanged.emit()
+        install_action, install_label = install_choice(state, error_id, result.data or {})
+        if interim:
+            install_action, install_label = "", ""
+            if phase == "refined":
+                if rows:
+                    state = "ready"
+                    note = f"Similar ({label}): still checking the top matches."
+                else:
+                    state = "loading"
+                    note = f"Similar ({label}): first look found nothing yet."
+            else:
+                phase = "first"
+                if rows:
+                    state = "ready"
+                    note = f"Similar ({label}): first look, still refining."
+                else:
+                    state = "loading"
+                    note = f"Similar ({label}): first look found nothing yet."
+        elif phase == "checked" and state in {"ready", "empty"}:
+            note = (
+                f"Similar ({label}): checked the matches."
+                if rows
+                else f"Similar ({label}): nothing close enough."
+            )
+        elif install_action == "region_pack":
             note = f"Similar ({label}): the region model is not installed."
+        elif install_action == "object_pack" and state == "unavailable":
+            note = f"Similar ({label}): the object model is not installed."
+        elif install_action == "vlm_local" and state == "unavailable":
+            note = f"Similar ({label}): the description model is not installed."
         elif state == "unavailable" and error_id == "region.NO_PATCH_INDEX":
             note = f"Similar ({label}): these photos are not indexed for region search yet."
         elif error_id in {"region.ENCODE", "region.NO_IMAGE", "region.NO_STORE"}:
             state = "error"
             note = f"Similar ({label}): search failed."
+        self._set_install_suggestion(install_action, install_label)
         self._result_text = ""
         self.resultChanged.emit()
         self._publish_similar(
@@ -1650,15 +2306,21 @@ class ShellBridge(QObject):
             rows,
             basis=str(result.data.get("basis") or ""),
             basis_label=str(result.data.get("basis_label") or ""),
+            persist=not interim,
+            phase=phase,
         )
 
     def _clear_query(self) -> None:
         if self._search_busy:
             self._stop_search(publish=False)
+        self._set_screen_query_state("idle")
         self._region_norm = None
         self._selection_kind = ""
         self._selection_note = ""
         self.selectionChanged.emit()
+        self._drop_name()
+        self._search_door = ""
+        self.doorChanged.emit()
         self._result_text = ""
         self.resultChanged.emit()
         self._clear_similar()
@@ -1764,6 +2426,7 @@ class ShellBridge(QObject):
         self.openFocus(media_id)
         if day:
             # Scope neighbours without inventing a date when mtime is missing.
+            self._revealed_day = day
             if len(day) >= 7:
                 self._sync_calendar_month(day[:7])
             self._select_scope("day", day)
@@ -2674,6 +3337,138 @@ class ShellBridge(QObject):
         lines = rec.get("lines") or [rec.get("reason") or "Nothing was searched."]
         self._set_result(_ask_lines(lines, self._mode))
 
+    @Slot()
+    def startScreenQuery(self) -> None:
+        """SQ-3: transient desktop selection routed into the same discovery strip."""
+        if not self.screenQueryAvailable:
+            self._publish_similar(
+                "unavailable",
+                "Screen query: only available on Windows.",
+                [],
+                basis="region",
+                basis_label="Similar look",
+                persist=False,
+            )
+            return
+        if self._search_busy or self.screenQueryInProgress:
+            self._apply_result(Result("unavailable", "A search is already running."))
+            return
+        self._set_screen_query_state("selecting")
+        self._set_install_suggestion("", "")
+        self._publish_similar(
+            "loading",
+            "Screen query in progress: drag a box on your screen.",
+            [],
+            basis="region",
+            basis_label=(
+                "Text in the selection"
+                if self._screen_query_mode == SCREEN_QUERY_MODE_TEXT_PRIORITY
+                else "Similar look"
+            ),
+            persist=False,
+        )
+        try:
+            from semblon.native_shell.screen_query_overlay import (
+                ScreenSelectionUnavailable,
+                select_screen_region,
+            )
+
+            rect = select_screen_region()
+        except ScreenSelectionUnavailable as exc:
+            self._set_screen_query_state("idle")
+            self._set_install_suggestion("", "")
+            self._publish_similar(
+                "unavailable",
+                f"Screen query: {exc}",
+                [],
+                basis="region",
+                basis_label="Similar look",
+                persist=False,
+            )
+            return
+        if rect is None:
+            self._set_screen_query_state("idle")
+            self._publish_similar(
+                "empty",
+                "Screen query cancelled.",
+                [],
+                basis="region",
+                basis_label="Similar look",
+                persist=False,
+            )
+            self._apply_result(Result("empty", "Screen query cancelled."))
+            return
+        self._begin_screen_search(rect)
+
+    def _begin_screen_search(self, rect: tuple[int, int, int, int]) -> None:
+        """Run retrieval for a screen rect already chosen. Does not open the drag overlay."""
+        x, y, w, h = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+        self._screen_query_rect = (x, y, w, h)
+        self._query_source = "screen"
+        mode = self._screen_query_mode
+        mode_selection = (
+            SCREEN_QUERY_MODE_TEXT_PRIORITY
+            if mode == SCREEN_QUERY_MODE_TEXT_PRIORITY
+            else "region"
+        )
+        mode_label = "Text in the selection" if mode_selection == SCREEN_QUERY_MODE_TEXT_PRIORITY else "Similar look"
+        self._query_focus_id = ""
+        self._region_norm = None
+        self._selection_kind = str(mode_selection)
+        self._selection_note = (
+            "Screen selection (text first)." if mode_selection == SCREEN_QUERY_MODE_TEXT_PRIORITY else "Screen selection."
+        )
+        self.selectionChanged.emit()
+        adapter = self._adapter
+        jobs = self._jobs
+        self._set_screen_query_state("searching")
+
+        def build(flag, _report):
+            rec = jobs.query_screen(
+                x,
+                y,
+                w,
+                h,
+                limit=10,
+                selection_kind=mode_selection,
+                cancelled=lambda: bool(flag[0]),
+            )
+            if flag[0]:
+                return None
+            similar = rec.get("similar")
+            if not isinstance(similar, dict):
+                reason = str(rec.get("reason") or "Screen capture did not run. Nothing was searched.")
+                return Result(
+                    "unavailable",
+                    f"Similar ({mode_label}): {reason}",
+                    {
+                        "basis": "region",
+                        "basis_label": mode_label,
+                        "engine": "screen",
+                        "items": [],
+                        "error_id": "screen.NO_CAPTURE",
+                        "optional_providers": rec.get("optional_providers")
+                        if isinstance(rec.get("optional_providers"), list)
+                        else [],
+                    },
+                )
+            result = adapter.similar_region(
+                {"similar": similar, "optional_providers": rec.get("optional_providers")}
+            )
+            lines = rec.get("lines") or []
+            observations = rec.get("observations") if isinstance(rec.get("observations"), list) else []
+            understanding = _screen_understanding(lines, observations)
+            data = dict(result.data or {})
+            if understanding:
+                data["understanding"] = understanding
+            if observations:
+                data["observations"] = observations
+            if isinstance(rec.get("optional_providers"), list) and "optional_providers" not in data:
+                data["optional_providers"] = rec.get("optional_providers")
+            return Result(result.state, result.message, data)
+
+        self._start_visual_search(basis="region", label=mode_label, build=build)
+
     @Slot(float, float, float, float)
     def setRegion(self, nx: float, ny: float, nw: float, nh: float) -> None:
         """Normalized image-space rectangle from the focus view. Not a widget image."""
@@ -2687,7 +3482,10 @@ class ShellBridge(QObject):
             self._query_focus_id = self._session.focus_id
         self._selection_kind = "drawn"
         self._selection_note = "Drawn region."
+        self._refine_part_index = -1
+        self._drop_name()
         self.selectionChanged.emit()
+        self.surfaceChanged.emit()
 
     @Slot(float, float, float, float, str, float, float, float, float, float, float, result=str)
     def adjustSelectionBox(
@@ -3071,6 +3869,12 @@ class ShellBridge(QObject):
         self.surfaceChanged.emit()
 
     @Slot(str)
+    def setSearchQuality(self, value: str) -> None:
+        self._apply_result(self._safe_call(lambda: self._adapter.set_search_quality(value)))
+        self.surfaceChanged.emit()
+        self.similarChanged.emit()
+
+    @Slot(str)
     def setLibraryFilter(self, filter_key: str) -> None:
         self._apply_result(self._safe_call(lambda: self._adapter.set_library_filter(filter_key)))
 
@@ -3101,6 +3905,7 @@ class ShellBridge(QObject):
 
     @Slot()
     def scanDuplicates(self) -> None:
+        self._set_door("duplicate")
         self._apply_result(self._safe_call(self._adapter.duplicates))
 
     @Property(bool, notify=surfaceChanged)
@@ -3156,8 +3961,11 @@ class ShellBridge(QObject):
     def resetDefaults(self) -> None:
         result = self._safe_call(self._adapter.reset_defaults)
         self._atmosphere_id = self._load_atmosphere_id()
+        self._calendar_view = self._load_calendar_view()
+        self._archive_split = self._load_archive_split()
         self._apply_result(result)
         self.lensChanged.emit()
+        self.editorialChanged.emit()
 
     @Slot()
     def clearLibrary(self) -> None:
@@ -3193,6 +4001,7 @@ class ShellBridge(QObject):
         self._selection_kind = ""
         self._selection_note = ""
         self.selectionChanged.emit()
+        self._drop_name()
         self._clear_similar()
         self._clear_focus_boxes()
         self._refresh_library()
@@ -3301,8 +4110,102 @@ class ShellBridge(QObject):
         self._apply_result(result)
         return self._notice
 
+    @Slot(result=str)
+    def installSuggestedModel(self) -> str:
+        """Install the suggested model here, then run the same search again."""
+        kind = self._install_suggestion
+        prompt = _INSTALL_PROMPTS.get(kind)
+        if prompt is None:
+            self._apply_result(Result("empty", "No install action is available right now."))
+            return self._notice
+        title, body = prompt
+        answer = QMessageBox.question(
+            None,
+            title,
+            body,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self._apply_result(Result("empty", "Model install cancelled."))
+            return self._notice
+        if self._install_thread is not None and self._install_thread.isRunning():
+            self._apply_result(Result("loading", "Model install is already running."))
+            return self._notice
+        self._install_kind = kind
+        self._install_retry = self._query_source
+        self._install_retry_rect = self._screen_query_rect
+        basis = self._similar_basis or "region"
+        label = self._similar_basis_label or "Similar look"
+        self._set_install_suggestion("", "")
+        self._publish_similar(
+            "loading",
+            f"Similar ({label}): installing. This search will run again on this screen.",
+            [],
+            basis=basis,
+            basis_label=label,
+            persist=False,
+        )
+        method_name = _INSTALL_METHODS[kind]
+        thread = _TaskThread(lambda: getattr(self._adapter, method_name)(), self)
+        thread.succeeded.connect(self._on_install_suggested_ready)
+        thread.failed.connect(self._on_install_suggested_failed)
+        self._install_thread = thread
+        thread.start()
+        return self._notice
+
+    def _resume_current_query(self) -> bool:
+        """Repeat the search the user was already on. Does not open a new screen drag."""
+        if self._install_retry == "screen" and self._install_retry_rect:
+            self._begin_screen_search(self._install_retry_rect)
+            return True
+        if self._install_retry == "focus" and self._session.focus_id and self._region_norm:
+            self.findSimilar()
+            return True
+        if self._query_source == "screen" and self._screen_query_rect:
+            self._begin_screen_search(self._screen_query_rect)
+            return True
+        if self._session.focus_id and self._region_norm:
+            self.findSimilar()
+            return True
+        return False
+
+    @Slot(object)
+    def _on_install_suggested_ready(self, payload) -> None:
+        self._install_thread = None
+        result = payload if isinstance(payload, Result) else Result("ready", "Model installed.")
+        self._apply_result(result)
+        if self._resume_current_query():
+            return
+        label = self._similar_basis_label or "Similar look"
+        self._publish_similar(
+            "empty",
+            f"Similar ({label}): model is ready. Search this area again.",
+            [],
+            basis=self._similar_basis or "region",
+            basis_label=label,
+            persist=False,
+        )
+
+    @Slot(str)
+    def _on_install_suggested_failed(self, message: str) -> None:
+        self._install_thread = None
+        label = self._similar_basis_label or "Similar look"
+        kind = self._install_kind or "region_pack"
+        self._set_install_suggestion(kind, _INSTALL_LABELS.get(kind, "Install required model"))
+        self._publish_similar(
+            "unavailable",
+            f"Similar ({label}): model install failed.",
+            [],
+            basis=self._similar_basis or "region",
+            basis_label=label,
+            persist=False,
+        )
+        self._apply_result(Result("unavailable", str(message or "Model install failed.")))
+
     @Slot()
     def findSimilarWhole(self) -> None:
+        self._set_door("whole")
         media_id = self._session.focus_id
         if not media_id:
             self._publish_similar("unavailable", "Open a photo first.", [])
@@ -3313,15 +4216,31 @@ class ShellBridge(QObject):
         self._selection_kind = ""
         self._selection_note = ""
         adapter = self._adapter
+        quality = str(adapter.search_quality().data.get("quality") or "balanced")
 
-        def build(_flag):
-            return adapter.similar_media(media_id)
+        def build(flag, report):
+            if quality == "fast":
+                return _stamp_phase(adapter.similar_media(media_id, search_quality="fast"), "fast")
+            first = adapter.similar_media(media_id, search_quality="fast")
+            if not flag[0]:
+                report(_stamp_phase(first, "first"))
+            if flag[0]:
+                return None
+            full = adapter.similar_media(media_id, search_quality=quality)
+            if flag[0]:
+                return None
+            first_items = list((first.data or {}).get("items") or [])
+            full_items = list((full.data or {}).get("items") or [])
+            if first_items and not full_items:
+                return _stamp_phase(first, "kept")
+            return _stamp_phase(full, "refined")
 
         self._start_visual_search(basis="whole", label="Colour only", build=build)
 
     @Slot(str)
     def findSimilarFaces(self, face_id: str = "") -> None:
         """Focus face → ranked same-pack face hits. Not colour-histogram Similar; no auto-name."""
+        self._set_door("face")
         fid = str(face_id or self._selected_observation or "").strip()
         if not fid:
             self._publish_similar("unavailable", "Select a face on the photo first.", [])
@@ -3330,14 +4249,124 @@ class ShellBridge(QObject):
             self._push_discovery()
         adapter = self._adapter
 
-        def build(_flag):
+        def build(_flag, _report):
             return adapter.similar_faces(fid)
 
         self._start_visual_search(basis="face", label="Same face", build=build)
 
+    def _set_door(self, key: str) -> None:
+        self._search_door = key
+        self.doorChanged.emit()
+
+    def _note_search_timing(self, *, final: bool) -> None:
+        if not self._search_started:
+            return
+        elapsed = max(0, int((time.monotonic() - self._search_started) * 1000))
+        if self._search_first_ms < 0:
+            self._search_first_ms = elapsed
+        if final:
+            self._search_refined_ms = elapsed
+
+    def _drop_name(self) -> None:
+        self._identify_generation += 1
+        changed = self._identify_busy or bool(self._name_note) or bool(self._name_confidence)
+        self._identify_busy = False
+        self._name_note = ""
+        self._name_confidence = ""
+        if changed:
+            self.nameChanged.emit()
+
+    def _set_name(self, text: str, *, busy: bool, confidence: str = "") -> None:
+        self._identify_busy = busy
+        self._name_note = present_message(
+            self._mode,
+            text,
+            fallback="This area could not be named.",
+        )
+        if busy or not confidence or not is_primary_safe_message(confidence):
+            self._name_confidence = ""
+        else:
+            self._name_confidence = confidence
+        self.nameChanged.emit()
+
+    def _settle_name(self) -> None:
+        thread = self._name_thread
+        if thread is not None and thread.isRunning():
+            loop = QEventLoop()
+
+            def _stop() -> None:
+                if loop.isRunning():
+                    loop.quit()
+
+            thread.finished.connect(_stop)
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(_stop)
+            timer.start(8000)
+            if thread.isRunning():
+                loop.exec()
+            timer.stop()
+            try:
+                thread.finished.disconnect(_stop)
+            except RuntimeError:
+                pass
+        app = QApplication.instance()
+        if app is None:
+            return
+        for _ in range(8):
+            app.processEvents()
+            if not self._identify_busy:
+                break
+
+    @Slot()
+    def nameSelection(self) -> None:
+        """Name the highlighted crop. Leaves the similar strip where it is."""
+        media_id = self._session.focus_id
+        if not media_id:
+            self._set_name("Open a photo first.", busy=False)
+            return
+        rect = self._pixel_rect()
+        if rect is None:
+            self._set_name("Draw a region on the photo first.", busy=False)
+            return
+        x, y, w, h = rect
+        self._identify_generation += 1
+        generation = self._identify_generation
+        jobs = self._jobs
+        self._set_name("Naming this area.", busy=True)
+
+        def work():
+            return jobs.name_selection(media_id, x, y, w, h)
+
+        thread = _NameSelectionThread(generation, work, self)
+        thread.succeeded.connect(self._on_named)
+        thread.failed.connect(self._on_name_failed)
+        self._name_thread = thread
+        thread.start()
+        if os.environ.get("SEMBLON_SEARCH_SYNC") == "1":
+            self._settle_name()
+
+    @Slot(int, object)
+    def _on_named(self, generation: int, payload) -> None:
+        if generation != self._identify_generation:
+            return
+        text = "Unlabelled region."
+        confidence = ""
+        if isinstance(payload, dict):
+            text = str(payload.get("understanding") or text)
+            confidence = _confidence_label(payload.get("confidence"))
+        self._set_name(text, busy=False, confidence=confidence)
+
+    @Slot(int, str)
+    def _on_name_failed(self, generation: int, _message: str) -> None:
+        if generation != self._identify_generation:
+            return
+        self._set_name("This area could not be named.", busy=False)
+
     @Slot()
     def findSimilar(self) -> None:
         """Region search door for a drawn rect. The Focus strip calls this on release."""
+        self._set_door("region")
         media_id = self._session.focus_id
         if not media_id:
             self._publish_similar("unavailable", "Open a photo first.", [])
@@ -3354,9 +4383,20 @@ class ShellBridge(QObject):
         kind = self._selection_kind or None
         jobs = self._jobs
         adapter = self._adapter
+        quality = str(adapter.search_quality().data.get("quality") or "balanced")
+        spec = {
+            "mode": self._refine_mode,
+            "modifier": self._refine_modifier,
+            "part_index": self._refine_part_index,
+        }
 
-        def build(flag):
+        def build(flag, report):
             from semblon.user_region import RegionError
+
+            def on_first(rec):
+                if flag[0]:
+                    return
+                report(adapter.similar_region(rec))
 
             try:
                 rec = jobs.remember_and_find_region(
@@ -3366,7 +4406,10 @@ class ShellBridge(QObject):
                     w,
                     h,
                     selection_kind=kind,
+                    search_quality=quality,
                     cancelled=lambda: bool(flag[0]),
+                    on_first=None if quality == "fast" else on_first,
+                    query_spec=spec,
                 )
             except RegionError as exc:
                 return Result(
@@ -3383,6 +4426,7 @@ class ShellBridge(QObject):
                 return None
             return adapter.similar_region(rec)
 
+        self._query_source = "focus"
         self._start_visual_search(basis="region", label="Similar look", build=build)
 
     @Slot()
@@ -3547,4 +4591,40 @@ def _ask_lines(lines, mode: str) -> str:
             continue
         kept.append(text)
     return "\n".join(kept) or "Nothing was searched."
+
+
+def _screen_text_token(text: str) -> str:
+    tokens = [part for part in str(text or "").replace("\n", " ").split() if any(ch.isalnum() for ch in part)]
+    tokens.sort(key=len, reverse=True)
+    for token in tokens:
+        cleaned = "".join(ch for ch in token if ch.isalnum())
+        if len(cleaned) >= 4:
+            return cleaned
+    return ""
+
+
+def _screen_understanding(lines, observations=None) -> str:
+    for row in observations or []:
+        if not isinstance(row, dict):
+            continue
+        kind = str(row.get("kind") or "")
+        payload = row.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+        if kind == "text":
+            token = _screen_text_token(payload.get("text") or "")
+            if token:
+                return f"Text: {token}."
+        if kind == "object":
+            label = str(payload.get("label") or payload.get("class") or "").strip()
+            if label and label.lower() not in {"region", "user_region"}:
+                return f"Object: {label}."
+    for line in lines:
+        text = str(line or "").strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if lowered == "lens" or lowered.startswith("selected area"):
+            continue
+        return text
+    return "Screen selection."
 

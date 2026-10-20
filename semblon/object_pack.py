@@ -1,8 +1,9 @@
-"""NanoDet object-detection pack — BYO only, never identity.
+"""NanoDet object-detection pack — observation only, never identity.
 
-Missing / invalid / unpinned weights → UNAVAILABLE. Semblon never downloads
-these files. Contour regions (``opencv-contour``) are a separate observation
-path and must not be treated as detector labels.
+Missing / invalid / unpinned weights → UNAVAILABLE. Probe and search never
+download these files. A confirmed install lives in ``object_pack_install``.
+Contour regions (``opencv-contour``) are a separate observation path and
+must not be treated as detector labels.
 """
 
 from __future__ import annotations
@@ -23,6 +24,10 @@ PACK_FAMILY = "opencv/nanodet"
 KNOWN_SHA256: dict[str, str] = {
     WEIGHT_NAME: "4b82da9944b88577175ee23a459dce2e26e6e4be573def65b1055dc2d9720186",
 }
+SOURCE_URL = (
+    "https://github.com/opencv/opencv_zoo/raw/refs/heads/main/"
+    "models/object_detection_nanodet/object_detection_nanodet_2022nov.onnx"
+)
 
 
 def object_pack_dir(root: Path | None = None) -> Path:
@@ -48,6 +53,20 @@ def weight_path(root: Path | None = None) -> Path:
 
 def pin_path(root: Path | None = None) -> Path:
     return object_pack_dir(root) / PIN_NAME
+
+
+def write_pin(root: Path, digest: str) -> None:
+    """Record the verified digest beside the ONNX. Does not download."""
+    payload = {
+        "sha256": digest,
+        "file": WEIGHT_NAME,
+        "provider": PROVIDER,
+        "pack_family": PACK_FAMILY,
+        "source_url": SOURCE_URL,
+        "license": "Apache-2.0",
+        "redistribution": "user-confirmed local install — MSI bundling blocked until L PASS",
+    }
+    (Path(root) / PIN_NAME).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def probe_nanodet_status(root: Path | None = None) -> tuple[bool, str | None]:

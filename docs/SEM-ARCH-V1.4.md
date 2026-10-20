@@ -280,6 +280,8 @@ Identity firewall remains:
 
 > optional modalities must never silently change face identity decisions.
 
+Interactive retrieval structure (landed): decompose the highlight, then parallel recall over DINOv2 `region_patch`, optional SigLIP same-kind, BM25 over stored OCR, and object class; Reciprocal Rank Fusion; feature rerank; refinement query spec. Labelled eval harness scores highlight / relevant / hard-neg tuples (`semblon/lens_eval.py`); precision stays refused without `--eval-set confirmatory`. Optional async VLM judge and ANN stay off. Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Vector DB, Chroma, and a required FAISS product index stay parked.
+
 ---
 
 ## G) Performance reconciliation (measurement-first)
@@ -412,7 +414,11 @@ CURRENT MAIN
   -> NEXT: product construction (Field + Focus). Not another shell.
   -> Still open as engineering, not architecture: PERF ARM64 · workers default · MSI (no weights) — see COMPLETION-MATRIX
   -> video/live UX expansion
-  -> multimodal retrieval expansion
+  -> multimodal retrieval expansion — interactive path + eval harness landed: `docs/decisions/2026-10-19-lens-style-retrieval.md`
+     (decompose highlight → DINOv2 + optional SigLIP + BM25 → RRF → rerank → refine spec;
+      labelled ranks, no precision without confirmatory).
+     Keep DINOv2 `region_patch`. No Chroma. No vector DB. No identity writes.
+     No VLM on the blocking first grid. ANN not started.
   -> scale/performance hardening
 ```
 
@@ -444,6 +450,8 @@ Do not resurrect Tk Home as the product door, `review.html`, `review_chrome`, `l
 
 | Version | Date | Summary |
 |---|---|---|
+| V1.4.15 | 2026-10-19 | Lens eval harness: labelled highlight / relevant / hard-neg tuples; synthetic ranks only; precision refused without confirmatory. ANN still parked. |
+| V1.4.14 | 2026-10-19 | Multimodal retrieval expansion points at the Lens-style ranking plan (`docs/decisions/2026-10-19-lens-style-retrieval.md`): language door, highlight decomposition, rerank, refinement spec. Vector DB stays parked. |
 | V1.4.13 | 2026-10-16 | Product contract, build status, and product roadmap are separate documents. This file stays engineering planned work. |
 | V1.4.12 | 2026-10-05 | Production shell baseline closed: PySide6 → Application. `review.html` retired. Tk legacy only. Precedence points at `docs/ARCHITECTURE.md` for the shell. |
 | V1.4.11 | 2026-09-22 | Retire superseded parallel docs (historical SEM-ARCH / maturity / audit / verify playbook); COMPLETION-MATRIX is status authority. |

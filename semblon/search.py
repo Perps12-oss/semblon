@@ -15,6 +15,7 @@ from pathlib import Path
 from semblon.compare import CompareError, compare, compare_space
 from semblon.identify import IdentifyError, identify_face
 from semblon.memory import MemoryError, history
+from semblon.similarity_profile import resolve_search_quality
 
 
 class SearchError(ValueError):
@@ -412,8 +413,16 @@ def _whole_image_basis_label(modality: str | None, pack_id: str | None) -> str:
     return LABEL_COLOUR
 
 
-def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict:
+def search_similar_media(
+    store: Path,
+    media_id: str,
+    *,
+    limit: int = 10,
+    search_quality: str = "balanced",
+) -> dict:
     """Whole-image (B) discovery from a library photo. Honest UNAVAILABLE without embeddings."""
+    quality = resolve_search_quality(search_quality)
+    target_limit = max(1, min(int(limit or 1), quality.max_results))
     mid = (media_id or "").strip()
     if not mid:
         return {
@@ -428,6 +437,8 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
             "error_id": "similar.NO_MEDIA",
             "note": "Whole-image similarity is not identity.",
             "similarity_basis": "Colour only",
+            "search_profile": quality.key,
+            "search_profile_label": quality.label,
         }
     item = non_face_item_for_media(store, mid)
     if item is None:
@@ -447,8 +458,10 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
             "note": "Whole-image similarity is not identity.",
             "similarity_basis": "Colour only",
             "media_ids": [],
+            "search_profile": quality.key,
+            "search_profile_label": quality.label,
         }
-    from semblon.region_encoder import COLOUR_SCORE_FLOOR, PROVIDER, SCENE_SCORE_FLOOR
+    from semblon.region_encoder import PROVIDER
 
     modality_row = None
     conn = _open_ro(store)
@@ -460,11 +473,14 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
     finally:
         conn.close()
     modality_name = str(modality_row["modality"] if modality_row is not None else "")
-    floor = COLOUR_SCORE_FLOOR if modality_name == "appearance" else SCENE_SCORE_FLOOR
-    rec = search_similar(store, item, limit=max(limit * 4, limit), min_score=floor)
+    floor = quality.whole_colour_floor if modality_name == "appearance" else quality.whole_scene_floor
+    probe_limit = max(target_limit * max(1, quality.whole_probe_multiplier), target_limit)
+    rec = search_similar(store, item, limit=probe_limit, min_score=floor)
     rec["similarity_basis"] = _whole_image_basis_label(rec.get("modality"), rec.get("pack_id"))
     rec["engine"] = "color-hist" if str(rec.get("modality") or "") == "appearance" else PROVIDER
     rec["seed_media_id"] = mid
+    rec["search_profile"] = quality.key
+    rec["search_profile_label"] = quality.label
     item_ids = [str(it.get("item_id")) for it in (rec.get("items") or []) if it.get("item_id")]
     mid_map = media_ids_for_items(store, item_ids)
     kept: list[dict] = []
@@ -478,7 +494,7 @@ def search_similar_media(store: Path, media_id: str, *, limit: int = 10) -> dict
         seen.add(media_id)
         it["media_id"] = media_id
         kept.append(it)
-        if len(kept) >= limit:
+        if len(kept) >= target_limit:
             break
     rec["items"] = kept
     rec["count"] = len(kept)
@@ -503,9 +519,10 @@ def search_similar(
     approximate nearest-neighbour index. Otherwise the library is scanned and
     the result says so. Demanding a missing index is not an empty match.
     """
-    from semblon.ann_index import has_index, search_index
+    from semblon.index_provider import active_vector_index
 
-    if require_index and not has_index(store):
+    index = active_vector_index()
+    if require_index and not index.ready(store):
         return {
             "kind": "similar",
             "query": item_id,
@@ -539,7 +556,7 @@ def search_similar(
             raise SearchError(f"no non-identity embedding for item {item_id}")
         if row["modality"] == "face":
             raise SearchError("face identity must use search --face / identify, not --similar")
-        indexed = search_index(
+        indexed = index.search(
             store,
             item_id=item_id,
             modality=row["modality"],
@@ -687,9 +704,7 @@ def search_text(
         ).fetchall()
     finally:
         conn.close()
-    items = []
-    media_ids: list[str] = []
-    seen_media: set[str] = set()
+    docs: list[dict] = []
     saw_evidence = False
     saw_ran = False
     saw_failed = False
@@ -714,9 +729,9 @@ def search_text(
         if scope is not None and mid not in scope:
             continue
         text = payload.get("text")
-        if not isinstance(text, str) or q_lower not in text.lower():
+        if not isinstance(text, str) or not text.strip():
             continue
-        items.append(
+        docs.append(
             {
                 "item_id": r["item_id"],
                 "observation_id": r["observation_id"],
@@ -725,14 +740,49 @@ def search_text(
                 "provider": r["provider"],
                 "score": r["score"],
                 "text": text[:4000],
-                "why": "OCR payload substring; not a person",
             }
         )
+    items = []
+    media_ids: list[str] = []
+    seen_media: set[str] = set()
+    seen_items: set[str] = set()
+
+    def _take(row: dict, *, why: str, score) -> None:
+        item_id = str(row.get("item_id") or "")
+        if item_id and item_id in seen_items:
+            return
+        if item_id:
+            seen_items.add(item_id)
+        mid = str(row.get("media_id") or "").strip()
+        packed = dict(row)
+        packed["score"] = score
+        packed["why"] = why
+        items.append(packed)
         if mid and mid not in seen_media:
             seen_media.add(mid)
             media_ids.append(mid)
+
+    for row in docs:
+        if q_lower in str(row.get("text") or "").lower():
+            _take(row, why="OCR payload substring; not a person", score=row.get("score") or 1.0)
         if len(items) >= limit:
             break
+    if len(items) < limit:
+        from semblon.text_index import bm25_rank
+
+        ranked = bm25_rank(
+            [(str(row["item_id"]), str(row.get("text") or "")) for row in docs],
+            q,
+            limit=limit,
+        )
+        by_id = {str(row["item_id"]): row for row in docs}
+        for item_id, score in ranked:
+            row = by_id.get(item_id)
+            if row is None:
+                continue
+            _take(row, why="OCR text tokens; not a person", score=score)
+            if len(items) >= limit:
+                break
     note = "Text in photos — not a person."
     basis = "Text in photos (OCR substring)"
     if scope is not None:

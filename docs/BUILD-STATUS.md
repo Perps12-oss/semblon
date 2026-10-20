@@ -7,7 +7,7 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-18 (editorial Home launchpad) |
+| Evidence date | 2026-10-20 (calendar column + photo field) |
 | Branch | `grok/home-launchpad` |
 | Parent HEAD | (see git log on branch) |
 | Working tree at evidence | Permanent Home stage + capability catalogue; shell journey updated |
@@ -53,7 +53,7 @@ Deferred without blocking unrelated work: **02** encryption, **08** product capt
 | 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | `tools/facekit_owner_evidence.py` + `.github/workflows/facekit-owner.yml` + `docs/FACEKIT-OWNER.md`. No owner pack on this machine — evidence JSON not PASS. |
 | 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Unchanged. |
 | 08 Screen-capture privacy | P1 | DEFERRED | Decision unchanged. |
-| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18) | Dense `region_patch` late interaction, not the six proposal crops. `docs/evidence/photo-region-eval.json`: 4/4 photographs, viewpoint and lighting ahead of the same-colour distractor, match box on the paste. Colour histogram remains the labelled fallback. Face Similar stays a separate door. |
+| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18); multi-leg path **IMPLEMENTED**; eval harness **IMPLEMENTED** | Dense `region_patch` late interaction remains the appearance door. Focus Similar region now fuses text/object/optional SigLIP after the first look, with Same look / Same kind / a word / part chips. Labelled rank harness is `tools/eval_lens_retrieval.py`. Photographic eval gate is not reopened. ANN not started. |
 | 10 Archive continuity | P0 | **VERIFIED** | Missing Focus notice; ingest rename reconnect; copy/basename safety; Gate A journey on Unicode folder. |
 | 11 Contextual discovery | P1 | **VERIFIED** | `openFocusInContext` day scope includes same-day neighbours and excludes other days; missing-date honest. |
 | 12 Unified experience + docs | P0/P1 | **VERIFIED** (milestones 1–3) | Gate A journey + ROADMAP sync. Milestones 4–5 / Gates B–C remain. |
@@ -216,12 +216,69 @@ Visible shell grab: `docs/evidence/visual-discovery-shell-windows.png` shows **S
 
 Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 
+## Behaviour landed — three search doors (2026-10-19)
+
+1. Focus has separate controls for **Similar region**, **Same face**, **Duplicates**, and **Whole photo**. Similar region searches the highlighted area. Duplicates stays an exact and near-copy scan and does not replace that strip.
+2. The result strip carries a phase badge. Focus also shows the time to the first look and the time to the refined result.
+3. **Name this area** shows a confidence chip when the face, detector, or local noun has a score. An unlabelled area has no invented score.
+4. Keys in Focus: S similar region, W whole photo, F same face, Ctrl+D duplicates.
+5. Command: `python3 -m pytest tests/test_search_doors.py tests/test_local_lens.py tests/test_discovery_slice_d.py::test_unified_basis_messages_are_allowlisted tests/test_native_shell.py::test_focus_qml_keeps_the_strip_and_a_primary_similar_action tests/test_shell_frontend.py::test_qml_has_no_hardcoded_chrome_colors tests/test_shell_adapter.py::test_qml_exposes_four_operations_and_hides_places tests/test_discovery_workspace.py -q` → **20 passed, 1 skipped**.
+
+## Behaviour landed — name the highlighted area (2026-10-19)
+
+1. **Name this area** reads the highlighted crop and shows a face, a detector class, text, one local noun, or an unlabelled region. The similar strip stays as it is.
+2. Similar search no longer waits on that naming model. A stored face, object, or text line can still appear with the matches. The noun runs only when Name this area is used.
+3. Moving the box or opening another photo drops a name that has not finished. The name is not a person and it is not written onto a face.
+4. Command: `python3 -m pytest tests/test_local_lens.py tests/test_discovery_slice_d.py::test_unified_basis_messages_are_allowlisted tests/test_similarity_quality.py tests/test_shell_frontend.py::test_every_qml_action_maps_to_a_real_bridge_slot_or_property tests/test_shell_frontend.py::test_qml_has_no_hardcoded_chrome_colors -q` → **24 passed, 1 skipped**.
+
+## Behaviour landed — progressive similar search (2026-10-19)
+
+1. Balanced and Max publish a Fast first look, then replace it with the fuller pass. Fast stays a single pass. The phase is named in Focus: First look, Refined, Fast look, or Kept the first look.
+2. The highlighted box is stored once. The refine pass does not write a second user region, a face, or an embedding.
+3. Cancel during refine keeps the first look on the strip. A fuller pass that comes back empty keeps those hits too.
+4. Command: `python3 -m pytest tests/test_similarity_quality.py tests/test_discovery_workspace.py tests/test_discovery_slice_d.py tests/test_shell_frontend.py::test_qml_has_no_hardcoded_chrome_colors tests/test_shell_frontend.py::test_every_qml_action_maps_to_a_real_bridge_slot_or_property tests/test_region_search.py tests/test_visual_discovery.py -q` → **37 passed, 1 skipped**.
+
+## Behaviour landed — search quality profiles (2026-10-19)
+
+1. Settings and Focus expose **Fast**, **Balanced**, and **Max**. The choice is stored in `appearance.json` as `search_quality`. It is not a schema column and it does not change face identity.
+2. Fast tightens region and whole-image floors and returns fewer hits. Max lowers those floors and keeps a wider result list. Duplicate scan stays the separate Duplicates action.
+3. Focus shows the active quality beside the selection. A region search and a whole-image search both read the saved profile.
+4. Command: `python3 -m pytest tests/test_similarity_quality.py tests/test_discovery_workspace.py tests/test_shell_frontend.py::test_qml_has_no_hardcoded_chrome_colors -q` → **13 passed**. Settings Fast / Balanced / Max are real controls, and Fast raises the colour and scene floors used by Similar.
+
 ## Behaviour landed — editorial Home launchpad (2026-10-18)
 
 1. Home is a permanent stage (`showHome` / `homeOpen`), empty or populated. Adding a folder does not hide it.
 2. Sidebar: Home, Library, People, Add folder, Settings. Library opens the timeline Field. Visual discovery opens Focus on a still (or Add a folder when empty).
 3. Home cards: Library, Visual discovery, People. **Explore all capabilities** opens a filterable catalogue of actions the shell already runs.
 4. Primary / Advanced and Atmosphere moved into the Settings sheet. Native Windows caption follows the shell background when DWM allows it.
+
+## Behaviour landed — selection retrieval (SQ-5–SQ-7)
+
+1. A screen selection runs one local retrieval: region/image similarity, OCR substring search, and object-label search. Hits merge by photo. Each hit keeps the basis that found it (`Similar look`, `Text in photos (OCR substring)`, `COCO object detection (NanoDet)`). Text-only mode does not run visual similarity. A missing region model stays unavailable when no other door matched.
+2. Similar search reads the exact derived matrix through `index_provider.active_vector_index`. SQLite embeddings stay authoritative. ANN is named and disabled. FAISS and Chroma are not product dependencies.
+3. Object detection and the vision-language describer are optional providers (`optional_providers`). A missing weight is reported. Neither provider writes face identity.
+4. When the current search needs the object model or the local description, the shell offers one install button on that same screen. Confirmation downloads the pinned NanoDet file, or writes the local pixel-describer marker, then runs that search again. Search itself does not download. NanoDet MSI bundling stays blocked.
+
+## Behaviour landed — multi-leg local retrieval (2026-10-19)
+
+**Status:** IMPLEMENTED on the interactive path. Optional VLM judge and ANN stay off this path. Branch `cursor/lens-retrieval-strategy-1388`.
+
+Focus **Similar region** now accepts a query spec (`look` / `kind`, a word, a part) and, after the Fast first look, fuses DINOv2 / colour with OCR+BM25, NanoDet class, and optional SigLIP same-kind recall via Reciprocal Rank Fusion plus a cheap feature rerank. Fast stays a single visual pass. Missing packs skip that door; they do not fail the search. Chrome uses **Same look**, **Same kind**, **Add a word**, and part chips. No model names. No identity writes. No new columns. No Chroma/FAISS.
+
+After the fused list is on screen, a cheap match check can reorder the top hits (colour + local pixel description). The strip says **Checked the matches**. Fast skips this. A missing VLM does not block the grid. No identity writes.
+
+Labelled eval harness (`semblon/lens_eval.py`, `tools/eval_lens_retrieval.py`) scores highlight / relevant / hard-negative tuples: brand text, same kind, same look, part vs whole, same-colour confuser. `--eval-set synthetic` prints ranks and `relevant_above_hard_neg` only. Precision stays refused without `--eval-set confirmatory`. No frozen confirmatory Lens set exists. First synthetic run: **3/5** families place the relevant hit above the hard negatives (`kind-cup`, `look-red-cup`, `colour-confuser`). `brand-acme` and `part-logo` still lose to a confident look list. RRF / floors / S1 were not retuned. Exact-scan timing does not justify ANN. Report: `docs/evidence/lens-retrieval-eval.json`.
+
+Command: `python3 -m pytest tests/test_lens_eval.py tests/test_lens_retrieval.py tests/test_selection_retrieval.py tests/test_discovery_slice_d.py tests/test_search_doors.py tests/test_similarity_quality.py tests/test_region_search.py tests/test_local_lens.py tests/test_discovery_slice_e.py tests/test_visual_discovery.py tests/test_discovery_workspace.py tests/test_shell_frontend.py::test_every_qml_action_maps_to_a_real_bridge_slot_or_property -q` → **80 passed, 2 skipped**.
+
+Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Roadmap milestone 7.
+
+## Behaviour landed — calendar column and photo field (2026-10-20)
+
+1. Library stage at least 900 px wide places the calendar column on the left and the existing photo field on the right. `archiveSplit` remembers the ratio. Narrower windows stack the field underneath. Scope, Focus, Home, People, and Settings keep their current actions.
+2. Years, Months, and Days change only the left column. Month cells show at most six thumbs. Years are twelve real month cards. Pinch or Ctrl+wheel moves between those densities and does not change the media scope. Scrolling the photos follows the visible month only.
+3. `revealDay` highlights a date without filtering. A no-date chip opens the undated bucket. Person and folder filters can mark days. Opening a photo shows file name, archive day, pixel size, and byte size inside Focus.
+4. Command: `QT_QPA_PLATFORM=offscreen python3 -m pytest tests/test_timeline_view.py -q` → **13 passed**.
 
 ## What this file will not absorb
 
