@@ -1983,7 +1983,7 @@ ApplicationWindow {
                                             id: densityLabel
                                             anchors.centerIn: parent
                                             text: modelData.label
-                                            color: calendarViewSafe === modelData.key ? "#ffffff" : tokenMuted
+                                            color: calendarViewSafe === modelData.key ? tokenText : tokenMuted
                                             font.family: "Segoe UI"
                                             font.pixelSize: 12
                                             font.weight: Font.DemiBold
