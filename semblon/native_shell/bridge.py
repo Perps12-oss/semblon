@@ -152,6 +152,7 @@ _PHASE_LABELS = {
     "refined": "Refined",
     "fast": "Fast look",
     "kept": "Kept the first look",
+    "checked": "Checked the matches",
 }
 
 _DOOR_LABELS = {
@@ -280,6 +281,10 @@ class ShellBridge(QObject):
         self._similar_phase = ""
         self._selection_note = ""
         self._selection_kind = ""
+        self._refine_mode = "look"
+        self._refine_modifier = ""
+        self._refine_part_index = -1
+        self._refine_parts: list[dict] = []
         self._name_note = ""
         self._name_confidence = ""
         self._identify_busy = False
@@ -1421,6 +1426,98 @@ class ShellBridge(QObject):
     def searchQualityLabel(self) -> str:
         return str(self._adapter.search_quality().data.get("label") or "Balanced")
 
+    @Property(str, notify=selectionChanged)
+    def refineMode(self) -> str:
+        return self._refine_mode
+
+    @Property(str, notify=selectionChanged)
+    def refineModeLabel(self) -> str:
+        from semblon.query_spec import mode_label
+
+        return mode_label(self._refine_mode)
+
+    @Property(str, notify=selectionChanged)
+    def refineHint(self) -> str:
+        from semblon.query_spec import QuerySpec, refine_hint
+
+        return refine_hint(
+            QuerySpec(
+                mode=self._refine_mode,
+                modifier=self._refine_modifier,
+                part_index=self._refine_part_index,
+            )
+        )
+
+    @Property(str, notify=selectionChanged)
+    def refineModifier(self) -> str:
+        return self._refine_modifier
+
+    @Property(int, notify=selectionChanged)
+    def refinePartIndex(self) -> int:
+        return int(self._refine_part_index)
+
+    @Property("QVariantList", notify=selectionChanged)
+    def refineParts(self) -> list:
+        return list(self._refine_parts)
+
+    @Slot(str)
+    def setRefineMode(self, mode: str) -> None:
+        from semblon.query_spec import MODE_KIND, normalize_mode
+
+        key = normalize_mode(mode)
+        if key == self._refine_mode:
+            return
+        self._refine_mode = key
+        self.selectionChanged.emit()
+        note = (
+            "Search looks at the same kind of thing."
+            if key == MODE_KIND
+            else "Search looks at the same thing."
+        )
+        self._apply_result(Result("ready", note))
+        if self.selectionOnFocus:
+            self.findSimilar()
+
+    @Slot(str)
+    def setRefineModifier(self, word: str) -> None:
+        from semblon.query_spec import normalize_modifier
+
+        text = normalize_modifier(word)
+        if text == self._refine_modifier:
+            return
+        self._refine_modifier = text
+        self.selectionChanged.emit()
+        if text:
+            self._apply_result(Result("ready", f"Search looks at photos with the word {text}."))
+        else:
+            self._apply_result(Result("ready", "Search looks at the highlighted area."))
+        if self.selectionOnFocus:
+            self.findSimilar()
+
+    @Slot(int)
+    def setRefinePart(self, index: int) -> None:
+        from semblon.region_parts import select_part
+
+        try:
+            part_index = int(index)
+        except (TypeError, ValueError):
+            part_index = -1
+        self._refine_part_index = part_index
+        chosen = select_part(self._refine_parts, part_index)
+        norm = chosen.get("norm") if isinstance(chosen, dict) else None
+        if isinstance(norm, (list, tuple)) and len(norm) == 4:
+            self._region_norm = (
+                max(0.0, min(1.0, float(norm[0]))),
+                max(0.0, min(1.0, float(norm[1]))),
+                max(0.0, min(1.0, float(norm[2]))),
+                max(0.0, min(1.0, float(norm[3]))),
+            )
+        self.selectionChanged.emit()
+        label = str(chosen.get("label") or "Whole area")
+        self._apply_result(Result("ready", f"Showing {label}."))
+        if self.selectionOnFocus:
+            self.findSimilar()
+
     @Property(int, notify=libraryChanged)
     def count(self) -> int:
         return self._jobs.archive_count()
@@ -2161,16 +2258,34 @@ class ShellBridge(QObject):
         phase = str((result.data or {}).get("search_phase") or "")
         from semblon.optional_providers import install_choice
 
+        parts = (result.data or {}).get("parts")
+        if isinstance(parts, list) and parts:
+            self._refine_parts = [row for row in parts if isinstance(row, dict)]
+            self.selectionChanged.emit()
         install_action, install_label = install_choice(state, error_id, result.data or {})
         if interim:
-            phase = "first"
             install_action, install_label = "", ""
-            if rows:
-                state = "ready"
-                note = f"Similar ({label}): first look, still refining."
+            if phase == "refined":
+                if rows:
+                    state = "ready"
+                    note = f"Similar ({label}): still checking the top matches."
+                else:
+                    state = "loading"
+                    note = f"Similar ({label}): first look found nothing yet."
             else:
-                state = "loading"
-                note = f"Similar ({label}): first look found nothing yet."
+                phase = "first"
+                if rows:
+                    state = "ready"
+                    note = f"Similar ({label}): first look, still refining."
+                else:
+                    state = "loading"
+                    note = f"Similar ({label}): first look found nothing yet."
+        elif phase == "checked" and state in {"ready", "empty"}:
+            note = (
+                f"Similar ({label}): checked the matches."
+                if rows
+                else f"Similar ({label}): nothing close enough."
+            )
         elif install_action == "region_pack":
             note = f"Similar ({label}): the region model is not installed."
         elif install_action == "object_pack" and state == "unavailable":
@@ -3367,6 +3482,7 @@ class ShellBridge(QObject):
             self._query_focus_id = self._session.focus_id
         self._selection_kind = "drawn"
         self._selection_note = "Drawn region."
+        self._refine_part_index = -1
         self._drop_name()
         self.selectionChanged.emit()
         self.surfaceChanged.emit()
@@ -4268,6 +4384,11 @@ class ShellBridge(QObject):
         jobs = self._jobs
         adapter = self._adapter
         quality = str(adapter.search_quality().data.get("quality") or "balanced")
+        spec = {
+            "mode": self._refine_mode,
+            "modifier": self._refine_modifier,
+            "part_index": self._refine_part_index,
+        }
 
         def build(flag, report):
             from semblon.user_region import RegionError
@@ -4288,6 +4409,7 @@ class ShellBridge(QObject):
                     search_quality=quality,
                     cancelled=lambda: bool(flag[0]),
                     on_first=None if quality == "fast" else on_first,
+                    query_spec=spec,
                 )
             except RegionError as exc:
                 return Result(

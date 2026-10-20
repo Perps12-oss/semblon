@@ -321,6 +321,16 @@ class ArchiveAdapter:
             meta["error_id"] = str(rec.get("error_id"))
         if rec.get("understanding"):
             meta["understanding"] = str(rec.get("understanding"))
+        strip = str(rec.get("strip_label") or "").strip()
+        if strip:
+            basis_label = strip
+            meta["basis_label"] = strip
+        spec = rec.get("query_spec")
+        if isinstance(spec, dict):
+            meta["query_spec"] = spec
+        parts = rec.get("parts")
+        if isinstance(parts, list):
+            meta["parts"] = parts
         if status == "UNAVAILABLE":
             reason = str(rec.get("reason") or "Similar search could not run.").strip()
             if not reason.endswith("."):

@@ -704,9 +704,7 @@ def search_text(
         ).fetchall()
     finally:
         conn.close()
-    items = []
-    media_ids: list[str] = []
-    seen_media: set[str] = set()
+    docs: list[dict] = []
     saw_evidence = False
     saw_ran = False
     saw_failed = False
@@ -731,9 +729,9 @@ def search_text(
         if scope is not None and mid not in scope:
             continue
         text = payload.get("text")
-        if not isinstance(text, str) or q_lower not in text.lower():
+        if not isinstance(text, str) or not text.strip():
             continue
-        items.append(
+        docs.append(
             {
                 "item_id": r["item_id"],
                 "observation_id": r["observation_id"],
@@ -742,14 +740,49 @@ def search_text(
                 "provider": r["provider"],
                 "score": r["score"],
                 "text": text[:4000],
-                "why": "OCR payload substring; not a person",
             }
         )
+    items = []
+    media_ids: list[str] = []
+    seen_media: set[str] = set()
+    seen_items: set[str] = set()
+
+    def _take(row: dict, *, why: str, score) -> None:
+        item_id = str(row.get("item_id") or "")
+        if item_id and item_id in seen_items:
+            return
+        if item_id:
+            seen_items.add(item_id)
+        mid = str(row.get("media_id") or "").strip()
+        packed = dict(row)
+        packed["score"] = score
+        packed["why"] = why
+        items.append(packed)
         if mid and mid not in seen_media:
             seen_media.add(mid)
             media_ids.append(mid)
+
+    for row in docs:
+        if q_lower in str(row.get("text") or "").lower():
+            _take(row, why="OCR payload substring; not a person", score=row.get("score") or 1.0)
         if len(items) >= limit:
             break
+    if len(items) < limit:
+        from semblon.text_index import bm25_rank
+
+        ranked = bm25_rank(
+            [(str(row["item_id"]), str(row.get("text") or "")) for row in docs],
+            q,
+            limit=limit,
+        )
+        by_id = {str(row["item_id"]): row for row in docs}
+        for item_id, score in ranked:
+            row = by_id.get(item_id)
+            if row is None:
+                continue
+            _take(row, why="OCR text tokens; not a person", score=score)
+            if len(items) >= limit:
+                break
     note = "Text in photos — not a person."
     basis = "Text in photos (OCR substring)"
     if scope is not None:
