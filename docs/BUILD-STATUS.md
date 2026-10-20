@@ -280,6 +280,15 @@ Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Roadmap milestone 7.
 3. `revealDay` highlights a date without filtering. A no-date chip opens the undated bucket. Person and folder filters can mark days. Opening a photo shows file name, archive day, pixel size, and byte size inside Focus.
 4. Command: `QT_QPA_PLATFORM=offscreen python3 -m pytest tests/test_timeline_view.py -q` → **13 passed**.
 
+## Behaviour landed — quiet Focus (2026-10-20)
+
+Focus stays the same PySide6 photograph. The permanent control column is gone.
+
+1. A short bar offers **Find similar**, **Name this area**, and **Clear selection** once a region exists. **Find similar** stays visible with “Draw on the photo first.” until then. **Cancel search** appears only while a search is running.
+2. **More** holds Same face, Whole photo, Duplicates, Query screen, Show this day, and Ask about this photo. An action that cannot run stays in the menu and says why. **Same look**, **Same kind**, and the optional word stay on one row after a selection. Part chips, including Whole area and Person, are selection scope and are labelled “Not a named person.”
+3. Primary shows “Finding similar regions…”, then a result count. Quality, “First look” timing, the phase badge, and screen mode sit in Advanced. The match strip uses larger thumbs and the same match box. **Keep this find** still saves the current result.
+4. File details stay closed until **Details**. Close still hides that rail.
+
 ## What this file will not absorb
 
 Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE gates stay in `docs/FACE-GATES.md`. Product vision stays in `docs/PRODUCT.md`.

@@ -14,7 +14,7 @@ def test_focus_shortcuts_name_each_door():
 
     qml = Path("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
     assert 'objectName: "similarAction"' in qml
-    assert 'text: "Similar region"' in qml
+    assert 'text: "Find similar"' in qml
     assert 'objectName: "refineSameLook"' in qml
     assert 'text: "Same look"' in qml
     assert 'objectName: "refineSameKind"' in qml
@@ -154,7 +154,12 @@ def test_doors_confidence_badge_and_timing(tmp_path, monkeypatch):
         assert refined >= first
         badge = root.findChild(QObject, "searchPhaseBadge")
         assert badge is not None
+        assert badge.property("visible") is False
+        bridge.setMode("advanced")
+        app.processEvents()
         assert badge.property("visible") is True
+        bridge.setMode("primary")
+        app.processEvents()
         bridge.nameSelection()
         assert bridge.nameNote == "Looks like a tree."
         assert bridge.nameConfidenceLabel == "Confidence 81%."

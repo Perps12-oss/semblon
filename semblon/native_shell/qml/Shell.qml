@@ -100,13 +100,9 @@ ApplicationWindow {
         return name !== "memoryCalendar" && name !== "timelineHero" && name !== "calendarJump"
     }
     property bool focusDetailsOpen: false
-    property bool focusWasOpen: false
     onFocusIdSafeChanged: {
         if (focusIdSafe === "")
             focusDetailsOpen = false
-        else if (!focusWasOpen)
-            focusDetailsOpen = true
-        focusWasOpen = focusIdSafe !== ""
         if (focusIdSafe !== "")
             focusLayer.forceActiveFocus()
     }
@@ -2476,7 +2472,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
                 anchors.topMargin: jobRunning ? scanHero.height + 28 : 18
-                visible: focusActive && focusKindSafe !== "video"
+                visible: focusActive && focusKindSafe !== "video" && !(shellReady && shellApi.selectionOnFocus)
                 text: "Point or draw to search"
                 color: tokenMuted
                 font.family: "Segoe UI"
@@ -2532,8 +2528,8 @@ ApplicationWindow {
                 objectName: "photoViewport"
                 anchors.fill: parent
                 anchors.leftMargin: 48
-                anchors.topMargin: 48
-                anchors.bottomMargin: 48
+                anchors.topMargin: focusBar.anchors.topMargin + focusBar.height + 8
+                anchors.bottomMargin: matchStrip.visible ? 188 : 36
                 anchors.rightMargin: window.focusDetailsOpen ? 308 : 48
                 clip: true
 
@@ -3284,6 +3280,28 @@ ApplicationWindow {
             }
 
             Text {
+                objectName: "focusDetailsButton"
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 22
+                visible: focusActive && !window.focusDetailsOpen
+                text: "Details"
+                color: detailsOpenArea.containsMouse ? tokenText : tokenMuted
+                font.family: "Segoe UI"
+                font.pixelSize: 14
+                MouseArea {
+                    id: detailsOpenArea
+                    anchors.fill: parent
+                    anchors.margins: -8
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    Accessible.name: "Details"
+                    Accessible.role: Accessible.Button
+                    onClicked: window.focusDetailsOpen = true
+                }
+            }
+
+            Text {
                 anchors.left: parent.left
                 anchors.top: parent.top
                 anchors.margins: 22
@@ -3305,7 +3323,7 @@ ApplicationWindow {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.margins: 22
-                anchors.bottomMargin: matchStrip.visible ? 136 : 22
+                anchors.bottomMargin: matchStrip.visible ? 196 : 22
                 text: focusNameSafe
                 color: tokenMuted
                 font.family: "Segoe UI"
@@ -3313,300 +3331,259 @@ ApplicationWindow {
             }
 
             Column {
+                id: focusBar
                 objectName: "focusInspector"
                 z: 8
                 anchors.left: parent.left
-                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.leftMargin: 22
-                anchors.bottomMargin: matchStrip.visible ? 136 : 22
+                anchors.rightMargin: window.focusDetailsOpen ? 300 : 22
+                anchors.topMargin: pointHint.visible ? 40 : 14
                 spacing: 8
-                width: 220
 
-                Rectangle {
-                    objectName: "searchThisArea"
-                    width: parent.width
-                    height: 32
-                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.searchBusy
-                    radius: 6
-                    color: searchAreaHit.containsMouse ? tokenAccentDim : tokenBg2
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Search this area"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: searchAreaHit
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Search this area"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.findSimilar()
-                    }
-                }
-
-                Rectangle {
-                    objectName: "cancelSearch"
-                    width: parent.width
-                    height: 32
-                    visible: shellReady && shellApi.searchBusy
-                    radius: 6
-                    color: cancelSearchHit.containsMouse ? tokenAccentDim : tokenBg2
-                    border.color: tokenDanger
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Cancel search"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: cancelSearchHit
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Cancel search"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.cancelSimilar()
-                    }
-                }
-
-                Rectangle {
-                    objectName: "nameThisArea"
-                    width: parent.width
-                    height: 32
-                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.identifyBusy
-                    radius: 6
-                    color: nameAreaHit.containsMouse ? tokenAccentDim : tokenBg2
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Name this area"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: nameAreaHit
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Name this area"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.nameSelection()
-                    }
-                }
-
-                Rectangle {
-                    objectName: "installSuggestedModel"
-                    width: parent.width
-                    height: 32
-                    visible: shellReady
-                             && shellApi.installSuggestionVisible
-                             && !shellApi.searchBusy
-                             && !shellApi.screenQueryInProgress
-                    radius: 6
-                    color: installSuggestedModelHit.containsMouse ? tokenAccentDim : tokenBg2
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: shellReady ? shellApi.installSuggestionLabel : "Install required model"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: installSuggestedModelHit
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Install required model"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.installSuggestedModel()
-                    }
-                }
-
-                Rectangle {
-                    objectName: "screenQueryAction"
-                    width: parent.width
-                    height: 32
-                    visible: shellReady && shellApi.screenQueryAvailable && !shellApi.searchBusy
-                    radius: 6
-                    color: screenQueryHit.containsMouse ? tokenAccentDim : tokenBg2
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Query screen"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: screenQueryHit
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Query screen"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.startScreenQuery()
-                    }
-                }
-
-                Rectangle {
-                    objectName: "screenQueryModeAction"
-                    width: parent.width
-                    height: 32
-                    visible: shellReady && shellApi.screenQueryAvailable && !shellApi.screenQueryInProgress
-                    radius: 6
-                    color: screenQueryModeHit.containsMouse ? tokenBg2 : tokenBg3
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: shellReady ? shellApi.screenQueryModeLabel : "Screen mode"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 12
-                    }
-                    MouseArea {
-                        id: screenQueryModeHit
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Toggle screen query mode"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.toggleScreenQueryMode()
-                    }
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 32
-                    radius: 6
-                    color: similarHit.containsMouse ? tokenBg2 : tokenBg3
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Similar region"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: similarHit
-                        objectName: "similarAction"
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Similar region"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.findSimilar()
-                    }
-                }
-
-                Rectangle {
-                    objectName: "sameFaceDoor"
-                    width: parent.width
-                    height: 32
-                    radius: 6
-                    color: sameFaceHit.containsMouse ? tokenAccentDim : tokenBg2
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Same face"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: sameFaceHit
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Same face"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.findSimilarFaces()
-                    }
-                }
-
-                Rectangle {
-                    objectName: "duplicatesDoor"
-                    width: parent.width
-                    height: 32
-                    radius: 6
-                    color: duplicatesHit.containsMouse ? tokenBg3 : tokenBg2
-                    border.color: tokenMuted
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Duplicates"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: duplicatesHit
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Duplicates"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.scanDuplicates()
-                    }
-                }
-
-                Rectangle {
-                    objectName: "wholePhoto"
-                    width: parent.width
-                    height: 32
-                    radius: 6
-                    color: wholePhotoHit.containsMouse ? tokenBg3 : tokenBg2
-                    border.color: tokenMuted
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Whole photo"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: wholePhotoHit
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Whole photo"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.findSimilarWhole()
-                    }
-                }
+                readonly property bool selectionLive: shellReady && shellApi.selectionOnFocus
+                readonly property bool searching: shellReady && shellApi.searchBusy
 
                 Text {
-                    objectName: "searchQualityFocus"
+                    objectName: "focusLifecycle"
                     width: parent.width
                     wrapMode: Text.WordWrap
-                    text: shellReady ? ("Quality: " + shellApi.searchQualityLabel) : ""
-                    color: tokenMuted
+                    visible: text !== ""
+                    color: tokenText
                     font.family: "Segoe UI"
-                    font.pixelSize: 12
+                    font.pixelSize: 13
+                    text: {
+                        if (!shellReady || !focusActive)
+                            return ""
+                        if (focusBar.searching)
+                            return "Finding similar regions…"
+                        if (shellApi.similarState === "ready" && shellApi.similarCount > 0) {
+                            var n = shellApi.similarCount
+                            return n === 1 ? "1 similar region" : (n + " similar regions")
+                        }
+                        if (focusBar.selectionLive && shellApi.similarState === "idle")
+                            return "Search for this visual detail across your archive."
+                        return ""
+                    }
+                }
+
+                Flow {
+                    width: parent.width
+                    spacing: 8
+                    visible: focusActive
+
+                    Rectangle {
+                        objectName: "searchThisArea"
+                        property bool actionEnabled: focusBar.selectionLive && !focusBar.searching
+                        width: 132
+                        height: 32
+                        visible: !focusBar.searching
+                        opacity: actionEnabled ? 1 : 0.45
+                        radius: 6
+                        color: searchAreaHit.containsMouse && actionEnabled ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Find similar"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: searchAreaHit
+                            objectName: "similarAction"
+                            anchors.fill: parent
+                            enabled: parent.actionEnabled
+                            hoverEnabled: true
+                            cursorShape: parent.actionEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            Accessible.name: "Find similar"
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady && parent.actionEnabled) shellApi.findSimilar()
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "nameThisArea"
+                        width: 132
+                        height: 32
+                        visible: focusBar.selectionLive && shellReady && !shellApi.identifyBusy
+                        radius: 6
+                        color: nameAreaHit.containsMouse ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Name this area"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: nameAreaHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Name this area"
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.nameSelection()
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "clearSelection"
+                        width: 132
+                        height: 32
+                        visible: focusBar.selectionLive && !focusBar.searching
+                        radius: 6
+                        color: clearSelectionHit.containsMouse ? tokenBg2 : tokenBg3
+                        border.color: tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Clear selection"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: clearSelectionHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Clear selection"
+                            Accessible.role: Accessible.Button
+                            onClicked: {
+                                if (!shellReady)
+                                    return
+                                regionDrag.hasRect = false
+                                shellApi.clearDrawnQuery()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "cancelSearch"
+                        width: 132
+                        height: 32
+                        visible: focusBar.searching
+                        radius: 6
+                        color: cancelSearchHit.containsMouse ? tokenAccentDim : tokenBg2
+                        border.color: tokenDanger
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Cancel search"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: cancelSearchHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Cancel search"
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.cancelSimilar()
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "keepDiscoveryAction"
+                        width: 132
+                        height: 32
+                        visible: shellReady && similarStateSafe === "ready" && similarCountSafe > 0
+                        radius: 6
+                        color: keepHit.containsMouse ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Keep this find"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: keepHit
+                            objectName: "keepDiscoveryHit"
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Keep this find"
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.keepDiscovery()
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "installSuggestedModel"
+                        width: 180
+                        height: 32
+                        visible: shellReady
+                                 && shellApi.installSuggestionVisible
+                                 && !focusBar.searching
+                                 && !shellApi.screenQueryInProgress
+                        radius: 6
+                        color: installSuggestedModelHit.containsMouse ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            width: parent.width - 12
+                            horizontalAlignment: Text.AlignHCenter
+                            elide: Text.ElideRight
+                            text: shellReady ? shellApi.installSuggestionLabel : "Install required model"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: installSuggestedModelHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Install required model"
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.installSuggestedModel()
+                        }
+                    }
+
+                    Rectangle {
+                        id: focusMoreButton
+                        objectName: "focusMoreButton"
+                        width: 72
+                        height: 32
+                        radius: 6
+                        color: focusMoreHit.containsMouse ? tokenBg2 : tokenBg3
+                        border.color: tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "More"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: focusMoreHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "More actions"
+                            Accessible.role: Accessible.Button
+                            onClicked: focusMoreMenu.open()
+                        }
+                    }
                 }
 
                 Text {
-                    objectName: "refineHint"
+                    objectName: "findSimilarReason"
                     width: parent.width
-                    wrapMode: Text.WordWrap
-                    visible: shellReady && shellApi.selectionOnFocus
-                    text: shellReady ? shellApi.refineHint : ""
+                    visible: focusActive && !focusBar.selectionLive && !focusBar.searching
+                    text: "Draw on the photo first."
                     color: tokenMuted
                     font.family: "Segoe UI"
                     font.pixelSize: 12
@@ -3614,13 +3591,12 @@ ApplicationWindow {
 
                 Row {
                     objectName: "refineModeRow"
-                    width: parent.width
                     spacing: 6
-                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.searchBusy
+                    visible: focusBar.selectionLive && !focusBar.searching
 
                     Rectangle {
                         objectName: "refineSameLook"
-                        width: (parent.width - 6) / 2
+                        width: 110
                         height: 28
                         radius: 6
                         color: shellReady && shellApi.refineMode === "look" ? tokenAccentDim : tokenBg2
@@ -3645,7 +3621,7 @@ ApplicationWindow {
 
                     Rectangle {
                         objectName: "refineSameKind"
-                        width: (parent.width - 6) / 2
+                        width: 110
                         height: 28
                         radius: 6
                         color: shellReady && shellApi.refineMode === "kind" ? tokenAccentDim : tokenBg2
@@ -3667,32 +3643,53 @@ ApplicationWindow {
                             onClicked: if (shellReady) shellApi.setRefineMode("kind")
                         }
                     }
+
+                    TextField {
+                        objectName: "refineWord"
+                        width: 180
+                        placeholderText: "Add a word, like red"
+                        text: shellReady ? shellApi.refineModifier : ""
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                        background: Rectangle {
+                            color: tokenBg2
+                            border.color: tokenMuted
+                            border.width: 1
+                            radius: 6
+                        }
+                        onEditingFinished: if (shellReady) shellApi.setRefineModifier(text)
+                    }
                 }
 
-                TextField {
-                    objectName: "refineWord"
+                Text {
+                    objectName: "refineHint"
                     width: parent.width
-                    visible: shellReady && shellApi.selectionOnFocus && !shellApi.searchBusy
-                    placeholderText: "Add a word, like red"
-                    text: shellReady ? shellApi.refineModifier : ""
-                    color: tokenText
+                    wrapMode: Text.WordWrap
+                    visible: focusBar.selectionLive && !focusBar.searching
+                    text: shellReady ? shellApi.refineHint : ""
+                    color: tokenMuted
                     font.family: "Segoe UI"
                     font.pixelSize: 12
-                    background: Rectangle {
-                        color: tokenBg2
-                        border.color: tokenMuted
-                        border.width: 1
-                        radius: 6
-                    }
-                    onEditingFinished: if (shellReady) shellApi.setRefineModifier(text)
+                }
+
+                Text {
+                    objectName: "selectionScopeNote"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: focusBar.selectionLive && shellReady && shellApi.refineParts.length > 1
+                    text: "Selection scope. Not a named person."
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 12
                 }
 
                 Repeater {
                     model: shellReady ? shellApi.refineParts : []
                     delegate: Rectangle {
-                        width: 220
+                        width: Math.min(focusBar.width, 280)
                         height: 26
-                        visible: shellReady && shellApi.selectionOnFocus && (modelData.index !== -1 || shellApi.refineParts.length > 1)
+                        visible: focusBar.selectionLive && (modelData.index !== -1 || shellApi.refineParts.length > 1)
                         radius: 6
                         color: modelData.selected ? tokenAccentDim : tokenBg3
                         border.color: tokenMuted
@@ -3716,50 +3713,6 @@ ApplicationWindow {
                 }
 
                 Text {
-                    objectName: "searchDoorLabel"
-                    width: parent.width
-                    wrapMode: Text.WordWrap
-                    visible: shellReady && shellApi.searchDoorLabel !== ""
-                    text: shellReady ? shellApi.searchDoorLabel : ""
-                    color: tokenText
-                    font.family: "Segoe UI"
-                    font.pixelSize: 13
-                }
-
-                Text {
-                    objectName: "searchTiming"
-                    width: parent.width
-                    wrapMode: Text.WordWrap
-                    visible: shellReady && shellApi.searchTimingLabel !== ""
-                    text: shellReady ? shellApi.searchTimingLabel : ""
-                    color: tokenMuted
-                    font.family: "Segoe UI"
-                    font.pixelSize: 12
-                }
-
-                Text {
-                    objectName: "screenQueryProgress"
-                    width: parent.width
-                    visible: shellReady && shellApi.screenQueryInProgress
-                    wrapMode: Text.WordWrap
-                    text: shellReady ? shellApi.screenQueryProgressLabel : ""
-                    color: tokenText
-                    font.family: "Segoe UI"
-                    font.pixelSize: 12
-                }
-
-                Text {
-                    objectName: "searchPhaseFocus"
-                    width: parent.width
-                    wrapMode: Text.WordWrap
-                    visible: shellReady && shellApi.similarPhaseLabel !== ""
-                    text: shellReady ? shellApi.similarPhaseLabel : ""
-                    color: tokenMuted
-                    font.family: "Segoe UI"
-                    font.pixelSize: 12
-                }
-
-                Text {
                     objectName: "nameNote"
                     width: parent.width
                     wrapMode: Text.WordWrap
@@ -3773,7 +3726,7 @@ ApplicationWindow {
                 Rectangle {
                     objectName: "nameConfidence"
                     visible: shellReady && shellApi.nameConfidenceLabel !== ""
-                    height: 22
+                    height: visible ? 22 : 0
                     width: nameConfidenceText.implicitWidth + 16
                     radius: 11
                     color: tokenBg3
@@ -3790,52 +3743,39 @@ ApplicationWindow {
                 }
 
                 Text {
-                    objectName: "selectionNote"
+                    objectName: "screenQueryProgress"
                     width: parent.width
-                    visible: shellReady && shellApi.selectionNote !== ""
+                    visible: shellReady && shellApi.screenQueryInProgress
                     wrapMode: Text.WordWrap
-                    text: shellReady ? shellApi.selectionNote : ""
-                    color: tokenMuted
+                    text: shellReady ? shellApi.screenQueryProgressLabel : ""
+                    color: tokenText
                     font.family: "Segoe UI"
                     font.pixelSize: 12
                 }
 
-                Text {
-                    objectName: "retrievalDetail"
-                    width: parent.width
-                    visible: advancedModeSafe && shellReady && shellApi.retrievalDetail !== ""
-                    wrapMode: Text.WordWrap
-                    text: shellReady ? shellApi.retrievalDetail : ""
-                    color: tokenFaint
-                    font.family: "Consolas"
-                    font.pixelSize: 11
-                }
-
                 Rectangle {
-                    objectName: "keepDiscoveryAction"
-                    width: parent.width
+                    objectName: "backDiscoveryAction"
+                    width: 148
                     height: 32
-                    visible: shellReady && similarStateSafe === "ready" && similarCountSafe > 0
+                    visible: shellReady && shellApi.canBackDiscovery
                     radius: 6
-                    color: keepHit.containsMouse ? tokenAccentDim : tokenBg2
+                    color: tokenBg2
                     border.color: tokenAccent
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
-                        text: "Keep this find"
+                        text: "Back to results"
                         color: tokenText
                         font.family: "Segoe UI"
                         font.pixelSize: 13
                     }
                     MouseArea {
-                        id: keepHit
-                        objectName: "keepDiscoveryHit"
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Keep this find"
+                        Accessible.name: "Back to results"
                         Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.keepDiscovery()
+                        onClicked: if (shellReady) shellApi.backToDiscovery()
                     }
                 }
 
@@ -3851,14 +3791,14 @@ ApplicationWindow {
 
                 ListView {
                     objectName: "keptFinds"
-                    width: parent.width
+                    width: Math.min(parent.width, 280)
                     height: (shellReady ? shellApi.keptCount : 0) * 30
                     visible: height > 0
                     interactive: false
                     clip: true
                     model: shellReady ? shellApi.keptCount : 0
                     delegate: Rectangle {
-                        width: 220
+                        width: 280
                         height: 28
                         radius: 4
                         color: keptHit.containsMouse ? tokenAccentDim : tokenBg
@@ -3885,155 +3825,148 @@ ApplicationWindow {
                     }
                 }
 
-                Rectangle {
-                    objectName: "backDiscoveryAction"
-                    width: parent.width
-                    height: 32
-                    visible: shellReady && shellApi.canBackDiscovery
-                    radius: 6
-                    color: tokenBg2
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Back to results"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Back to results"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.backToDiscovery()
-                    }
-                }
-
-                Rectangle {
-                    objectName: "showDayAction"
-                    width: parent.width
-                    height: 32
-                    visible: focusActive
-                    radius: 6
-                    color: tokenBg2
-                    border.color: tokenBorder
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Show this day"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        Accessible.name: "Show this day"
-                        Accessible.role: Accessible.Button
-                        onClicked: if (shellReady) shellApi.showDayAroundFocus()
-                    }
-                }
-
-                Rectangle {
-                    objectName: "reviewFaceGroupAction"
-                    width: parent.width
-                    height: 32
-                    visible: shellReady && selectedObservationSafe !== "" && shellApi.canReviewFaceGroup
-                    radius: 6
-                    color: reviewGroupHit.containsMouse ? tokenAccentDim : tokenBg2
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Review this group"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: reviewGroupHit
-                        objectName: "reviewFaceGroupHit"
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.reviewFaceGroup(selectedObservationSafe)
-                    }
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 32
-                    visible: primaryModeSafe
-                    radius: 6
-                    color: askArea.containsMouse ? tokenAccentDim : tokenBg2
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Ask about this photo"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: askArea
-                        objectName: "askPhoto"
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.askPhoto()
-                    }
-                }
-
-                Rectangle {
-                    width: parent.width
-                    height: 32
-                    visible: advancedModeSafe
-                    radius: 6
-                    color: statusArea.containsMouse ? tokenAccentDim : tokenBg2
-                    border.color: tokenAccent
-                    border.width: 1
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Run diagnostics status"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: statusArea
-                        objectName: "runStatus"
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady) shellApi.submitCommand("status")
-                    }
-                }
-
-                Rectangle {
-                    objectName: "diagnosticsPanel"
+                Column {
                     width: parent.width
                     visible: advancedModeSafe
-                    color: tokenBg
-                    border.color: tokenBorder
-                    border.width: 1
-                    radius: 8
-                    implicitHeight: diagnosticsText.implicitHeight + 14
+                    spacing: 6
 
                     Text {
-                        id: diagnosticsText
-                        anchors.fill: parent
-                        anchors.margins: 7
-                        text: shellReady ? shellApi.diagnosticsText : ""
+                        objectName: "searchDoorLabel"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: shellReady && shellApi.searchDoorLabel !== ""
+                        text: shellReady ? shellApi.searchDoorLabel : ""
+                        color: tokenText
+                        font.family: "Segoe UI"
+                        font.pixelSize: 13
+                    }
+
+                    Text {
+                        objectName: "searchQualityFocus"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: shellReady ? ("Quality: " + shellApi.searchQualityLabel) : ""
                         color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+
+                    Text {
+                        objectName: "searchTiming"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: shellReady && shellApi.searchTimingLabel !== ""
+                        text: shellReady ? shellApi.searchTimingLabel : ""
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+
+                    Text {
+                        objectName: "searchPhaseFocus"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: shellReady && shellApi.similarPhaseLabel !== ""
+                        text: shellReady ? shellApi.similarPhaseLabel : ""
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+
+                    Text {
+                        objectName: "selectionNote"
+                        width: parent.width
+                        visible: shellReady && shellApi.selectionNote !== ""
+                        wrapMode: Text.WordWrap
+                        text: shellReady ? shellApi.selectionNote : ""
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+
+                    Rectangle {
+                        objectName: "screenQueryModeAction"
+                        width: Math.min(parent.width, 240)
+                        height: 32
+                        visible: shellReady && shellApi.screenQueryAvailable && !shellApi.screenQueryInProgress
+                        radius: 6
+                        color: screenQueryModeHit.containsMouse ? tokenBg2 : tokenBg3
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: shellReady ? shellApi.screenQueryModeLabel : "Screen mode"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            id: screenQueryModeHit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Toggle screen query mode"
+                            Accessible.role: Accessible.Button
+                            onClicked: if (shellReady) shellApi.toggleScreenQueryMode()
+                        }
+                    }
+
+                    Text {
+                        objectName: "retrievalDetail"
+                        width: parent.width
+                        visible: shellReady && shellApi.retrievalDetail !== ""
+                        wrapMode: Text.WordWrap
+                        text: shellReady ? shellApi.retrievalDetail : ""
+                        color: tokenFaint
                         font.family: "Consolas"
                         font.pixelSize: 11
-                        wrapMode: Text.WordWrap
+                    }
+
+                    Rectangle {
+                        width: Math.min(parent.width, 240)
+                        height: 32
+                        radius: 6
+                        color: statusArea.containsMouse ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Run diagnostics status"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: statusArea
+                            objectName: "runStatus"
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (shellReady) shellApi.submitCommand("status")
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "diagnosticsPanel"
+                        width: parent.width
+                        height: diagnosticsText.implicitHeight + 14
+                        color: tokenBg
+                        border.color: tokenBorder
+                        border.width: 1
+                        radius: 8
+                        Text {
+                            id: diagnosticsText
+                            anchors.fill: parent
+                            anchors.margins: 7
+                            text: shellReady ? shellApi.diagnosticsText : ""
+                            color: tokenMuted
+                            font.family: "Consolas"
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
+
                 Text {
                     objectName: "resultText"
                     width: parent.width
@@ -4042,6 +3975,337 @@ ApplicationWindow {
                     font.family: "Segoe UI"
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
+                }
+            }
+
+            Popup {
+                id: focusMoreMenu
+                objectName: "focusMoreMenu"
+                parent: focusLayer
+                x: focusMoreButton.mapToItem(focusLayer, 0, focusMoreButton.height + 4).x
+                y: focusMoreButton.mapToItem(focusLayer, 0, focusMoreButton.height + 4).y
+                width: 280
+                padding: 10
+                modal: false
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                background: Rectangle {
+                    color: tokenBg1
+                    border.color: tokenBorder
+                    border.width: 1
+                    radius: 8
+                }
+
+                Column {
+                    width: 260
+                    spacing: 6
+
+                    Rectangle {
+                        objectName: "sameFaceDoor"
+                        property bool actionEnabled: shellReady && selectedObservationSafe !== "" && !focusBar.searching
+                        width: parent.width
+                        height: actionEnabled ? 32 : 48
+                        opacity: actionEnabled ? 1 : 0.55
+                        radius: 6
+                        color: sameFaceHit.containsMouse && actionEnabled ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: parent.top
+                            anchors.topMargin: actionEnabled ? 7 : 4
+                            text: "Same face"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        Text {
+                            objectName: "sameFaceReason"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 4
+                            visible: !parent.actionEnabled
+                            text: focusBar.searching ? "A search is already running." : "Select a face on the photo first."
+                            color: tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                        }
+                        MouseArea {
+                            id: sameFaceHit
+                            anchors.fill: parent
+                            enabled: parent.actionEnabled
+                            hoverEnabled: true
+                            cursorShape: parent.actionEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            Accessible.name: "Same face"
+                            Accessible.role: Accessible.Button
+                            onClicked: {
+                                if (shellReady && parent.actionEnabled)
+                                    shellApi.findSimilarFaces()
+                                focusMoreMenu.close()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "wholePhoto"
+                        property bool actionEnabled: focusActive && !focusBar.searching
+                        width: parent.width
+                        height: actionEnabled ? 32 : 48
+                        opacity: actionEnabled ? 1 : 0.55
+                        radius: 6
+                        color: wholePhotoHit.containsMouse && actionEnabled ? tokenBg3 : tokenBg2
+                        border.color: tokenMuted
+                        border.width: 1
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: parent.top
+                            anchors.topMargin: actionEnabled ? 7 : 4
+                            text: "Whole photo"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        Text {
+                            objectName: "wholePhotoReason"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 4
+                            visible: !parent.actionEnabled
+                            text: focusBar.searching ? "A search is already running." : "Open a photo first."
+                            color: tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                        }
+                        MouseArea {
+                            id: wholePhotoHit
+                            anchors.fill: parent
+                            enabled: parent.actionEnabled
+                            hoverEnabled: true
+                            cursorShape: parent.actionEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            Accessible.name: "Whole photo"
+                            Accessible.role: Accessible.Button
+                            onClicked: {
+                                if (shellReady && parent.actionEnabled)
+                                    shellApi.findSimilarWhole()
+                                focusMoreMenu.close()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "duplicatesDoor"
+                        property bool actionEnabled: focusActive && !focusBar.searching
+                        width: parent.width
+                        height: actionEnabled ? 32 : 48
+                        opacity: actionEnabled ? 1 : 0.55
+                        radius: 6
+                        color: duplicatesHit.containsMouse && actionEnabled ? tokenBg3 : tokenBg2
+                        border.color: tokenMuted
+                        border.width: 1
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: parent.top
+                            anchors.topMargin: actionEnabled ? 7 : 4
+                            text: "Duplicates"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        Text {
+                            objectName: "duplicatesReason"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 4
+                            visible: !parent.actionEnabled
+                            text: focusBar.searching ? "A search is already running." : "Open a photo first."
+                            color: tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                        }
+                        MouseArea {
+                            id: duplicatesHit
+                            anchors.fill: parent
+                            enabled: parent.actionEnabled
+                            hoverEnabled: true
+                            cursorShape: parent.actionEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            Accessible.name: "Duplicates"
+                            Accessible.role: Accessible.Button
+                            onClicked: {
+                                if (shellReady && parent.actionEnabled)
+                                    shellApi.scanDuplicates()
+                                focusMoreMenu.close()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "screenQueryAction"
+                        property bool actionEnabled: shellReady && shellApi.screenQueryAvailable && !focusBar.searching && !shellApi.screenQueryInProgress
+                        width: parent.width
+                        height: actionEnabled ? 32 : 48
+                        opacity: actionEnabled ? 1 : 0.55
+                        radius: 6
+                        color: screenQueryHit.containsMouse && actionEnabled ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: parent.top
+                            anchors.topMargin: actionEnabled ? 7 : 4
+                            text: "Query screen"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        Text {
+                            objectName: "screenQueryReason"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 4
+                            visible: !parent.actionEnabled
+                            text: (shellReady && !shellApi.screenQueryAvailable)
+                                  ? "Only available on Windows."
+                                  : "A search is already running."
+                            color: tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                        }
+                        MouseArea {
+                            id: screenQueryHit
+                            anchors.fill: parent
+                            enabled: parent.actionEnabled
+                            hoverEnabled: true
+                            cursorShape: parent.actionEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            Accessible.name: "Query screen"
+                            Accessible.role: Accessible.Button
+                            onClicked: {
+                                if (shellReady && parent.actionEnabled)
+                                    shellApi.startScreenQuery()
+                                focusMoreMenu.close()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "showDayAction"
+                        property bool actionEnabled: focusActive && !focusBar.searching && shellReady && shellApi.focusFileFacts.date !== "Not in this file"
+                        width: parent.width
+                        height: actionEnabled ? 32 : 48
+                        opacity: actionEnabled ? 1 : 0.55
+                        radius: 6
+                        color: tokenBg2
+                        border.color: tokenBorder
+                        border.width: 1
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: parent.top
+                            anchors.topMargin: actionEnabled ? 7 : 4
+                            text: "Show this day"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        Text {
+                            objectName: "showDayReason"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 4
+                            visible: !parent.actionEnabled
+                            text: focusBar.searching ? "A search is already running." : "No date on this photo."
+                            color: tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: parent.actionEnabled
+                            hoverEnabled: true
+                            cursorShape: parent.actionEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            Accessible.name: "Show this day"
+                            Accessible.role: Accessible.Button
+                            onClicked: {
+                                if (shellReady && parent.actionEnabled)
+                                    shellApi.showDayAroundFocus()
+                                focusMoreMenu.close()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "askPhotoAction"
+                        property bool actionEnabled: focusActive && !focusBar.searching
+                        width: parent.width
+                        height: actionEnabled ? 32 : 48
+                        opacity: actionEnabled ? 1 : 0.55
+                        radius: 6
+                        color: askArea.containsMouse && actionEnabled ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: parent.top
+                            anchors.topMargin: actionEnabled ? 7 : 4
+                            text: "Ask about this photo"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        Text {
+                            objectName: "askPhotoReason"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 4
+                            visible: !parent.actionEnabled
+                            text: focusBar.searching ? "A search is already running." : "Open a photo first."
+                            color: tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                        }
+                        MouseArea {
+                            id: askArea
+                            objectName: "askPhoto"
+                            anchors.fill: parent
+                            enabled: parent.actionEnabled
+                            hoverEnabled: true
+                            cursorShape: parent.actionEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            Accessible.name: "Ask about this photo"
+                            Accessible.role: Accessible.Button
+                            onClicked: {
+                                if (shellReady && parent.actionEnabled)
+                                    shellApi.askPhoto()
+                                focusMoreMenu.close()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        objectName: "reviewFaceGroupAction"
+                        width: parent.width
+                        height: 32
+                        visible: shellReady && selectedObservationSafe !== "" && shellApi.canReviewFaceGroup
+                        radius: 6
+                        color: reviewGroupHit.containsMouse ? tokenAccentDim : tokenBg2
+                        border.color: tokenAccent
+                        border.width: 1
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Review this group"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: reviewGroupHit
+                            objectName: "reviewFaceGroupHit"
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (shellReady)
+                                    shellApi.reviewFaceGroup(selectedObservationSafe)
+                                focusMoreMenu.close()
+                            }
+                        }
+                    }
                 }
             }
 
@@ -4066,12 +4330,11 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 // Sit above the strip when ready so the basis label stays visible.
-                anchors.bottomMargin: matchStrip.visible ? 168 : 68
+                anchors.bottomMargin: matchStrip.visible ? 200 : 68
                 visible: (similarStateSafe === "empty"
                           || similarStateSafe === "unavailable"
                           || similarStateSafe === "error"
-                          || similarStateSafe === "ready"
-                          || similarStateSafe === "loading")
+                          || similarStateSafe === "ready")
                          && similarNoteSafe !== ""
                 text: similarNoteSafe
                 color: tokenMuted
@@ -4081,7 +4344,7 @@ ApplicationWindow {
 
             Rectangle {
                 objectName: "searchPhaseBadge"
-                visible: shellReady && shellApi.similarPhaseLabel !== ""
+                visible: advancedModeSafe && shellReady && shellApi.similarPhaseLabel !== ""
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: matchStrip.visible ? matchStrip.top : similarNote.top
                 anchors.bottomMargin: 8
@@ -4107,8 +4370,8 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 22
-                width: Math.min(Math.max(similarCountSafe * 104 - 8, 0), parent.width - 96)
-                height: similarReady && similarCountSafe > 0 ? 104 : 0
+                width: Math.min(Math.max(similarCountSafe * 156 - 8, 0), parent.width - 96)
+                height: similarReady && similarCountSafe > 0 ? 152 : 0
                 orientation: ListView.Horizontal
                 spacing: 8
                 clip: true
@@ -4122,15 +4385,15 @@ ApplicationWindow {
                 Keys.onUpPressed: regionDrag.forceActiveFocus()
 
                 delegate: Item {
-                    width: 96
-                    height: 104
+                    width: 148
+                    height: 152
                     objectName: "similarThumb"
 
                     Rectangle {
                         id: thumbFrame
                         anchors.top: parent.top
-                        width: 96
-                        height: 84
+                        width: 148
+                        height: 128
                         color: tokenBg2
                         radius: 2
                         border.width: (matchStrip.activeFocus && matchStrip.currentIndex === index) || thumbArea.containsMouse ? 2 : 0

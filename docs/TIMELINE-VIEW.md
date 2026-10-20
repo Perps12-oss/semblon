@@ -18,7 +18,7 @@
 
 Home is a permanent editorial launchpad (`HomeLaunchpad.qml`); Library is this timeline contract. One density timeline only. The bottom year scrubber was removed (product design). Archive browse (media type, folders, Moments, Similar) lives in the left navigation column when Library is open — there is no right-hand “Explore your archive” panel. Primary / Advanced and Atmosphere live in Settings.
 
-On a library stage at least 900 px wide, `archiveHeaderBand` is the left column (density segment, timeline, year matrix or `MemoryCalendar`) and `fieldViewport` is the photo column on its right (`archiveSplit` adjusts the ratio, remembered in appearance prefs). Narrower stages stack the field under the calendar. The field is the same grids as before. Focus, Home, People, and Settings still replace the whole stage. File details (`focusDetails`) open inside Focus when a photo opens, and Close hides that rail only.
+On a library stage at least 900 px wide, `archiveHeaderBand` is the left column (density segment, timeline, year matrix or `MemoryCalendar`) and `fieldViewport` is the photo column on its right (`archiveSplit` adjusts the ratio, remembered in appearance prefs). Narrower stages stack the field under the calendar. The field is the same grids as before. Focus, Home, People, and Settings still replace the whole stage. File details (`focusDetails`) stay closed when a photo opens. Details opens that rail; Close hides it.
 
 Calendar day cells size to the left column. Month cells show at most six cropped thumbs. The overflow count is a `+N` mark. Days view keeps the same month grid with numbers only. Years view is twelve month cards of activity dots from real day buckets.
 
