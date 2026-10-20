@@ -552,4 +552,123 @@ def test_field_sections_chrome(tmp_path, monkeypatch):
         app.processEvents()
     assert bridge.fieldSectionsActive is False
     assert grid.isVisible() is True
+
+
+def _ctrl_wheel(window, delta_y: int) -> None:
+    from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+
+    local = QPointF(window.width() / 2, window.height() / 2)
+    global_pos = QPointF(window.mapToGlobal(QPoint(int(local.x()), int(local.y()))))
+    event = QWheelEvent(
+        local,
+        global_pos,
+        QPoint(0, 0),
+        QPoint(0, delta_y),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.ControlModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(window, event)
+
+
+def test_photo_zoom_and_keyboard_navigation(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtQuick import QQuickItem
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell, shutdown_shell
+
+    store = tmp_path / "s.sqlite"
+    _seed_days(
+        store,
+        tmp_path,
+        [("a", 2024, 5, 1), ("b", 2024, 5, 2), ("c", 2024, 6, 3), ("d", 2025, 1, 4)],
+    )
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    bridge = engine._semblon_bridge
+    for _ in range(20):
+        app.processEvents()
+    bridge.showLibrary()
+    for _ in range(20):
+        app.processEvents()
+    root.requestActivate()
+    app.processEvents()
+
+    calendar = root.findChild(QQuickItem, "memoryCalendar")
+    timeline = root.findChild(QQuickItem, "timelineHero")
+    grid = root.findChild(QQuickItem, "fieldGrid")
+    photo = root.findChild(QQuickItem, "photoView")
+    assert calendar is not None and timeline is not None and grid is not None and photo is not None
+
+    calendar.forceActiveFocus()
+    app.processEvents()
+    assert calendar.hasActiveFocus()
+    for _ in range(6):
+        QTest.keyClick(root, Qt.Key.Key_Right)
+        app.processEvents()
+    assert calendar.property("focusIndex") == 5
+    QTest.keyClick(root, Qt.Key.Key_Left)
+    app.processEvents()
+    assert calendar.property("focusIndex") == 4
+    QTest.keyClick(root, Qt.Key.Key_Right)
+    app.processEvents()
+    QTest.keyClick(root, Qt.Key.Key_Return)
+    app.processEvents()
+    assert bridge.scopeKind == "day"
+    assert bridge.scopeLabel == "2025-01-04"
+    assert bridge.focusId == ""
+
+    bridge.clearScope()
+    timeline.forceActiveFocus()
+    app.processEvents()
+    QTest.keyClick(root, Qt.Key.Key_Right)
+    app.processEvents()
+    assert str(timeline.property("focusYear") or "") == "2024"
+    QTest.keyClick(root, Qt.Key.Key_Left)
+    app.processEvents()
+    assert str(timeline.property("focusYear") or "") == "2025"
+    QTest.keyClick(root, Qt.Key.Key_Return)
+    app.processEvents()
+    assert bridge.scopeKind == "year"
+    assert bridge.scopeLabel == "2025"
+
+    bridge.clearScope()
+    grid.forceActiveFocus()
+    app.processEvents()
+    assert grid.hasActiveFocus()
+    start_index = int(grid.property("currentIndex"))
+    QTest.keyClick(root, Qt.Key.Key_Right)
+    app.processEvents()
+    assert int(grid.property("currentIndex")) == start_index + 1
+
+    bridge.openFocus("c")
+    for _ in range(10):
+        app.processEvents()
+    assert bridge.focusId == "c"
+    assert float(photo.property("scale")) == pytest.approx(1)
+    assert bridge.calendarView == "months"
+    for _ in range(4):
+        _ctrl_wheel(root, 240)
+        app.processEvents()
+    assert float(photo.property("scale")) > 1.2
+    assert bridge.calendarView == "months"
+    QTest.keyClick(root, Qt.Key.Key_Right)
+    app.processEvents()
+    assert bridge.focusId == "b"
+    assert float(photo.property("scale")) == pytest.approx(1)
+    QTest.keyClick(root, Qt.Key.Key_Left)
+    app.processEvents()
+    assert bridge.focusId == "c"
+    QTest.keyClick(root, Qt.Key.Key_Escape)
+    app.processEvents()
+    assert bridge.focusId == ""
+    assert bridge.calendarView == "months"
     shutdown_shell(engine)

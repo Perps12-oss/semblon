@@ -90,6 +90,15 @@ ApplicationWindow {
     readonly property color tokenOk: shellReady ? shellApi.okColor : "#30a46c"
     readonly property color tokenWarn: shellReady ? shellApi.warnColor : "#f5a524"
     readonly property string calendarViewSafe: shellReady ? shellApi.calendarView : "months"
+    readonly property bool returnOpensPhoto: {
+        if (focusActive || emptySafe)
+            return false
+        var item = activeFocusItem
+        if (!item)
+            return true
+        var name = item.objectName || ""
+        return name !== "memoryCalendar" && name !== "timelineHero" && name !== "calendarJump"
+    }
     property bool focusDetailsOpen: false
     property bool focusWasOpen: false
     onFocusIdSafeChanged: {
@@ -98,6 +107,8 @@ ApplicationWindow {
         else if (!focusWasOpen)
             focusDetailsOpen = true
         focusWasOpen = focusIdSafe !== ""
+        if (focusIdSafe !== "")
+            focusLayer.forceActiveFocus()
     }
     readonly property var primarySettingCalls: ["cycleDensity", "libraryHealth", "showActivity", "modePeople", "modeText", "modeObject", "rescan", "resetDefaults", "clearLibrary"]
     readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Search objects", "Rescan", "Reset defaults", "Clear library"]
@@ -134,7 +145,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequences: [StandardKey.Cancel, "Escape"]
+        sequence: "Escape"
         onActivated: if (shellReady) shellApi.escape()
     }
     Shortcut {
@@ -170,7 +181,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Return"
-        enabled: !focusActive && !emptySafe
+        enabled: returnOpensPhoto
         onActivated: if (shellReady) shellApi.openIndex(grid.currentIndex)
     }
     Shortcut {
@@ -2445,6 +2456,12 @@ ApplicationWindow {
             objectName: "focusLayer"
             anchors.fill: parent
             visible: focusActive
+            focus: true
+            Keys.onEscapePressed: function(event) {
+                if (shellReady)
+                    shellApi.escape()
+                event.accepted = true
+            }
             opacity: focusActive ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: window.motion } }
 
