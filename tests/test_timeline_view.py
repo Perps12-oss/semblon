@@ -8,6 +8,7 @@ import pytest
 
 from semblon.native_shell.editorial import (
     calendar_month_cells,
+    day_section_short_label,
     default_calendar_month,
     field_sections,
     format_count,
@@ -19,6 +20,7 @@ from semblon.native_shell.editorial import (
     shift_month,
     sort_ids_newest_first,
     timeline_density,
+    year_matrix,
     year_rows,
 )
 from semblon.store import connect, init_db
@@ -179,8 +181,15 @@ def test_timeline_chrome_object_names(tmp_path, monkeypatch):
     grid = root.findChild(QQuickItem, "fieldGrid")
     assert grid is not None
     assert grid.clip() is True
-    # Field viewport must start below the calendar/timeline band.
-    assert viewport.y() >= header.y() + header.height() - 1
+    # Photos sit to the right of the calendar column on a wide library stage.
+    assert root.width() >= 900
+    assert viewport.x() >= header.x() + header.width() - 12
+    assert abs(viewport.y() - header.y()) <= 2
+    assert root.findChild(QObject, "archiveSplit") is not None
+    assert root.findChild(QObject, "timelineDensitySegment") is not None
+    assert root.findChild(QObject, "calendarJump") is not None
+    assert root.findChild(QObject, "yearMatrix") is not None
+    assert bridge.calendarView == "months"
     assert root.findChild(QObject, "sidebarYear_2024") is None
     assert root.findChild(QObject, "sidebarDay_2024-05-01") is None
     bridge.selectMonth("2024-05")
@@ -290,6 +299,30 @@ def test_bridge_calendar_browse_does_not_change_scope(tmp_path, monkeypatch):
     bridge.clearScope()
     assert bridge.calendarMonth == "2024-01"
     assert bridge.timeScopeActive is False
+
+    bridge.revealDay("not-a-date")
+    assert bridge.revealedDay == ""
+    assert bridge.calendarMonth == "2024-01"
+    bridge.revealDay("2024-06-01")
+    assert bridge.revealedDay == "2024-06-01"
+    assert bridge.calendarMonth == "2024-06"
+    assert bridge.scopeKind == ""
+    bridge.selectYear("2024")
+    bridge.setStickyDay("2024-01-20")
+    assert bridge.calendarMonth == "2024-01"
+    assert bridge.scopeKind == "year"
+    bridge.setCalendarView("days")
+    assert bridge.calendarView == "days"
+    bridge.setCalendarView("nope")
+    assert bridge.calendarView == "days"
+    bridge.setArchiveSplit(0.55)
+    assert abs(bridge.archiveSplit - 0.55) < 1e-6
+    bridge.openFocus("a")
+    facts = bridge.focusFileFacts
+    assert facts["name"] == "a.jpg"
+    assert "2024" in facts["date"]
+    assert facts["camera"] == "Not in this file"
+    assert facts["location"] == "No location stored"
     bridge.shutdown()
 
 
@@ -352,8 +385,29 @@ def test_format_count_and_high_volume_day_cell():
     assert cell["count"] == 1282
     assert cell["countLabel"] == "1.3k"
     assert cell["thumbId"] == "p0"
-    assert len(cell["previewIds"]) == 3
+    assert len(cell["previewIds"]) == 6
+    assert cell["overflow"] == 1276
+    assert cell["video"] is False
+    assert cell["emphasized"] is False
     assert "1,282" in cell["accessibleName"]
+    marked = calendar_month_cells(
+        "2024-07",
+        day_map,
+        video_ids={"p0"},
+        emphasis_days={"2024-07-04"},
+    )
+    picked = {c["day"]: c for c in marked}["2024-07-04"]
+    assert picked["video"] is True
+    assert picked["emphasized"] is True
+    sections = field_sections({"2024-10-15": ["a"]}, ["a"])
+    assert sections[0]["shortLabel"] == "Oct 15, 2024"
+    assert sections[0]["label"] != sections[0]["shortLabel"]
+    assert day_section_short_label("") == "Unknown date"
+    matrix = year_matrix("2024", {"2024-07-04": ["p0", "p1"]})
+    assert len(matrix) == 12
+    july = next(row for row in matrix if row["label"] == "2024-07")
+    assert july["count"] == 2
+    assert any(dot["heat"] == 2 for dot in july["cells"] if dot["day"] == "2024-07-04")
 
 
 def test_range_selection_reverse_and_month_not_day(tmp_path, monkeypatch):
