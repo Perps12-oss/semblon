@@ -459,7 +459,7 @@ def test_live_setup_failure_releases_capture(tmp_path, monkeypatch):
 
     monkeypatch.setitem(__import__("sys").modules, "insightface", ModuleType("insightface"))
     monkeypatch.setitem(__import__("sys").modules, "onnxruntime", ModuleType("onnxruntime"))
-    monkeypatch.setattr("semblon.providers.FaceKitProvider", Boom)
+    monkeypatch.setattr("semblon.providers.YuNetSFaceProvider", Boom)
     from semblon.live import live_capture
 
     store = tmp_path / "s.sqlite"

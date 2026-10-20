@@ -104,7 +104,9 @@ def _seed_named_alice(store: Path, *, target_pack: str) -> np.ndarray:
 
 def test_live_identifies_vs_named_person(tmp_path):
     store = tmp_path / "s.sqlite"
-    live_pack = pack_id("0.test", {})
+    import cv2
+
+    live_pack = pack_id(f"opencv-{cv2.__version__}", {})
     vec_alice = _seed_named_alice(store, target_pack=live_pack)
     boxes = [(10.0 + i, 10.0, 130.0 + i, 130.0, 0.95) for i in range(20)]
     det = _DetModel(boxes)

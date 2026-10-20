@@ -83,10 +83,18 @@ def test_advanced_diagnostics_are_opt_in_and_marked_active(qml_shell):
     bridge.submitCommand("status")
     assert "mode=" not in bridge.resultText
 
+    # Primary/Advanced live on the Settings sheet. Open it to read the control.
+    bridge.toggleSettings()
+    app.processEvents()
+    button = root.findChild(QObject, "advancedModeButton")
+    assert button.property("visible") is True
+    assert button.property("color").name() == bridge.bg2
+
     bridge.setMode("advanced")
     app.processEvents()
     assert "mode=advanced" in bridge.diagnosticsText
-    assert root.findChild(QObject, "advancedModeButton").property("visible") is True
+    assert button.property("visible") is True
+    assert button.property("color").name() == bridge.accentDim
     bridge.submitCommand("status")
     assert "mode=advanced" in bridge.resultText
 

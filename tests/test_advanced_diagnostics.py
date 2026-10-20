@@ -86,11 +86,12 @@ def test_build_lines_sections_and_settings_content(tmp_path):
     assert f"Store: {store}" in text
     assert "integrity ok=" in text
 
-    # Processing / weights / EP (from Settings dump).
-    assert "FaceKit" in text
+    # Processing / weights / EP (from Settings dump). Active engine is YuNet + SFace.
+    assert "YuNet + SFace" in text
     assert "Weights dir:" in text
     assert "onnx files:" in text
-    assert "Provider: FaceKit" in text
+    assert "Provider: YuNet + SFace" in text
+    assert "pack_family: opencv/yunet_sface" in text
     assert "ORT providers:" in text
 
     # Observers + firewall notes from modality_product_settings_lines.
