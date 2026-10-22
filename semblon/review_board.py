@@ -23,6 +23,7 @@ from semblon.review import (
     split_cluster,
 )
 from semblon.tracks import TracksError, derive_tracks
+from semblon.store import connect_readonly
 
 class ReviewUiError(ValueError):
     pass
@@ -36,7 +37,7 @@ class ReviewExpectedEmpty(ReviewUiError):
 
 def _ro_connect(store: Path) -> sqlite3.Connection:
     """Read-only store connection. Waits on the existing writer (busy_timeout=5000)."""
-    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(Path(store).resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn

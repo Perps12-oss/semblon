@@ -16,6 +16,7 @@ from semblon.compare import CompareError, compare, compare_space
 from semblon.identify import IdentifyError, identify_face
 from semblon.memory import MemoryError, history
 from semblon.similarity_profile import resolve_search_quality
+from semblon.store import connect_readonly
 
 
 class SearchError(ValueError):
@@ -26,7 +27,7 @@ def _open_ro(store: Path) -> sqlite3.Connection:
     p = Path(store)
     if not p.is_file():
         raise SearchError(f"store not found: {p}")
-    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(p.resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn

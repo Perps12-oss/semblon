@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from semblon.export import STRONG_MIN_INTRA
+from semblon.store import connect_readonly
 
 STAGES = (
     "S0",
@@ -60,7 +61,7 @@ def _connect_ro(store: Path) -> sqlite3.Connection:
     p = Path(store).resolve()
     if not p.is_file():
         raise ObservatoryError(f"store not found: {p}")
-    conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    conn = connect_readonly(p)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn

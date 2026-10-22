@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from semblon.store import connect_readonly
 
 # Caps shown under Available when the model is AVAILABLE.
 _READY_IDS = frozenset({"library_query"})
@@ -255,7 +256,7 @@ def enrich_summary_counts(store: Path, summary: dict | None) -> dict | None:
         return out
     import sqlite3
 
-    conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(path.resolve())
     try:
         conn.execute("PRAGMA busy_timeout=5000")
         photos = int(

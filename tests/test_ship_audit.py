@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
@@ -15,7 +16,7 @@ from semblon.engine import ModelPackError, accept_local_face_pack, assert_face_p
 from semblon.erasure import delete_person, wipe_library
 from semblon.logging_setup import configure_logging, redact
 from semblon.review import note_subject
-from semblon.store import apply_migrations, connect, delete_observation_tree, init_db, restore_store
+from semblon.store import apply_migrations, connect, connect_readonly, delete_observation_tree, init_db, restore_store
 from semblon.temporal import VideoError, iter_sampled_frames, open_video, read_bgr
 from tests.test_cluster import _seed
 
@@ -282,9 +283,16 @@ def test_video_thumb_does_not_seek_by_frame_number(tmp_path):
 
 
 def test_windows_video_open_tries_extended_path(tmp_path):
+    """The open loop must try the extended path without flipping os.name.
+
+    Patching os.name to ``nt`` on Linux makes pathlib.Path() construct
+    WindowsPath and raise NotImplementedError before VideoCapture runs.
+    The prefix itself is covered by test_extended_win_prefix_drive_unc_and_passthrough.
+    """
     path = tmp_path / "José.mp4"
     path.write_bytes(b"x")
     calls: list[str] = []
+    extended = "\\\\?\\C:\\Users\\José\\clip.mp4"
 
     class _Cap:
         def __init__(self, name):
@@ -301,14 +309,61 @@ def test_windows_video_open_tries_extended_path(tmp_path):
         return _Cap(name)
 
     with (
-        patch("semblon.temporal.os.name", "nt"),
-        patch("semblon.temporal.Path.resolve", return_value=r"C:\Users\José\clip.mp4"),
+        patch("semblon.temporal._extended_win_path", return_value=extended),
         patch("semblon.temporal.cv2.VideoCapture", side_effect=_open),
     ):
         cap = open_video(path)
     assert cap.isOpened()
-    assert any(item.startswith("\\\\?\\") for item in calls)
+    assert calls[0] == str(path)
+    assert extended in calls
     cap.release()
+
+
+def test_extended_win_prefix_drive_unc_and_passthrough():
+    from semblon.temporal import _extended_prefix, _extended_win_path
+
+    assert _extended_prefix("C:\\Users\\José\\clip.mp4") == "\\\\?\\C:\\Users\\José\\clip.mp4"
+    assert _extended_prefix("\\\\server\\share\\José.mp4") == "\\\\?\\UNC\\server\\share\\José.mp4"
+    already = "\\\\?\\C:\\already.mp4"
+    assert _extended_prefix(already) == already
+    if os.name != "nt":
+        assert _extended_win_path(Path("José.mp4")) is None
+
+
+def test_readonly_open_keeps_hash_and_percent_in_the_path(tmp_path):
+    folder = tmp_path / "Photos #2 %2F..%2F"
+    folder.mkdir()
+    store = folder / "store.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES ('r-ro','t','0','p',2,'l2','{}','{}','x64','native')"""
+    )
+    conn.commit()
+    conn.close()
+    ro = connect_readonly(store)
+    try:
+        assert ro.execute("SELECT run_id FROM runs").fetchone()["run_id"] == "r-ro"
+        with pytest.raises(sqlite3.OperationalError):
+            ro.execute("CREATE TABLE leaked(n INTEGER)")
+    finally:
+        ro.close()
+    assert not (tmp_path / "leaked").exists()
+    assert list(folder.glob("*.sqlite")) == [store]
+
+
+def test_live_part_box_uses_detector_corners(monkeypatch):
+    from semblon.region_parts import _crop_parts
+
+    monkeypatch.setattr("semblon.object_pack.probe_nanodet_status", lambda: (True, "ready"))
+    monkeypatch.setattr(
+        "semblon.object_nanodet.detect_objects",
+        lambda _crop: [{"label": "cup", "bbox": (10, 20, 40, 60)}],
+    )
+    parts = _crop_parts(object(), 100, 200)
+    assert parts == [{"label": "cup", "kind": "object", "box": [110, 220, 30, 40]}]
 
 
 def test_observation_delete_removes_items(tmp_path):

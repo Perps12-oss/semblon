@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 from pathlib import Path
+from semblon.store import connect_readonly
 
 # 1 Hz sampling: allow ~2.5 s gap (≈ one missed sample at 1 Hz + jitter).
 # IoU only — no compare().
@@ -299,7 +300,7 @@ def derive_tracks(
     if max_t_ms_gap <= 0:
         raise TracksError("max_t_ms_gap must be > 0")
 
-    conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(store.resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     run = conn.execute("SELECT run_id FROM runs WHERE run_id=?", (run_id,)).fetchone()

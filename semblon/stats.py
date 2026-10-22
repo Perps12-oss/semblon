@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from semblon.observatory import ObservatoryError, snapshot
+from semblon.store import connect_readonly
 
 
 class StatsError(ValueError):
@@ -16,7 +17,7 @@ def _connect_ro(store: Path) -> sqlite3.Connection:
     p = Path(store).resolve()
     if not p.is_file():
         raise StatsError(f"store not found: {p}")
-    conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    conn = connect_readonly(p)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn

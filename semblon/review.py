@@ -562,6 +562,11 @@ def name_faces(
         created = False
         if existing_persons:
             person_id = next(iter(existing_persons))
+            if attach_to_person_id and attach_to_person_id != person_id:
+                raise ReviewError(
+                    "faces are already linked to a different person; "
+                    "refusing attach_to_person_id"
+                )
             named = conn.execute(
                 "SELECT display_name FROM persons WHERE person_id=?",
                 (person_id,),

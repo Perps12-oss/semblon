@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from semblon.observers import color_histogram
+from semblon.store import connect_readonly
 
 
 def judge_matches(
@@ -125,7 +126,7 @@ def _pair_crop(store: Path, item: dict):
 def _media_path(store: Path, media_id: str) -> Path | None:
     if not media_id or not Path(store).is_file():
         return None
-    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(Path(store).resolve())
     try:
         row = conn.execute("SELECT path FROM media WHERE media_id=?", (media_id,)).fetchone()
     finally:
@@ -137,7 +138,7 @@ def _media_path(store: Path, media_id: str) -> Path | None:
 
 
 def _media_size(store: Path, media_id: str) -> tuple[int, int]:
-    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(Path(store).resolve())
     try:
         row = conn.execute(
             "SELECT width, height FROM media WHERE media_id=?",

@@ -1,5 +1,7 @@
 # Semblon completion matrix (architecture closed / open)
 
+**Readiness verdict (2026-10-22):** **NOT READY FOR RELEASE.** Evidence and the repair ledger are `docs/audits/PRODUCTION-READINESS-AUDIT.md` and `docs/audits/PRODUCTION-READINESS-LEDGER.md`. This file is still the architecture ledger. It is not a release certificate.
+
 **Product contract:** `docs/PRODUCT.md`. **Programme completion tracker (12 issues, Gates A/B/C):** `docs/BUILD-STATUS.md`. This file remains the architecture ledger only. Do not treat `docs/ROADMAP.md` as a status SoT. Rows that say Find is out of V1, or that name Tk Home as the product door, are historical against the 2026-10-16 shell.
 
 **Date:** 2026-10-05 (architecture baseline). Earlier rows retain their original dates.  

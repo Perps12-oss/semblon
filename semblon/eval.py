@@ -13,7 +13,7 @@ from pathlib import Path
 from semblon.cluster import DEFAULT_EPS
 from semblon.compare import CompareError, compare
 from semblon.export import STRONG_MIN_INTRA
-from semblon.store import connect, init_db
+from semblon.store import connect, init_db, connect_readonly
 
 KINDS = (
     "confirmatory_hard",
@@ -39,7 +39,7 @@ def _open(store: Path, readonly: bool = False):
     if readonly:
         if not p.is_file():
             raise EvalError(f"store not found: {p}")
-        conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+        conn = connect_readonly(p.resolve())
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout=5000")
         return conn

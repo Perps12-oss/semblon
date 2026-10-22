@@ -10,6 +10,7 @@ import json
 import sqlite3
 from pathlib import Path
 from typing import Any
+from semblon.store import connect_readonly
 
 _META_KIND = "home_completion_kind"
 _META_JSON = "home_completion_json"
@@ -128,7 +129,7 @@ def latest_unfinished_run_info(store: Path) -> dict[str, Any] | None:
     p = Path(store)
     if not p.is_file():
         return None
-    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(p.resolve())
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA busy_timeout=5000")

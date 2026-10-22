@@ -12,7 +12,7 @@ from pathlib import Path
 
 from semblon.compare import CompareError, compare
 from semblon.eval import DEFAULT_THRESHOLD
-from semblon.store import connect, init_db
+from semblon.store import connect, init_db, connect_readonly
 
 
 class IdentifyError(ValueError):
@@ -33,7 +33,7 @@ def _open(store: Path, *, writable: bool = True):
 
     if not p.is_file():
         raise IdentifyError(f"store not found: {p}")
-    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(p.resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn

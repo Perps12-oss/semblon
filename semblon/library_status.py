@@ -10,6 +10,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from semblon.store import connect_readonly
 
 
 def people_to_name_text(n: int) -> str:
@@ -41,7 +42,7 @@ def library_summary(store: Path) -> dict | None:
     path = Path(store)
     if not path.is_file():
         return None
-    conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(path.resolve())
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA busy_timeout=5000")
