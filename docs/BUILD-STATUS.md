@@ -150,6 +150,9 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 5. WiX owner run on a machine with WiX + (optional) cert — workflow exists; not executed here.
 6. **Named-face recluster** — repaired: a multi-face `name` decision now locks every `policy.face_ids` entry, and `name_faces` refuses a conflicting `attach_to_person_id`. `merge_clusters` still copies one shared `person_id` onto survivor faces; that stamp is the tested review contract (`tests/test_review.py`), not an unapproved threshold change.
 7. **Store is plaintext.** Encryption remains the deferred decision. Do not claim SQLCipher or DPAPI.
+8. **Replaced file path** — repaired in `claim_new_media`: the previous digest no longer keeps the path, so an old crop cannot read the new bytes. Confirmed identities on the old digest are not deleted.
+9. **Erasure centroid** — repaired: deleting a person drops or rebuilds `clusters.centroid` from the faces that remain.
+10. **`docs/PERF-P1-ARM64.md` identity cell** — corrected. The 2026-09-22 FaceKit / `eps=0.40` sentence is historical. Current engine text is YuNet + SFace. The OpenCV load block is unchanged. No threshold was edited.
 
 The 2026-10-22 audit, repairs, and the commands actually run are in `docs/audits/PRODUCTION-READINESS-AUDIT.md`. Release verdict there: **NOT READY FOR RELEASE**.
 

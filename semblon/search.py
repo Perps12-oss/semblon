@@ -765,7 +765,12 @@ def search_text(
 
     for row in docs:
         if q_lower in str(row.get("text") or "").lower():
-            _take(row, why="OCR payload substring; not a person", score=row.get("score") or 1.0)
+            raw_score = row.get("score")
+            _take(
+                row,
+                why="OCR payload substring; not a person",
+                score=1.0 if raw_score is None else raw_score,
+            )
         if len(items) >= limit:
             break
     if len(items) < limit:

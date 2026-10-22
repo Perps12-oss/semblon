@@ -209,6 +209,41 @@ def media_skip_reason(
     return None, media_id
 
 
+def claim_new_media(
+    conn,
+    *,
+    source_type: str,
+    path: Path,
+    digest: str,
+    width: int | None,
+    height: int | None,
+    mtime_ns: int,
+    byte_size: int,
+) -> str:
+    """Insert a new digest and stop any older row from still owning this path.
+
+    Media is keyed by sha256. Replacing the bytes at a path inserts a second
+    row. If the old row kept the path, face crops would read the new file.
+    """
+    conn.execute("UPDATE media SET path='' WHERE path=?", (str(path),))
+    media_id = uuid.uuid4().hex
+    conn.execute(
+        """INSERT INTO media(media_id, source_type, path, sha256, width, height,
+           mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
+        (
+            media_id,
+            source_type,
+            str(path),
+            digest,
+            width,
+            height,
+            int(mtime_ns),
+            int(byte_size),
+        ),
+    )
+    return media_id
+
+
 def _remember_path(conn, media_id: str | None, path: Path, mtime_ns: int, byte_size: int) -> bool:
     """Point the stored row at a moved file. A second copy that still has the original stays put."""
     if not media_id:
@@ -805,11 +840,15 @@ def ingest(
 
             with writer_lock():
                 if media_id is None:
-                    media_id = uuid.uuid4().hex
-                    conn.execute(
-                        """INSERT INTO media(media_id, source_type, path, sha256, width, height,
-                           mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
-                        (media_id, "folder", str(path), digest, w, h, mtime_ns, byte_size),
+                    media_id = claim_new_media(
+                        conn,
+                        source_type="folder",
+                        path=path,
+                        digest=digest,
+                        width=w,
+                        height=h,
+                        mtime_ns=mtime_ns,
+                        byte_size=byte_size,
                     )
                     n_media += 1
                     dirty += 1
@@ -974,20 +1013,15 @@ def ingest(
                         if width is None:
                             height, width = img.shape[:2]
                         if media_id is None:
-                            media_id = uuid.uuid4().hex
-                            conn.execute(
-                                """INSERT INTO media(media_id, source_type, path, sha256, width, height,
-                                   mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)""",
-                                (
-                                    media_id,
-                                    "video",
-                                    str(path),
-                                    digest,
-                                    width,
-                                    height,
-                                    mtime_ns,
-                                    byte_size,
-                                ),
+                            media_id = claim_new_media(
+                                conn,
+                                source_type="video",
+                                path=path,
+                                digest=digest,
+                                width=width,
+                                height=height,
+                                mtime_ns=mtime_ns,
+                                byte_size=byte_size,
                             )
                             n_media += 1
                             dirty += 1

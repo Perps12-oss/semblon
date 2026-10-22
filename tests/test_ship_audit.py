@@ -578,6 +578,92 @@ def test_reused_run_reports_existing_cluster_counts(tmp_path):
     assert rec["cluster"]["clustered"] == 4
 
 
+def test_replaced_bytes_do_not_keep_the_old_path(tmp_path):
+    from semblon.ingest import claim_new_media
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    photo = tmp_path / "shot.jpg"
+    conn.execute(
+        """INSERT INTO media(media_id, source_type, path, sha256, width, height, mtime_ns, byte_size)
+           VALUES ('old','folder',?,'aaa',1,1,1,3)""",
+        (str(photo),),
+    )
+    new_id = claim_new_media(
+        conn,
+        source_type="folder",
+        path=photo,
+        digest="bbb",
+        width=2,
+        height=2,
+        mtime_ns=2,
+        byte_size=4,
+    )
+    conn.commit()
+    try:
+        old_path = conn.execute("SELECT path FROM media WHERE media_id='old'").fetchone()[0]
+        new_row = conn.execute(
+            "SELECT path, sha256 FROM media WHERE media_id=?",
+            (new_id,),
+        ).fetchone()
+        assert old_path == ""
+        assert new_row[0] == str(photo)
+        assert new_row[1] == "bbb"
+    finally:
+        conn.close()
+
+
+def test_delete_person_drops_centroid_of_their_cluster(tmp_path):
+    store = tmp_path / "s.sqlite"
+    conn = _seed(store)
+    secret = np.array([0.2, 0.9], np.float32).tobytes()
+    conn.execute(
+        "INSERT INTO persons(person_id, display_name, status) VALUES ('p1','Ada','active')"
+    )
+    conn.execute(
+        """INSERT INTO clusters(cluster_id, run_id, strategy, face_count, centroid, min_intra, status)
+           VALUES ('c-secret','r1','t',1,?,0.1,'auto')""",
+        (secret,),
+    )
+    conn.execute(
+        "UPDATE faces SET person_id='p1', cluster_id='c-secret' WHERE face_id='f1'"
+    )
+    conn.commit()
+    conn.close()
+    delete_person(store, "p1")
+    conn = connect(store)
+    try:
+        row = conn.execute(
+            "SELECT face_count, centroid FROM clusters WHERE cluster_id='c-secret'"
+        ).fetchone()
+        assert int(row[0]) == 0
+        assert row[1] is None
+    finally:
+        conn.close()
+
+
+def test_text_search_keeps_a_zero_score(tmp_path):
+    from semblon.search import search_text
+
+    store = tmp_path / "s.sqlite"
+    conn = _seed(store)
+    conn.execute(
+        """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider, score, payload_json)
+           VALUES ('t0','o1','r1','text','ocr',0,'{"text":"zero semblon"}')"""
+    )
+    conn.execute(
+        """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider, score, payload_json)
+           VALUES ('t1','o1','r1','text','ocr',NULL,'{"text":"missing semblon"}')"""
+    )
+    conn.commit()
+    conn.close()
+    rec = search_text(store, "semblon")
+    by_id = {item["item_id"]: item["score"] for item in rec["items"]}
+    assert by_id["t0"] == 0
+    assert by_id["t1"] == 1.0
+
+
 def test_parallel_hash_decodes_the_same_bytes(tmp_path):
     from semblon.ingest import ingest
 

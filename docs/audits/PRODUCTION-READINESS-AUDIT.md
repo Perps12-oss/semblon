@@ -37,7 +37,8 @@ LD_LIBRARY_PATH=/tmp/qtlibs/usr/lib/x86_64-linux-gnu
 | `pytest` excluding `test_native_shell.py`, `test_timeline_view.py`, `test_shell_frontend.py` | **830 passed, 6 skipped, exit 0** |
 | `pytest tests/test_native_shell.py` | **37 passed, exit 0** |
 | `pytest tests/test_review.py tests/test_ship_audit.py tests/test_user_box_geometry.py tests/test_memory.py tests/test_cluster.py` after the name-lock repair | **68 passed** once `name_face` was imported (the first attempt failed that import only) |
-| Focused new cases: `test_name_faces_locks_every_named_face`, `test_name_faces_refuses_conflicting_attach`, `tests/test_memory.py` | **7 passed, exit 0** |
+| `pytest tests/test_ship_audit.py tests/test_discovery_slice_e.py tests/test_observers.py::test_search_text_is_readonly_not_identity` after the path, centroid, and zero-score repairs | **38 passed, exit 0** (2026-10-22, this continuation) |
+| `pytest tests/test_ship_audit.py tests/test_review.py tests/test_user_box_geometry.py tests/test_search_contract.py tests/test_index_provider.py tests/test_cluster.py` | **70 passed, exit 0**. Re-run of the earlier repair slice; not a full-suite claim |
 | `pip-audit` on the venv before the pillow pin | **exit 1**, pillow 12.3.0, 24 advisories, fix version 13.0.0 |
 | `uv pip install pip-audit` then `pip-audit --local` after pillow 13.0.0 | **exit 0**. Only skip is the local package `semblon` |
 | `uv pip compile requirements.txt --generate-hashes --python-version 3.12` | Matches `requirements.lock.txt` on the compile that was committed (622 non-comment lines). An earlier compile the same day still had `certifi==2026.7.22`; the next compile floated `certifi` to `2026.10.19`. Unpinned transitives move. Do not regenerate the lock unless the new file is diffed in the same minute |
@@ -74,10 +75,10 @@ Each row has a regression test in this tree.
 | PR-13 | P0 release | BLOCKED | Identity redistribution. Runtime path is YuNet + SFace (`opencv/yunet_sface`), provisional `eps=0.45`. Decision 2026-10-16: no production engine cutover (L/Q/P open). `insightface` is not a declared dependency. buffalo_l is not cleared to redistribute. `docs/PRODUCT.md` still says FaceKit is the only identity engine. That sentence was left alone on purpose |
 | PR-14 | P1 | BLOCKED | FaceKit owner pack. Workflow and helper exist. No pack on this machine. Evidence JSON is not PASS |
 | PR-15 | P2 | DEFERRED | Encryption. No SQLCipher, no DPAPI. `docs/THREAT-MODEL.md` and `docs/decisions/2026-10-16-store-encryption-deferred.md` match the code. Not implemented |
-| PR-16 | P1 | OPEN, not reproduced | Replacing the bytes of a file keeps the old `media` row (keyed by sha256 in `ingest.py` `_should_skip`) and inserts a second row for the new digest at the same path (`ingest.py` insert around the `media_id is None` branch). Thumb URLs cache by `media_id`. Needs its own failing test before an edit; a wrong fix would break incremental ingest |
-| PR-17 | P2 | OPEN, read only | `erasure.delete_person` deletes faces, embeddings, and the person. It does not clear `clusters.centroid`. A 512-d template can remain on the cluster row |
+| PR-16 | P1 | REPAIRED | New sha256 at a path used to leave the old `media.path` on the replacement file. `claim_new_media` clears that path first. Old digest and confirmed faces stay. | `test_replaced_bytes_do_not_keep_the_old_path` |
+| PR-17 | P2 | REPAIRED | `delete_person` left `clusters.centroid`. An empty cluster now drops it. A cluster with other faces is rebuilt from those `faces.embedding` values. | `test_delete_person_drops_centroid_of_their_cluster` |
 | PR-18 | P1 offline | OPEN, not executed | `observers.clip_embed` and `semantic_visual.py` call `open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")`. `open_clip` is not installed in the audit venv. The call was not run. `docs/OPTIONAL-MODALITY-STATUS.md` already says the first download is a deliberate human step. This audit did not prove install, tests, or ordinary browse contact the network |
-| PR-19 | P2 | OPEN, not re-tested | Text search (`search.py` around the OCR substring take) uses `row.get("score") or 1.0`, so a missing or zero score becomes 1.0, and the first pass stops at `limit` in payload order before BM25. Not changed |
+| PR-19 | P2 | REPAIRED | `score or 1.0` promoted a stored 0 to 1.0. Missing score is still 1.0. | `test_text_search_keeps_a_zero_score` |
 | PR-20 | — | NOT REPRODUCED | Windows Python 3.14 access violation. Prior evidence says ingest completion is queued onto the Qt thread (`QMetaObject.invokeMethod`, `QueuedConnection`) and `Shell.qml` does not import `QtMultimedia`. No `0xC0000005` string in the tree. Not executed on Windows in this pass. Do not treat the old note as a new crash, and do not treat this pass as a Windows retest |
 | PR-21 | P2 env | OBSERVED | Full-suite exit 134 in this container after a pass summary. Subsets exit 0. Not a product assertion failure |
 
@@ -125,4 +126,4 @@ Accepted limitations that are not, by themselves, the release block: plaintext s
 2. Close L/Q/P (redistribute YuNet/SFace or not; Semblon eval of provisional `eps=0.45`; native ARM64) before any engine sentence in `docs/PRODUCT.md` changes.
 3. Provide the owner pack and record PASS, or keep issue 06 blocked.
 4. Provide Authenticode material, or keep Gate C blocked.
-5. Whether overwriting a file in place (PR-16) should replace the old media row or keep both. Not chosen here.
+5. Replacing bytes at a path now keeps the old digest and drops its path. That choice is in `claim_new_media` and tested. It is not a request to delete the old faces.

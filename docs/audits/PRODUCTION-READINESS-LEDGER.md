@@ -21,13 +21,13 @@ Action list for the audit in `docs/audits/PRODUCTION-READINESS-AUDIT.md`. This i
 | PR-13 | P0 | BLOCKED | Identity pack | Redistribution and Q-gate eval. Do not edit `PRODUCT.md` until that decision | `docs/decisions/2026-10-16-identity-engine-evaluation.md` |
 | PR-14 | P1 | BLOCKED | Owner evidence | Run the owner pack workflow on a machine that has the pack | No PASS JSON in this environment |
 | PR-15 | P2 | DEFERRED | Store | Do not implement encryption in this release | Decision 2026-10-16 |
-| PR-16 | P1 | OPEN | Ingest | Same path, new bytes, second `media` row. Write a failing test before changing skip/insert | Read of `ingest.py` sha256 skip and insert. Not executed |
-| PR-17 | P2 | OPEN | Erasure | Null or rebuild `clusters.centroid` when a person's faces are deleted | Read of `erasure.delete_person`. Not changed |
+| PR-16 | P1 | REPAIRED | Ingest | `claim_new_media` clears the old path when a new digest is inserted there | `test_replaced_bytes_do_not_keep_the_old_path` |
+| PR-17 | P2 | REPAIRED | Erasure | Empty cluster drops `centroid`. Remaining faces rebuild it from `faces.embedding` | `test_delete_person_drops_centroid_of_their_cluster` |
 | PR-18 | P1 | OPEN | Optional CLIP | Confirm `pretrained="openai"` cannot run except as the documented human download | `observers.py` clip_embed. Not executed |
-| PR-19 | P2 | OPEN | Text search | Do not map a missing score to 1.0 if a test shows it ranks junk first | `search.py` OCR take. Not changed |
+| PR-19 | P2 | REPAIRED | Text search | A stored score of 0 stays 0. Only a missing score becomes 1.0 | `test_text_search_keeps_a_zero_score` |
 | PR-20 | P0 hist. | NOT RE-TESTED | Windows shell | Re-run the 3.14 shell on Windows. Queued ingest completion remains the recorded fix | No Windows process in this audit |
 | PR-21 | P2 | OBSERVED | Test host | Full pytest in this container aborts at finalization (exit 134) after a green summary. Do not treat that as a hidden pass or as a proven GitHub failure | `/tmp/pytest-final.txt`: 911 passed, 6 skipped, EXIT 134 |
 
 `merge_clusters` person stamp: **kept**. Tests require one shared person on every survivor face and reject two different persons. Not a ledger item to "fix" without a product change.
 
-Local suite note: the 911 figure is **before** PR-09 and PR-10. Those two tests were run after, with the review/memory/cluster slice, and passed. The full suite was not repeated after PR-09/PR-10 because the previous full process aborted in teardown and the new tests do not import Qt.
+Continuation on 2026-10-22 re-ran the repair slice (`70 passed`) and the new path, centroid, and score tests inside `38 passed`, both exit 0. The full suite was not repeated. GitHub Actions was not green at the start of this continuation.
