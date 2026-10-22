@@ -63,3 +63,82 @@ def test_search_similar_goes_through_the_index_seam(tmp_path, monkeypatch):
     assert calls["n"] == 1
     assert rec["status"] == "SUCCESS"
     assert rec["fallback"] == "LIBRARY_SCAN"
+
+
+def _unit_index(path: Path, ids: list[str], matrix: np.ndarray) -> None:
+    n = len(ids)
+    labels = np.array(ids, dtype="U")
+    kind = np.array(["appearance"] * n, dtype="U")
+    np.savez(
+        path,
+        matrix=matrix.astype(np.float32),
+        item_id=labels,
+        kind=kind,
+        provider=kind,
+        modality=kind,
+        pack_id=np.array(["pack-a"] * n, dtype="U"),
+    )
+
+
+def test_pickle_index_is_not_a_match_list(tmp_path):
+    """An object-array index must not load. None sends search back to SQLite."""
+    from semblon.ann_index import index_path, search_index
+
+    store = tmp_path / "s.sqlite"
+    store.write_bytes(b"")
+    np.savez(
+        index_path(store),
+        matrix=np.zeros((1, 2), np.float32),
+        item_id=np.array(["obj"], dtype=object),
+    )
+    found = search_index(
+        store,
+        item_id="obj",
+        modality="appearance",
+        pack_id="pack-a",
+        vector=np.ones(2, np.float32).tobytes(),
+        dim=2,
+        limit=5,
+    )
+    assert found is None
+
+
+def test_uncovered_query_is_none_and_a_lone_row_is_an_empty_hit_list(tmp_path):
+    from semblon.ann_index import index_path, search_index
+
+    store = tmp_path / "s.sqlite"
+    store.write_bytes(b"")
+    _unit_index(index_path(store), ["a"], np.array([[1.0, 0.0]], np.float32))
+    kwargs = {
+        "modality": "appearance",
+        "pack_id": "pack-a",
+        "vector": np.array([1.0, 0.0], np.float32).tobytes(),
+        "dim": 2,
+        "limit": 5,
+    }
+    assert search_index(store, item_id="missing", **kwargs) is None
+    assert search_index(store, item_id="a", **kwargs) == []
+    assert (
+        search_index(
+            store,
+            item_id="a",
+            modality="appearance",
+            pack_id="pack-a",
+            vector=np.zeros(2, np.float32).tobytes(),
+            dim=2,
+            limit=5,
+        )
+        is None
+    )
+    assert (
+        search_index(
+            store,
+            item_id="a",
+            modality="appearance",
+            pack_id="pack-a",
+            vector=np.zeros(4, np.float32).tobytes(),
+            dim=4,
+            limit=5,
+        )
+        is None
+    )

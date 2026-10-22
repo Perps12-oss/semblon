@@ -1044,6 +1044,11 @@ def test_people_split_uses_visual_face_selection_and_merge_target(tmp_path, monk
     assert root.findChild(QObject, "mergeTargetFlow") is not None
     bridge.openPeople()
     bridge.selectGroup("c1")
+    crop = bridge.face_crop_spec("f1")
+    assert crop is not None
+    assert crop["bbox"] == (1, 2, 29, 28)
+    candidates = bridge.mergeCandidates
+    assert candidates and candidates[0]["faceCount"] == 1
     assert bridge.selectedTitle == "Candidate group"
     assert bridge.selectedBandLabel.startswith("Needs review")
     assert bridge.selectedCount == 3
@@ -1061,6 +1066,10 @@ def test_people_split_uses_visual_face_selection_and_merge_target(tmp_path, monk
     assert bridge.canMergeSelected is True
     assert bridge.mergeSelectedGroup().startswith("Merged")
     assert [name for name, _args, _kwargs in calls] == ["split", "merge"]
+    from PySide6.QtCore import QMetaObject
+
+    assert QMetaObject.invokeMethod(bridge, "findSimilarFaces") is True
+    assert bridge.searchDoorLabel == "Same face"
     shutdown_shell(engine)
 
 

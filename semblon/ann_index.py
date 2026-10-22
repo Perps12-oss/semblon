@@ -83,18 +83,26 @@ def search_index(
     dim: int,
     limit: int,
 ) -> list[dict] | None:
-    """Neighbours from the derived index, or None when the index is absent."""
+    """Neighbours from the derived index.
+
+    None means this file cannot answer, so the caller scans SQLite. An empty
+    list is a real miss inside an index that does contain the query.
+    """
     path = index_path(store)
     if not path.is_file():
         return None
     try:
-        data = np.load(path, allow_pickle=False)
-    except ValueError:
-        # Older indexes stored object arrays and required pickle. The file is
-        # derived. SQLite stays authoritative until the next rebuild.
+        with np.load(path, allow_pickle=False) as data:
+            matrix = np.asarray(data["matrix"], dtype=np.float32)
+            ids = [str(x) for x in data["item_id"].tolist()]
+            modalities = [str(x) for x in data["modality"].tolist()]
+            packs = [str(x) for x in data["pack_id"].tolist()]
+            kinds = [str(x) for x in data["kind"].tolist()]
+            providers = [str(x) for x in data["provider"].tolist()]
+    except (OSError, ValueError, KeyError):
+        # Older indexes stored object arrays and required pickle. A broken
+        # derived file is not a match list. SQLite stays authoritative.
         return None
-    matrix = np.asarray(data["matrix"], dtype=np.float32)
-    ids = [str(x) for x in data["item_id"].tolist()]
     if item_id not in ids or matrix.shape[0] == 0:
         return None
     query = np.frombuffer(vector, dtype=np.float32, count=dim).astype(np.float32)
@@ -103,10 +111,6 @@ def search_index(
         return None
     query = query / norm
     scores = matrix @ query
-    modalities = [str(x) for x in data["modality"].tolist()]
-    packs = [str(x) for x in data["pack_id"].tolist()]
-    kinds = [str(x) for x in data["kind"].tolist()]
-    providers = [str(x) for x in data["provider"].tolist()]
     order = np.argsort(-scores)
     hits = []
     for pos in order:

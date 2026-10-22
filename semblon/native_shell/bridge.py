@@ -3056,6 +3056,7 @@ class ShellBridge(QObject):
                             named=False, names=[], kind="track", band="track"
                         ),
                         "count": int(item.get("face_count") or len(members) or 0),
+                        "faceCount": int(item.get("face_count") or len(members) or 0),
                         "named": False,
                         "mediaId": media_id,
                         "faceId": face_id,

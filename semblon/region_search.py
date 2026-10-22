@@ -349,7 +349,7 @@ def _as_text_result(rec: dict, *, token: str, quality: SimilarityProfile) -> dic
                 "media_id": media_id,
                 "kind": "text",
                 "provider": item.get("provider") or "tesseract",
-                "score": float(item.get("score") or 1.0),
+                "score": 1.0 if item.get("score") is None else float(item.get("score")),
                 "why": "OCR text overlapped the selection; not a person",
             }
         )

@@ -664,6 +664,27 @@ def test_text_search_keeps_a_zero_score(tmp_path):
     assert by_id["t1"] == 1.0
 
 
+def test_region_text_door_keeps_a_zero_score():
+    """The selection text door must not turn the stored 0 back into 1.0."""
+    from semblon.region_search import _as_text_result
+    from semblon.similarity_profile import resolve_search_quality
+
+    out = _as_text_result(
+        {
+            "status": "SUCCESS",
+            "items": [
+                {"item_id": "t0", "media_id": "m1", "provider": "ocr", "score": 0},
+                {"item_id": "t1", "media_id": "m2", "provider": "ocr", "score": None},
+            ],
+        },
+        token="semblon",
+        quality=resolve_search_quality("balanced"),
+    )
+    by_id = {item["item_id"]: item["score"] for item in out["items"]}
+    assert by_id["t0"] == 0.0
+    assert by_id["t1"] == 1.0
+
+
 def test_parallel_hash_decodes_the_same_bytes(tmp_path):
     from semblon.ingest import ingest
 
