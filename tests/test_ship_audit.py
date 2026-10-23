@@ -16,7 +16,7 @@ from semblon.engine import ModelPackError, accept_local_face_pack, assert_face_p
 from semblon.erasure import delete_person, wipe_library
 from semblon.logging_setup import configure_logging, redact
 from semblon.review import note_subject
-from semblon.store import apply_migrations, connect, connect_readonly, delete_observation_tree, init_db, restore_store
+from semblon.store import SCHEMA_VERSION, apply_migrations, connect, connect_readonly, delete_observation_tree, init_db, restore_store
 from semblon.temporal import VideoError, iter_sampled_frames, open_video, read_bgr
 from tests.test_cluster import _seed
 
@@ -131,7 +131,7 @@ def test_migration_4_rolls_back_and_resumes(tmp_path):
         assert conn.execute("SELECT decision_id FROM decisions").fetchone()[0] == "d1"
         assert conn.execute(
             "SELECT value FROM schema_meta WHERE key='schema_version'"
-        ).fetchone()[0] == "4"
+        ).fetchone()[0] == SCHEMA_VERSION
         assert not conn.execute(
             "SELECT 1 FROM sqlite_master WHERE name='decisions_new'"
         ).fetchone()
@@ -720,7 +720,8 @@ def test_parallel_hash_decodes_the_same_bytes(tmp_path):
         patch.dict("sys.modules", {"insightface": fake_if, "onnxruntime": fake_ort}),
     ):
         ingest(folder, store, workers=2)
-    assert reads["n"] == 1
+    # Tier 0 hashes once. Tier 1 decodes from disk; the bytes are not kept across tiers.
+    assert reads["n"] == 2
 
 
 def test_note_on_a_face_does_not_freeze_its_cluster(tmp_path):

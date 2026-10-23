@@ -78,6 +78,15 @@ def test_eta_uses_ema_and_is_absent_without_a_rate():
     assert card["title"] == "Getting your library ready…"
     assert card["stats"] == "20 of 30 files · 5 faces found"
     assert card["meta"].startswith("66.7%, Elapsed 0:00:15 · ETA ")
+    indexed = scan_card(
+        stage="ingest",
+        kind="progress",
+        files_processed=12,
+        files_total=40,
+        outcome="indexed",
+    )
+    assert indexed["title"] == "Indexing pictures for search…"
+    assert indexed["stats"] == "12 of 40 indexed"
 
 
 def test_titles_match_the_deck_and_do_not_call_failure_completed():

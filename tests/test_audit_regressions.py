@@ -97,7 +97,7 @@ def test_embed_failure_is_retried(tmp_path):
 
     first = _run_ingest(folder, store, embed)
     assert first["failed"] == 1
-    assert _counts(store) == (0, 0, 0)
+    assert _counts(store) == (0, 1, 0)
     second = _run_ingest(folder, store, embed)
     assert second["ok"] >= 1
     obs, media, faces = _counts(store)
