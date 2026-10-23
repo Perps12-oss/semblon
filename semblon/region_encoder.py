@@ -19,6 +19,7 @@ import json
 import math
 import os
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -86,6 +87,13 @@ _SESSION_KEY: tuple[str, str] | None = None
 _PROBE: tuple[str, int, int, bool, str | None] | None = None
 _DEAD = False
 _LOCK = threading.Lock()
+# Separate from _LOCK. Holding _LOCK across session.run deadlocked startup.
+_LANE = threading.Lock()
+_LANE_META = threading.Lock()
+_INTERACTIVE = threading.Event()
+_INTERACTIVE_DEPTH = 0
+# Indexing yields this long per image, then takes the lane again.
+_YIELD_CAP_S = 3.0
 
 
 class RegionPackError(RuntimeError):
@@ -147,36 +155,43 @@ def probe_region_pack(root: Path | None = None) -> tuple[bool, str | None]:
     with _LOCK:
         if _PROBE is not None and _PROBE[:3] == stamp:
             return _PROBE[3], _PROBE[4]
+    def remember(ok: bool, note: str | None) -> tuple[bool, str | None]:
+        global _PROBE
+        with _LOCK:
+            _PROBE = (*stamp, ok, note)
+        return ok, note
+
     if not onnx.is_file():
-        return False, (
-            f"unavailable: region encoder missing ({WEIGHT_NAME}). "
-            "Run tools/fetch_region_pack.py or place the pinned ONNX under "
-            "~/.semblon/models/region/. Colour fallback stays labelled colour."
+        return remember(
+            False,
+            (
+                f"unavailable: region encoder missing ({WEIGHT_NAME}). "
+                "Run tools/fetch_region_pack.py or place the pinned ONNX under "
+                "~/.semblon/models/region/. Colour fallback stays labelled colour."
+            ),
         )
     if onnx.stat().st_size < 1024:
-        return False, "unavailable: region ONNX looks truncated"
+        return remember(False, "unavailable: region ONNX looks truncated")
     try:
         digest = _sha256_file(onnx).lower()
     except OSError as exc:
-        return False, f"unavailable: region ONNX unreadable ({exc.__class__.__name__})"
+        return remember(False, f"unavailable: region ONNX unreadable ({exc.__class__.__name__})")
     expected = KNOWN_SHA256.get(WEIGHT_NAME, "").lower()
     if not expected or digest != expected:
-        return False, "unavailable: region ONNX hash does not match the pinned pack"
+        return remember(False, "unavailable: region ONNX hash does not match the pinned pack")
     pin = home / PIN_NAME
     if not pin.is_file():
-        return False, f"unavailable: region pack pin missing ({PIN_NAME})"
+        return remember(False, f"unavailable: region pack pin missing ({PIN_NAME})")
     try:
         pin_data = json.loads(pin.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
-        return False, "unavailable: region pack pin is unreadable"
+        return remember(False, "unavailable: region pack pin is unreadable")
     if not isinstance(pin_data, dict):
-        return False, "unavailable: region pack pin is invalid"
+        return remember(False, "unavailable: region pack pin is invalid")
     pin_sha = str(pin_data.get("sha256") or "").strip().lower()
     if pin_sha != digest:
-        return False, "unavailable: region pack pin does not match the ONNX"
-    with _LOCK:
-        _PROBE = (*stamp, True, None)
-    return True, None
+        return remember(False, "unavailable: region pack pin does not match the ONNX")
+    return remember(True, None)
 
 
 def active_pack(root: Path | None = None) -> tuple[str, int] | None:
@@ -187,6 +202,67 @@ def active_pack(root: Path | None = None) -> tuple[str, int] | None:
     if not ready:
         return None
     return pack_id_for(KNOWN_SHA256[WEIGHT_NAME]), OUTPUT_DIM
+
+
+def _begin_interactive() -> None:
+    global _INTERACTIVE_DEPTH
+    with _LANE_META:
+        _INTERACTIVE_DEPTH += 1
+        _INTERACTIVE.set()
+
+
+def _end_interactive() -> None:
+    global _INTERACTIVE_DEPTH
+    with _LANE_META:
+        _INTERACTIVE_DEPTH = max(0, _INTERACTIVE_DEPTH - 1)
+        if _INTERACTIVE_DEPTH == 0:
+            _INTERACTIVE.clear()
+
+
+def _lane_enter(
+    *,
+    interactive: bool,
+    cancelled=None,
+    yield_budget: list[float] | None,
+) -> None:
+    """One ONNX forward at a time. Indexing waits briefly for a Lens search."""
+    if interactive:
+        _begin_interactive()
+    try:
+        while True:
+            if cancelled is not None and cancelled():
+                raise RegionPackError("cancelled")
+            if (
+                not interactive
+                and _INTERACTIVE.is_set()
+                and yield_budget is not None
+                and yield_budget[0] < _YIELD_CAP_S
+            ):
+                start = time.monotonic()
+                _INTERACTIVE.wait(0.05)
+                yield_budget[0] += time.monotonic() - start
+                continue
+            if not _LANE.acquire(timeout=0.05):
+                continue
+            if (
+                not interactive
+                and _INTERACTIVE.is_set()
+                and yield_budget is not None
+                and yield_budget[0] < _YIELD_CAP_S
+            ):
+                _LANE.release()
+                continue
+            return
+    except BaseException:
+        if interactive:
+            _end_interactive()
+        raise
+
+
+def _lane_leave(*, interactive: bool) -> None:
+    _LANE.release()
+    if interactive:
+        _end_interactive()
 
 
 def _bounded(fn, *, seconds: float = ENCODE_TIMEOUT_S):
@@ -313,15 +389,8 @@ def _l2(vec: np.ndarray) -> np.ndarray:
     return out
 
 
-def _hidden_now(image_bgr: np.ndarray, root: Path | None) -> np.ndarray:
-    """Token matrix (CLS at row 0, then patches). One forward. Not normalised."""
-    session = _session(root)
-    tensor = _tensor(image_bgr)
-    input_name = session.get_inputs()[0].name
-    try:
-        outputs = session.run(None, {input_name: tensor})
-    except Exception as exc:  # noqa: BLE001 — surface a pack failure, do not invent a vector
-        raise RegionPackError(f"region encoder failed: {exc.__class__.__name__}") from exc
+def _token_matrices(outputs, count: int) -> list[np.ndarray]:
+    """One token matrix per batch row. CLS stays at column 0."""
     hidden = None
     for value in outputs:
         arr = np.asarray(value)
@@ -331,15 +400,112 @@ def _hidden_now(image_bgr: np.ndarray, root: Path | None) -> np.ndarray:
     if hidden is None:
         raise RegionPackError("region encoder returned no 384-d hidden state")
     array = np.asarray(hidden, dtype=np.float32)
-    if array.ndim == 3:
-        array = array[0]
-    if array.ndim != 2 or array.shape[-1] != OUTPUT_DIM:
+    if array.ndim == 2:
+        if count != 1 or array.shape[-1] != OUTPUT_DIM:
+            raise RegionPackError(f"unexpected encoder shape {array.shape}")
+        return [array]
+    if array.ndim != 3 or int(array.shape[0]) != int(count) or array.shape[-1] != OUTPUT_DIM:
         raise RegionPackError(f"unexpected encoder shape {array.shape}")
-    return array
+    return [np.asarray(array[index], dtype=np.float32) for index in range(int(count))]
 
 
-def _embed_now(image_bgr: np.ndarray, root: Path | None, *, pool: str) -> bytes:
-    hidden = _hidden_now(image_bgr, root)
+def _run_hidden(session, tensor: np.ndarray, count: int) -> list[np.ndarray]:
+    input_name = session.get_inputs()[0].name
+    try:
+        outputs = session.run(None, {input_name: tensor})
+    except RegionPackError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — surface a pack failure, do not invent a vector
+        raise RegionPackError(f"region encoder failed: {exc.__class__.__name__}") from exc
+    return _token_matrices(outputs, count)
+
+
+def _hidden_now(
+    image_bgr: np.ndarray,
+    root: Path | None,
+    *,
+    interactive: bool = False,
+    cancelled=None,
+    yield_budget: list[float] | None = None,
+) -> np.ndarray:
+    """Token matrix (CLS at row 0, then patches). One forward. Not normalised."""
+    if cancelled is not None and cancelled():
+        raise RegionPackError("cancelled")
+    session = _session(root)
+    tensor = _tensor(image_bgr)
+    if cancelled is not None and cancelled():
+        raise RegionPackError("cancelled")
+    _lane_enter(interactive=interactive, cancelled=cancelled, yield_budget=yield_budget)
+    try:
+        if cancelled is not None and cancelled():
+            raise RegionPackError("cancelled")
+        rows = _run_hidden(session, tensor, 1)
+    finally:
+        _lane_leave(interactive=interactive)
+    return rows[0]
+
+
+def encode_images(
+    images: list[np.ndarray],
+    root: Path | None = None,
+    *,
+    interactive: bool = False,
+    cancelled=None,
+    yield_budget: list[float] | None = None,
+) -> list[np.ndarray]:
+    """One forward for every still-window and proposal. Same pixels as separate calls.
+
+    The pinned graph takes ``batch_size``. A failed batch falls back to one row
+    at a time inside the same call, so indexing does not depend on the batch path.
+    """
+
+    def run() -> list[np.ndarray]:
+        if cancelled is not None and cancelled():
+            raise RegionPackError("cancelled")
+        if not images:
+            raise RegionPackError("region encoder needs an image")
+        session = _session(root)
+        tensors = [_tensor(image) for image in images]
+        batch = np.concatenate(tensors, axis=0)
+        if cancelled is not None and cancelled():
+            raise RegionPackError("cancelled")
+        _lane_enter(interactive=interactive, cancelled=cancelled, yield_budget=yield_budget)
+        try:
+            if cancelled is not None and cancelled():
+                raise RegionPackError("cancelled")
+            try:
+                return _run_hidden(session, batch, len(images))
+            except RegionPackError as exc:
+                if "cancelled" in str(exc):
+                    raise
+                rows: list[np.ndarray] = []
+                for tensor in tensors:
+                    if cancelled is not None and cancelled():
+                        raise RegionPackError("cancelled")
+                    rows.extend(_run_hidden(session, tensor, 1))
+                return rows
+        finally:
+            _lane_leave(interactive=interactive)
+
+    return _bounded(run)
+
+
+def _embed_now(
+    image_bgr: np.ndarray,
+    root: Path | None,
+    *,
+    pool: str,
+    interactive: bool = False,
+    cancelled=None,
+    yield_budget: list[float] | None = None,
+) -> bytes:
+    hidden = _hidden_now(
+        image_bgr,
+        root,
+        interactive=interactive,
+        cancelled=cancelled,
+        yield_budget=yield_budget,
+    )
     vec = _pool(hidden, pool=pool)
     if vec.size != OUTPUT_DIM:
         raise RegionPackError(f"region encoder dim {vec.size} != {OUTPUT_DIM}")
@@ -347,7 +513,12 @@ def _embed_now(image_bgr: np.ndarray, root: Path | None, *, pool: str) -> bytes:
 
 
 def content_patch_records(
-    image_bgr: np.ndarray, root: Path | None = None
+    image_bgr: np.ndarray,
+    root: Path | None = None,
+    *,
+    interactive: bool = False,
+    cancelled=None,
+    yield_budget: list[float] | None = None,
 ) -> tuple[bytes, list[dict]]:
     """CLS bytes plus every content patch of this frame.
 
@@ -357,7 +528,15 @@ def content_patch_records(
     """
 
     def run() -> tuple[bytes, list[dict]]:
-        hidden = _hidden_now(image_bgr, root)
+        if cancelled is not None and cancelled():
+            raise RegionPackError("cancelled")
+        hidden = _hidden_now(
+            image_bgr,
+            root,
+            interactive=interactive,
+            cancelled=cancelled,
+            yield_budget=yield_budget,
+        )
         return _split_content_patches(image_bgr, hidden)
 
     return _bounded(run)
@@ -408,12 +587,29 @@ def _split_content_patches(image: np.ndarray, hidden: np.ndarray) -> tuple[bytes
     return cls, records
 
 
-def embed_bgr(image_bgr: np.ndarray, root: Path | None = None, *, pool: str | None = None) -> bytes:
+def embed_bgr(
+    image_bgr: np.ndarray,
+    root: Path | None = None,
+    *,
+    pool: str | None = None,
+    interactive: bool = False,
+    cancelled=None,
+    yield_budget: list[float] | None = None,
+) -> bytes:
     """L2-normalised float32 bytes. Raises RegionPackError when the pack cannot run."""
     chosen = pool or POOL
     if chosen not in {"cls", "mean"}:
         raise RegionPackError(f"unknown region pool {chosen}")
-    return _bounded(lambda: _embed_now(image_bgr, root, pool=chosen))
+    return _bounded(
+        lambda: _embed_now(
+            image_bgr,
+            root,
+            pool=chosen,
+            interactive=interactive,
+            cancelled=cancelled,
+            yield_budget=yield_budget,
+        )
+    )
 
 
 def crop_box(image: np.ndarray, box: tuple[float, float, float, float]) -> np.ndarray:
@@ -525,93 +721,93 @@ def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
         digest = KNOWN_SHA256[WEIGHT_NAME]
         pack = pack_id_for(digest)
         patch_pack = pack_id_patches(digest)
+        yield_budget = [0.0]
+        jobs: list[tuple[str, np.ndarray, tuple]] = []
+        windows = patch_windows(image)
+        jobs.append(("frame", windows[0][0], (0, 0)))
+        for window, x_off, y_off in windows[1:]:
+            jobs.append(("window", window, (int(x_off), int(y_off))))
+        for box in proposal_boxes(image):
+            try:
+                jobs.append(("proposal", crop_box(image, box), tuple(float(v) for v in box)))
+            except RegionPackError:
+                continue
+        if not jobs:
+            return {**counts, "note": "region encoder needs an image"}
         try:
-            scene, patches = content_patch_records(image)
+            hidden_rows = encode_images(
+                [job[1] for job in jobs],
+                yield_budget=yield_budget,
+            )
         except RegionPackError as exc:
             return {**counts, "note": str(exc)}
         except Exception as exc:  # noqa: BLE001 — a bad encoder must not roll back colour ingest
             return {**counts, "note": f"region encoder failed: {exc.__class__.__name__}"}
-        dim = int(len(scene) // 4)
-        persist_item(
-            conn,
-            observation_id=observation_id,
-            run_id=run_id,
-            kind="clip",
-            provider=PROVIDER,
-            payload={
-                "role": "scene",
-                "space": MODEL_FAMILY,
-                "preprocess": "letterbox-224-imagenet-cls-l2",
-                "identity": "not facekit",
-                "display": False,
-            },
-            embedding=scene,
-            modality=MODALITY_SCENE,
-            pack_id=pack,
-            dim=dim,
-        )
-        counts["scene"] += 1
-        for record in patches:
-            persist_item(
-                conn,
-                observation_id=observation_id,
-                run_id=run_id,
-                kind="clip",
-                provider=PROVIDER,
-                payload={
-                    "role": "region_patch",
-                    "space": MODEL_FAMILY,
-                    "preprocess": "letterbox-224-imagenet-patch-l2",
-                    "grid": record["grid"],
-                    "gx": record["gx"],
-                    "gy": record["gy"],
-                    "identity": "not facekit",
-                    "display": False,
-                },
-                bbox=record["bbox"],
-                embedding=record["blob"],
-                modality=MODALITY_PATCH,
-                pack_id=patch_pack,
-                dim=int(len(record["blob"]) // 4),
-            )
-            counts["patch"] += 1
-        for window, x_off, y_off in patch_windows(image)[1:]:
-            try:
-                _tile_cls, tile_patches = content_patch_records(window)
-            except RegionPackError:
+        if len(hidden_rows) != len(jobs):
+            return {**counts, "note": "region encoder returned the wrong batch"}
+        for (kind, view, payload), hidden in zip(jobs, hidden_rows):
+            if kind in {"frame", "window"}:
+                x_off, y_off = payload
+                try:
+                    scene, patches = _split_content_patches(view, hidden)
+                except RegionPackError:
+                    continue
+                if kind == "frame":
+                    persist_item(
+                        conn,
+                        observation_id=observation_id,
+                        run_id=run_id,
+                        kind="clip",
+                        provider=PROVIDER,
+                        payload={
+                            "role": "scene",
+                            "space": MODEL_FAMILY,
+                            "preprocess": "letterbox-224-imagenet-cls-l2",
+                            "identity": "not facekit",
+                            "display": False,
+                        },
+                        embedding=scene,
+                        modality=MODALITY_SCENE,
+                        pack_id=pack,
+                        dim=int(len(scene) // 4),
+                    )
+                    counts["scene"] += 1
+                for record in patches:
+                    x1, y1, x2, y2 = record["bbox"]
+                    extra = {}
+                    if x_off or y_off:
+                        extra["window"] = [x_off, y_off]
+                    persist_item(
+                        conn,
+                        observation_id=observation_id,
+                        run_id=run_id,
+                        kind="clip",
+                        provider=PROVIDER,
+                        payload={
+                            "role": "region_patch",
+                            "space": MODEL_FAMILY,
+                            "preprocess": "letterbox-224-imagenet-patch-l2",
+                            "grid": record["grid"],
+                            "gx": record["gx"],
+                            "gy": record["gy"],
+                            "identity": "not facekit",
+                            "display": False,
+                            **extra,
+                        },
+                        bbox=(
+                            float(x1 + x_off),
+                            float(y1 + y_off),
+                            float(x2 + x_off),
+                            float(y2 + y_off),
+                        ),
+                        embedding=record["blob"],
+                        modality=MODALITY_PATCH,
+                        pack_id=patch_pack,
+                        dim=int(len(record["blob"]) // 4),
+                    )
+                    counts["patch"] += 1
                 continue
-            for record in tile_patches:
-                x1, y1, x2, y2 = record["bbox"]
-                persist_item(
-                    conn,
-                    observation_id=observation_id,
-                    run_id=run_id,
-                    kind="clip",
-                    provider=PROVIDER,
-                    payload={
-                        "role": "region_patch",
-                        "space": MODEL_FAMILY,
-                        "preprocess": "letterbox-224-imagenet-patch-l2",
-                        "grid": record["grid"],
-                        "gx": record["gx"],
-                        "gy": record["gy"],
-                        "window": [x_off, y_off],
-                        "identity": "not facekit",
-                        "display": False,
-                    },
-                    bbox=(float(x1 + x_off), float(y1 + y_off), float(x2 + x_off), float(y2 + y_off)),
-                    embedding=record["blob"],
-                    modality=MODALITY_PATCH,
-                    pack_id=patch_pack,
-                    dim=int(len(record["blob"]) // 4),
-                )
-                counts["patch"] += 1
-        for box in proposal_boxes(image):
-            try:
-                crop = crop_box(image, box)
-                blob = embed_bgr(crop)
-            except RegionPackError:
-                continue
+            blob = _pool(hidden, pool=POOL).astype(np.float32).tobytes()
             persist_item(
                 conn,
                 observation_id=observation_id,
@@ -625,7 +821,7 @@ def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
                     "identity": "not facekit",
                     "display": False,
                 },
-                bbox=box,
+                bbox=payload,
                 embedding=blob,
                 modality=MODALITY_REGION,
                 pack_id=pack,
@@ -638,9 +834,12 @@ def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
 
 
 def reset_session_for_tests() -> None:
-    global _SESSION, _SESSION_KEY, _PROBE, _DEAD
+    global _SESSION, _SESSION_KEY, _PROBE, _DEAD, _INTERACTIVE_DEPTH
     with _LOCK:
         _SESSION = None
         _SESSION_KEY = None
         _PROBE = None
         _DEAD = False
+    with _LANE_META:
+        _INTERACTIVE_DEPTH = 0
+        _INTERACTIVE.clear()

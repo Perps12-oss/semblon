@@ -169,6 +169,81 @@ def load_canvas(store: Path, run_id: str | None = None) -> dict:
         "note": note,
     }
 
+def overlay_boxes_for_media(store: Path, media_id: str) -> list[dict]:
+    """Boxes for one photo. Does not load the rest of the archive."""
+    store = Path(store)
+    if not media_id or not store.is_file():
+        return []
+    conn = connect_readonly(store.resolve())
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA busy_timeout=80")
+        row = conn.execute(
+            """SELECT r.run_id FROM runs r
+               WHERE EXISTS (SELECT 1 FROM faces f WHERE f.run_id = r.run_id)
+               ORDER BY COALESCE(r.finished_at, r.started_at) DESC, r.run_id DESC
+               LIMIT 1"""
+        ).fetchone()
+        if row is None:
+            row = conn.execute(
+                """SELECT run_id FROM runs
+                   ORDER BY COALESCE(finished_at, started_at) DESC, run_id DESC
+                   LIMIT 1"""
+            ).fetchone()
+        if row is None:
+            return []
+        rid = str(row["run_id"])
+        faces = conn.execute(
+            """SELECT f.face_id, f.observation_id, f.bbox_x1, f.bbox_y1, f.bbox_x2, f.bbox_y2,
+                      f.status, f.cluster_id, f.person_id, o.media_id
+               FROM faces f JOIN observations o ON o.observation_id=f.observation_id
+               WHERE f.run_id=? AND o.media_id=?""",
+            (rid, media_id),
+        ).fetchall()
+        items = conn.execute(
+            """SELECT i.item_id, i.kind, i.provider, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2,
+                      i.score, i.payload_json, o.media_id
+               FROM observation_items i JOIN observations o ON o.observation_id=i.observation_id
+               WHERE i.run_id=? AND o.media_id=?""",
+            (rid, media_id),
+        ).fetchall()
+        members = conn.execute(
+            """SELECT tm.track_id, tm.item_id, oi.face_id
+               FROM track_members tm
+               JOIN tracks t ON t.track_id = tm.track_id
+               JOIN observation_items oi ON oi.item_id = tm.item_id
+               JOIN observations o ON o.observation_id = oi.observation_id
+               WHERE t.run_id=? AND o.media_id=?""",
+            (rid, media_id),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+    lane_by_face: dict[str, str] = {}
+    lane_by_item: dict[str, str] = {}
+    for member in members:
+        lane_by_item[str(member["item_id"])] = str(member["track_id"])
+        if member["face_id"]:
+            lane_by_face[str(member["face_id"])] = str(member["track_id"])
+    parsed_items = []
+    for item in items:
+        raw = dict(item)
+        try:
+            payload = json.loads(raw.get("payload_json") or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        raw["payload"] = payload if isinstance(payload, dict) else {}
+        parsed_items.append(raw)
+    board = {
+        "faces": [dict(face) for face in faces],
+        "items": parsed_items,
+        "track_lane_by_face": lane_by_face,
+        "track_lane_by_item": lane_by_item,
+    }
+    return overlay_boxes(board, media_id)
+
+
 def overlay_boxes(board: dict, media_id: str) -> list[dict]:
     """Display boxes for one media. Never includes person_id in the payload."""
     boxes = []

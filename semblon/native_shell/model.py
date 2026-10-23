@@ -151,7 +151,6 @@ class SimilarStripModel(QAbstractListModel):
         return None
 
     def set_rows(self, rows: list) -> None:
-        self.beginResetModel()
         packed = []
         for row in list(rows)[:_STRIP_CAP]:
             media_id = str(row[0])
@@ -162,6 +161,9 @@ class SimilarStripModel(QAbstractListModel):
                 )
             else:
                 packed.append((media_id, score, 0.0, 0.0, 0.0, 0.0))
+        if packed == self._rows:
+            return
+        self.beginResetModel()
         self._rows = packed
         self.endResetModel()
 

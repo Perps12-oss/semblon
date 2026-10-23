@@ -301,6 +301,11 @@ class ShellBridge(QObject):
         self._search_busy = False
         self._search_thread: _VisualSearchThread | None = None
         self._cancel_flag: list[bool] | None = None
+        self._path_cache: dict[str, str] = {}
+        self._index_cache: dict[tuple, tuple[str, str]] = {}
+        self._index_note_at = 0.0
+        self._index_note_media = ""
+        self._library_refresh_at = 0.0
         self._search_failure = ""
         self._install_suggestion = ""
         self._install_suggestion_label = ""
@@ -1829,10 +1834,11 @@ class ShellBridge(QObject):
         self._search_refined_ms = -1
         self._search_busy = True
         self.searchBusyChanged.emit()
+        kept = list(self._similar._rows)
         self._publish_similar(
             "loading",
             f"Similar ({label}): looking through photos already indexed.",
-            [],
+            kept,
             basis=basis,
             basis_label=label,
             persist=False,
@@ -1933,6 +1939,16 @@ class ShellBridge(QObject):
         )
 
     def _refresh_index_note(self) -> None:
+        media_id = self._session.focus_id or ""
+        now = time.monotonic()
+        if (
+            self._job_active
+            and media_id == self._index_note_media
+            and now - self._index_note_at < 0.5
+        ):
+            return
+        self._index_note_at = now
+        self._index_note_media = media_id
         state, note = self._index_for_focus()
         if state == self._index_state and note == self._index_note:
             return
@@ -1945,11 +1961,15 @@ class ShellBridge(QObject):
         media_id = self._session.focus_id or ""
         if not media_id:
             return "", ""
+        cache_key = (media_id, self._index_stamp())
+        if not self._job_active and cache_key in self._index_cache:
+            return self._index_cache[cache_key]
         patch = 0
         coarse = 0
         try:
             store = Path(self._jobs.store)
             conn = connect_readonly(store.resolve())
+            conn.execute("PRAGMA busy_timeout=80")
             try:
                 row = conn.execute(
                     """SELECT
@@ -1966,20 +1986,44 @@ class ShellBridge(QObject):
             patch = int((row[0] if row else 0) or 0)
             coarse = int((row[1] if row else 0) or 0)
         except sqlite3.Error:
+            if self._job_active:
+                return "indexing", "Still indexing. Photos already added can be opened."
             return "unknown", ""
         if patch > 0 and self._job_active:
-            return "patch", "Still indexing. This photo can already be searched."
-        if patch > 0:
-            return "patch", ""
-        if self._job_active:
-            return "indexing", "Still indexing. Photos already added can be opened."
-        if coarse > 0:
-            return "fallback", (
-                "This photo has a coarse index only. Matches may miss the area you point at."
+            result = ("patch", "Still indexing. This photo can already be searched.")
+        elif patch > 0:
+            result = ("patch", "")
+        elif self._job_active:
+            result = ("indexing", "Still indexing. Photos already added can be opened.")
+        elif coarse > 0:
+            result = (
+                "fallback",
+                "This photo has a coarse index only. Matches may miss the area you point at.",
             )
-        return "unindexed", (
-            "This photo is not indexed yet. Add its folder so search can see inside it."
-        )
+        else:
+            result = (
+                "unindexed",
+                "This photo is not indexed yet. Add its folder so search can see inside it.",
+            )
+        if not self._job_active:
+            if len(self._index_cache) > 256:
+                self._index_cache.clear()
+            self._index_cache[cache_key] = result
+        return result
+
+    def _index_stamp(self) -> tuple[int, int]:
+        """Main file and WAL times. A commit changes one of them, so the note is not stuck."""
+        store = Path(self._jobs.store)
+        try:
+            main = int(store.stat().st_mtime_ns)
+        except OSError:
+            main = 0
+        wal = Path(str(store) + "-wal")
+        try:
+            side = int(wal.stat().st_mtime_ns) if wal.is_file() else 0
+        except OSError:
+            side = 0
+        return main, side
 
     @Property(int, notify=similarChanged)
     def similarCount(self) -> int:
@@ -2331,7 +2375,7 @@ class ShellBridge(QObject):
 
     def _load_focus_boxes(self, media_id: str) -> None:
         """Observation outlines for the open still. Face click → face-similar; never stamps identity."""
-        from semblon.canvas_data import overlay_boxes
+        from semblon.canvas_data import overlay_boxes_for_media
 
         self._selected_observation = ""
         self._focus_boxes = []
@@ -2343,10 +2387,10 @@ class ShellBridge(QObject):
         if width <= 0 or height <= 0:
             return
         try:
-            board = self._jobs.canvas()
+            boxes = overlay_boxes_for_media(self._jobs.store, media_id)
         except Exception:
             return
-        for box in overlay_boxes(board, media_id):
+        for box in boxes:
             bbox = box.get("bbox") or []
             if len(bbox) != 4:
                 continue
@@ -4578,7 +4622,15 @@ class ShellBridge(QObject):
         self._poll_job()
 
     def path_for(self, media_id: str) -> str | None:
-        return self._jobs.media_path(media_id)
+        if not media_id:
+            return None
+        if media_id in self._path_cache:
+            return self._path_cache[media_id] or None
+        path = self._jobs.media_path(media_id) or ""
+        if len(self._path_cache) > 4000:
+            self._path_cache.clear()
+        self._path_cache[media_id] = path
+        return path or None
 
     def _start_ingest(self, folder: Path, *, resume: bool = False, reprocess: bool = False) -> None:
         from semblon.observers import resolve_product_observers
@@ -4651,8 +4703,11 @@ class ShellBridge(QObject):
         self.jobChanged.emit()
         if isinstance(current, int) and current != self._progress_seen:
             self._progress_seen = current
-            self._refresh_library()
-            self._refresh_index_note()
+            now = time.monotonic()
+            if now - self._library_refresh_at >= 0.75:
+                self._library_refresh_at = now
+                self._refresh_library()
+                self._refresh_index_note()
 
     @Slot()
     def _queue_ingest_finished(self) -> None:
@@ -4690,6 +4745,9 @@ class ShellBridge(QObject):
                 self._refresh_library()
 
     def _refresh_library(self) -> None:
+        self._path_cache.clear()
+        self._index_cache.clear()
+        self._session.invalidate_reads()
         self._model.reload()
         self._events.record(LIBRARY_CHANGED, {"count": int(self._jobs.archive_count())})
         empty = self._jobs.archive_count() == 0
