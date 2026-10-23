@@ -500,6 +500,8 @@ def test_pip_failure_keeps_the_earlier_output(monkeypatch):
         stderr = "first cause\nsecond cause\n"
         stdout = ""
 
+    monkeypatch.setattr("semblon.preflight.sys.prefix", "/managed")
+    monkeypatch.setattr("semblon.preflight.sys.base_prefix", "/base")
     monkeypatch.setattr("semblon.preflight.subprocess.run", lambda *_args, **_kwargs: Completed())
     try:
         _default_pip_install("pillow==13.0.0")
@@ -509,6 +511,24 @@ def test_pip_failure_keeps_the_earlier_output(monkeypatch):
         raise AssertionError("pip failure was not reported")
     assert "first cause" in text
     assert "second cause" in text
+
+
+def test_pip_install_refuses_system_python(monkeypatch):
+    from semblon.preflight import _default_pip_install
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("pip must not run against system Python")
+
+    monkeypatch.setattr("semblon.preflight.sys.prefix", "/same")
+    monkeypatch.setattr("semblon.preflight.sys.base_prefix", "/same")
+    monkeypatch.setattr("semblon.preflight.subprocess.run", boom)
+    try:
+        _default_pip_install("pillow==13.0.0")
+    except RuntimeError as exc:
+        text = str(exc)
+    else:
+        raise AssertionError("system Python was not refused")
+    assert text == "refusing to change system Python"
 
 
 def test_opencv_load_failure_includes_the_exception_text(monkeypatch):

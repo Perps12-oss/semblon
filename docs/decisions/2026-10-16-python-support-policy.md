@@ -10,6 +10,8 @@ Advertise and CI-test **Python 3.11, 3.12, 3.13, and 3.14** on Windows and Ubunt
 
 Primary release / lock baseline: **Python 3.12**.
 
+**2026-10-23:** GitHub CI runs only that baseline, on Windows. Ubuntu, 3.11, 3.13, 3.14, the lock compile, and `pip-audit` are not executed on Actions. `requires-python` is still `>=3.11,<3.15`. This is a cost cut, not evidence that the other cells install or pass.
+
 ## Evidence (PyPI metadata, 2026-10-16)
 
 | Package | Pin | `requires_python` | Notes |

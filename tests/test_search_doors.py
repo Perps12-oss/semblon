@@ -169,9 +169,7 @@ def test_doors_confidence_badge_and_timing(tmp_path, monkeypatch):
             app.processEvents()
         shot = root.grabWindow()
         assert shot.width() > 0
-        from pathlib import Path
-
-        out = Path("/tmp/search-doors.png")
+        out = tmp_path / "search-doors.png"
         assert shot.save(str(out))
         bridge.scanDuplicates()
         assert bridge.searchDoorLabel == "Duplicates"
