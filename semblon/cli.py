@@ -101,6 +101,16 @@ def main(argv: list[str] | None = None) -> int:
         help="do not clear cluster_id / cluster_person before rewrite",
     )
     lab_sub.add_parser("providers", help="list observation providers and availability")
+    preflight = lab_sub.add_parser(
+        "preflight",
+        help="report pinned dependencies and capabilities; install only with --install",
+    )
+    preflight.add_argument(
+        "--install",
+        default="",
+        metavar="ID",
+        help="install one id into this environment, then verify it",
+    )
     vu = lab_sub.add_parser(
         "visual-understand",
         help="open-vocabulary visual analysis (non-identity; writes visual_cache sidecars)",
@@ -660,6 +670,26 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         print(json.dumps(rec, indent=2))
         return 0
+
+    if args.cmd == "lab" and args.labcmd == "preflight":
+        from semblon.preflight import collect_rows, install_item
+
+        if str(args.install or "").strip():
+            rec = install_item(str(args.install).strip())
+            print(
+                f"{rec['status']} {rec['id']}"
+                + (f" — {rec['error']}" if rec.get("error") else "")
+            )
+            return 0 if rec.get("ready") else 1
+        rows = list(collect_rows())
+        for row in rows:
+            print(f"{row['status']:13} {row['id']:24} {row['detail']}")
+        unresolved = any(
+            row.get("status") == "failed"
+            or (row.get("required") and row.get("status") != "ready")
+            for row in rows
+        )
+        return 1 if unresolved else 0
 
     if args.cmd == "lab" and args.labcmd == "providers":
         from semblon.engine import select_execution_provider
