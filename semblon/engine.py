@@ -14,6 +14,9 @@ import numpy as np
 
 from semblon import ADAPTER_VERSION
 from semblon.identity_config import (
+    CLUSTER_MIN_SIDE,
+    DETECT_LONG_SIDE,
+    DETECT_MIN_FACE_PX,
     DET_SCORE_MIN,
     DET_SIZE,
     EXPECTED_FACE_DIM,
@@ -473,6 +476,55 @@ def _l2_normalize(vec: np.ndarray) -> np.ndarray:
     return out / norm
 
 
+def _detect_long_side(width: int, height: int) -> int:
+    """How wide YuNet's view may be. Not the 320px constructor size.
+
+    A 24MP still used to be detected at full resolution, so a folder on a
+    hard drive spent days inside one network evaluation per photo. The view
+    is capped at DETECT_LONG_SIDE, except a very wide frame is not shrunk
+    past the point where an 80px face would vanish.
+    """
+    long_side = max(int(width), int(height))
+    if long_side <= 0:
+        return DETECT_LONG_SIDE
+    keep_floor = int(round(long_side * (DETECT_MIN_FACE_PX / float(CLUSTER_MIN_SIDE))))
+    return min(long_side, max(DETECT_LONG_SIDE, keep_floor))
+
+
+def _detection_view(img: np.ndarray):
+    """Shrink a large photo for YuNet. Boxes scale back afterwards."""
+    height, width = img.shape[:2]
+    limit = _detect_long_side(width, height)
+    if max(width, height) <= limit:
+        return img, 1.0, 1.0, width, height
+    scale = limit / float(max(width, height))
+    new_w = max(1, int(round(width * scale)))
+    new_h = max(1, int(round(height * scale)))
+    # YuNet wants a multiple of 32. Pad the bottom/right; do not stretch.
+    pad_w = (32 - (new_w % 32)) % 32
+    pad_h = (32 - (new_h % 32)) % 32
+    resized = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    if pad_w or pad_h:
+        canvas = np.zeros((new_h + pad_h, new_w + pad_w, img.shape[2]), dtype=img.dtype)
+        canvas[:new_h, :new_w] = resized
+        view = canvas
+    else:
+        view = resized
+    return view, width / float(new_w), height / float(new_h), new_w, new_h
+
+
+def _scale_face_row(face: np.ndarray, sx: float, sy: float) -> np.ndarray:
+    if sx == 1.0 and sy == 1.0:
+        return face
+    out = np.array(face, dtype=np.float32, copy=True)
+    limit = min(14, int(out.size))
+    for i in range(0, limit, 2):
+        out[i] *= sx
+        if i + 1 < limit:
+            out[i + 1] *= sy
+    return out
+
+
 def embed_bgr(app: FaceSession, img) -> list[dict]:
     """YuNet detect + SFace alignCrop/feature on a BGR array. No disk write."""
     if app is None:
@@ -483,9 +535,10 @@ def embed_bgr(app: FaceSession, img) -> list[dict]:
         # Tests sometimes pass a dummy object and patch this function entirely.
         raise TypeError("embed_bgr expects a FaceSession from load_app()")
 
-    height, width = img.shape[:2]
-    app.detector.setInputSize((int(width), int(height)))
-    _retval, faces = app.detector.detect(img)
+    view, sx, sy, content_w, content_h = _detection_view(img)
+    view_h, view_w = view.shape[:2]
+    app.detector.setInputSize((int(view_w), int(view_h)))
+    _retval, faces = app.detector.detect(view)
     rows: list[dict] = []
     if faces is None:
         return rows
@@ -493,6 +546,9 @@ def embed_bgr(app: FaceSession, img) -> list[dict]:
         face = np.asarray(face, dtype=np.float32).reshape(-1)
         if face.size < 15:
             continue
+        if float(face[0]) >= content_w or float(face[1]) >= content_h:
+            continue
+        face = _scale_face_row(face, sx, sy)
         x, y, w, h = float(face[0]), float(face[1]), float(face[2]), float(face[3])
         score = float(face[14]) if face.size > 14 else float(face[-1])
         try:
