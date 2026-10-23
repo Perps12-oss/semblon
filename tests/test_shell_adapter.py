@@ -189,6 +189,19 @@ def test_qml_exposes_four_operations_and_hides_places():
     assert "timelineRail" not in qml
 
 
+def test_empty_day_repaints_its_own_canvas():
+    qml = (
+        Path(__file__).resolve().parents[1]
+        / "semblon"
+        / "native_shell"
+        / "qml"
+        / "DayCell.qml"
+    ).read_text(encoding="utf-8")
+    assert "id: emptyDayOutline" in qml
+    assert "emptyDayOutline.requestPaint()" in qml
+    assert "parent.requestPaint()" not in qml
+
+
 def test_named_items_do_not_create_people(tmp_path):
     from semblon.user_region import persist_user_region
 

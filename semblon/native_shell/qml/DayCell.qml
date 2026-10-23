@@ -61,6 +61,7 @@ Item {
                       : (cellRoot.revealed ? tokenAccent : (cellRoot.focused ? tokenText : "transparent"))
 
         Canvas {
+            id: emptyDayOutline
             anchors.fill: parent
             visible: cellRoot.inMonth && !cellRoot.hasMedia && !cellRoot.marked
             onPaint: {
@@ -89,7 +90,7 @@ Item {
             }
             Connections {
                 target: dayHover
-                function onContainsMouseChanged() { parent.requestPaint() }
+                function onContainsMouseChanged() { emptyDayOutline.requestPaint() }
             }
         }
 
