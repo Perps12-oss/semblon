@@ -33,6 +33,7 @@ from semblon.region_encoder import (
     MODALITY_REGION,
     PROVIDER,
     WEIGHT_NAME,
+    OUTPUT_DIM,
     RegionPackError,
     active_pack,
     content_patch_records,
@@ -784,6 +785,44 @@ def score_patch_groups(
     return items[: int(limit)]
 
 
+def roi_query_tokens(groups: list[dict], media_id: str, box: tuple[int, int, int, int]) -> np.ndarray | None:
+    """Tokens already stored for this photo whose centres sit in the box.
+
+    The finest stored scale that covers the box is the query. A photo that was
+    indexed does not need another encoder pass.
+    """
+    x, y, w, h = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
+    if w <= 0 or h <= 0:
+        return None
+    x2 = x + w
+    y2 = y + h
+    group = None
+    for item in groups:
+        if str(item.get("media_id") or "") == str(media_id):
+            group = item
+            break
+    if group is None:
+        return None
+    matrix = group["matrix"]
+    hits: list[tuple[float, int]] = []
+    for index, bbox in enumerate(group["boxes"]):
+        cx = (float(bbox[0]) + float(bbox[2])) * 0.5
+        cy = (float(bbox[1]) + float(bbox[3])) * 0.5
+        if cx < x or cy < y or cx >= x2 or cy >= y2:
+            continue
+        area = max(1.0, (float(bbox[2]) - float(bbox[0])) * (float(bbox[3]) - float(bbox[1])))
+        hits.append((area, index))
+    if not hits:
+        return None
+    hits.sort(key=lambda item: item[0])
+    smallest = hits[0][0]
+    selected = [index for area, index in hits if area <= smallest * 1.5]
+    if len(selected) < 4:
+        selected = [index for _area, index in hits]
+    rows = np.asarray(selected, dtype=np.int64)
+    return np.ascontiguousarray(matrix[rows], dtype=np.float32)
+
+
 def search_patches(
     store: Path,
     crop,
@@ -796,6 +835,7 @@ def search_patches(
     token_floor: float = 0.35,
     score_floor: float = 0.28,
     coverage_floor: float = 0.28,
+    query_box: tuple[int, int, int, int] | None = None,
 ) -> dict:
     """Late interaction of the query crop against stored content patches.
 
@@ -803,11 +843,11 @@ def search_patches(
     photo. The match box is the union of those winning patches. Proposal
     rows are not read.
     """
-    ready, missing = probe_region_pack()
+    pack = pack_id_patches(KNOWN_SHA256[WEIGHT_NAME])
     empty = {
         "kind": "region_similar",
         "status": "UNAVAILABLE",
-        "reason": missing or "Region encoder is not installed.",
+        "reason": "Region encoder is not installed.",
         "error_id": "region.NO_PACK",
         "count": 0,
         "items": [],
@@ -818,37 +858,66 @@ def search_patches(
         "engine": "dinov2-patch",
         "note": "A patch match is not a named person.",
     }
-    if not ready:
-        return empty
-    pack = pack_id_patches(KNOWN_SHA256[WEIGHT_NAME])
-    try:
-        _cls, records = content_patch_records(crop, interactive=True, cancelled=cancelled)
-    except RegionPackError as exc:
-        if cancelled is not None and cancelled():
-            empty["status"] = "CANCELLED"
-            empty["reason"] = "Search cancelled."
-            empty["error_id"] = "region.CANCELLED"
+    path = Path(store)
+    groups = None
+    saw_rows = False
+    query = None
+    query_source = "crop-forward"
+    if query_box is not None and exclude_media_id and path.is_file():
+        conn = _open_ro(path)
+        try:
+            groups, saw_rows = load_patch_groups(path, conn, pack, OUTPUT_DIM)
+        finally:
+            conn.close()
+        if saw_rows:
+            stored = roi_query_tokens(groups, str(exclude_media_id), query_box)
+            if stored is not None:
+                query = stored
+                query_source = "index"
+            else:
+                indexed = any(str(item.get("media_id") or "") == str(exclude_media_id) for item in groups)
+                if indexed:
+                    empty["reason"] = "The selection produced no patches."
+                    empty["error_id"] = None
+                    empty["status"] = "NO_RESULT"
+                    empty["indexed"] = True
+                    empty["pack_id"] = pack
+                    empty["query_source"] = "index"
+                    return empty
+    if query is None:
+        ready, missing = probe_region_pack()
+        if not ready:
+            empty["reason"] = missing or empty["reason"]
             return empty
-        empty["reason"] = str(exc)
-        empty["error_id"] = "region.ENCODE"
-        return empty
-    query = np.stack([np.frombuffer(record["blob"], dtype=np.float32).copy() for record in records])
+        try:
+            _cls, records = content_patch_records(crop, interactive=True, cancelled=cancelled)
+        except RegionPackError as exc:
+            if cancelled is not None and cancelled():
+                empty["status"] = "CANCELLED"
+                empty["reason"] = "Search cancelled."
+                empty["error_id"] = "region.CANCELLED"
+                return empty
+            empty["reason"] = str(exc)
+            empty["error_id"] = "region.ENCODE"
+            return empty
+        query = np.stack([np.frombuffer(record["blob"], dtype=np.float32).copy() for record in records])
     stride = max(1, int(token_stride))
     if stride > 1 and query.shape[0] > stride:
         query = query[::stride]
     if query.size == 0:
         empty["reason"] = "The selection produced no patches."
+        empty["query_source"] = query_source
         return empty
-    path = Path(store)
-    if not path.is_file():
-        empty["reason"] = "Store not found. Nothing was searched."
-        empty["error_id"] = "region.NO_STORE"
-        return empty
-    conn = _open_ro(path)
-    try:
-        groups, saw_rows = load_patch_groups(path, conn, pack, int(query.shape[1]))
-    finally:
-        conn.close()
+    if groups is None:
+        if not path.is_file():
+            empty["reason"] = "Store not found. Nothing was searched."
+            empty["error_id"] = "region.NO_STORE"
+            return empty
+        conn = _open_ro(path)
+        try:
+            groups, saw_rows = load_patch_groups(path, conn, pack, int(query.shape[1]))
+        finally:
+            conn.close()
     if not saw_rows:
         empty["reason"] = (
             "These photos have no patch map yet. Add the folder again to index regions."
@@ -881,6 +950,7 @@ def search_patches(
             "similarity_basis": LABEL_SIMILAR,
             "engine": "dinov2-patch",
             "fallback": None,
+            "query_source": query_source,
             "note": "A patch match is not a named person.",
         }
     return {
@@ -897,6 +967,7 @@ def search_patches(
         "similarity_basis": LABEL_SIMILAR,
         "engine": "dinov2-patch",
         "fallback": None,
+        "query_source": query_source,
         "note": "Patch-map match. Not a name and not colour.",
     }
 
@@ -962,38 +1033,46 @@ def _find_similar_from_crop(
             return _attach_understanding(rec, f"Text: {token}.", selection_kind=selection_kind)
 
     ready, missing = probe_region_pack()
-    if ready:
-        dense = search_patches(
+    box = None
+    if query_pixels is not None:
+        box = (
+            int(query_pixels["x"]),
+            int(query_pixels["y"]),
+            int(query_pixels["w"]),
+            int(query_pixels["h"]),
+        )
+    dense = search_patches(
+        store,
+        crop,
+        limit=capped_limit,
+        exclude_media_id=media_id,
+        cancelled=cancelled,
+        token_stride=quality.patch_token_stride,
+        token_floor=quality.patch_token_floor,
+        score_floor=quality.patch_score_floor,
+        coverage_floor=quality.patch_coverage_floor,
+        query_box=box,
+    )
+    dense["search_profile"] = quality.key
+    dense["search_profile_label"] = quality.label
+    if query_pixels is not None:
+        dense["query_pixels"] = query_pixels
+    if dense.get("status") in {"SUCCESS", "NO_RESULT"}:
+        return _attach_understanding(dense, understanding, selection_kind=selection_kind)
+    if dense.get("error_id") == "region.ENCODE":
+        colour = _colour_result(
             store,
             crop,
             limit=capped_limit,
             exclude_media_id=media_id,
             cancelled=cancelled,
-            token_stride=quality.patch_token_stride,
-            token_floor=quality.patch_token_floor,
-            score_floor=quality.patch_score_floor,
-            coverage_floor=quality.patch_coverage_floor,
+            reason=str(dense.get("reason") or "The region encoder did not finish. Showing colour only."),
+            min_score=quality.whole_colour_floor,
+            quality=quality,
         )
-        dense["search_profile"] = quality.key
-        dense["search_profile_label"] = quality.label
         if query_pixels is not None:
-            dense["query_pixels"] = query_pixels
-        if dense.get("status") in {"SUCCESS", "NO_RESULT"}:
-            return _attach_understanding(dense, understanding, selection_kind=selection_kind)
-        if dense.get("error_id") == "region.ENCODE":
-            colour = _colour_result(
-                store,
-                crop,
-                limit=capped_limit,
-                exclude_media_id=media_id,
-                cancelled=cancelled,
-                reason=str(dense.get("reason") or "The region encoder did not finish. Showing colour only."),
-                min_score=quality.whole_colour_floor,
-                quality=quality,
-            )
-            if query_pixels is not None:
-                colour["query_pixels"] = query_pixels
-            return _attach_understanding(colour, understanding, selection_kind=selection_kind)
+            colour["query_pixels"] = query_pixels
+        return _attach_understanding(colour, understanding, selection_kind=selection_kind)
     pack = active_pack() if ready else None
     if pack is not None:
         pack_id, dim = pack

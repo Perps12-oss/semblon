@@ -389,6 +389,37 @@ def _l2(vec: np.ndarray) -> np.ndarray:
     return out
 
 
+def _token_matrices(outputs, count: int) -> list[np.ndarray]:
+    """One token matrix per batch row. CLS stays at column 0."""
+    hidden = None
+    for value in outputs:
+        arr = np.asarray(value)
+        if arr.ndim >= 2 and arr.shape[-1] == OUTPUT_DIM:
+            hidden = arr
+            break
+    if hidden is None:
+        raise RegionPackError("region encoder returned no 384-d hidden state")
+    array = np.asarray(hidden, dtype=np.float32)
+    if array.ndim == 2:
+        if count != 1 or array.shape[-1] != OUTPUT_DIM:
+            raise RegionPackError(f"unexpected encoder shape {array.shape}")
+        return [array]
+    if array.ndim != 3 or int(array.shape[0]) != int(count) or array.shape[-1] != OUTPUT_DIM:
+        raise RegionPackError(f"unexpected encoder shape {array.shape}")
+    return [np.asarray(array[index], dtype=np.float32) for index in range(int(count))]
+
+
+def _run_hidden(session, tensor: np.ndarray, count: int) -> list[np.ndarray]:
+    input_name = session.get_inputs()[0].name
+    try:
+        outputs = session.run(None, {input_name: tensor})
+    except RegionPackError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — surface a pack failure, do not invent a vector
+        raise RegionPackError(f"region encoder failed: {exc.__class__.__name__}") from exc
+    return _token_matrices(outputs, count)
+
+
 def _hidden_now(
     image_bgr: np.ndarray,
     root: Path | None,
@@ -404,33 +435,59 @@ def _hidden_now(
     tensor = _tensor(image_bgr)
     if cancelled is not None and cancelled():
         raise RegionPackError("cancelled")
-    input_name = session.get_inputs()[0].name
     _lane_enter(interactive=interactive, cancelled=cancelled, yield_budget=yield_budget)
     try:
         if cancelled is not None and cancelled():
             raise RegionPackError("cancelled")
-        try:
-            outputs = session.run(None, {input_name: tensor})
-        except RegionPackError:
-            raise
-        except Exception as exc:  # noqa: BLE001 — surface a pack failure, do not invent a vector
-            raise RegionPackError(f"region encoder failed: {exc.__class__.__name__}") from exc
+        rows = _run_hidden(session, tensor, 1)
     finally:
         _lane_leave(interactive=interactive)
-    hidden = None
-    for value in outputs:
-        arr = np.asarray(value)
-        if arr.ndim >= 2 and arr.shape[-1] == OUTPUT_DIM:
-            hidden = arr
-            break
-    if hidden is None:
-        raise RegionPackError("region encoder returned no 384-d hidden state")
-    array = np.asarray(hidden, dtype=np.float32)
-    if array.ndim == 3:
-        array = array[0]
-    if array.ndim != 2 or array.shape[-1] != OUTPUT_DIM:
-        raise RegionPackError(f"unexpected encoder shape {array.shape}")
-    return array
+    return rows[0]
+
+
+def encode_images(
+    images: list[np.ndarray],
+    root: Path | None = None,
+    *,
+    interactive: bool = False,
+    cancelled=None,
+    yield_budget: list[float] | None = None,
+) -> list[np.ndarray]:
+    """One forward for every still-window and proposal. Same pixels as separate calls.
+
+    The pinned graph takes ``batch_size``. A failed batch falls back to one row
+    at a time inside the same call, so indexing does not depend on the batch path.
+    """
+
+    def run() -> list[np.ndarray]:
+        if cancelled is not None and cancelled():
+            raise RegionPackError("cancelled")
+        if not images:
+            raise RegionPackError("region encoder needs an image")
+        session = _session(root)
+        tensors = [_tensor(image) for image in images]
+        batch = np.concatenate(tensors, axis=0)
+        if cancelled is not None and cancelled():
+            raise RegionPackError("cancelled")
+        _lane_enter(interactive=interactive, cancelled=cancelled, yield_budget=yield_budget)
+        try:
+            if cancelled is not None and cancelled():
+                raise RegionPackError("cancelled")
+            try:
+                return _run_hidden(session, batch, len(images))
+            except RegionPackError as exc:
+                if "cancelled" in str(exc):
+                    raise
+                rows: list[np.ndarray] = []
+                for tensor in tensors:
+                    if cancelled is not None and cancelled():
+                        raise RegionPackError("cancelled")
+                    rows.extend(_run_hidden(session, tensor, 1))
+                return rows
+        finally:
+            _lane_leave(interactive=interactive)
+
+    return _bounded(run)
 
 
 def _embed_now(
@@ -665,93 +722,92 @@ def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
         pack = pack_id_for(digest)
         patch_pack = pack_id_patches(digest)
         yield_budget = [0.0]
+        jobs: list[tuple[str, np.ndarray, tuple]] = []
+        windows = patch_windows(image)
+        jobs.append(("frame", windows[0][0], (0, 0)))
+        for window, x_off, y_off in windows[1:]:
+            jobs.append(("window", window, (int(x_off), int(y_off))))
+        for box in proposal_boxes(image):
+            try:
+                jobs.append(("proposal", crop_box(image, box), tuple(float(v) for v in box)))
+            except RegionPackError:
+                continue
+        if not jobs:
+            return {**counts, "note": "region encoder needs an image"}
         try:
-            scene, patches = content_patch_records(image, yield_budget=yield_budget)
+            hidden_rows = encode_images(
+                [job[1] for job in jobs],
+                yield_budget=yield_budget,
+            )
         except RegionPackError as exc:
             return {**counts, "note": str(exc)}
         except Exception as exc:  # noqa: BLE001 — a bad encoder must not roll back colour ingest
             return {**counts, "note": f"region encoder failed: {exc.__class__.__name__}"}
-        dim = int(len(scene) // 4)
-        persist_item(
-            conn,
-            observation_id=observation_id,
-            run_id=run_id,
-            kind="clip",
-            provider=PROVIDER,
-            payload={
-                "role": "scene",
-                "space": MODEL_FAMILY,
-                "preprocess": "letterbox-224-imagenet-cls-l2",
-                "identity": "not facekit",
-                "display": False,
-            },
-            embedding=scene,
-            modality=MODALITY_SCENE,
-            pack_id=pack,
-            dim=dim,
-        )
-        counts["scene"] += 1
-        for record in patches:
-            persist_item(
-                conn,
-                observation_id=observation_id,
-                run_id=run_id,
-                kind="clip",
-                provider=PROVIDER,
-                payload={
-                    "role": "region_patch",
-                    "space": MODEL_FAMILY,
-                    "preprocess": "letterbox-224-imagenet-patch-l2",
-                    "grid": record["grid"],
-                    "gx": record["gx"],
-                    "gy": record["gy"],
-                    "identity": "not facekit",
-                    "display": False,
-                },
-                bbox=record["bbox"],
-                embedding=record["blob"],
-                modality=MODALITY_PATCH,
-                pack_id=patch_pack,
-                dim=int(len(record["blob"]) // 4),
-            )
-            counts["patch"] += 1
-        for window, x_off, y_off in patch_windows(image)[1:]:
-            try:
-                _tile_cls, tile_patches = content_patch_records(window, yield_budget=yield_budget)
-            except RegionPackError:
+        if len(hidden_rows) != len(jobs):
+            return {**counts, "note": "region encoder returned the wrong batch"}
+        for (kind, view, payload), hidden in zip(jobs, hidden_rows):
+            if kind in {"frame", "window"}:
+                x_off, y_off = payload
+                try:
+                    scene, patches = _split_content_patches(view, hidden)
+                except RegionPackError:
+                    continue
+                if kind == "frame":
+                    persist_item(
+                        conn,
+                        observation_id=observation_id,
+                        run_id=run_id,
+                        kind="clip",
+                        provider=PROVIDER,
+                        payload={
+                            "role": "scene",
+                            "space": MODEL_FAMILY,
+                            "preprocess": "letterbox-224-imagenet-cls-l2",
+                            "identity": "not facekit",
+                            "display": False,
+                        },
+                        embedding=scene,
+                        modality=MODALITY_SCENE,
+                        pack_id=pack,
+                        dim=int(len(scene) // 4),
+                    )
+                    counts["scene"] += 1
+                for record in patches:
+                    x1, y1, x2, y2 = record["bbox"]
+                    extra = {}
+                    if x_off or y_off:
+                        extra["window"] = [x_off, y_off]
+                    persist_item(
+                        conn,
+                        observation_id=observation_id,
+                        run_id=run_id,
+                        kind="clip",
+                        provider=PROVIDER,
+                        payload={
+                            "role": "region_patch",
+                            "space": MODEL_FAMILY,
+                            "preprocess": "letterbox-224-imagenet-patch-l2",
+                            "grid": record["grid"],
+                            "gx": record["gx"],
+                            "gy": record["gy"],
+                            "identity": "not facekit",
+                            "display": False,
+                            **extra,
+                        },
+                        bbox=(
+                            float(x1 + x_off),
+                            float(y1 + y_off),
+                            float(x2 + x_off),
+                            float(y2 + y_off),
+                        ),
+                        embedding=record["blob"],
+                        modality=MODALITY_PATCH,
+                        pack_id=patch_pack,
+                        dim=int(len(record["blob"]) // 4),
+                    )
+                    counts["patch"] += 1
                 continue
-            for record in tile_patches:
-                x1, y1, x2, y2 = record["bbox"]
-                persist_item(
-                    conn,
-                    observation_id=observation_id,
-                    run_id=run_id,
-                    kind="clip",
-                    provider=PROVIDER,
-                    payload={
-                        "role": "region_patch",
-                        "space": MODEL_FAMILY,
-                        "preprocess": "letterbox-224-imagenet-patch-l2",
-                        "grid": record["grid"],
-                        "gx": record["gx"],
-                        "gy": record["gy"],
-                        "window": [x_off, y_off],
-                        "identity": "not facekit",
-                        "display": False,
-                    },
-                    bbox=(float(x1 + x_off), float(y1 + y_off), float(x2 + x_off), float(y2 + y_off)),
-                    embedding=record["blob"],
-                    modality=MODALITY_PATCH,
-                    pack_id=patch_pack,
-                    dim=int(len(record["blob"]) // 4),
-                )
-                counts["patch"] += 1
-        for box in proposal_boxes(image):
-            try:
-                crop = crop_box(image, box)
-                blob = embed_bgr(crop, yield_budget=yield_budget)
-            except RegionPackError:
-                continue
+            blob = _pool(hidden, pool=POOL).astype(np.float32).tobytes()
             persist_item(
                 conn,
                 observation_id=observation_id,
@@ -765,7 +821,7 @@ def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
                     "identity": "not facekit",
                     "display": False,
                 },
-                bbox=box,
+                bbox=payload,
                 embedding=blob,
                 modality=MODALITY_REGION,
                 pack_id=pack,

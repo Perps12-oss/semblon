@@ -372,6 +372,96 @@ def test_search_worker_exception_clears_busy(tmp_path, monkeypatch):
         shutdown_shell(engine)
 
 
+def test_indexed_region_search_does_not_encode_the_crop(tmp_path, monkeypatch):
+    from semblon.region_search import roi_query_tokens, search_patches
+    from semblon.store import connect, init_db
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.close()
+    fine = np.array([1, 0, 0, 0], dtype=np.float32)
+    coarse = np.array([0, 0, 1, 0], dtype=np.float32)
+    other = np.array([0, 1, 0, 0], dtype=np.float32)
+    groups = [
+        {
+            "media_id": "m1",
+            "width": 100,
+            "height": 80,
+            "matrix": np.stack([fine, fine, fine, fine, coarse]),
+            "boxes": [(10, 10, 18, 18), (18, 10, 26, 18), (10, 18, 18, 26), (18, 18, 26, 26), (0, 0, 80, 60)],
+        },
+        {
+            "media_id": "m2",
+            "width": 100,
+            "height": 80,
+            "matrix": other.reshape(1, 4),
+            "boxes": [(10, 10, 18, 18)],
+        },
+    ]
+    monkeypatch.setattr("semblon.region_search.load_patch_groups", lambda *args, **kwargs: (groups, True))
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("indexed search encoded the crop")
+
+    monkeypatch.setattr("semblon.region_search.content_patch_records", forbidden)
+    result = search_patches(
+        store,
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        exclude_media_id="m1",
+        query_box=(8, 8, 20, 20),
+        token_floor=0.0,
+        score_floor=0.0,
+        coverage_floor=0.0,
+    )
+    assert result["query_source"] == "index"
+    assert result["status"] == "SUCCESS"
+    assert result["items"][0]["media_id"] == "m2"
+    tokens = roi_query_tokens(groups, "m1", (8, 8, 20, 20))
+    assert tokens is not None
+    assert tokens.shape == (4, 4)
+
+
+def test_batched_forward_matches_single_image_tokens():
+    from semblon.region_encoder import content_patch_records, encode_images, probe_region_pack
+
+    ready, _note = probe_region_pack()
+    if not ready:
+        pytest.skip("region pack is not installed")
+    rng = np.random.default_rng(3)
+    images = [
+        rng.integers(0, 255, size=(180, 240, 3), dtype=np.uint8),
+        rng.integers(0, 255, size=(90, 140, 3), dtype=np.uint8),
+    ]
+    batched = encode_images(images)
+    assert len(batched) == 2
+    for image, hidden in zip(images, batched):
+        _cls, records = content_patch_records(image)
+        solo = hidden[1:]
+        # Letterbox drops padding tokens. Compare the content rows by L2 cosine of CLS.
+        assert hidden.shape[-1] == 384
+        assert records
+        cls = hidden[0]
+        cls = cls / max(float(np.linalg.norm(cls)), 1e-8)
+        stored = np.frombuffer(records[0]["blob"], dtype=np.float32)
+        # First record is a patch, not CLS. Compare CLS bytes via a second split.
+        from semblon.region_encoder import _split_content_patches
+
+        scene, patches = _split_content_patches(image, hidden)
+        assert len(patches) == len(records)
+        left = np.frombuffer(scene, dtype=np.float32)
+        right = np.frombuffer(_cls, dtype=np.float32)
+        assert np.allclose(left, right, atol=1e-4)
+        for got, expected in zip(patches, records):
+            assert np.allclose(
+                np.frombuffer(got["blob"], dtype=np.float32),
+                np.frombuffer(expected["blob"], dtype=np.float32),
+                atol=1e-4,
+            )
+            assert got["bbox"] == expected["bbox"]
+        assert stored.shape == (384,)
+
+
 def test_shutdown_drops_a_late_search_result(tmp_path, monkeypatch):
     from semblon.application import Application
     from semblon.native_shell.host import shutdown_shell
