@@ -66,7 +66,8 @@ Under primary destinations, a **Browse** block (objectName `archiveSidebar`) pro
 ## Day cells
 
 - Clear thumbnails via `image://archive/`; one representative id per day, plus up to six `previewIds`
-- A colored block stands in until that thumb's image is ready. Decode stays on `ArchiveImageProvider`
+- A colored block stands in until that thumb's image is ready, including tiles in the flat photo field. Decode stays on `ArchiveImageProvider`
+- The first view of a photo writes one 384 px JPEG beside the store (`<store stem>.thumbs/`). Later grid cells read that file. Focus frames are not written there. Clearing the library deletes the folder. Originals stay put.
 - Compact count (`1.3k`) + exact accessible name (`1,282 photos`)
 - Outside-month days have no numeral; today and keyboard focus stay distinct from the scope selection
 - `emphasized` dots days that intersect the active person filter or folder scope
@@ -85,6 +86,10 @@ Measured 2026-10-15 (offscreen Qt): high-volume day (1,282 ids) cell build **2.8
 
 Ctrl+wheel and a pinch on the archive pane move `calendarView` across Years (low scale), Months, and Days (high scale). The segment buttons follow. The gesture does not change `calendarMonth` or `scopeKind`. Focus keeps its own 1×–8× photo zoom.
 
+## Library work
+
+The calendar and the photo field stay on screen while a folder is added. A chip at the top right reads `Scanning · current / total` (or `?` until a total exists) and opens the same tray as the bottom pill. The pill is always there. While work is running it reads `1 task` or `N tasks`. While nothing is running it reads `Quiet` and the sheet says so, with one next action: check the last folder, or add a folder when none is remembered. Pause, resume, and cancel stay on that sheet. A search in progress is a second row in the same sheet. The sheet does not cover the grid and does not take wheel events.
+
 ## Deferred
 
 - Vault / padlock / blurred “hidden” treatments (out of product)
@@ -93,4 +98,4 @@ Ctrl+wheel and a pinch on the archive pane move `calendarView` across Years (low
 
 ## Object names
 
-`navSidebar`, `homeButton`, `libraryButton`, `emptyState` (Home launchpad), `archiveBrowseFlick`, `archiveSidebar` (left-nav Browse block), `contextSidebarSearch`, `sidebarFolder_*`, `sidebarMoments`, `sidebarSimilar`, `sidebarKind_*`, `timelineHero`, `timelineYear_*`, `timelineMonth_*`, `archiveHeaderBand`, `archiveSplit`, `timelineDensitySegment`, `densityYears`, `densityMonths`, `densityDays`, `yearMatrix`, `yearMonth_*`, `memoryCalendar`, `calendarPrev`, `calendarNext`, `calendarGoHome`, `calendarTitle`, `calendarJump`, `calendarUndated`, `calendarDay_*`, `fieldSections`, `fieldSection_*`, `stickyHeader`, `zeroResultFilter`, `fieldGrid`, `focusDetails`, `focusDetailsClose`
+`navSidebar`, `homeButton`, `libraryButton`, `emptyState` (Home launchpad), `archiveBrowseFlick`, `archiveSidebar` (left-nav Browse block), `contextSidebarSearch`, `sidebarFolder_*`, `sidebarMoments`, `sidebarSimilar`, `sidebarKind_*`, `timelineHero`, `timelineYear_*`, `timelineMonth_*`, `archiveHeaderBand`, `archiveSplit`, `timelineDensitySegment`, `densityYears`, `densityMonths`, `densityDays`, `yearMatrix`, `yearMonth_*`, `memoryCalendar`, `calendarPrev`, `calendarNext`, `calendarGoHome`, `calendarTitle`, `calendarJump`, `calendarUndated`, `calendarDay_*`, `fieldSections`, `fieldSection_*`, `stickyHeader`, `zeroResultFilter`, `fieldGrid`, `focusDetails`, `focusDetailsClose`, `scanChip`, `taskTray`, `taskPill`, `taskSheet`, `taskSummary`, `closeTasks`

@@ -15,7 +15,11 @@ from PySide6.QtWidgets import QApplication
 
 from semblon.application import Application
 from semblon.native_shell.bridge import ShellBridge
-from semblon.native_shell.images import ArchiveImageProvider, FaceCropImageProvider
+from semblon.native_shell.images import (
+    ArchiveImageProvider,
+    FaceCropImageProvider,
+    thumb_cache_dir,
+)
 from semblon.native_shell.model import ArchiveModel
 from semblon.process import default_store_path
 
@@ -48,7 +52,7 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     bridge = ShellBridge(model, jobs)
     bridge.setParent(qapp)
     engine = QQmlApplicationEngine()
-    engine.addImageProvider("archive", ArchiveImageProvider(bridge.path_for))
+    engine.addImageProvider("archive", ArchiveImageProvider(bridge.path_for, thumb_cache_dir(path)))
     engine.addImageProvider("face", FaceCropImageProvider(bridge.face_crop_spec))
     engine.rootContext().setContextProperty("shell", bridge)
     engine.rootContext().setContextProperty("archiveModel", model)

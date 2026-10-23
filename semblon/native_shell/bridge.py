@@ -25,6 +25,8 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
+from semblon.library_tasks import library_work
+from semblon.native_shell.images import clear_thumb_cache, reset_image_cache
 from semblon.focus_gesture import adjust_box, clamp_view, zoom_about
 from semblon.native_shell.adapter import AdapterError, ArchiveAdapter, Result
 from semblon.native_shell.events import (
@@ -259,6 +261,7 @@ class ShellBridge(QObject):
     editorialChanged = Signal()
     screenQueryChanged = Signal()
     preflightChanged = Signal()
+    tasksChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -337,6 +340,7 @@ class ShellBridge(QObject):
         self._selected_observation = ""
         self._activity_rows: list[dict] = []
         self._activity_open = False
+        self._tasks_open = False
         self._mode = self._load_shell_mode()
         self._atmosphere_id = self._load_atmosphere_id()
         self._adapter = ArchiveAdapter(jobs)
@@ -389,6 +393,11 @@ class ShellBridge(QObject):
         self._person_field_label = ""
         self.ingestFinished.connect(self._after_ingest)
         self.focusChanged.connect(self._refresh_index_note)
+        self.jobChanged.connect(self.tasksChanged)
+        self.searchBusyChanged.connect(self.tasksChanged)
+        self.indexChanged.connect(self.tasksChanged)
+        self.libraryChanged.connect(self.tasksChanged)
+        self.emptyChanged.connect(self.tasksChanged)
         self._timer = QTimer(self)
         self._timer.setInterval(400)
         self._timer.timeout.connect(self._poll_job)
@@ -708,6 +717,86 @@ class ShellBridge(QObject):
     @Property(int, notify=jobChanged)
     def jobTotal(self) -> int:
         return int(self._progress_total)
+
+    def _task_snapshot(self) -> dict:
+        folder = self._last_folder
+        has_folder = folder is not None and Path(folder).is_dir()
+        count = int(self._jobs.archive_count())
+        return {
+            "library_count": count,
+            "job_active": bool(self._job_active),
+            "job_state": self._job_state,
+            "job_current": int(self._progress_current),
+            "job_total": int(self._progress_total),
+            "can_resume": bool(self.canResume),
+            "last_failed": bool(self._last_job_failed),
+            "has_folder": has_folder,
+            "search_busy": bool(self._search_busy),
+            "index_state": self._index_state,
+            "index_note": self._index_note,
+            "library_summary": self.archiveSummary,
+        }
+
+    def _library_work(self) -> dict:
+        return library_work(self._task_snapshot())
+
+    @Property(bool, notify=tasksChanged)
+    def tasksOpen(self) -> bool:
+        return self._tasks_open
+
+    @Property(str, notify=tasksChanged)
+    def taskLabel(self) -> str:
+        return str(self._library_work()["label"])
+
+    @Property(str, notify=tasksChanged)
+    def taskSummary(self) -> str:
+        return str(self._library_work()["summary"])
+
+    @Property(int, notify=tasksChanged)
+    def taskCount(self) -> int:
+        return int(self._library_work()["count"])
+
+    @Property("QVariantList", notify=tasksChanged)
+    def taskRows(self):
+        return list(self._library_work()["rows"])
+
+    @Slot()
+    def toggleTasks(self) -> None:
+        self._tasks_open = not self._tasks_open
+        self.tasksChanged.emit()
+
+    @Slot()
+    def openTasks(self) -> None:
+        if self._tasks_open:
+            return
+        self._tasks_open = True
+        self.tasksChanged.emit()
+
+    @Slot()
+    def closeTasks(self) -> None:
+        if not self._tasks_open:
+            return
+        self._tasks_open = False
+        self.tasksChanged.emit()
+
+    @Slot(str)
+    def runTaskAction(self, action: str) -> None:
+        name = str(action or "")
+        if name == "pause":
+            self.pauseJob()
+        elif name == "resume":
+            self.resumeJob()
+        elif name == "cancel":
+            self.cancelJob()
+        elif name == "cancel-search":
+            self.cancelSimilar()
+        elif name == "rescan":
+            self.rescanFolder()
+        elif name == "add-folder":
+            self.addFolder()
+        if not self._tasks_open:
+            self._tasks_open = True
+            self.tasksChanged.emit()
 
     @Property(bool, constant=True)
     def reducedMotion(self) -> bool:
@@ -3165,6 +3254,9 @@ class ShellBridge(QObject):
 
     @Slot()
     def escape(self) -> None:
+        if self._tasks_open:
+            self.closeTasks()
+            return
         if self._search_busy:
             self.cancelSimilar()
             return
@@ -3201,6 +3293,9 @@ class ShellBridge(QObject):
             self._activity_open = False
             self._activity_rows = []
             changed = True
+        if self._tasks_open:
+            self._tasks_open = False
+            self.tasksChanged.emit()
         if self._people_open:
             self._people_open = False
             self._selected_subject = ""
@@ -4048,6 +4143,8 @@ class ShellBridge(QObject):
                 path.unlink(missing_ok=True)
             except OSError:
                 pass
+        clear_thumb_cache(Path(self._jobs.store))
+        reset_image_cache()
         self._session.clear_focus()
         self._region_norm = None
         self._selection_kind = ""

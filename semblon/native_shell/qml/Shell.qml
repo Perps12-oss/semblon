@@ -68,6 +68,38 @@ ApplicationWindow {
     readonly property bool canBrowsePersonTimeSafe: shellReady && shellApi.canBrowsePersonTime
     readonly property bool activityOpenSafe: shellReady && shellApi.activityOpen
     readonly property var activityRowsSafe: shellReady ? shellApi.activityRows : []
+    readonly property bool tasksOpenSafe: shellReady && shellApi.tasksOpen
+    readonly property string taskLabelSafe: shellReady ? shellApi.taskLabel : "Quiet"
+    readonly property string taskSummarySafe: shellReady ? shellApi.taskSummary : ""
+    readonly property var taskRowsSafe: shellReady ? shellApi.taskRows : []
+
+    function taskHas(actionId) {
+        var rows = taskRowsSafe
+        if (!rows)
+            return false
+        for (var i = 0; i < rows.length; i++) {
+            var actions = rows[i] && rows[i].actions ? rows[i].actions : []
+            for (var j = 0; j < actions.length; j++) {
+                if (actions[j] && actions[j].id === actionId)
+                    return true
+            }
+        }
+        return false
+    }
+
+    function taskActionLabel(actionId) {
+        var rows = taskRowsSafe
+        if (!rows)
+            return ""
+        for (var i = 0; i < rows.length; i++) {
+            var actions = rows[i] && rows[i].actions ? rows[i].actions : []
+            for (var j = 0; j < actions.length; j++) {
+                if (actions[j] && actions[j].id === actionId)
+                    return String(actions[j].label || "")
+            }
+        }
+        return ""
+    }
     readonly property var focusBoxesSafe: shellReady ? shellApi.focusObservationBoxes : []
     readonly property string selectedObservationSafe: shellReady ? shellApi.selectedObservationId : ""
     readonly property string stickyHeadingSafe: shellReady ? shellApi.stickyHeading : ""
@@ -582,10 +614,18 @@ ApplicationWindow {
             anchors.margins: sidebarCollapsed ? 8 : 14
             spacing: 6
 
-            Row {
+            Item {
+                id: sidebarJobRow
+                objectName: "sidebarJobRow"
                 visible: jobRunning
-                spacing: 8
-                anchors.horizontalCenter: parent.horizontalCenter
+                width: parent.width
+                height: sidebarJobLine.implicitHeight
+
+                Row {
+                    id: sidebarJobLine
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    spacing: 8
 
                 Item {
                     width: 14
@@ -613,10 +653,20 @@ ApplicationWindow {
                 }
                 Text {
                     visible: !sidebarCollapsed
+                    width: Math.max(0, sidebarJobLine.width - 22)
                     text: jobLabelSafe
                     color: tokenMuted
                     font.pixelSize: 11
-                    anchors.verticalCenter: parent.verticalCenter
+                    elide: Text.ElideRight
+                }
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    Accessible.name: "Open library work"
+                    Accessible.role: Accessible.Button
+                    onClicked: if (shellReady) shellApi.openTasks()
                 }
             }
         }
@@ -650,131 +700,6 @@ ApplicationWindow {
                 color: shellReady && shellApi.surfaceState === "error" ? tokenDanger : tokenMuted
                 font.family: "Segoe UI"
                 font.pixelSize: 13
-            }
-        }
-
-        Rectangle {
-            id: scanHero
-            objectName: "scanHero"
-            visible: jobRunning
-            z: 30
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: parent.top
-            anchors.topMargin: 14
-            width: Math.min(460, Math.max(280, parent.width - 48))
-            height: 132
-            radius: 12
-            color: tokenBg1
-            border.color: tokenAccent
-            border.width: 1
-            readonly property real fraction: {
-                if (!shellReady || shellApi.jobTotal <= 0)
-                    return 0
-                return Math.max(0, Math.min(1, shellApi.jobCurrent / shellApi.jobTotal))
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-                onPressed: function(mouse) { mouse.accepted = true }
-                onWheel: function(wheel) { wheel.accepted = true }
-            }
-
-            Column {
-                id: scanHeroColumn
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 14
-                spacing: 8
-
-                Text {
-                    text: {
-                        if (jobStateSafe === "paused")
-                            return "Scanning paused"
-                        if (jobStateSafe === "cancelling")
-                            return "Stopping the scan"
-                        return "Scanning in progress"
-                    }
-                    color: tokenText
-                    font.family: "Segoe UI"
-                    font.pixelSize: 18
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    width: parent.width
-                    wrapMode: Text.WordWrap
-                    text: shellReady && shellApi.jobTotal > 0
-                          ? (shellApi.jobCurrent + " of " + shellApi.jobTotal + ". Photos already added can be opened.")
-                          : "Photos already added can be opened."
-                    color: tokenMuted
-                    font.family: "Segoe UI"
-                    font.pixelSize: 13
-                }
-                Rectangle {
-                    objectName: "scanProgress"
-                    width: parent.width
-                    height: 8
-                    radius: 4
-                    color: tokenBg
-                    Rectangle {
-                        width: Math.max(0, parent.width * scanHero.fraction)
-                        height: parent.height
-                        radius: 4
-                        color: tokenAccent
-                    }
-                }
-                Row {
-                    spacing: 16
-                    Text {
-                        objectName: "pauseJob"
-                        visible: jobStateSafe !== "paused" && jobStateSafe !== "cancelling"
-                        text: "Pause"
-                        color: pauseJobArea.containsMouse ? tokenText : tokenAccent
-                        font.family: "Segoe UI"
-                        font.pixelSize: 14
-                        MouseArea {
-                            id: pauseJobArea
-                            anchors.fill: parent
-                            anchors.margins: -6
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (shellReady) shellApi.pauseJob()
-                        }
-                    }
-                    Text {
-                        objectName: "resumeJobBand"
-                        visible: jobStateSafe === "paused"
-                        text: "Resume"
-                        color: resumeJobArea.containsMouse ? tokenText : tokenAccent
-                        font.family: "Segoe UI"
-                        font.pixelSize: 14
-                        MouseArea {
-                            id: resumeJobArea
-                            anchors.fill: parent
-                            anchors.margins: -6
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (shellReady) shellApi.resumeJob()
-                        }
-                    }
-                    Text {
-                        objectName: "cancelJob"
-                        visible: jobStateSafe !== "cancelling"
-                        text: "Cancel"
-                        color: cancelJobArea.containsMouse ? tokenText : tokenDanger
-                        font.family: "Segoe UI"
-                        font.pixelSize: 14
-                        MouseArea {
-                            id: cancelJobArea
-                            anchors.fill: parent
-                            anchors.margins: -6
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (shellReady) shellApi.cancelJob()
-                        }
-                    }
-                }
             }
         }
 
@@ -2412,7 +2337,16 @@ ApplicationWindow {
                                  ? tokenAccent
                                  : (tile.containsMouse ? Qt.rgba(1, 1, 1, 0.2) : "transparent")
 
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 1
+                        radius: 7
+                        color: tokenBg3
+                        visible: kind !== "video" && tileImage.status !== Image.Ready
+                    }
+
                     Image {
+                        id: tileImage
                         anchors.fill: parent
                         anchors.margins: 1
                         visible: kind !== "video"
@@ -2532,7 +2466,7 @@ ApplicationWindow {
                 objectName: "pointHint"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
-                anchors.topMargin: jobRunning ? scanHero.height + 28 : 18
+                anchors.topMargin: 18
                 visible: focusActive && focusKindSafe !== "video"
                 text: "Point or draw to search"
                 color: tokenMuted
@@ -4316,6 +4250,310 @@ ApplicationWindow {
             Accessible.name: "Install required model"
             Accessible.role: Accessible.Button
             onClicked: if (shellReady) shellApi.installSuggestedModel()
+        }
+    }
+
+    Rectangle {
+        id: scanChip
+        objectName: "scanChip"
+        visible: jobRunning
+        z: 45
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 14
+        width: scanChipText.implicitWidth + 22
+        height: 28
+        radius: 14
+        color: tokenBg1
+        border.color: tokenAccent
+        border.width: 1
+        property string label: {
+            if (!shellReady)
+                return ""
+            var prefix = "Scanning"
+            if (jobStateSafe === "paused")
+                prefix = "Paused"
+            else if (jobStateSafe === "cancelling")
+                prefix = "Stopping"
+            var total = shellApi.jobTotal > 0 ? String(shellApi.jobTotal) : "?"
+            return prefix + " · " + shellApi.jobCurrent + " / " + total
+        }
+
+        Text {
+            id: scanChipText
+            anchors.centerIn: parent
+            text: scanChip.label
+            color: tokenText
+            font.family: "Segoe UI"
+            font.pixelSize: 12
+        }
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            Accessible.name: scanChip.label
+            Accessible.role: Accessible.Button
+            onClicked: if (shellReady) shellApi.openTasks()
+        }
+    }
+
+    Item {
+        id: taskTray
+        objectName: "taskTray"
+        z: 60
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+        width: tasksOpenSafe ? 320 : taskPill.width
+        height: taskPill.height + (tasksOpenSafe ? taskSheet.height + 8 : 0)
+
+        Rectangle {
+            id: taskSheet
+            objectName: "taskSheet"
+            visible: tasksOpenSafe
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: taskPill.top
+            anchors.bottomMargin: 8
+            height: Math.min(taskSheetFlick.contentHeight + 28, Math.max(120, window.height * 0.55))
+            radius: 12
+            color: tokenBg1
+            border.color: tokenBorder
+            border.width: 1
+            clip: true
+
+            Flickable {
+                id: taskSheetFlick
+                anchors.fill: parent
+                anchors.margins: 14
+                contentHeight: taskSheetColumn.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Column {
+                    id: taskSheetColumn
+                    width: taskSheetFlick.width
+                    spacing: 12
+
+                    Item {
+                        width: parent.width
+                        height: 22
+                        Text {
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Library work"
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 15
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            objectName: "closeTasks"
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Close"
+                            color: closeTasksArea.containsMouse ? tokenText : tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 12
+                            MouseArea {
+                                id: closeTasksArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.closeTasks()
+                            }
+                        }
+                    }
+
+                    Text {
+                        objectName: "taskSummary"
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: taskSummarySafe
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+
+                    Repeater {
+                        model: taskRowsSafe
+                        delegate: Column {
+                            id: taskRow
+                            width: taskSheetColumn.width
+                            spacing: 4
+                            property var task: modelData
+                            visible: !(task && task.id === "quiet")
+                            height: visible ? implicitHeight : 0
+
+                            Text {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: taskRow.task && taskRow.task.title ? taskRow.task.title : ""
+                                color: tokenText
+                                font.family: "Segoe UI"
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: taskRow.task && taskRow.task.detail ? taskRow.task.detail : ""
+                                color: tokenMuted
+                                font.family: "Segoe UI"
+                                font.pixelSize: 12
+                            }
+                        }
+                    }
+
+                    Row {
+                        spacing: 14
+                        Text {
+                            objectName: "pauseJob"
+                            visible: window.taskHas("pause")
+                            text: "Pause"
+                            color: pauseJobArea.containsMouse ? tokenText : tokenAccent
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                            MouseArea {
+                                id: pauseJobArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.runTaskAction("pause")
+                            }
+                        }
+                        Text {
+                            objectName: "resumeJobBand"
+                            visible: window.taskHas("resume")
+                            text: "Resume"
+                            color: resumeJobArea.containsMouse ? tokenText : tokenAccent
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                            MouseArea {
+                                id: resumeJobArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.runTaskAction("resume")
+                            }
+                        }
+                        Text {
+                            objectName: "cancelJob"
+                            visible: window.taskHas("cancel")
+                            text: "Cancel"
+                            color: cancelJobArea.containsMouse ? tokenText : tokenDanger
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                            MouseArea {
+                                id: cancelJobArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.runTaskAction("cancel")
+                            }
+                        }
+                        Text {
+                            objectName: "taskAction_cancel-search"
+                            visible: window.taskHas("cancel-search")
+                            text: "Cancel search"
+                            color: cancelSearchArea.containsMouse ? tokenText : tokenAccent
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                            MouseArea {
+                                id: cancelSearchArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.runTaskAction("cancel-search")
+                            }
+                        }
+                        Text {
+                            objectName: "taskAction_rescan"
+                            visible: window.taskHas("rescan")
+                            text: window.taskActionLabel("rescan")
+                            color: rescanTaskArea.containsMouse ? tokenText : tokenAccent
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                            MouseArea {
+                                id: rescanTaskArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.runTaskAction("rescan")
+                            }
+                        }
+                        Text {
+                            objectName: "taskAction_add-folder"
+                            visible: window.taskHas("add-folder")
+                            text: window.taskActionLabel("add-folder")
+                            color: addFolderTaskArea.containsMouse ? tokenText : tokenAccent
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                            MouseArea {
+                                id: addFolderTaskArea
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.runTaskAction("add-folder")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            id: taskPill
+            objectName: "taskPill"
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            width: taskPillLabel.implicitWidth + (taskCountDot.visible ? 36 : 22)
+            height: 32
+            radius: 16
+            color: taskPillArea.containsMouse ? tokenBg2 : tokenBg1
+            border.color: (shellReady && shellApi.taskCount > 0) ? tokenAccent : tokenBorder
+            border.width: 1
+
+            Rectangle {
+                id: taskCountDot
+                visible: shellReady && shellApi.taskCount > 0
+                anchors.left: parent.left
+                anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                width: 8
+                height: 8
+                radius: 4
+                color: tokenAccent
+            }
+
+            Text {
+                id: taskPillLabel
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                text: taskLabelSafe
+                color: tokenText
+                font.family: "Segoe UI"
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+                font.capitalization: Font.AllUppercase
+            }
+            MouseArea {
+                id: taskPillArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                Accessible.name: taskSummarySafe || "Library work"
+                Accessible.role: Accessible.Button
+                onClicked: if (shellReady) shellApi.toggleTasks()
+            }
         }
     }
 }
