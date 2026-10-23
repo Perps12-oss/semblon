@@ -10,12 +10,13 @@ column; this does not scan every file to invent a finer clock.
 from __future__ import annotations
 
 import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
-from semblon.store import connect
+from semblon.store import connect_readonly
 
 __all__ = [
     "Desk",
@@ -110,6 +111,44 @@ class ArchiveSession:
         self.focus_id: str | None = None
         self.desk: Desk | None = None
         self._history: list[ViewState] = []
+        self._local = threading.local()
+        self._cache_lock = threading.Lock()
+        self._read_gen = 0
+        self._count_cache: int | None = None
+        self._media_cache: dict[str, MediaRef | None] = {}
+
+    def invalidate_reads(self) -> None:
+        """Drop cached media rows after the archive changes."""
+        with self._cache_lock:
+            self._count_cache = None
+            self._media_cache.clear()
+            self._read_gen += 1
+
+    def _read_conn(self):
+        """One read-only connection per thread. Opening SQLite on every thumb stalls the UI."""
+        if not self.store.is_file():
+            return None
+        store = str(self.store.resolve())
+        gen = self._read_gen
+        local = self._local
+        conn = getattr(local, "conn", None)
+        if conn is not None and getattr(local, "key", None) == (store, gen):
+            return conn
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+        try:
+            conn = connect_readonly(self.store)
+            conn.execute("PRAGMA busy_timeout=80")
+        except sqlite3.Error:
+            local.conn = None
+            local.key = None
+            return None
+        local.conn = conn
+        local.key = (store, gen)
+        return conn
 
     @property
     def lens_history(self) -> tuple[ViewState, ...]:
@@ -120,16 +159,22 @@ class ArchiveSession:
             return 0
         if not self.store.is_file():
             return 0
-        conn = connect(self.store)
+        with self._cache_lock:
+            if self._count_cache is not None:
+                return self._count_cache
+        conn = self._read_conn()
+        if conn is None:
+            return 0
         try:
             row = conn.execute(
                 "SELECT COUNT(*) FROM media WHERE source_type='folder'"
             ).fetchone()
-            return int(row[0] if row else 0)
+            value = int(row[0] if row else 0)
         except sqlite3.Error:
             return 0
-        finally:
-            conn.close()
+        with self._cache_lock:
+            self._count_cache = value
+        return value
 
     def window(self, offset: int, limit: int) -> list[MediaRef]:
         """One ordered slice. Never the whole library."""
@@ -137,7 +182,9 @@ class ArchiveSession:
             return []
         if not self.store.is_file():
             return []
-        conn = connect(self.store)
+        conn = self._read_conn()
+        if conn is None:
+            return []
         try:
             rows = conn.execute(
                 """
@@ -151,14 +198,17 @@ class ArchiveSession:
             ).fetchall()
         except sqlite3.Error:
             return []
-        finally:
-            conn.close()
         return [_media(row) for row in rows]
 
     def media(self, media_id: str) -> MediaRef | None:
         if not media_id or not self.store.is_file():
             return None
-        conn = connect(self.store)
+        with self._cache_lock:
+            if media_id in self._media_cache:
+                return self._media_cache[media_id]
+        conn = self._read_conn()
+        if conn is None:
+            return None
         try:
             row = conn.execute(
                 """
@@ -169,11 +219,12 @@ class ArchiveSession:
             ).fetchone()
         except sqlite3.Error:
             return None
-        finally:
-            conn.close()
-        if row is None:
-            return None
-        return _media(row)
+        item = None if row is None else _media(row)
+        with self._cache_lock:
+            if len(self._media_cache) > 4000:
+                self._media_cache.clear()
+            self._media_cache[media_id] = item
+        return item
 
     def index_of(self, media_id: str) -> int | None:
         item = self.media(media_id)
@@ -181,7 +232,9 @@ class ArchiveSession:
             return None
         if item.source_type != "folder":
             return None
-        conn = connect(self.store)
+        conn = self._read_conn()
+        if conn is None:
+            return None
         try:
             if item.mtime_ns is None:
                 row = conn.execute(
@@ -205,8 +258,6 @@ class ArchiveSession:
                 ).fetchone()
         except sqlite3.Error:
             return None
-        finally:
-            conn.close()
         return int(row[0] if row else 0)
 
     def open_focus(self, media_id: str) -> None:

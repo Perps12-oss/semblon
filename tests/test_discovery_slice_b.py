@@ -107,6 +107,13 @@ def test_review_face_group_opens_people_on_cluster(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Application, "board", fake_board)
     monkeypatch.setattr(Application, "canvas", fake_canvas)
+
+    def fake_overlay(store, media_id):
+        from semblon.canvas_data import overlay_boxes
+
+        return overlay_boxes(fake_canvas(None), media_id)
+
+    monkeypatch.setattr("semblon.canvas_data.overlay_boxes_for_media", fake_overlay)
     monkeypatch.setattr("semblon.process.latest_run_id", lambda store, **kwargs: "run-1")
 
     photo = tmp_path / "a.png"
@@ -151,28 +158,32 @@ def test_review_face_group_without_board_row_stays_honest(tmp_path, monkeypatch)
         "board",
         lambda self, run_id=None: {"items": [], "counts": {}},
     )
-    monkeypatch.setattr(
-        Application,
-        "canvas",
-        lambda self, run_id=None: {
-            "faces": [
-                {
-                    "face_id": "f1",
-                    "media_id": "m1",
-                    "bbox_x1": 10,
-                    "bbox_y1": 20,
-                    "bbox_x2": 50,
-                    "bbox_y2": 60,
-                    "cluster_id": None,
-                    "person_id": None,
-                    "status": "ok",
-                }
-            ],
-            "items": [],
-            "track_lane_by_face": {},
-            "track_lane_by_item": {},
-        },
-    )
+    fake_canvas = {
+        "faces": [
+            {
+                "face_id": "f1",
+                "media_id": "m1",
+                "bbox_x1": 10,
+                "bbox_y1": 20,
+                "bbox_x2": 50,
+                "bbox_y2": 60,
+                "cluster_id": None,
+                "person_id": None,
+                "status": "ok",
+            }
+        ],
+        "items": [],
+        "track_lane_by_face": {},
+        "track_lane_by_item": {},
+    }
+    monkeypatch.setattr(Application, "canvas", lambda self, run_id=None: fake_canvas)
+
+    def fake_overlay(store, media_id):
+        from semblon.canvas_data import overlay_boxes
+
+        return overlay_boxes(fake_canvas, media_id)
+
+    monkeypatch.setattr("semblon.canvas_data.overlay_boxes_for_media", fake_overlay)
     monkeypatch.setattr("semblon.process.latest_run_id", lambda store, **kwargs: "run-1")
 
     photo = tmp_path / "a.png"

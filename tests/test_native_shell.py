@@ -1226,6 +1226,13 @@ def test_focus_loads_observation_boxes(tmp_path, monkeypatch):
         }
 
     monkeypatch.setattr(Application, "canvas", fake_canvas)
+
+    def fake_overlay(store, media_id):
+        from semblon.canvas_data import overlay_boxes
+
+        return overlay_boxes(fake_canvas(None), media_id)
+
+    monkeypatch.setattr("semblon.canvas_data.overlay_boxes_for_media", fake_overlay)
     store = tmp_path / "s.sqlite"
     photo = tmp_path / "a.jpg"
     photo.write_bytes(b"x")

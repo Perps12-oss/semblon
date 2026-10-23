@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
@@ -50,21 +52,35 @@ def _open_ro(store: Path) -> sqlite3.Connection:
     return conn
 
 
+_FRAME_CACHE: OrderedDict[tuple, np.ndarray] = OrderedDict()
+_FRAME_LOCK = threading.Lock()
+_FRAME_CAP_BYTES = 48 * 1024 * 1024
+_GALLERY_LOCK = threading.Lock()
+_GALLERY: dict[tuple, tuple[list[dict], bool]] = {}
+_GALLERY_LOADS = 0
+_GALLERY_CAP_BYTES = 96 * 1024 * 1024
+_PATCH_CHUNK = 8192
+_EXIF_ORIENTATION = 0x0112
+
+
+def clear_frame_cache() -> None:
+    with _FRAME_LOCK:
+        _FRAME_CACHE.clear()
+
+
+def clear_patch_gallery_cache() -> None:
+    global _GALLERY_LOADS
+    with _GALLERY_LOCK:
+        _GALLERY.clear()
+        _GALLERY_LOADS = 0
+
+
+def patch_gallery_loads() -> int:
+    return _GALLERY_LOADS
+
+
 def crop_bgr(image_path: Path, x: int, y: int, w: int, h: int):
-    import cv2
-
-    from semblon.temporal import VIDEO_EXT, _decode_still, read_bgr
-
-    path = Path(image_path)
-    if path.suffix.lower() in VIDEO_EXT:
-        image = read_bgr(path, frame_id=0)
-    else:
-        image = _decode_still(path)
-        if image is None:
-            image = cv2.imread(str(path), cv2.IMREAD_COLOR)
-    if image is None:
-        raise RegionError(f"could not read {image_path}")
-    image = _apply_display_orientation(image_path, image)
+    image = _oriented_frame(Path(image_path))
     height, width = image.shape[:2]
     x1 = max(0, int(x))
     y1 = max(0, int(y))
@@ -75,18 +91,62 @@ def crop_bgr(image_path: Path, x: int, y: int, w: int, h: int):
     return image[y1:y2, x1:x2].copy()
 
 
+def _oriented_frame(image_path: Path):
+    """Full display-oriented frame. Repeated searches of one photo reuse it."""
+    import cv2
+
+    from semblon.temporal import VIDEO_EXT, _decode_still, read_bgr
+
+    path = Path(image_path)
+    try:
+        stat = path.stat()
+        key = (str(path.resolve()), int(stat.st_mtime_ns), int(stat.st_size))
+    except OSError:
+        key = None
+    if key is not None:
+        with _FRAME_LOCK:
+            hit = _FRAME_CACHE.get(key)
+            if hit is not None:
+                _FRAME_CACHE.move_to_end(key)
+                return hit
+    if path.suffix.lower() in VIDEO_EXT:
+        image = read_bgr(path, frame_id=0)
+    else:
+        image = _decode_still(path)
+        if image is None:
+            image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    if image is None:
+        raise RegionError(f"could not read {image_path}")
+    image = _apply_display_orientation(path, image)
+    if key is not None and int(image.nbytes) <= _FRAME_CAP_BYTES:
+        with _FRAME_LOCK:
+            _FRAME_CACHE[key] = image
+            _FRAME_CACHE.move_to_end(key)
+            while _FRAME_CACHE and sum(int(frame.nbytes) for frame in _FRAME_CACHE.values()) > _FRAME_CAP_BYTES:
+                _FRAME_CACHE.popitem(last=False)
+    return image
+
+
 def _apply_display_orientation(image_path: Path, image):
-    """Match QImageReader auto-transform so a drawn box is the pixels the user saw."""
+    """Match QImageReader auto-transform so a drawn box is the pixels the user saw.
+
+    A file with no orientation tag is already the display image. Comparing
+    every pixel here decoded the photograph a second time on each search.
+    """
+    suffix = Path(image_path).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".tif", ".tiff", ".webp"}:
+        return image
     try:
         from PIL import Image, ImageOps
-        import numpy as np
     except Exception:
         return image
     try:
         with Image.open(image_path) as raw:
-            oriented = ImageOps.exif_transpose(raw)
-            if oriented.size == raw.size and oriented.tobytes() == raw.tobytes():
+            exif = raw.getexif()
+            orientation = exif.get(_EXIF_ORIENTATION) if exif is not None else None
+            if orientation in (None, 1):
                 return image
+            oriented = ImageOps.exif_transpose(raw)
             rgb = np.asarray(oriented.convert("RGB"))
     except Exception:
         return image
@@ -539,6 +599,191 @@ def _norm_box(box: tuple[float, float, float, float], width: int, height: int) -
     return [nx, ny, nw, nh]
 
 
+def load_patch_groups(store: Path, conn, pack: str, dim: int) -> tuple[list[dict], bool]:
+    """Patch matrices for one pack. A second search reuses them until the index changes."""
+    global _GALLERY_LOADS
+    stamp = conn.execute(
+        "SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM embeddings WHERE modality=? AND pack_id=?",
+        (MODALITY_PATCH, pack),
+    ).fetchone()
+    count = int(stamp[0] or 0)
+    max_row = int(stamp[1] or 0)
+    key = (str(Path(store).resolve()), str(pack), int(dim), count, max_row)
+    with _GALLERY_LOCK:
+        hit = _GALLERY.get(key)
+        if hit is not None:
+            return hit
+    rows = conn.execute(
+        """SELECT e.embedding, e.embedding_dim, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2,
+                  o.media_id, m.width, m.height
+           FROM embeddings e
+           JOIN observation_items i ON i.item_id = e.item_id
+           JOIN observations o ON o.observation_id = i.observation_id
+           JOIN media m ON m.media_id = o.media_id
+           WHERE e.modality = ? AND e.pack_id = ?""",
+        (MODALITY_PATCH, pack),
+    ).fetchall()
+    grouped: dict[str, dict] = {}
+    order: list[str] = []
+    saw_rows = bool(rows)
+    for row in rows:
+        media_id = str(row["media_id"] or "")
+        if not media_id:
+            continue
+        if row["bbox_x1"] is None or int(row["embedding_dim"] or 0) != int(dim):
+            continue
+        bucket = grouped.get(media_id)
+        if bucket is None:
+            bucket = {
+                "media_id": media_id,
+                "width": int(row["width"] or 0),
+                "height": int(row["height"] or 0),
+                "vecs": [],
+                "boxes": [],
+            }
+            grouped[media_id] = bucket
+            order.append(media_id)
+        bucket["vecs"].append(np.frombuffer(row["embedding"], dtype=np.float32).copy())
+        bucket["boxes"].append(
+            (float(row["bbox_x1"]), float(row["bbox_y1"]), float(row["bbox_x2"]), float(row["bbox_y2"]))
+        )
+    groups = []
+    for media_id in order:
+        bucket = grouped[media_id]
+        groups.append(
+            {
+                "media_id": media_id,
+                "width": bucket["width"],
+                "height": bucket["height"],
+                "matrix": np.ascontiguousarray(np.stack(bucket["vecs"]), dtype=np.float32),
+                "boxes": bucket["boxes"],
+            }
+        )
+    payload = (groups, saw_rows)
+    nbytes = sum(int(group["matrix"].nbytes) for group in groups)
+    with _GALLERY_LOCK:
+        _GALLERY_LOADS += 1
+        if nbytes <= _GALLERY_CAP_BYTES:
+            _GALLERY.clear()
+            _GALLERY[key] = payload
+    return payload
+
+
+def _score_one_block(
+    block: np.ndarray,
+    group: dict,
+    *,
+    token_floor: float,
+    score_floor: float,
+    coverage_floor: float,
+    keep_weak: bool,
+) -> dict | None:
+    maxes = block.max(axis=1)
+    score = float(maxes.mean())
+    coverage = float((maxes >= float(token_floor)).mean())
+    above = score >= float(score_floor) and coverage >= float(coverage_floor)
+    if not above and not keep_weak:
+        return None
+    winners: list[tuple[float, tuple[float, float, float, float]]] = []
+    chosen = block.argmax(axis=1)
+    boxes = group["boxes"]
+    for index, column in enumerate(chosen):
+        weight = float(block[index, column])
+        if weight >= float(token_floor):
+            winners.append((weight, boxes[int(column)]))
+    media_id = group["media_id"]
+    if not winners:
+        if not keep_weak:
+            return None
+        return {
+            "item_id": None,
+            "media_id": media_id,
+            "kind": "clip",
+            "provider": PROVIDER,
+            "score": score,
+            "match_box": [0.0, 0.0, 0.0, 0.0],
+            "match_norm": [0.0, 0.0, 0.0, 0.0],
+            "coverage": coverage,
+            "above_floor": False,
+            "why": "patch max-sim below the token line; not a person",
+        }
+    winners.sort(key=lambda item: -item[0])
+    span = _union_box([box for _weight, box in winners])
+    area = max(0.0, span[2] - span[0]) * max(0.0, span[3] - span[1])
+    frame = float(int(group["width"]) * int(group["height"]) or 1)
+    if area > 0.55 * frame and len(winners) > 4:
+        keep = max(4, len(winners) // 4)
+        span = _union_box([box for _weight, box in winners[:keep]])
+    x1, y1, x2, y2 = span
+    return {
+        "item_id": None,
+        "media_id": media_id,
+        "kind": "clip",
+        "provider": PROVIDER,
+        "score": score,
+        "match_box": [x1, y1, max(1.0, x2 - x1), max(1.0, y2 - y1)],
+        "match_norm": _norm_box(span, int(group["width"]), int(group["height"])),
+        "coverage": coverage,
+        "above_floor": above,
+        "why": "patch max-sim; source excluded; not a person",
+    }
+
+
+def score_patch_groups(
+    query: np.ndarray,
+    groups: list[dict],
+    *,
+    exclude_media_id: str | None = None,
+    cancelled=None,
+    keep_weak: bool = False,
+    token_floor: float = 0.35,
+    score_floor: float = 0.28,
+    coverage_floor: float = 0.28,
+    limit: int = 10,
+) -> list[dict]:
+    """Late interaction. One multiply covers many photos; the score is still max-sim."""
+    skipped = str(exclude_media_id or "")
+    items: list[dict] = []
+    pending: list[dict] = []
+    pending_patches = 0
+
+    def flush() -> None:
+        nonlocal pending, pending_patches
+        if not pending:
+            return
+        stacked = np.concatenate([group["matrix"] for group in pending], axis=0)
+        sims = query @ stacked.T
+        start = 0
+        for group in pending:
+            count = int(group["matrix"].shape[0])
+            item = _score_one_block(
+                sims[:, start : start + count],
+                group,
+                token_floor=token_floor,
+                score_floor=score_floor,
+                coverage_floor=coverage_floor,
+                keep_weak=keep_weak,
+            )
+            start += count
+            if item is not None:
+                items.append(item)
+        pending = []
+        pending_patches = 0
+
+    for group in groups:
+        if cancelled is not None and cancelled():
+            break
+        if str(group["media_id"]) == skipped:
+            continue
+        pending.append(group)
+        pending_patches += int(group["matrix"].shape[0])
+        if pending_patches >= _PATCH_CHUNK:
+            flush()
+    flush()
+    items.sort(key=lambda item: -float(item["score"]))
+    return items[: int(limit)]
+
+
 def search_patches(
     store: Path,
     crop,
@@ -577,8 +822,13 @@ def search_patches(
         return empty
     pack = pack_id_patches(KNOWN_SHA256[WEIGHT_NAME])
     try:
-        _cls, records = content_patch_records(crop)
+        _cls, records = content_patch_records(crop, interactive=True, cancelled=cancelled)
     except RegionPackError as exc:
+        if cancelled is not None and cancelled():
+            empty["status"] = "CANCELLED"
+            empty["reason"] = "Search cancelled."
+            empty["error_id"] = "region.CANCELLED"
+            return empty
         empty["reason"] = str(exc)
         empty["error_id"] = "region.ENCODE"
         return empty
@@ -596,100 +846,26 @@ def search_patches(
         return empty
     conn = _open_ro(path)
     try:
-        rows = conn.execute(
-            """SELECT e.embedding, e.embedding_dim, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2,
-                      o.media_id, m.width, m.height
-               FROM embeddings e
-               JOIN observation_items i ON i.item_id = e.item_id
-               JOIN observations o ON o.observation_id = i.observation_id
-               JOIN media m ON m.media_id = o.media_id
-               WHERE e.modality = ? AND e.pack_id = ?""",
-            (MODALITY_PATCH, pack),
-        ).fetchall()
+        groups, saw_rows = load_patch_groups(path, conn, pack, int(query.shape[1]))
     finally:
         conn.close()
-    if not rows:
+    if not saw_rows:
         empty["reason"] = (
             "These photos have no patch map yet. Add the folder again to index regions."
         )
         empty["error_id"] = "region.NO_PATCH_INDEX"
         return empty
-    grouped: dict[str, dict] = {}
-    for row in rows:
-        media_id = str(row["media_id"] or "")
-        if not media_id or media_id == str(exclude_media_id or ""):
-            continue
-        if row["bbox_x1"] is None or int(row["embedding_dim"] or 0) != query.shape[1]:
-            continue
-        bucket = grouped.setdefault(
-            media_id,
-            {"width": int(row["width"] or 0), "height": int(row["height"] or 0), "vecs": [], "boxes": []},
-        )
-        bucket["vecs"].append(np.frombuffer(row["embedding"], dtype=np.float32).copy())
-        bucket["boxes"].append(
-            (float(row["bbox_x1"]), float(row["bbox_y1"]), float(row["bbox_x2"]), float(row["bbox_y2"]))
-        )
-    items: list[dict] = []
-    for media_id, bucket in grouped.items():
-        if cancelled is not None and cancelled():
-            break
-        matrix = np.stack(bucket["vecs"])
-        sims = query @ matrix.T
-        maxes = sims.max(axis=1)
-        score = float(maxes.mean())
-        coverage = float((maxes >= float(token_floor)).mean())
-        above = score >= float(score_floor) and coverage >= float(coverage_floor)
-        if not above and not keep_weak:
-            continue
-        winners: list[tuple[float, tuple[float, float, float, float]]] = []
-        chosen = sims.argmax(axis=1)
-        for index, column in enumerate(chosen):
-            weight = float(sims[index, column])
-            if weight >= float(token_floor):
-                winners.append((weight, bucket["boxes"][int(column)]))
-        if not winners:
-            if not keep_weak:
-                continue
-            items.append(
-                {
-                    "item_id": None,
-                    "media_id": media_id,
-                    "kind": "clip",
-                    "provider": PROVIDER,
-                    "score": score,
-                    "match_box": [0.0, 0.0, 0.0, 0.0],
-                    "match_norm": [0.0, 0.0, 0.0, 0.0],
-                    "coverage": coverage,
-                    "above_floor": False,
-                    "why": "patch max-sim below the token line; not a person",
-                }
-            )
-            continue
-        winners.sort(key=lambda item: -item[0])
-        # A tight box. If the winners cover most of the photo, keep the strongest quarter.
-        span = _union_box([box for _weight, box in winners])
-        area = max(0.0, span[2] - span[0]) * max(0.0, span[3] - span[1])
-        frame = float(bucket["width"] * bucket["height"] or 1)
-        if area > 0.55 * frame and len(winners) > 4:
-            keep = max(4, len(winners) // 4)
-            span = _union_box([box for _weight, box in winners[:keep]])
-        x1, y1, x2, y2 = span
-        items.append(
-            {
-                "item_id": None,
-                "media_id": media_id,
-                "kind": "clip",
-                "provider": PROVIDER,
-                "score": score,
-                "match_box": [x1, y1, max(1.0, x2 - x1), max(1.0, y2 - y1)],
-                "match_norm": _norm_box(span, bucket["width"], bucket["height"]),
-                "coverage": coverage,
-                "above_floor": above,
-                "why": "patch max-sim; source excluded; not a person",
-            }
-        )
-    items.sort(key=lambda item: -float(item["score"]))
-    items = items[:limit]
+    items = score_patch_groups(
+        query,
+        groups,
+        exclude_media_id=exclude_media_id,
+        cancelled=cancelled,
+        keep_weak=keep_weak,
+        token_floor=token_floor,
+        score_floor=score_floor,
+        coverage_floor=coverage_floor,
+        limit=limit,
+    )
     if not items:
         return {
             "kind": "region_similar",

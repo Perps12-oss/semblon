@@ -4108,7 +4108,7 @@ ApplicationWindow {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 22
                 width: Math.min(Math.max(similarCountSafe * 104 - 8, 0), parent.width - 96)
-                height: similarReady && similarCountSafe > 0 ? 104 : 0
+                height: (similarReady || similarStateSafe === "loading") && similarCountSafe > 0 ? 104 : 0
                 orientation: ListView.Horizontal
                 spacing: 8
                 clip: true
