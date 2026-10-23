@@ -322,6 +322,10 @@ class ShellBridge(QObject):
         self._progress_seen: int | None = None
         self._progress_current = 0
         self._progress_total = 0
+        self._job_started_mono = 0.0
+        self._job_paused_seconds = 0.0
+        self._job_pause_started = 0.0
+        self._job_timing_shown = ""
         self._discovery_trail: list[dict] = []
         self._query_focus_id = ""
         self._point_source = ""
@@ -708,6 +712,10 @@ class ShellBridge(QObject):
     @Property(int, notify=jobChanged)
     def jobTotal(self) -> int:
         return int(self._progress_total)
+
+    @Property(str, notify=jobChanged)
+    def jobTiming(self) -> str:
+        return self._job_timing_text()
 
     @Property(bool, constant=True)
     def reducedMotion(self) -> bool:
@@ -4727,7 +4735,13 @@ class ShellBridge(QObject):
         state = self._session.job_state()
         if state == "paused" and self._job_state != "paused":
             self._events.record(JOB_PAUSED, {})
-        if active != self._job_active or state != self._job_state:
+            if self._job_pause_started <= 0:
+                self._job_pause_started = time.monotonic()
+        elif self._job_state == "paused" and state != "paused" and self._job_pause_started > 0:
+            self._job_paused_seconds += max(0.0, time.monotonic() - self._job_pause_started)
+            self._job_pause_started = 0.0
+        changed = active != self._job_active or state != self._job_state
+        if changed:
             was = self._job_active
             if was and not active:
                 self._progress_current = 0
@@ -4738,11 +4752,56 @@ class ShellBridge(QObject):
                 if self._surface_state == "loading":
                     self._surface_state = "empty" if self._jobs.archive_count() == 0 else "ready"
                     self.surfaceChanged.emit()
+                self._clear_job_clock()
+            if active and not was:
+                self._arm_job_clock()
             self._job_active = active
             self._job_state = state
             self.jobChanged.emit()
             if was and not active:
                 self._refresh_library()
+        if self._job_active:
+            timing = self._job_timing_text()
+            if timing != self._job_timing_shown:
+                self._job_timing_shown = timing
+                if not changed:
+                    self.jobChanged.emit()
+
+    def _arm_job_clock(self) -> None:
+        self._job_started_mono = time.monotonic()
+        self._job_paused_seconds = 0.0
+        self._job_pause_started = 0.0
+        self._job_timing_shown = ""
+
+    def _clear_job_clock(self) -> None:
+        self._job_started_mono = 0.0
+        self._job_paused_seconds = 0.0
+        self._job_pause_started = 0.0
+        self._job_timing_shown = ""
+
+    def _job_elapsed_seconds(self) -> float:
+        if self._job_started_mono <= 0:
+            return 0.0
+        now = time.monotonic()
+        paused = self._job_paused_seconds
+        if self._job_state == "paused" and self._job_pause_started > 0:
+            paused += max(0.0, now - self._job_pause_started)
+        return max(0.0, now - self._job_started_mono - paused)
+
+    def _job_timing_text(self) -> str:
+        if not self._job_active or self._job_started_mono <= 0:
+            return ""
+        elapsed = _format_span(self._job_elapsed_seconds())
+        if self._job_state in {"paused", "cancelling"}:
+            return f"{elapsed} elapsed."
+        current = int(self._progress_current)
+        total = int(self._progress_total)
+        spent = self._job_elapsed_seconds()
+        if current <= 0 or total <= current or spent < 1:
+            return f"{elapsed} elapsed."
+        remaining = (total - current) * spent / current
+        left = _format_span(max(1, int(round(remaining))))
+        return f"{elapsed} elapsed. About {left} left."
 
     def _refresh_library(self) -> None:
         self._path_cache.clear()
@@ -4762,6 +4821,17 @@ class ShellBridge(QObject):
         if empty != self._empty:
             self._empty = empty
             self.emptyChanged.emit()
+
+
+def _format_span(seconds: float) -> str:
+    total = max(0, int(round(seconds)))
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
 
 
 def _ask_lines(lines, mode: str) -> str:
