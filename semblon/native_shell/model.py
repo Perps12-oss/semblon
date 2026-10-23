@@ -24,7 +24,9 @@ _SIMILAR_NX = Qt.ItemDataRole.UserRole + 3
 _SIMILAR_NY = Qt.ItemDataRole.UserRole + 4
 _SIMILAR_NW = Qt.ItemDataRole.UserRole + 5
 _SIMILAR_NH = Qt.ItemDataRole.UserRole + 6
-_STRIP_CAP = 8
+# The results tray scrolls every hit this search already returned.
+# Search itself caps the list. This only stops a runaway model.
+_STRIP_CAP = 48
 
 
 class ArchiveModel(QAbstractListModel):
