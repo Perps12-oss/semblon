@@ -1058,6 +1058,63 @@ ApplicationWindow {
                 }
                 Text {
                     width: parent.width
+                    text: "Capabilities"
+                    color: tokenFaint
+                    font.pixelSize: 11
+                    font.letterSpacing: 0.4
+                    font.family: "Segoe UI"
+                }
+                Text {
+                    objectName: "preflightSummary"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: shellReady ? shellApi.preflightSummary : ""
+                    color: tokenMuted
+                    font.pixelSize: 12
+                    font.family: "Segoe UI"
+                }
+                Repeater {
+                    objectName: "preflightRepeater"
+                    model: shellReady ? shellApi.preflightRows : []
+                    delegate: Column {
+                        width: settingsColumn.width
+                        spacing: 4
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: name + ". " + detail
+                            color: tokenText
+                            font.pixelSize: 12
+                            font.family: "Segoe UI"
+                        }
+                        Rectangle {
+                            visible: installable
+                            objectName: "preflightInstall"
+                            width: 72
+                            height: 26
+                            radius: 6
+                            color: preflightInstallHit.containsMouse ? tokenAccentDim : tokenBg2
+                            border.color: tokenBorder
+                            border.width: 1
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Install"
+                                color: tokenText
+                                font.pixelSize: 12
+                                font.family: "Segoe UI"
+                            }
+                            MouseArea {
+                                id: preflightInstallHit
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (shellReady) shellApi.installPreflight(model.itemId)
+                            }
+                        }
+                    }
+                }
+                Text {
+                    width: parent.width
                     text: "Appearance"
                     color: tokenFaint
                     font.pixelSize: 11

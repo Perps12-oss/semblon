@@ -258,6 +258,7 @@ class ShellBridge(QObject):
     surfaceChanged = Signal()
     editorialChanged = Signal()
     screenQueryChanged = Signal()
+    preflightChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -338,6 +339,8 @@ class ShellBridge(QObject):
         self._buckets: list[dict] = []
         self._facet = "memory"
         self._settings_open = False
+        self._preflight_rows: list[dict] = []
+        self._preflight_thread: QThread | None = None
         self._named_items_open = False
         self._named_items: list[dict] = []
         self._named_item_id = ""
@@ -4026,7 +4029,124 @@ class ShellBridge(QObject):
     @Slot()
     def toggleSettings(self) -> None:
         self._settings_open = not self._settings_open
+        if self._settings_open:
+            self._refresh_preflight()
         self.surfaceChanged.emit()
+
+    def _refresh_preflight(self) -> None:
+        try:
+            from semblon.preflight import capability_rows
+
+            self._preflight_rows = capability_rows()
+        except Exception as exc:  # noqa: BLE001 — settings must still open
+            self._preflight_rows = [
+                {
+                    "id": "preflight",
+                    "itemId": "preflight",
+                    "name": "Setup check",
+                    "detail": (
+                        f"The setup check could not finish. {type(exc).__name__}: {exc}"
+                    ),
+                    "installable": False,
+                    "status": "failed",
+                }
+            ]
+        self.preflightChanged.emit()
+
+    @staticmethod
+    def _setup_line(text: str) -> str:
+        """One primary-safe sentence. The real failure stays in the sentence."""
+        line = " ".join(str(text or "Setup could not finish.").split())
+        if not line.endswith("."):
+            line += "."
+        if line.startswith("Setup:"):
+            return line
+        return f"Setup: {line}"
+
+    @Property("QVariantList", notify=preflightChanged)
+    def preflightRows(self):
+        """Capabilities that still need setup. Ready ones are omitted."""
+        return list(self._preflight_rows)
+
+    @Property(str, notify=preflightChanged)
+    def preflightSummary(self) -> str:
+        if not self._preflight_rows:
+            return "Capabilities this machine can run are ready."
+        return (
+            "Some capabilities need setup. A missing model does not make another "
+            "search that capability."
+        )
+
+    @Slot(str)
+    def installPreflight(self, item_id: str) -> None:
+        """Install one missing capability, off the UI thread, then verify it."""
+        item_id = str(item_id or "").strip()
+        row = next((item for item in self._preflight_rows if item.get("id") == item_id), None)
+        if row is None:
+            self._refresh_preflight()
+            row = next((item for item in self._preflight_rows if item.get("id") == item_id), None)
+        if row is None or row.get("status") == "ready":
+            self._apply_result(Result("ready", self._setup_line("That capability is already ready.")))
+            return
+        if not row.get("installable"):
+            self._apply_result(
+                Result(
+                    "unavailable",
+                    self._setup_line(
+                        str(row.get("detail") or "This capability cannot be installed from here.")
+                    ),
+                )
+            )
+            return
+        if self._preflight_thread is not None and self._preflight_thread.isRunning():
+            self._apply_result(Result("loading", self._setup_line("An install is already running.")))
+            return
+        answer = QMessageBox.question(
+            None,
+            str(row.get("name") or "Install"),
+            str(row.get("confirm") or "Install this capability?"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self._apply_result(Result("empty", self._setup_line("Install cancelled.")))
+            return
+        self._apply_result(
+            Result("loading", self._setup_line(f"Installing {row.get('name') or item_id}."))
+        )
+
+        def _run():
+            from semblon.preflight import install_item
+
+            return install_item(item_id)
+
+        thread = _TaskThread(_run, self)
+        thread.succeeded.connect(self._on_preflight_installed)
+        thread.failed.connect(self._on_preflight_failed)
+        self._preflight_thread = thread
+        thread.start()
+
+    def _on_preflight_installed(self, rec: object) -> None:
+        self._refresh_preflight()
+        result = rec if isinstance(rec, dict) else {}
+        if result.get("ready") and result.get("skipped"):
+            self._apply_result(Result("ready", self._setup_line("Already ready. Nothing was installed.")))
+            return
+        if result.get("ready"):
+            self._apply_result(Result("ready", self._setup_line("Installed and verified.")))
+            return
+        self._apply_result(
+            Result(
+                "unavailable",
+                self._setup_line(
+                    str(result.get("error") or "Install did not verify. It is still not ready.")
+                ),
+            )
+        )
+
+    def _on_preflight_failed(self, message: str) -> None:
+        self._refresh_preflight()
+        self._apply_result(Result("unavailable", self._setup_line(message or "Install failed.")))
 
     @Slot()
     def openNamedItems(self) -> None:

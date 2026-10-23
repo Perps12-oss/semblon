@@ -106,6 +106,7 @@ _SAFE_PRIMARY_PATTERNS = (
     re.compile(r"^Overlooked faces: [^\n]+\.$"),
     re.compile(r"^Named items: [^\n]+\.$"),
     re.compile(r"^Rescan: [^\n]+\.$"),
+    re.compile(r"^Setup: [^\n]+\.$"),
 )
 
 _WORD_REPLACEMENTS = (
