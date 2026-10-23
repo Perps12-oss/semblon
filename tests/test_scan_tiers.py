@@ -147,6 +147,44 @@ def test_region_waits_until_the_semantic_tier(tmp_path):
     assert calls["region"] == 1
 
 
+def test_library_tier_commits_a_file_before_reading_the_next(tmp_path):
+    """A folder must not sit in RAM until every still has been hashed."""
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    for name in ("a.jpg", "b.jpg", "c.jpg"):
+        (folder / name).write_bytes(b"\xff\xd8\xff" + name.encode())
+    store = tmp_path / "s.sqlite"
+    order: list[tuple[str, str]] = []
+    import semblon.ingest as ingest_mod
+
+    real_read = ingest_mod._read_and_hash
+    real_save = ingest_mod.save_work_item
+
+    def read(path: Path):
+        order.append(("read", Path(path).name))
+        return real_read(path)
+
+    def save(conn, **kwargs):
+        order.append(("save", Path(kwargs["path"]).name))
+        return real_save(conn, **kwargs)
+
+    with (
+        patch.object(ingest_mod, "_read_and_hash", side_effect=read),
+        patch.object(ingest_mod, "save_work_item", side_effect=save),
+    ):
+        _run(folder, store, lambda *_args: _face())
+
+    waiting = None
+    for kind, name in order:
+        if kind == "read":
+            assert waiting is None, order
+            waiting = name
+        elif kind == "save" and name == waiting:
+            waiting = None
+    assert waiting is None
+    assert [name for kind, name in order if kind == "read"] == ["a.jpg", "b.jpg", "c.jpg"]
+
+
 def test_header_orientation_and_embedded_thumb():
     thumb = b"\xff\xd8\xff\xd9"
     tiff = bytearray(56 + len(thumb))

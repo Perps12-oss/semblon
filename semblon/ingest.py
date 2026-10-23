@@ -937,7 +937,7 @@ def ingest(
                     rec["mask"] = need
                     rec["duplicate"] = True
                     _stamp(rec, 0)
-                    maybe_commit()
+                    maybe_commit(force=True)
                     return "same_run"
                 _bind_media(rec, digest, width, height)
                 if (
@@ -947,12 +947,12 @@ def ingest(
                 ):
                     seen_sha[digest] = rec["media_id"]
                     _stamp(rec, 0)
-                    maybe_commit()
+                    maybe_commit(force=True)
                     return "seen"
                 _stamp(rec, TIER_LIBRARY, orientation=orientation, thumb=thumb)
                 if rec.get("media_id"):
                     seen_sha[digest] = rec["media_id"]
-                maybe_commit()
+                maybe_commit(force=True)
             return "ok"
 
         need = requested_mask(observer_list)
@@ -990,8 +990,43 @@ def ingest(
                 else:
                     work.append(rec)
 
+        def _apply_library(
+            rec: dict,
+            index: int,
+            *,
+            digest: str | None = None,
+            data: bytes | None = None,
+        ) -> None:
+            nonlocal n_fail, n_skip_same, n_skip_seen
+            if rec.get("failed"):
+                return
+            if rec["needs_hash"]:
+                if digest is None or data is None:
+                    return
+                status = _commit_library(rec, digest, data)
+                if status == "fail" or rec.get("failed"):
+                    n_fail += 1
+                    tick(rec["path"], "failed", force=True)
+                    return
+                if status == "same_run":
+                    n_skip_same += 1
+                    rec["needs_hash"] = False
+                    tick(rec["path"], "skipped_same_run", current=index)
+                    return
+                if status == "seen":
+                    n_skip_seen += 1
+                    rec["needs_hash"] = False
+                    tick(rec["path"], "skipped_seen", current=index)
+                    return
+            else:
+                with writer_lock():
+                    _stamp(rec, TIER_LIBRARY)
+                    maybe_commit(force=True)
+            rec["needs_hash"] = False
+            tick(rec["path"], "library", current=index)
+
         def _run_tier0() -> None:
-            nonlocal cancelled, n_fail, n_skip_same, n_skip_seen
+            nonlocal cancelled, n_fail
             started = time.perf_counter()
             queue = [
                 rec
@@ -999,13 +1034,17 @@ def ingest(
                 if not rec.get("failed")
                 and (reprocess or rec["needs_hash"] or not (int(rec["mask"]) & TIER_LIBRARY))
             ]
-            hashed: dict[str, tuple] = {}
+            # One still at a time. Holding every file's bytes until the folder
+            # finishes is what froze the shell on a real photo folder.
             if workers == 1:
-                for rec in queue:
+                for index, rec in enumerate(queue, start=1):
                     if want_cancel():
                         cancelled = True
                         break
+                    if rec.get("failed"):
+                        continue
                     if not rec["needs_hash"]:
+                        _apply_library(rec, index)
                         continue
                     try:
                         digest, data, mtime_ns, byte_size = _read_and_hash(rec["path"])
@@ -1016,10 +1055,11 @@ def ingest(
                         continue
                     rec["mtime_ns"] = mtime_ns
                     rec["byte_size"] = byte_size
-                    hashed[str(rec["path"])] = (digest, data)
+                    _apply_library(rec, index, digest=digest, data=data)
             else:
                 pending = [rec for rec in queue if rec["needs_hash"]]
                 by_path = {rec["path"]: rec for rec in pending}
+                index_of = {rec["path"]: i for i, rec in enumerate(queue, start=1)}
                 for hrec in _iter_hash_results(
                     [rec["path"] for rec in pending],
                     workers=workers,
@@ -1039,40 +1079,21 @@ def ingest(
                         continue
                     rec["mtime_ns"] = int(hrec["mtime_ns"])
                     rec["byte_size"] = int(hrec["byte_size"])
-                    hashed[str(path)] = (hrec["digest"], hrec.get("data") or b"")
-            if not cancelled:
-                for index, rec in enumerate(queue, start=1):
-                    if want_cancel():
-                        cancelled = True
-                        break
-                    if rec.get("failed"):
-                        continue
-                    if rec["needs_hash"]:
-                        payload = hashed.get(str(rec["path"]))
-                        if payload is None:
+                    _apply_library(
+                        rec,
+                        index_of.get(path, 0),
+                        digest=str(hrec["digest"]),
+                        data=hrec.get("data") or b"",
+                    )
+                    hrec["data"] = b""
+                if not cancelled:
+                    for index, rec in enumerate(queue, start=1):
+                        if want_cancel():
+                            cancelled = True
+                            break
+                        if rec.get("failed") or rec["path"] in by_path:
                             continue
-                        digest, data = payload
-                        status = _commit_library(rec, digest, data)
-                        if status == "fail" or rec.get("failed"):
-                            n_fail += 1
-                            tick(rec["path"], "failed", force=True)
-                            continue
-                        if status == "same_run":
-                            n_skip_same += 1
-                            rec["needs_hash"] = False
-                            tick(rec["path"], "skipped_same_run", current=index)
-                            continue
-                        if status == "seen":
-                            n_skip_seen += 1
-                            rec["needs_hash"] = False
-                            tick(rec["path"], "skipped_seen", current=index)
-                            continue
-                    else:
-                        with writer_lock():
-                            _stamp(rec, TIER_LIBRARY)
-                            maybe_commit()
-                    rec["needs_hash"] = False
-                    tick(rec["path"], "library", current=index)
+                        _apply_library(rec, index)
             tier_wall["library"] += time.perf_counter() - started
             maybe_commit(force=True)
 
@@ -1142,6 +1163,10 @@ def ingest(
                     n_lq += nlq
                     n_rej += nrej
                     dirty += max(nf, 1)
+                    # Close the face write before histogram and contours.
+                    # Those run before their own inserts, and an open
+                    # transaction here blocks the shell's reads.
+                    maybe_commit(force=True)
                     if color_obs:
                         t_hist = time.perf_counter()
                         observe_bgr(
@@ -1153,6 +1178,7 @@ def ingest(
                         )
                         phase_ms["hist_ms"] += (time.perf_counter() - t_hist) * 1000.0
                         dirty += 1
+                        maybe_commit(force=True)
                     if object_obs:
                         t_obj = time.perf_counter()
                         observe_bgr(
@@ -1164,6 +1190,7 @@ def ingest(
                         )
                         phase_ms["contours_ms"] += (time.perf_counter() - t_obj) * 1000.0
                         dirty += 1
+                        maybe_commit(force=True)
                     if rest_obs:
                         observe_bgr(
                             conn,
@@ -1173,8 +1200,9 @@ def ingest(
                             observers=rest_obs,
                         )
                         dirty += 1
+                        maybe_commit(force=True)
                     _stamp(rec, TIER_OBSERVE)
-                    maybe_commit()
+                    maybe_commit(force=True)
                 tick(rec["path"], "faces", current=index)
             tier_wall["faces"] += time.perf_counter() - started
             maybe_commit(force=True)
@@ -1216,6 +1244,7 @@ def ingest(
                     if obs_id is None:
                         n_fail += 1
                         continue
+                    maybe_commit(force=True)
                     t_dino = time.perf_counter()
                     try:
                         indexed = index_image_regions(
@@ -1228,11 +1257,11 @@ def ingest(
                         indexed = None
                     phase_ms["dino_ms"] += (time.perf_counter() - t_dino) * 1000.0
                     if indexed is None or indexed.get("ready") is False:
-                        maybe_commit()
+                        maybe_commit(force=True)
                         continue
                     dirty += 1
                     _stamp(rec, TIER_SEMANTIC)
-                    maybe_commit()
+                    maybe_commit(force=True)
                 tick(rec["path"], "indexed", current=index)
             tier_wall["indexed"] += time.perf_counter() - started
             maybe_commit(force=True)
