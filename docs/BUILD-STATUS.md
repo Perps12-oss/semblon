@@ -224,7 +224,18 @@ Visible shell grab: `docs/evidence/visual-discovery-shell-windows.png` shows **S
 
 Setup: `py -3 tools/fetch_region_pack.py` once. Search does not download.
 
+## Behaviour landed — Focus discovery chrome (2026-10-23)
+
+The search operations are unchanged. Focus presents them as one action, a results tray, and a visible running state.
+
+1. With a region selected, the primary action is **Find similar**. **Describe this area** names the crop. **Find this person** appears only when the photo has a face box, and it uses the existing face search. Duplicates, whole-photo search, quality, Same look / Same kind, a word, and part chips sit in **More**.
+2. The file-details drawer stays closed until **Details**. The photo keeps the width of the stage. Matches scroll in `focusTray` across the bottom, with the match rectangle on each thumbnail. Opening a thumbnail still uses `openDiscoveryHit`.
+3. A running search shows an indeterminate spinner immediately (`focusSearchSpinner`), the backend note, and **Cancel search**. The phase chip stays hidden until that search is no longer busy, so a first look is not presented as finished. Completion, an empty list, cancel, and failure replace the spinner with the existing note. No percentage is invented.
+4. Timings, the door name, retrieval detail, and the diagnostics panel stay on Advanced. A match is still not proof it is the same object.
+
 ## Behaviour landed — three search doors (2026-10-19)
+
+The 2026-10-23 Focus chrome is how these doors appear now. This section records the operations as they landed.
 
 1. Focus has separate controls for **Similar region**, **Same face**, **Duplicates**, and **Whole photo**. Similar region searches the highlighted area. Duplicates stays an exact and near-copy scan and does not replace that strip.
 2. The result strip carries a phase badge. Focus also shows the time to the first look and the time to the refined result.
