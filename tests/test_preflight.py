@@ -492,10 +492,8 @@ def test_unreadable_requirements_and_metadata_are_failed_rows(monkeypatch):
     assert all(row["id"] != "pkg:pillow" for row in rows)
 
 
-def test_pip_failure_keeps_the_earlier_output(monkeypatch, tmp_path):
+def test_pip_failure_keeps_the_earlier_output(monkeypatch):
     from semblon.preflight import _default_pip_install
-
-    monkeypatch.setattr("semblon.preflight.sys.prefix", str(tmp_path / "venv"))
 
     class Completed:
         returncode = 1
