@@ -97,15 +97,19 @@ class _Capture:
             self._cleanup = None
 
 
-def _extended_win_path(path: Path) -> str | None:
-    if os.name != "nt":
-        return None
-    resolved = str(path.resolve())
+def _extended_prefix(resolved: str) -> str:
+    """Long-path form of an already-resolved Windows path. Pure string logic."""
     if resolved.startswith("\\\\?\\"):
         return resolved
     if resolved.startswith("\\\\"):
         return "\\\\?\\UNC\\" + resolved[2:]
     return "\\\\?\\" + resolved
+
+
+def _extended_win_path(path: Path) -> str | None:
+    if os.name != "nt":
+        return None
+    return _extended_prefix(str(path.resolve()))
 
 
 def _ascii_temp_copy(path: Path) -> Path | None:

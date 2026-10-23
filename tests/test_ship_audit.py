@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
@@ -15,7 +16,7 @@ from semblon.engine import ModelPackError, accept_local_face_pack, assert_face_p
 from semblon.erasure import delete_person, wipe_library
 from semblon.logging_setup import configure_logging, redact
 from semblon.review import note_subject
-from semblon.store import apply_migrations, connect, delete_observation_tree, init_db, restore_store
+from semblon.store import apply_migrations, connect, connect_readonly, delete_observation_tree, init_db, restore_store
 from semblon.temporal import VideoError, iter_sampled_frames, open_video, read_bgr
 from tests.test_cluster import _seed
 
@@ -282,9 +283,16 @@ def test_video_thumb_does_not_seek_by_frame_number(tmp_path):
 
 
 def test_windows_video_open_tries_extended_path(tmp_path):
+    """The open loop must try the extended path without flipping os.name.
+
+    Patching os.name to ``nt`` on Linux makes pathlib.Path() construct
+    WindowsPath and raise NotImplementedError before VideoCapture runs.
+    The prefix itself is covered by test_extended_win_prefix_drive_unc_and_passthrough.
+    """
     path = tmp_path / "José.mp4"
     path.write_bytes(b"x")
     calls: list[str] = []
+    extended = "\\\\?\\C:\\Users\\José\\clip.mp4"
 
     class _Cap:
         def __init__(self, name):
@@ -301,14 +309,61 @@ def test_windows_video_open_tries_extended_path(tmp_path):
         return _Cap(name)
 
     with (
-        patch("semblon.temporal.os.name", "nt"),
-        patch("semblon.temporal.Path.resolve", return_value=r"C:\Users\José\clip.mp4"),
+        patch("semblon.temporal._extended_win_path", return_value=extended),
         patch("semblon.temporal.cv2.VideoCapture", side_effect=_open),
     ):
         cap = open_video(path)
     assert cap.isOpened()
-    assert any(item.startswith("\\\\?\\") for item in calls)
+    assert calls[0] == str(path)
+    assert extended in calls
     cap.release()
+
+
+def test_extended_win_prefix_drive_unc_and_passthrough():
+    from semblon.temporal import _extended_prefix, _extended_win_path
+
+    assert _extended_prefix("C:\\Users\\José\\clip.mp4") == "\\\\?\\C:\\Users\\José\\clip.mp4"
+    assert _extended_prefix("\\\\server\\share\\José.mp4") == "\\\\?\\UNC\\server\\share\\José.mp4"
+    already = "\\\\?\\C:\\already.mp4"
+    assert _extended_prefix(already) == already
+    if os.name != "nt":
+        assert _extended_win_path(Path("José.mp4")) is None
+
+
+def test_readonly_open_keeps_hash_and_percent_in_the_path(tmp_path):
+    folder = tmp_path / "Photos #2 %2F..%2F"
+    folder.mkdir()
+    store = folder / "store.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES ('r-ro','t','0','p',2,'l2','{}','{}','x64','native')"""
+    )
+    conn.commit()
+    conn.close()
+    ro = connect_readonly(store)
+    try:
+        assert ro.execute("SELECT run_id FROM runs").fetchone()["run_id"] == "r-ro"
+        with pytest.raises(sqlite3.OperationalError):
+            ro.execute("CREATE TABLE leaked(n INTEGER)")
+    finally:
+        ro.close()
+    assert not (tmp_path / "leaked").exists()
+    assert list(folder.glob("*.sqlite")) == [store]
+
+
+def test_live_part_box_uses_detector_corners(monkeypatch):
+    from semblon.region_parts import _crop_parts
+
+    monkeypatch.setattr("semblon.object_pack.probe_nanodet_status", lambda: (True, "ready"))
+    monkeypatch.setattr(
+        "semblon.object_nanodet.detect_objects",
+        lambda _crop: [{"label": "cup", "bbox": (10, 20, 40, 60)}],
+    )
+    parts = _crop_parts(object(), 100, 200)
+    assert parts == [{"label": "cup", "kind": "object", "box": [110, 220, 30, 40]}]
 
 
 def test_observation_delete_removes_items(tmp_path):
@@ -521,6 +576,113 @@ def test_reused_run_reports_existing_cluster_counts(tmp_path):
     assert rec["run_id"] == "r1"
     assert rec["cluster"]["clusters"] == 2
     assert rec["cluster"]["clustered"] == 4
+
+
+def test_replaced_bytes_do_not_keep_the_old_path(tmp_path):
+    from semblon.ingest import claim_new_media
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    photo = tmp_path / "shot.jpg"
+    conn.execute(
+        """INSERT INTO media(media_id, source_type, path, sha256, width, height, mtime_ns, byte_size)
+           VALUES ('old','folder',?,'aaa',1,1,1,3)""",
+        (str(photo),),
+    )
+    new_id = claim_new_media(
+        conn,
+        source_type="folder",
+        path=photo,
+        digest="bbb",
+        width=2,
+        height=2,
+        mtime_ns=2,
+        byte_size=4,
+    )
+    conn.commit()
+    try:
+        old_path = conn.execute("SELECT path FROM media WHERE media_id='old'").fetchone()[0]
+        new_row = conn.execute(
+            "SELECT path, sha256 FROM media WHERE media_id=?",
+            (new_id,),
+        ).fetchone()
+        assert old_path == ""
+        assert new_row[0] == str(photo)
+        assert new_row[1] == "bbb"
+    finally:
+        conn.close()
+
+
+def test_delete_person_drops_centroid_of_their_cluster(tmp_path):
+    store = tmp_path / "s.sqlite"
+    conn = _seed(store)
+    secret = np.array([0.2, 0.9], np.float32).tobytes()
+    conn.execute(
+        "INSERT INTO persons(person_id, display_name, status) VALUES ('p1','Ada','active')"
+    )
+    conn.execute(
+        """INSERT INTO clusters(cluster_id, run_id, strategy, face_count, centroid, min_intra, status)
+           VALUES ('c-secret','r1','t',1,?,0.1,'auto')""",
+        (secret,),
+    )
+    conn.execute(
+        "UPDATE faces SET person_id='p1', cluster_id='c-secret' WHERE face_id='f1'"
+    )
+    conn.commit()
+    conn.close()
+    delete_person(store, "p1")
+    conn = connect(store)
+    try:
+        row = conn.execute(
+            "SELECT face_count, centroid FROM clusters WHERE cluster_id='c-secret'"
+        ).fetchone()
+        assert int(row[0]) == 0
+        assert row[1] is None
+    finally:
+        conn.close()
+
+
+def test_text_search_keeps_a_zero_score(tmp_path):
+    from semblon.search import search_text
+
+    store = tmp_path / "s.sqlite"
+    conn = _seed(store)
+    conn.execute(
+        """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider, score, payload_json)
+           VALUES ('t0','o1','r1','text','ocr',0,'{"text":"zero semblon"}')"""
+    )
+    conn.execute(
+        """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider, score, payload_json)
+           VALUES ('t1','o1','r1','text','ocr',NULL,'{"text":"missing semblon"}')"""
+    )
+    conn.commit()
+    conn.close()
+    rec = search_text(store, "semblon")
+    by_id = {item["item_id"]: item["score"] for item in rec["items"]}
+    assert by_id["t0"] == 0
+    assert by_id["t1"] == 1.0
+
+
+def test_region_text_door_keeps_a_zero_score():
+    """The selection text door must not turn the stored 0 back into 1.0."""
+    from semblon.region_search import _as_text_result
+    from semblon.similarity_profile import resolve_search_quality
+
+    out = _as_text_result(
+        {
+            "status": "SUCCESS",
+            "items": [
+                {"item_id": "t0", "media_id": "m1", "provider": "ocr", "score": 0},
+                {"item_id": "t1", "media_id": "m2", "provider": "ocr", "score": None},
+            ],
+        },
+        token="semblon",
+        quality=resolve_search_quality("balanced"),
+    )
+    by_id = {item["item_id"]: item["score"] for item in out["items"]}
+    assert by_id["t0"] == 0.0
+    assert by_id["t1"] == 1.0
 
 
 def test_parallel_hash_decodes_the_same_bytes(tmp_path):

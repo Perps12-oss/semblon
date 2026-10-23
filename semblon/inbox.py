@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from semblon.eval import DEFAULT_THRESHOLD
+from semblon.store import connect_readonly
 
 BUCKETS = ("KNOWN", "UNKNOWN", "REVIEW_REQUIRED", "REJECTED")
 
@@ -25,7 +26,7 @@ def _open(store: Path):
         raise InboxError(f"store not found: {p}")
     import sqlite3
 
-    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(p.resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn

@@ -16,6 +16,7 @@ from semblon.compare import CompareError, compare, compare_space
 from semblon.identify import IdentifyError, identify_face
 from semblon.memory import MemoryError, history
 from semblon.similarity_profile import resolve_search_quality
+from semblon.store import connect_readonly
 
 
 class SearchError(ValueError):
@@ -26,7 +27,7 @@ def _open_ro(store: Path) -> sqlite3.Connection:
     p = Path(store)
     if not p.is_file():
         raise SearchError(f"store not found: {p}")
-    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(p.resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
@@ -764,7 +765,12 @@ def search_text(
 
     for row in docs:
         if q_lower in str(row.get("text") or "").lower():
-            _take(row, why="OCR payload substring; not a person", score=row.get("score") or 1.0)
+            raw_score = row.get("score")
+            _take(
+                row,
+                why="OCR payload substring; not a person",
+                score=1.0 if raw_score is None else raw_score,
+            )
         if len(items) >= limit:
             break
     if len(items) < limit:

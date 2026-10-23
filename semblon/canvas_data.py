@@ -14,6 +14,7 @@ from semblon.state_triple import (
     media_inspector_triple_line,
     triples_for_board,
 )
+from semblon.store import connect_readonly
 
 class CanvasError(ValueError):
     pass
@@ -35,7 +36,7 @@ def load_canvas(store: Path, run_id: str | None = None) -> dict:
     store = Path(store)
     if not store.is_file():
         raise CanvasError(f"store not found: {store}")
-    conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(store.resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     rid = run_id or latest_run_id(store, with_faces=True) or latest_run_id(store)

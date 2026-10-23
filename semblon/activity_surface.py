@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from semblon.empty_states import activity_empty, activity_history_lines
+from semblon.store import connect_readonly
 
 ACTIVITY_HEADLINE = "Recent activity"
 ACTIVITY_SUBCOPY = (
@@ -181,7 +182,7 @@ def soft_moment_line(ev: dict) -> str | None:
 
 def _processing_stats(store: Path, run_id: str) -> dict[str, Any]:
     """Plain-language counts for Recent processing (no integrity jargon)."""
-    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(Path(store).resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     try:
@@ -440,7 +441,7 @@ def activity_workspace_sections(view: dict[str, Any]) -> list[dict[str, Any]]:
 
 def read_activity_snapshot(store: Path, run_id: str) -> dict:
     """Read-only observation-graph snapshot. Not a person enrolment record."""
-    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(Path(store).resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     try:

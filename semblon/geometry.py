@@ -7,6 +7,17 @@ x1,y1,x2,y2 in [0,1]. A detector box is a different observation.
 from __future__ import annotations
 
 
+def xyxy_to_xywh(bbox) -> tuple[int, int, int, int]:
+    """Board face boxes are corners. The image provider crops xywh."""
+    try:
+        x1, y1, x2, y2 = (float(v) for v in list(bbox)[:4])
+    except (TypeError, ValueError):
+        return (0, 0, 1, 1)
+    if x2 < x1 or y2 < y1:
+        return (0, 0, 1, 1)
+    return (int(x1), int(y1), max(1, int(round(x2 - x1))), max(1, int(round(y2 - y1))))
+
+
 def contain_rect(
     *,
     view_w: int,

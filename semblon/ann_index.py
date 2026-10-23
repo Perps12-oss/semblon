@@ -58,14 +58,17 @@ def build_index(store: Path) -> dict:
         matrix = np.stack(vectors).astype(np.float32)
     else:
         matrix = np.zeros((0, 1), dtype=np.float32)
+    def _labels(values: list[str]) -> np.ndarray:
+        return np.array(values, dtype="U")
+
     np.savez(
         path,
         matrix=matrix,
-        item_id=np.array(ids, dtype=object),
-        kind=np.array(kinds, dtype=object),
-        provider=np.array(providers, dtype=object),
-        modality=np.array(modalities, dtype=object),
-        pack_id=np.array(packs, dtype=object),
+        item_id=_labels(ids),
+        kind=_labels(kinds),
+        provider=_labels(providers),
+        modality=_labels(modalities),
+        pack_id=_labels(packs),
     )
     return {"path": str(path), "count": len(ids), "authoritative": "sqlite", "derived": True}
 
@@ -80,25 +83,34 @@ def search_index(
     dim: int,
     limit: int,
 ) -> list[dict] | None:
-    """Neighbours from the derived index, or None when the index is absent."""
+    """Neighbours from the derived index.
+
+    None means this file cannot answer, so the caller scans SQLite. An empty
+    list is a real miss inside an index that does contain the query.
+    """
     path = index_path(store)
     if not path.is_file():
         return None
-    data = np.load(path, allow_pickle=True)
-    matrix = np.asarray(data["matrix"], dtype=np.float32)
-    ids = [str(x) for x in data["item_id"].tolist()]
+    try:
+        with np.load(path, allow_pickle=False) as data:
+            matrix = np.asarray(data["matrix"], dtype=np.float32)
+            ids = [str(x) for x in data["item_id"].tolist()]
+            modalities = [str(x) for x in data["modality"].tolist()]
+            packs = [str(x) for x in data["pack_id"].tolist()]
+            kinds = [str(x) for x in data["kind"].tolist()]
+            providers = [str(x) for x in data["provider"].tolist()]
+    except (OSError, ValueError, KeyError):
+        # Older indexes stored object arrays and required pickle. A broken
+        # derived file is not a match list. SQLite stays authoritative.
+        return None
     if item_id not in ids or matrix.shape[0] == 0:
-        return []
+        return None
     query = np.frombuffer(vector, dtype=np.float32, count=dim).astype(np.float32)
     norm = float(np.linalg.norm(query))
     if norm <= 0 or query.shape[0] != matrix.shape[1]:
-        return []
+        return None
     query = query / norm
     scores = matrix @ query
-    modalities = [str(x) for x in data["modality"].tolist()]
-    packs = [str(x) for x in data["pack_id"].tolist()]
-    kinds = [str(x) for x in data["kind"].tolist()]
-    providers = [str(x) for x in data["provider"].tolist()]
     order = np.argsort(-scores)
     hits = []
     for pos in order:

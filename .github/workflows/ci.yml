@@ -1,1 +1,68 @@
+# Portable CI: no InsightFace weight download, no owner dump.
+name: ci
+on:
+  push:
+  pull_request:
 
+jobs:
+  # Matrix legs publish contexts like "test-matrix (windows-latest, 3.12)".
+  # Branch protection that still requires the exact name "test" needs the
+  # aggregate job below — otherwise a required check waits forever.
+  test-matrix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Linux Qt runtime dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libpulse0 xvfb
+      - name: Install declared test deps
+        run: |
+          python -m pip install -U pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -e ".[dev]"
+          python -m pip uninstall -y opencv-python opencv-contrib-python
+          python -m pip install --force-reinstall --no-deps opencv-python-headless==5.0.0.93
+          python tools/assert_one_opencv.py
+      - name: Verify hash lock (Python 3.12 baseline)
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m pip install -U uv
+          uv pip compile requirements.txt --generate-hashes --python-version 3.12 --output-file requirements.lock.check.txt
+          python -c "from pathlib import Path; a=Path('requirements.lock.txt').read_text(encoding='utf-8').splitlines(); b=Path('requirements.lock.check.txt').read_text(encoding='utf-8').splitlines(); aa=[x for x in a if not x.startswith('#')]; bb=[x for x in b if not x.startswith('#')];
+          import sys; sys.exit(0 if aa==bb else 1)"
+      - name: Pytest (no live InsightFace)
+        if: runner.os == 'Windows'
+        run: python -m pytest -q
+      - name: Pytest (no live InsightFace, virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python -m pytest -q
+      - name: pip-audit resolved install
+        run: |
+          python -m pip install pip-audit
+          python -m pip freeze --exclude-editable > resolved-requirements.txt
+          python -m pip_audit -r resolved-requirements.txt
+
+  # Republish the required check name "test". Always run so a failed matrix cannot
+  # skip this job (GitHub treats a skipped required check as success).
+  test:
+    name: test
+    needs: test-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert every matrix leg passed
+        env:
+          MATRIX_RESULT: ${{ needs.test-matrix.result }}
+        run: |
+          echo "Tests matrix result: $MATRIX_RESULT"
+          [ "$MATRIX_RESULT" = "success" ] || exit 1

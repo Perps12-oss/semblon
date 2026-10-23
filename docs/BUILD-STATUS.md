@@ -7,8 +7,8 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-20 (calendar column + photo field) |
-| Branch | `grok/home-launchpad` |
+| Evidence date | 2026-10-22 (production-readiness audit on `0f9e29f`) |
+| Branch | `main` at audit start |
 | Parent HEAD | (see git log on branch) |
 | Working tree at evidence | Permanent Home stage + capability catalogue; shell journey updated |
 
@@ -28,8 +28,8 @@
 | Gate | Meaning | Status |
 |---|---|---|
 | A — Core product | Archive continuity, Similar honesty, context where metadata permits | **VERIFIED** (offscreen production shell + unit). Visible desktop `SEMBLON_VISIBLE_SHELL=1` not required for these acceptance criteria; optional residual. |
-| B — Engineering baseline | Supported CI, lock, identity path, honest safety/privacy | **IN PROGRESS** — clean 3.14 local evidence + CI aggregate job landed; **GHA matrix green not yet evidenced from this agent**; FaceKit owner pack run still outstanding |
-| C — Release | Offline clean install + intended assets + **signed** installer | **BLOCKED** — WiX workflow exists (`msi-release`, unsigned unless secrets); no Authenticode cert provisioned here; buffalo_l redistribution **UNAVAILABLE** (BYO stance recorded) |
+| B — Engineering baseline | Supported CI, lock, identity path, honest safety/privacy | **IN PROGRESS** — portable pytest on Linux 3.11 is green in the test summary; the full process then aborted during interpreter finalization in this environment (exit 134) when shell tests ran in the same process. GitHub Actions on `main` is **not green**: `f0c42e6` emptied `.github/workflows/ci.yml`, and the last valid workflow's jobs never received a runner (`runner_id` 0, logs HTTP 404). |
+| C — Release | Offline clean install + intended assets + **signed** installer | **BLOCKED** — unchanged. No Authenticode cert. Identity weights are not cleared for redistribution. |
 
 ## Dual verdict
 
@@ -143,11 +143,18 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 
 ## Outstanding blockers (exact)
 
-1. **GHA CI matrix green** (Gate B) — aggregate `test` job landed; remote green not evidenced here.
+1. **GHA CI matrix green** (Gate B) — workflow file was wiped on `f0c42e6` and is restored in the readiness audit. Jobs on the last intact workflow never started (no runner, no logs). Remote green is still not evidenced.
 2. **FaceKit owner pack run** (issue 06) — helper/workflow ready; needs real pack → PASS evidence JSON.
-3. **buffalo_l redistribution licence** (Gate C) — BYO decision recorded; commercial redistribute still UNAVAILABLE.
+3. **Identity weight redistribution** (Gate C) — YuNet/SFace and historical buffalo_l are BYO. Commercial redistribute still UNAVAILABLE. `docs/PRODUCT.md` still names FaceKit as the only engine; that sentence was not rewritten.
 4. **Authenticode certificate** (Gate C) — signing path in `msi-release.yml`; secrets not provisioned.
 5. WiX owner run on a machine with WiX + (optional) cert — workflow exists; not executed here.
+6. **Named-face recluster** — repaired: a multi-face `name` decision now locks every `policy.face_ids` entry, and `name_faces` refuses a conflicting `attach_to_person_id`. `merge_clusters` still copies one shared `person_id` onto survivor faces; that stamp is the tested review contract (`tests/test_review.py`), not an unapproved threshold change.
+7. **Store is plaintext.** Encryption remains the deferred decision. Do not claim SQLCipher or DPAPI.
+8. **Replaced file path** — repaired in `claim_new_media`: the previous digest no longer keeps the path, so an old crop cannot read the new bytes. Confirmed identities on the old digest are not deleted.
+9. **Erasure centroid** — repaired: deleting a person drops or rebuilds `clusters.centroid` from the faces that remain.
+10. **`docs/PERF-P1-ARM64.md` identity cell** — corrected. The 2026-09-22 FaceKit / `eps=0.40` sentence is historical. Current engine text is YuNet + SFace. The OpenCV load block is unchanged. No threshold was edited.
+
+The 2026-10-22 audit, repairs, and the commands actually run are in `docs/audits/PRODUCTION-READINESS-AUDIT.md`. Release verdict there: **NOT READY FOR RELEASE**.
 
 ## Behaviour landed — photographic patch retrieval (2026-10-18)
 

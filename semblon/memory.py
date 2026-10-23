@@ -14,6 +14,7 @@ import struct
 from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from semblon.store import connect_readonly
 
 BURST_NS = 90 * 1_000_000_000
 _FN_TIME = re.compile(r"(20\d{2})(\d{2})(\d{2})[_-](\d{2})(\d{2})(\d{2})")
@@ -27,7 +28,7 @@ def _connect_ro(store: Path) -> sqlite3.Connection:
     p = Path(store).resolve()
     if not p.is_file():
         raise MemoryError(f"store not found: {p}")
-    conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    conn = connect_readonly(p)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn

@@ -12,11 +12,16 @@ from semblon.geometry import (
     pixels_from_norm,
     same_norm,
     widget_to_image,
+    xyxy_to_xywh,
 )
 from semblon.observers import persist_item
 from semblon.region_search import crop_bgr
 from semblon.store import connect, init_db
 from semblon.user_region import list_user_regions, name_user_region, persist_user_region
+
+
+def test_face_corners_become_a_crop_size():
+    assert xyxy_to_xywh((100, 50, 180, 140)) == (100, 50, 80, 90)
 
 
 def test_letterbox_does_not_map_bars_into_the_image():

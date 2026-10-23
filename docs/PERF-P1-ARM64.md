@@ -8,7 +8,7 @@ S1 / x64 correctness environment was **not** swapped and must not be silent-swap
 |---|---|
 | **Status 2026-09-22** | In-repo **lab/probe/docs COMPLETE**; native OpenCV **load still BLOCKED** pending owner Windows ARM64 evidence |
 | Product `workers` default | **1** (unchanged until measured) |
-| Identity | FaceKit only; `eps=0.40` frozen; no S1 cv2 swap |
+| Identity | **Historical cell, not the current engine.** The 2026-09-22 note said FaceKit only and `eps=0.40`. Production identity is YuNet + SFace (`docs/IDENTITY-PACK.md`), provisional `eps=0.45`. buffalo_l is not loaded. Do not retune from this file. |
 | Cloud VM | Cannot LoadLibrary Windows ARM64 DLLs — PE inspect + fail-fast probes are portable |
 
 ## What this slice shipped in-repo (2026-09-22)

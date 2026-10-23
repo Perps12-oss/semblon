@@ -21,6 +21,41 @@ class ErasureError(ValueError):
     pass
 
 
+def _clear_centroids_after_erasure(conn, cluster_ids: list[str]) -> None:
+    """A deleted person's face mean must not stay on the cluster row.
+
+    An empty cluster drops the blob. A cluster that still has other faces
+    is rebuilt from those faces only.
+    """
+    from semblon.review import _centroid
+
+    for cluster_id in cluster_ids:
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM faces WHERE cluster_id=?",
+            (cluster_id,),
+        ).fetchone()[0]
+        if int(remaining) == 0:
+            conn.execute(
+                """UPDATE clusters
+                   SET face_count=0, centroid=NULL, min_intra=NULL
+                   WHERE cluster_id=?""",
+                (cluster_id,),
+            )
+            continue
+        rows = conn.execute(
+            """SELECT embedding, embedding_dim FROM faces
+               WHERE cluster_id=? AND embedding IS NOT NULL""",
+            (cluster_id,),
+        ).fetchall()
+        blob = _centroid(
+            [{"embedding": row[0], "embedding_dim": row[1]} for row in rows]
+        )
+        conn.execute(
+            "UPDATE clusters SET face_count=?, centroid=? WHERE cluster_id=?",
+            (int(remaining), blob, cluster_id),
+        )
+
+
 def delete_person(store: Path, person_id: str) -> dict:
     """Delete one person and the face templates, decisions, and links for them."""
     person_id = str(person_id or "").strip()
@@ -42,8 +77,18 @@ def delete_person(store: Path, person_id: str) -> dict:
                 (person_id,),
             ).fetchall()
         ]
+        cluster_ids = []
         obs_ids = []
         if face_ids:
+            cluster_ids = [
+                r[0]
+                for r in rows_in_chunks(
+                    conn,
+                    "SELECT DISTINCT cluster_id FROM faces WHERE face_id IN",
+                    face_ids,
+                )
+                if r[0]
+            ]
             obs_ids = [
                 r[0]
                 for r in rows_in_chunks(
@@ -87,6 +132,7 @@ def delete_person(store: Path, person_id: str) -> dict:
                 exec_in_chunks(conn, "DELETE FROM eval_pairs WHERE face_a IN", face_ids)
                 exec_in_chunks(conn, "DELETE FROM eval_pairs WHERE face_b IN", face_ids)
                 exec_in_chunks(conn, "DELETE FROM faces WHERE face_id IN", face_ids)
+            _clear_centroids_after_erasure(conn, cluster_ids)
             conn.execute("DELETE FROM persons WHERE person_id=?", (person_id,))
             conn.commit()
         return {

@@ -15,6 +15,7 @@ from semblon.review import (
     ignore_subject,
     merge_clusters,
     name_cluster,
+    name_face,
     name_faces,
     name_track,
     note_subject,
@@ -668,6 +669,50 @@ def test_name_faces_refuses_clustered(tmp_path):
     with pytest.raises(ReviewError, match="cluster"):
         name_faces(store, "r1", ["f1", "f2"], "Nope")
     assert cid
+
+
+def test_name_faces_locks_every_named_face(tmp_path):
+    """A multi-face name must freeze every face, not only decisions.face_id."""
+    store = tmp_path / "s.sqlite"
+    _seed(store)
+    rec = name_faces(store, "r1", ["f1", "f3"], "Ada")
+    assert rec["faces_named"] == 2
+    cluster_run(store, "r1", eps=0.15, min_samples=2)
+    conn = sqlite3.connect(str(store))
+    rows = {
+        r[0]: (r[1], r[2])
+        for r in conn.execute("SELECT face_id, cluster_id, person_id FROM faces")
+    }
+    conn.close()
+    assert rows["f1"][1] == rec["person_id"]
+    assert rows["f3"][1] == rec["person_id"]
+    assert rows["f1"][0] is None
+    assert rows["f3"][0] is None
+
+
+def test_name_faces_refuses_conflicting_attach(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store)
+    first = name_faces(store, "r1", ["f1", "f2"], "Ada")
+    other = name_face(store, "r1", "f5", "Bea")
+    with pytest.raises(ReviewError, match="different person"):
+        name_faces(
+            store,
+            "r1",
+            ["f1", "f2"],
+            "Ada",
+            attach_to_person_id=other["person_id"],
+        )
+    conn = sqlite3.connect(str(store))
+    stuck = {
+        r[0]
+        for r in conn.execute(
+            "SELECT face_id FROM faces WHERE person_id=?",
+            (first["person_id"],),
+        )
+    }
+    conn.close()
+    assert stuck == {"f1", "f2"}
 
 
 def test_cli_name_track(tmp_path):

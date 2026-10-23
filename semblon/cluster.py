@@ -102,9 +102,12 @@ def _review_locks(conn, run_id: str) -> tuple[set[str], set[str]]:
         if isinstance(extra_faces, list):
             for fid in extra_faces:
                 faces.add(str(fid))
-        for fid in pol.get("faces") or []:
-            if isinstance(fid, str):
-                faces.add(fid)
+        for key in ("faces", "face_ids"):
+            listed = pol.get(key)
+            if isinstance(listed, list):
+                for fid in listed:
+                    if isinstance(fid, str) and fid:
+                        faces.add(fid)
     for r in conn.execute(
         """SELECT cluster_id FROM clusters
            WHERE run_id=? AND status IN ('merged','split','ignored')""",

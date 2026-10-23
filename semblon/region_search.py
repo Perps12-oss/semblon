@@ -40,10 +40,11 @@ from semblon.region_encoder import (
 )
 from semblon.similarity_profile import SimilarityProfile, resolve_search_quality
 from semblon.user_region import RegionError, persist_user_region
+from semblon.store import connect_readonly
 
 
 def _open_ro(store: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(Path(store).resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
@@ -348,7 +349,7 @@ def _as_text_result(rec: dict, *, token: str, quality: SimilarityProfile) -> dic
                 "media_id": media_id,
                 "kind": "text",
                 "provider": item.get("provider") or "tesseract",
-                "score": float(item.get("score") or 1.0),
+                "score": 1.0 if item.get("score") is None else float(item.get("score")),
                 "why": "OCR text overlapped the selection; not a person",
             }
         )
@@ -1265,7 +1266,7 @@ def _fuse_region(
 def _stored_observations(store: Path, media_id: str) -> list[dict]:
     if not media_id or not Path(store).is_file():
         return []
-    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(Path(store).resolve())
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(

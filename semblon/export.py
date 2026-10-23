@@ -17,6 +17,7 @@ from pathlib import Path
 # Hypothesis — clusters with min_intra below this are REVIEW REQUIRED.
 # Active engine value (YuNet+SFace); buffalo_l historical: identity_buffalo_frozen.
 from semblon.identity_config import STRONG_MIN_INTRA
+from semblon.store import connect_readonly
 
 
 class ExportError(ValueError):
@@ -43,7 +44,7 @@ def _connect_ro(store: Path) -> sqlite3.Connection:
     p = Path(store).resolve()
     if not p.is_file():
         raise ExportError(f"store not found: {p}")
-    conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    conn = connect_readonly(p)
     conn.row_factory = sqlite3.Row
     return conn
 

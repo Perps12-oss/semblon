@@ -77,6 +77,7 @@ from semblon.native_shell.editorial import (
     year_matrix,
 )
 from semblon.ui_prefs import load_prefer_gpu, load_prefs, save_theme_mode, update_prefs
+from semblon.store import connect_readonly
 
 
 KEY_SHELL_MODE = "shell_mode"
@@ -1945,7 +1946,7 @@ class ShellBridge(QObject):
         coarse = 0
         try:
             store = Path(self._jobs.store)
-            conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
+            conn = connect_readonly(store.resolve())
             try:
                 row = conn.execute(
                     """SELECT
@@ -2913,9 +2914,11 @@ class ShellBridge(QObject):
             for member in item.get("members") or []:
                 if str(member.get("face_id") or "") == fid:
                     bbox = member.get("bbox") or ()
+                    from semblon.geometry import xyxy_to_xywh
+
                     return {
                         "path": member.get("path") or "",
-                        "bbox": bbox,
+                        "bbox": xyxy_to_xywh(bbox),
                         "media_id": member.get("media_id") or "",
                     }
         return None
@@ -3053,6 +3056,7 @@ class ShellBridge(QObject):
                             named=False, names=[], kind="track", band="track"
                         ),
                         "count": int(item.get("face_count") or len(members) or 0),
+                        "faceCount": int(item.get("face_count") or len(members) or 0),
                         "named": False,
                         "mediaId": media_id,
                         "faceId": face_id,
@@ -3088,6 +3092,7 @@ class ShellBridge(QObject):
                     "subject": subject,
                     "title": group_list_title(named=named, names=names, kind=kind, band=band),
                     "count": int(item.get("face_count") or 0),
+                    "faceCount": int(item.get("face_count") or 0),
                     "named": named,
                     "mediaId": media_id,
                     "faceId": face_id,
@@ -4237,6 +4242,7 @@ class ShellBridge(QObject):
 
         self._start_visual_search(basis="whole", label="Colour only", build=build)
 
+    @Slot()
     @Slot(str)
     def findSimilarFaces(self, face_id: str = "") -> None:
         """Focus face → ranked same-pack face hits. Not colour-histogram Similar; no auto-name."""

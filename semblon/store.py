@@ -170,6 +170,21 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def connect_readonly(store: Path | str) -> sqlite3.Connection:
+    """Open a store without writing. The path is URI-encoded.
+
+    ``file:{path}?mode=ro`` is not read-only when the path contains ``#``
+    (the query is dropped) and a literal ``%2F`` can point at another file.
+    ``PRAGMA query_only`` stays on even if the URI flag is ignored.
+    """
+    path = Path(store).expanduser().resolve()
+    conn = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA query_only=ON")
+    conn.execute("PRAGMA busy_timeout=5000")
+    return conn
+
+
 SQL_IN_CHUNK = 500
 _WRITER = threading.RLock()
 
@@ -618,7 +633,7 @@ def integrity_report(store: Path) -> dict:
     p = Path(store)
     if not p.is_file():
         raise FileNotFoundError(p)
-    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(p)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     schema = conn.execute(

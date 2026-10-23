@@ -17,6 +17,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from typing import Any
+from semblon.store import connect_readonly
 
 try:
     import tkinter as tk
@@ -290,7 +291,7 @@ def _section_recent_runs(store: Path | None) -> list[str]:
         lines.append("(no runs — store not present)")
         return lines
     try:
-        conn = sqlite3.connect(f"file:{store.resolve()}?mode=ro", uri=True)
+        conn = connect_readonly(store.resolve())
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout=5000")
         rows = conn.execute(

@@ -1,5 +1,7 @@
 # SEMBLON — Licence record
 
+Plain-language attribution for a reader of the app is [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md). This file remains the redistribution gate. It is not replaced by that notice.
+
 ## Identity engine (2026-10-16 cutover)
 
 Production identity path: **YuNet** (detect) + **SFace** (recognise) via OpenCV Zoo ONNX files.  

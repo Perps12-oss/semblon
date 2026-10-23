@@ -29,6 +29,7 @@ from semblon.progress import (
     emit,
     make_event,
 )
+from semblon.store import connect_readonly
 
 
 class ProcessError(ValueError):
@@ -71,7 +72,7 @@ def latest_run_id(store: Path, *, with_faces: bool = False) -> str | None:
     p = Path(store)
     if not p.is_file():
         return None
-    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(p.resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     if with_faces:
@@ -100,7 +101,7 @@ def empty_state_line(store: Path, run_id: str) -> str:
     p = Path(store)
     if not p.is_file():
         return f"this run: 0 faces; store has 0 on run {run_id}"
-    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(p.resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     this = conn.execute(
@@ -236,7 +237,7 @@ def inspect_run_stages(
     }
     if not p.is_file():
         return empty
-    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(p.resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     row = conn.execute(
@@ -327,7 +328,7 @@ def find_resumable_run(store: Path, folder: Path) -> str | None:
     p = Path(store)
     if not p.is_file():
         return None
-    conn = sqlite3.connect(f"file:{p.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(p.resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     rows = conn.execute(
@@ -350,7 +351,7 @@ def find_resumable_run(store: Path, folder: Path) -> str | None:
 
 
 def _cluster_record_from_run(store: Path, run_id: str) -> dict:
-    conn = sqlite3.connect(f"file:{Path(store).resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(Path(store).resolve())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     n_clusters = int(

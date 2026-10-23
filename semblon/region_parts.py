@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 
 from semblon.query_spec import empty_parts
+from semblon.store import connect_readonly
 
 _OBJECT_SKIP = {"region", "user_region", "barcode"}
 _NANODET = "opencv-zoo-nanodet"
@@ -98,7 +99,7 @@ def _norm_on_media(store: Path, media_id: str, x: int, y: int, w: int, h: int) -
     path = Path(store)
     if not path.is_file() or not media_id:
         return None
-    conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(path.resolve())
     try:
         row = conn.execute(
             "SELECT width, height FROM media WHERE media_id=?",
@@ -119,7 +120,7 @@ def _stored_parts(store: Path, media_id: str, x: int, y: int, w: int, h: int) ->
     path = Path(store)
     if not path.is_file() or not media_id:
         return []
-    conn = sqlite3.connect(f"file:{path.resolve()}?mode=ro", uri=True)
+    conn = connect_readonly(path.resolve())
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
@@ -200,15 +201,18 @@ def _crop_parts(crop, origin_x: int, origin_y: int) -> list[dict]:
         box = hit.get("bbox") or hit.get("box")
         if not isinstance(box, (list, tuple)) or len(box) < 4:
             continue
+        x1, y1, x2, y2 = (float(v) for v in box[:4])
+        if x2 < x1 or y2 < y1:
+            continue
         found.append(
             {
                 "label": label,
                 "kind": "object",
                 "box": [
-                    int(origin_x + box[0]),
-                    int(origin_y + box[1]),
-                    int(box[2]),
-                    int(box[3]),
+                    int(origin_x + x1),
+                    int(origin_y + y1),
+                    max(1, int(round(x2 - x1))),
+                    max(1, int(round(y2 - y1))),
                 ],
             }
         )
