@@ -71,7 +71,7 @@ FaceKitProvider = YuNetSFaceProvider
 CancelCallback = Callable[[], bool] | None
 
 COMMIT_EVERY_N = 32
-COMMIT_EVERY_S = 0.1
+COMMIT_EVERY_S = 2.0
 PROGRESS_THROTTLE_S = 0.1
 # Hard cap: hash-phase ThreadPool only. Product default remains 1.
 MAX_WORKERS = 32
@@ -414,8 +414,18 @@ def _read_and_hash(path: Path) -> tuple[str, bytes, int, int]:
 
 
 def _orient_display(image: np.ndarray, payload: bytes | None) -> np.ndarray:
-    """Match the shell's EXIF display so indexed boxes sit on the pixels the user sees."""
-    if payload is None or image is None:
+    """Match the shell's EXIF display so indexed boxes sit on the pixels the user sees.
+
+    OpenCV 5 applies the orientation tag inside imdecode and imread
+    (``IMREAD_IGNORE_ORIENTATION`` is what turns that off). Opening the same
+    bytes in Pillow and comparing every pixel decoded each still a second time,
+    which is a large part of why a hard-drive folder took days.
+    """
+    if image is None:
+        return image
+    if hasattr(cv2, "IMREAD_IGNORE_ORIENTATION"):
+        return image
+    if payload is None or not payload:
         return image
     try:
         from io import BytesIO
@@ -425,9 +435,11 @@ def _orient_display(image: np.ndarray, payload: bytes | None) -> np.ndarray:
         return image
     try:
         with Image.open(BytesIO(payload)) as raw:
-            oriented = ImageOps.exif_transpose(raw)
-            if oriented.size == raw.size and oriented.tobytes() == raw.tobytes():
+            exif = raw.getexif()
+            orientation = exif.get(0x0112) if exif is not None else None
+            if orientation in (None, 0, 1):
                 return image
+            oriented = ImageOps.exif_transpose(raw)
             rgb = np.asarray(oriented.convert("RGB"))
     except Exception:
         return image
@@ -824,7 +836,7 @@ def ingest(
             if want_cancel():
                 return
             with writer_lock():
-                maybe_commit(force=True)
+                maybe_commit()
             img0 = _decode_bgr(data, path)
             if img0 is None:
                 n_fail += 1
@@ -878,7 +890,7 @@ def ingest(
                         observers=extra_observers,
                     )
                     dirty += 1
-                maybe_commit(force=True)
+                maybe_commit()
             tick(path, "processed")
 
         # --- stills: hash → skip → decode/embed ---
@@ -1009,7 +1021,7 @@ def ingest(
                                 frames_ok += 1
                                 continue
                     with writer_lock():
-                        maybe_commit(force=True)
+                        maybe_commit()
                         if width is None:
                             height, width = img.shape[:2]
                         if media_id is None:
@@ -1025,7 +1037,7 @@ def ingest(
                             )
                             n_media += 1
                             dirty += 1
-                            maybe_commit(force=True)
+                            maybe_commit()
                         elif width is not None:
                             conn.execute(
                                 "UPDATE media SET width=?, height=? WHERE media_id=? AND width IS NULL",
@@ -1060,7 +1072,7 @@ def ingest(
                         n_rej += nrej
                         dirty += max(nf, 1)
                         frames_ok += 1
-                        maybe_commit(force=True)
+                        maybe_commit()
             except VideoError:
                 n_fail += 1
                 with writer_lock():
@@ -1080,7 +1092,7 @@ def ingest(
                 dirty += 1
 
             n_video_frames += frames_ok
-            maybe_commit(force=True)
+            maybe_commit()
             if cancelled:
                 tick(path, "cancelled", force=True)
             elif frames_ok == 0:
