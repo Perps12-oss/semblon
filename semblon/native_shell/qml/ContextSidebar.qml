@@ -273,7 +273,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: if (shellReady) shellApi.clearScope()
+                onClicked: if (shellReady) shellApi.showEverything()
             }
         }
 

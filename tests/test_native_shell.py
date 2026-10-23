@@ -174,7 +174,8 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     app.processEvents()
     assert bridge.homeOpen is False
     assert root.findChild(QObject, "emptyState").property("visible") is False
-    assert root.findChild(QObject, "fieldGrid").property("visible") is True
+    assert root.findChild(QObject, "archiveHeaderBand").property("visible") is True
+    assert root.findChild(QObject, "fieldGrid").property("visible") is False
     assert root.findChild(QObject, "lensLine").property("text") == "Time"
     shot = tmp_path / "field.png"
     root.grabWindow().save(str(shot))

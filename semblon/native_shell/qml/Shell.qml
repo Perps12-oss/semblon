@@ -122,6 +122,8 @@ ApplicationWindow {
     readonly property color tokenOk: shellReady ? shellApi.okColor : "#30a46c"
     readonly property color tokenWarn: shellReady ? shellApi.warnColor : "#f5a524"
     readonly property string calendarViewSafe: shellReady ? shellApi.calendarView : "months"
+    readonly property string libraryWorkspaceSafe: shellReady ? shellApi.libraryWorkspace : "calendar"
+    readonly property bool libraryGridOpen: libraryWorkspaceSafe === "grid"
     readonly property bool returnOpensPhoto: {
         if (focusActive || emptySafe)
             return false
@@ -1881,7 +1883,8 @@ ApplicationWindow {
             }
         }
 
-        // Calendar column on the left, photo field on the right. Narrow windows stack them.
+        // One workspace: the calendar fills this pane until a day or other
+        // scope opens the photo grid in its place.
         Item {
             id: archivePane
             anchors.left: parent.left
@@ -1893,14 +1896,9 @@ ApplicationWindow {
             anchors.topMargin: 12
             anchors.bottomMargin: 12
             visible: !homeOpenSafe && !emptySafe && !peopleVisible && !focusActive
-            property bool stacked: width < 900
             property real splitRatio: 0.46
             property real zoomScale: 0.50
             property string zoomBand: "months"
-            readonly property real calendarWidth: {
-                var room = Math.max(0, width - 288)
-                return Math.max(520, Math.min(room, width * splitRatio))
-            }
 
             function midpoint(view) {
                 if (view === "years") return 0.12
@@ -1957,6 +1955,7 @@ ApplicationWindow {
 
             WheelHandler {
                 objectName: "archiveZoomWheel"
+                enabled: !libraryGridOpen
                 acceptedModifiers: Qt.ControlModifier
                 onWheel: function(event) {
                     archivePane.adjustZoom(event.angleDelta.y / 1200)
@@ -1965,6 +1964,7 @@ ApplicationWindow {
 
             PinchHandler {
                 objectName: "archivePinch"
+                enabled: !libraryGridOpen
                 target: null
                 property real origin: 1
                 onActiveChanged: if (active) origin = 1
@@ -1987,16 +1987,15 @@ ApplicationWindow {
                 color: Qt.lighter(tokenBg, 1.35)
                 opacity: 0.22
                 z: 0
+                visible: !libraryGridOpen
             }
 
             Item {
                 id: archiveHeaderBand
                 objectName: "archiveHeaderBand"
                 z: 1
-                x: 0
-                y: 0
-                width: archivePane.stacked ? parent.width : archivePane.calendarWidth
-                height: archivePane.stacked ? parent.height * 0.46 : parent.height
+                anchors.fill: parent
+                visible: !libraryGridOpen
                 clip: true
 
                 Column {
@@ -2151,17 +2150,17 @@ ApplicationWindow {
                             tokenFaint: window.tokenFaint
                             tokenBorder: window.tokenBorder
                             motion: window.motion
-                            onDayClicked: (day) => { if (window.shellReady) window.shellApi.selectDay(day) }
+                            onDayClicked: (day) => { if (window.shellReady) window.shellApi.openDay(day) }
                             onDayDoubleClicked: (day) => {
                                 if (!window.shellReady)
                                     return
                                 archivePane.selectCalendarView("days")
-                                shellApi.focusDay(day)
+                                shellApi.openDay(day)
                             }
-                            onThumbClicked: (mediaId) => {
+                            onThumbClicked: (mediaId, day) => {
                                 if (!window.shellReady)
                                     return
-                                shellApi.setScroll(fieldSectionsActiveSafe ? fieldSectionsView.contentY : grid.contentY)
+                                shellApi.openDay(day)
                                 shellApi.openFocus(mediaId)
                             }
                             onRangeChosen: (startDay, endDay) => {
@@ -2181,29 +2180,20 @@ ApplicationWindow {
             MouseArea {
                 id: splitHandle
                 objectName: "archiveSplit"
-                visible: !archivePane.stacked
-                x: archiveHeaderBand.width - 3
+                visible: false
+                enabled: false
+                x: 0
                 y: 0
-                width: 8
-                height: parent.height
+                width: 0
+                height: 0
                 z: 4
-                cursorShape: Qt.SplitHCursor
-                onPositionChanged: function(mouse) {
-                    if (!pressed)
-                        return
-                    var local = mapToItem(archivePane, mouse.x, mouse.y)
-                    archivePane.splitRatio = Math.max(0.32, Math.min(0.68, local.x / Math.max(1, archivePane.width)))
-                }
-                onReleased: if (shellReady) shellApi.setArchiveSplit(archivePane.splitRatio)
             }
 
             Item {
                 id: fieldViewport
                 objectName: "fieldViewport"
-                x: archivePane.stacked ? 0 : archiveHeaderBand.width + 8
-                y: archivePane.stacked ? archiveHeaderBand.height + 8 : 0
-                width: Math.max(0, parent.width - x)
-                height: Math.max(0, parent.height - y)
+                anchors.fill: parent
+                visible: libraryGridOpen
                 clip: true
                 z: 1
 
@@ -2211,6 +2201,47 @@ ApplicationWindow {
                     id: fieldChrome
                     width: parent.width
                     spacing: 4
+
+                    Item {
+                        width: parent.width
+                        height: 28
+
+                        Text {
+                            id: gridBackLabel
+                            objectName: "gridBack"
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Back"
+                            color: gridBackArea.containsMouse ? tokenText : tokenMuted
+                            font.family: "Segoe UI"
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                            MouseArea {
+                                id: gridBackArea
+                                anchors.fill: parent
+                                anchors.margins: -6
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                Accessible.name: "Back to calendar"
+                                Accessible.role: Accessible.Button
+                                onClicked: if (shellReady) shellApi.showCalendar()
+                            }
+                        }
+
+                        Text {
+                            objectName: "gridWorkspaceTitle"
+                            anchors.left: gridBackLabel.right
+                            anchors.leftMargin: 16
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: shellReady ? shellApi.gridTitle : ""
+                            color: tokenText
+                            font.family: "Segoe UI"
+                            font.pixelSize: 16
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+                    }
 
                     Text {
                         id: stickyHeader
@@ -2228,16 +2259,13 @@ ApplicationWindow {
                         id: zeroResultFilter
                         objectName: "zeroResultFilter"
                         width: parent.width
-                        visible: timeScopeActiveSafe && grid.count === 0
-                        text: "No media found for this selection. Clear Filter"
-                        color: tokenAccent
+                        visible: libraryGridOpen && !fieldSectionsActiveSafe && grid.count === 0
+                        text: shellReady && shellApi.scopeKind === "day"
+                              ? "No photos on this day."
+                              : "No media found for this selection."
+                        color: tokenMuted
                         font.family: "Segoe UI"
                         font.pixelSize: 13
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: if (shellReady) shellApi.clearScope()
-                        }
                     }
                 }
 
@@ -2344,7 +2372,7 @@ ApplicationWindow {
                         anchors.fill: parent
                         anchors.margins: -2
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: if (shellReady && section) shellApi.selectDay(String(section.day))
+                        onClicked: if (shellReady && section) shellApi.openDay(String(section.day))
                     }
                 }
             }
@@ -2524,11 +2552,6 @@ ApplicationWindow {
             anchors.fill: parent
             visible: focusActive
             focus: true
-            Keys.onEscapePressed: function(event) {
-                if (shellReady)
-                    shellApi.escape()
-                event.accepted = true
-            }
             opacity: focusActive ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: window.motion } }
 
@@ -2540,9 +2563,10 @@ ApplicationWindow {
             Text {
                 id: pointHint
                 objectName: "pointHint"
+                z: 8
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
-                anchors.topMargin: 18
+                anchors.topMargin: 10
                 visible: focusActive && focusKindSafe !== "video"
                 text: "Point or draw to search"
                 color: tokenMuted
@@ -2581,9 +2605,10 @@ ApplicationWindow {
 
             Text {
                 objectName: "sampledFrameNote"
+                z: 8
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
-                anchors.topMargin: 48
+                anchors.topMargin: 36
                 visible: focusActive && focusKindSafe === "video"
                 text: "Sampled frame. Not a player."
                 color: tokenMuted
@@ -2593,6 +2618,7 @@ ApplicationWindow {
 
             Text {
                 objectName: "focusMissingNote"
+                z: 8
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - 96
@@ -2611,14 +2637,15 @@ ApplicationWindow {
             Item {
                 id: photoViewport
                 objectName: "photoViewport"
+                z: 1
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
                 anchors.bottom: focusTray.top
-                anchors.leftMargin: 56
-                anchors.rightMargin: 56
-                anchors.topMargin: indexNoteRow.visible ? 72 : 44
-                anchors.bottomMargin: 8
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                anchors.topMargin: 8
+                anchors.bottomMargin: 0
                 clip: true
 
                 Item {
@@ -3368,19 +3395,24 @@ ApplicationWindow {
             }
 
             Text {
+                objectName: "focusBack"
+                z: 9
                 anchors.left: parent.left
                 anchors.top: parent.top
-                anchors.margins: 22
+                anchors.margins: 14
                 text: "Back"
                 color: backArea.containsMouse ? tokenText : tokenMuted
                 font.family: "Segoe UI"
-                font.pixelSize: 14
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
                 MouseArea {
                     id: backArea
                     anchors.fill: parent
                     anchors.margins: -8
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    Accessible.name: "Back"
+                    Accessible.role: Accessible.Button
                     onClicked: if (shellReady) shellApi.escape()
                 }
             }

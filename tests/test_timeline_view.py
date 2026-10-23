@@ -181,11 +181,21 @@ def test_timeline_chrome_object_names(tmp_path, monkeypatch):
     grid = root.findChild(QQuickItem, "fieldGrid")
     assert grid is not None
     assert grid.clip() is True
-    # Photos sit to the right of the calendar column on a wide library stage.
+    # The calendar fills the library stage until a day is opened.
     assert root.width() >= 900
-    assert viewport.x() >= header.x() + header.width() - 12
-    assert abs(viewport.y() - header.y()) <= 2
-    assert root.findChild(QObject, "archiveSplit") is not None
+    assert bridge.libraryWorkspace == "calendar"
+    assert header.isVisible() is True
+    assert viewport.isVisible() is False
+    pane = header.parentItem()
+    assert pane is not None
+    assert header.width() >= pane.width() - 2
+    assert abs(header.x()) <= 2
+    assert abs(header.height() - pane.height()) <= 2
+    split = root.findChild(QObject, "archiveSplit")
+    assert split is not None
+    assert split.property("visible") is False
+    wheel = root.findChild(QObject, "archiveZoomWheel")
+    assert wheel is not None and wheel.property("enabled") is True
     assert root.findChild(QObject, "timelineDensitySegment") is not None
     assert root.findChild(QObject, "calendarJump") is not None
     assert root.findChild(QObject, "yearMatrix") is not None
@@ -195,10 +205,27 @@ def test_timeline_chrome_object_names(tmp_path, monkeypatch):
     bridge.selectMonth("2024-05")
     assert bridge.scopeKind == "month"
     assert bridge.calendarMonth == "2024-05"
+    assert bridge.libraryWorkspace == "calendar"
     assert bridge.fieldSectionsActive is True
     for _ in range(20):
         app.processEvents()
-    assert root.findChild(QQuickItem, "fieldSections") is not None
+    sections = root.findChild(QQuickItem, "fieldSections")
+    assert sections is not None
+    assert sections.isVisible() is False
+    assert header.isVisible() is True
+    bridge.openDay("2024-05-01")
+    for _ in range(20):
+        app.processEvents()
+    assert bridge.libraryWorkspace == "grid"
+    assert bridge.scopeKind == "day"
+    assert header.isVisible() is False
+    assert viewport.isVisible() is True
+    assert viewport.width() >= pane.width() - 2
+    assert abs(viewport.x()) <= 2
+    assert grid.isVisible() is True
+    assert wheel.property("enabled") is False
+    title = root.findChild(QObject, "gridWorkspaceTitle")
+    assert title is not None and "2024" in str(title.property("text"))
     shutdown_shell(engine)
 
 
@@ -267,9 +294,11 @@ def test_bridge_calendar_browse_does_not_change_scope(tmp_path, monkeypatch):
     bridge = ShellBridge(ArchiveModel(jobs), jobs)
 
     assert bridge.calendarMonth == "2025-03"
+    assert bridge.libraryWorkspace == "calendar"
     bridge.selectDay("2024-01-10")
     assert bridge.scopeKind == "day"
     assert bridge.scopeLabel == "2024-01-10"
+    assert bridge.libraryWorkspace == "calendar"
     assert bridge.calendarMonth == "2024-01"
     assert bridge._model.rowCount() == 2
     assert any(c["day"] == "2024-01-10" and c["count"] == 2 for c in bridge.calendarCells)
@@ -287,15 +316,77 @@ def test_bridge_calendar_browse_does_not_change_scope(tmp_path, monkeypatch):
     bridge.selectDay("2024-01-10")
     assert bridge.scopeKind == ""
     assert bridge.timeScopeActive is False
+    assert bridge.libraryWorkspace == "calendar"
+    assert bridge.calendarMonth == "2024-01"
+
+    bridge.openDay("2024-01-10")
+    assert bridge.libraryWorkspace == "grid"
+    assert bridge.scopeKind == "day"
+    assert bridge.scopeLabel == "2024-01-10"
+    assert bridge._model.rowCount() == 2
+    bridge.openDay("2024-01-10")
+    assert bridge.scopeKind == "day"
+    assert bridge.libraryWorkspace == "grid"
+    bridge.openDay("2024-01-02")
+    assert bridge.scopeLabel == "2024-01-02"
+    assert bridge._model.rowCount() == 0
+    assert bridge.gridTitle
+    bridge.showCalendar()
+    assert bridge.libraryWorkspace == "calendar"
+    assert bridge.scopeKind == ""
+    assert bridge.revealedDay == "2024-01-02"
+    assert bridge.calendarMonth == "2024-01"
+    assert bridge.timeScopeActive is False
+
+    bridge.openDay("2024-01-10")
+    bridge.openFocus("a")
+    assert bridge.focusId == "a"
+    assert bridge.libraryWorkspace == "grid"
+    bridge.openTasks()
+    bridge.escape()
+    assert bridge.tasksOpen is False
+    assert bridge.focusId == "a"
+    bridge.escape()
+    assert bridge.focusId == ""
+    assert bridge.scopeKind == "day"
+    assert bridge.libraryWorkspace == "grid"
+    bridge.escape()
+    assert bridge.libraryWorkspace == "calendar"
+    assert bridge.scopeKind == ""
+    assert bridge.revealedDay == "2024-01-10"
+    assert bridge.calendarMonth == "2024-01"
+
+    folder = next(iter(bridge._scope_ids["folder"]))
+    bridge.selectFolder(folder)
+    assert bridge.scopeKind == "folder"
+    assert bridge.libraryWorkspace == "grid"
+    bridge.showCalendar()
+    assert bridge.libraryWorkspace == "calendar"
+    assert bridge.scopeKind == ""
+    bridge.showEverything()
+    assert bridge.libraryWorkspace == "grid"
+    assert bridge.scopeKind == ""
+    assert bridge._model.rowCount() == 4
+    bridge.showCalendar()
+    assert bridge.libraryWorkspace == "calendar"
+    bridge.showUndated()
+    assert bridge.libraryWorkspace == "grid"
+    assert bridge.scopeLabel == "Unknown day"
+    assert bridge._model.rowCount() == 0
+    bridge.showCalendar()
+    assert bridge.libraryWorkspace == "calendar"
     assert bridge.calendarMonth == "2024-01"
 
     bridge.selectYear("2024")
     assert bridge.scopeKind == "year"
+    assert bridge.libraryWorkspace == "calendar"
     assert bridge.calendarMonth == "2024-06"
     bridge.selectMonth("2024-01")
     assert bridge.calendarMonth == "2024-01"
+    assert bridge.libraryWorkspace == "calendar"
     bridge.selectRange("2024-01-10", "2024-06-01")
     assert bridge.calendarMonth == "2024-01"
+    assert bridge.libraryWorkspace == "calendar"
     bridge.clearScope()
     assert bridge.calendarMonth == "2024-01"
     assert bridge.timeScopeActive is False
@@ -539,19 +630,30 @@ def test_field_sections_chrome(tmp_path, monkeypatch):
     for _ in range(30):
         app.processEvents()
     assert bridge.fieldSectionsActive is True
+    assert bridge.libraryWorkspace == "calendar"
+    header = root.findChild(QQuickItem, "archiveHeaderBand")
     sections = root.findChild(QQuickItem, "fieldSections")
+    assert header is not None and header.isVisible() is True
     assert sections is not None
-    assert sections.isVisible()
-    assert _find_visual(sections, "fieldSection_2024-05-10") is not None
-    assert _find_visual(sections, "fieldSection_2024-05-01") is not None
+    assert sections.isVisible() is False
     grid = root.findChild(QQuickItem, "fieldGrid")
     assert grid is not None
     assert grid.isVisible() is False
-    bridge.clearScope()
+    bridge.openDay("2024-05-10")
     for _ in range(20):
         app.processEvents()
+    assert bridge.libraryWorkspace == "grid"
     assert bridge.fieldSectionsActive is False
+    assert header.isVisible() is False
     assert grid.isVisible() is True
+    bridge.showCalendar()
+    for _ in range(20):
+        app.processEvents()
+    assert bridge.libraryWorkspace == "calendar"
+    assert bridge.revealedDay == "2024-05-10"
+    assert bridge.scopeKind == ""
+    assert grid.isVisible() is False
+    assert header.isVisible() is True
 
 
 def _ctrl_wheel(window, delta_y: int) -> None:
@@ -624,9 +726,19 @@ def test_photo_zoom_and_keyboard_navigation(tmp_path, monkeypatch):
     app.processEvents()
     assert bridge.scopeKind == "day"
     assert bridge.scopeLabel == "2025-01-04"
+    assert bridge.libraryWorkspace == "grid"
     assert bridge.focusId == ""
+    header = root.findChild(QQuickItem, "archiveHeaderBand")
+    assert header is not None and header.isVisible() is False
+    assert grid.isVisible() is True
 
-    bridge.clearScope()
+    bridge.showCalendar()
+    for _ in range(10):
+        app.processEvents()
+    assert bridge.libraryWorkspace == "calendar"
+    assert bridge.scopeKind == ""
+    assert bridge.revealedDay == "2025-01-04"
+    assert header.isVisible() is True
     timeline.forceActiveFocus()
     app.processEvents()
     QTest.keyClick(root, Qt.Key.Key_Right)
@@ -639,8 +751,13 @@ def test_photo_zoom_and_keyboard_navigation(tmp_path, monkeypatch):
     app.processEvents()
     assert bridge.scopeKind == "year"
     assert bridge.scopeLabel == "2025"
+    assert bridge.libraryWorkspace == "calendar"
 
-    bridge.clearScope()
+    bridge.showEverything()
+    for _ in range(10):
+        app.processEvents()
+    assert bridge.libraryWorkspace == "grid"
+    assert bridge.scopeKind == ""
     grid.forceActiveFocus()
     app.processEvents()
     assert grid.hasActiveFocus()

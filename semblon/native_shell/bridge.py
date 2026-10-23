@@ -376,6 +376,9 @@ class ShellBridge(QObject):
         self._video_ids: set[str] = set()
         self._calendar_view = self._load_calendar_view()
         self._archive_split = self._load_archive_split()
+        # One library workspace: the calendar, or a grid that replaced it.
+        self._library_workspace = "calendar"
+        self._grid_title = ""
         self._field_sections: list[dict] = []
         self._scope_ids: dict[str, dict[str, list[str]]] = {
             "year": {},
@@ -1079,10 +1082,16 @@ class ShellBridge(QObject):
 
     @Slot(str)
     def selectFolder(self, label: str) -> None:
-        self._select_scope("folder", label)
+        key = str(label or "")
+        if key not in self._scope_ids.get("folder", {}):
+            return
+        self._grid_title = key
+        self._library_workspace = "grid"
+        self._select_scope("folder", key)
 
     @Slot(str)
     def selectDay(self, label: str) -> None:
+        """Toggle a day scope. The library click path is ``openDay``."""
         day = str(label or "").strip()[:10]
         if (
             self._scope_kind == "day"
@@ -1096,18 +1105,48 @@ class ShellBridge(QObject):
             self._sync_calendar_month(day[:7])
         self._select_scope("day", day)
 
+    def _open_day_grid(self, day: str) -> None:
+        """Point the grid at one day, including a day with no stored photos."""
+        bucket = self._scope_ids.setdefault("day", {})
+        bucket.setdefault(day, [])
+        self._revealed_day = day
+        self._scope_kind = "day"
+        self._scope_label = day
+        self._facet = "memory"
+        self._buckets = []
+        self._person_field_filter = False
+        self._person_field_ids = []
+        self._person_field_label = ""
+        self._grid_title = ""
+        self._library_workspace = "grid"
+        if len(day) >= 7 and day[4:5] == "-":
+            month = day[:7]
+            if month != self._calendar_month:
+                self._calendar_month = month
+        ordered = self._ordered_ids(list(bucket.get(day, [])))
+        self._model.set_media_ids(ordered)
+        self._refresh_field_sections(ordered)
+        self._sticky_heading = ""
+        self._paint_calendar()
+        self.editorialChanged.emit()
+        if day == UNDATED_DAY:
+            shown = "Unknown day"
+        else:
+            shown = day_section_short_label(day) or day
+        self._apply_result(Result("ready", f"Showing {shown}."))
+
+    @Slot(str)
+    def openDay(self, label: str) -> None:
+        """Enter a day's grid. A second call for the same day stays there."""
+        day = str(label or "").strip()[:10]
+        if not day:
+            return
+        self._open_day_grid(day)
+
     @Slot(str)
     def focusDay(self, label: str) -> None:
-        """Select a day and keep it selected when it is already the scope."""
-        day = str(label or "").strip()[:10]
-        if self._scope_kind == "day" and self._scope_label == day:
-            self._revealed_day = day
-            if len(day) >= 7:
-                self._sync_calendar_month(day[:7])
-            else:
-                self.editorialChanged.emit()
-            return
-        self.selectDay(day)
+        """Enter the day grid and stay there when that day is already open."""
+        self.openDay(label)
 
     @Slot(str)
     def revealDay(self, label: str) -> None:
@@ -1120,14 +1159,31 @@ class ShellBridge(QObject):
 
     @Slot()
     def showUndated(self) -> None:
-        """Show photos with no stored day. The calendar month stays put."""
-        ids = self._scope_ids.get("day", {}).get(UNDATED_DAY)
-        if not ids:
+        """Open the no-date bucket as a grid. The calendar month stays put."""
+        self._scope_ids.setdefault("day", {}).setdefault(UNDATED_DAY, [])
+        self._open_day_grid(UNDATED_DAY)
+
+    @Slot()
+    def showCalendar(self) -> None:
+        """Leave the grid. Highlight the day that was open and clear the scope."""
+        day = self._scope_label if self._scope_kind == "day" else ""
+        self._library_workspace = "calendar"
+        self._reset_library_scope()
+        parsed = parse_iso_day(day)
+        if parsed:
+            self._revealed_day = parsed
+            self._sync_calendar_month(parsed[:7])
             return
-        if self._scope_kind == "day" and self._scope_label == UNDATED_DAY:
-            self.clearScope()
-            return
-        self._select_scope("day", UNDATED_DAY)
+        if self._revealed_day:
+            self._revealed_day = ""
+            self.editorialChanged.emit()
+
+    @Slot()
+    def showEverything(self) -> None:
+        """Clear filters and fill the workspace with the whole library grid."""
+        self._library_workspace = "grid"
+        self._grid_title = ""
+        self._reset_library_scope()
 
     @Property(str, notify=editorialChanged)
     def calendarView(self) -> str:
@@ -1170,6 +1226,35 @@ class ShellBridge(QObject):
     @Property(int, notify=editorialChanged)
     def undatedCount(self) -> int:
         return int(self._undated_count)
+
+    @Property(str, notify=editorialChanged)
+    def libraryWorkspace(self) -> str:
+        """``calendar`` fills the library. ``grid`` replaces it with photos."""
+        return self._library_workspace
+
+    @Property(str, notify=editorialChanged)
+    def gridTitle(self) -> str:
+        if self._person_field_filter and self._person_field_label:
+            return str(self._person_field_label)
+        if self._scope_kind == "day":
+            if self._scope_label == UNDATED_DAY:
+                return "Unknown day"
+            return day_section_short_label(self._scope_label) or self._scope_label or "Day"
+        if self._scope_kind == "folder":
+            return self._scope_label or "Folder"
+        if self._scope_kind == "month":
+            return month_heading(self._scope_label + "-01") or self._scope_label
+        if self._scope_kind == "year":
+            return self._scope_label or "Year"
+        if self._scope_kind == "range":
+            return self._scope_label.replace(":", " – ")
+        if self._grid_title:
+            return self._grid_title
+        if self._media_kind == "photo":
+            return "Photos"
+        if self._media_kind == "video":
+            return "Videos"
+        return "Everything"
 
     @Property("QVariantList", notify=editorialChanged)
     def yearMatrix(self):
@@ -1287,6 +1372,7 @@ class ShellBridge(QObject):
         self._person_field_filter = False
         self._person_field_ids = []
         self._person_field_label = ""
+        self._grid_title = ""
         self._apply_scope_view()
         self.editorialChanged.emit()
         self._apply_result(Result("ready", self._library_root_message()))
@@ -1321,6 +1407,8 @@ class ShellBridge(QObject):
             self._model.set_media_ids(ordered)
             self._refresh_field_sections(None)
             self._sticky_heading = ""
+            self._library_workspace = "grid"
+            self._grid_title = basis_label or basis or "Search"
             self.editorialChanged.emit()
             if basis:
                 self._publish_similar(
@@ -1814,6 +1902,8 @@ class ShellBridge(QObject):
         day = item.day
         if len(day) >= 7:
             self._sync_calendar_month(day[:7])
+        self._grid_title = ""
+        self._library_workspace = "grid"
         self._select_scope("day", day)
 
     @Slot()
@@ -2563,9 +2653,12 @@ class ShellBridge(QObject):
         self.openFocus(media_id)
         if day:
             # Scope neighbours without inventing a date when mtime is missing.
+            # The day grid stays under the photo so Back lands on that day.
             self._revealed_day = day
             if len(day) >= 7:
                 self._sync_calendar_month(day[:7])
+            self._grid_title = ""
+            self._library_workspace = "grid"
             self._select_scope("day", day)
         elif not missing:
             self._set_result("Opened photo. No date on file — time context unavailable.")
@@ -2930,6 +3023,8 @@ class ShellBridge(QObject):
         self._person_field_filter = True
         self._person_field_ids = media_ids
         self._person_field_label = title
+        self._grid_title = title
+        self._library_workspace = "grid"
         self.closePeople()
         self._scope_kind = ""
         self._scope_label = ""
@@ -3272,6 +3367,17 @@ class ShellBridge(QObject):
             return
         if self._activity_open:
             self.closeActivity()
+            return
+        if self._session.focus_id:
+            self._session.escape()
+            self._clear_query()
+            self._clear_focus_boxes()
+            self.focusChanged.emit()
+            self.diagnosticsChanged.emit()
+            self.lensChanged.emit()
+            return
+        if self._library_workspace == "grid":
+            self.showCalendar()
             return
         self._session.escape()
         self._clear_query()
@@ -4001,12 +4107,14 @@ class ShellBridge(QObject):
         wanted = str(key or "")
         for row in self._buckets:
             if str(row.get("key") or "") == wanted:
+                label = str(row.get("label") or "group")
                 self._scope_kind = ""
                 self._scope_label = ""
                 self._field_sections = []
+                self._grid_title = label
+                self._library_workspace = "grid"
                 self._model.set_media_ids(list(row.get("media_ids") or []))
                 self.editorialChanged.emit()
-                label = str(row.get("label") or "group")
                 self._apply_result(Result("ready", f"Showing {label}."))
                 return
 
