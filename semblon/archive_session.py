@@ -48,6 +48,16 @@ def time_lens() -> Lens:
     return Lens(kind="time", label="Time", parameters=(), order="time")
 
 
+def day_key(mtime_ns: int | None) -> str:
+    """The day a picture belongs to on the timeline (UTC, same clock everywhere)."""
+    if not mtime_ns:
+        return ""
+    try:
+        return datetime.fromtimestamp(int(mtime_ns) / 1e9, tz=timezone.utc).strftime("%Y-%m-%d")
+    except (OSError, OverflowError, ValueError):
+        return ""
+
+
 @dataclass(frozen=True)
 class MediaRef:
     media_id: str
@@ -63,14 +73,7 @@ class MediaRef:
 
     @property
     def day(self) -> str:
-        if not self.mtime_ns:
-            return ""
-        try:
-            return datetime.fromtimestamp(int(self.mtime_ns) / 1e9, tz=timezone.utc).strftime(
-                "%Y-%m-%d"
-            )
-        except (OSError, OverflowError, ValueError):
-            return ""
+        return day_key(self.mtime_ns)
 
 
 @dataclass(frozen=True)
@@ -116,12 +119,14 @@ class ArchiveSession:
         self._read_gen = 0
         self._count_cache: int | None = None
         self._media_cache: dict[str, MediaRef | None] = {}
+        self._days_cache: list[str] | None = None
 
     def invalidate_reads(self) -> None:
         """Drop cached media rows after the archive changes."""
         with self._cache_lock:
             self._count_cache = None
             self._media_cache.clear()
+            self._days_cache = None
             self._read_gen += 1
 
     def _read_conn(self):
@@ -199,6 +204,31 @@ class ArchiveSession:
         except sqlite3.Error:
             return []
         return [_media(row) for row in rows]
+
+    def days(self) -> list[str]:
+        """Every picture's day key in display order. One cheap column, so sections can be laid out."""
+        if self.lens.kind != "time" or not self.store.is_file():
+            return []
+        with self._cache_lock:
+            if self._days_cache is not None:
+                return list(self._days_cache)
+        conn = self._read_conn()
+        if conn is None:
+            return []
+        try:
+            rows = conn.execute(
+                """
+                SELECT mtime_ns FROM media
+                WHERE source_type='folder'
+                ORDER BY (mtime_ns IS NULL), mtime_ns DESC, media_id
+                """
+            ).fetchall()
+        except sqlite3.Error:
+            return []
+        out = [day_key(row[0]) for row in rows]
+        with self._cache_lock:
+            self._days_cache = out
+        return list(out)
 
     def media(self, media_id: str) -> MediaRef | None:
         if not media_id or not self.store.is_file():

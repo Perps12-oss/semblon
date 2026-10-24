@@ -29,6 +29,19 @@ _SIMILAR_NH = Qt.ItemDataRole.UserRole + 6
 _STRIP_CAP = 48
 
 
+def _when(mtime_ns: int | None) -> str:
+    """"8 Feb 2025, 14:32" on the same clock the day dividers use."""
+    from datetime import datetime, timezone
+
+    if not mtime_ns:
+        return ""
+    try:
+        stamp = datetime.fromtimestamp(int(mtime_ns) / 1e9, tz=timezone.utc)
+    except (OSError, OverflowError, ValueError):
+        return ""
+    return f"{stamp.day} {stamp.strftime('%b %Y, %H:%M')}"
+
+
 class ArchiveModel(QAbstractListModel):
     def __init__(self, app: Application):
         super().__init__()
@@ -67,6 +80,22 @@ class ArchiveModel(QAbstractListModel):
         if self._ids is None:
             return None
         return list(self._ids)
+
+    def days(self) -> list[str]:
+        """Day key of every row, in the order the Roll shows them."""
+        if self._ids is None:
+            return self._app.archive_days()
+        out = []
+        for media_id in self._ids:
+            item = self._app.media(media_id)
+            out.append(item.day if item is not None else "")
+        return out
+
+    def row_info(self, row: int) -> dict:
+        item = self._at(row)
+        if item is None:
+            return {"mediaId": "", "day": "", "name": "", "when": ""}
+        return {"mediaId": item.media_id, "day": item.day, "name": item.name, "when": _when(item.mtime_ns)}
 
     def rowCount(self, parent=QModelIndex()) -> int:  # noqa: N802
         if parent.isValid():

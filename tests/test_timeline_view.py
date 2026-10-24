@@ -521,14 +521,14 @@ def test_roll_keyboard_opens_a_photo_and_zooms(tmp_path, monkeypatch):
         roll = root.findChild(QQuickItem, "roll")
         grid = root.findChild(QQuickItem, "rollGrid")
         assert roll is not None and grid is not None
-        assert int(grid.property("count")) == 4
+        assert int(roll.property("count")) == 4
         grid.forceActiveFocus()
         app.processEvents()
         assert grid.hasActiveFocus()
-        start = int(grid.property("currentIndex"))
+        start = int(roll.property("currentPhoto"))
         QTest.keyClick(root, Qt.Key.Key_Right)
         app.processEvents()
-        assert int(grid.property("currentIndex")) == start + 1
+        assert int(roll.property("currentPhoto")) == start + 1
 
         before = float(roll.property("cellTarget"))
         for _ in range(3):

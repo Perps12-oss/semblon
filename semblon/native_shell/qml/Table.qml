@@ -54,6 +54,7 @@ Window {
     }
     Scrubber {
         id: scrub
+        objectName: "scrubber"
         roll: rollView
         anchors.right: parent.right
         anchors.top: parent.top

@@ -55,7 +55,7 @@ def test_shell_command_loads_qml_archive_not_the_widget_columns():
     table = (qml_dir / "Table.qml").read_text(encoding="utf-8")
     roll = (qml_dir / "Roll.qml").read_text(encoding="utf-8")
     assert "Add a folder" in table + roll
-    assert "GridView" in roll
+    assert "ListView" in roll
     assert "QListWidget" not in table + roll
     assert not (qml_dir / "Shell.qml").exists()
     assert not (qml_dir / "HomeLaunchpad.qml").exists()

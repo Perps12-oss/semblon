@@ -390,19 +390,3 @@ def test_with_photos_the_add_button_returns_and_verbs_wake(tmp_path, monkeypatch
         assert root.findChild(QObject, "chooseFolder").property("visible") is False
     finally:
         shutdown_shell(engine)
-
-
-def test_day_breaks_use_frame_number_tags(tmp_path, monkeypatch):
-    from PySide6.QtCore import QMetaObject, QObject, Q_RETURN_ARG, Q_ARG
-
-    from semblon.native_shell.host import shutdown_shell
-
-    app, engine, root, _bridge = _boot_with_photo(tmp_path, monkeypatch)
-    try:
-        roll = next(o for o in root.findChildren(QObject) if o.property("dayBreaks") is not None)
-        ok, tag = QMetaObject.invokeMethod(
-            roll, "frameTag", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "2024-09-14")
-        ), None
-        assert ok == "SAT 14 SEP"
-    finally:
-        shutdown_shell(engine)

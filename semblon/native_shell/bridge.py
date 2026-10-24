@@ -1379,6 +1379,17 @@ class ShellBridge(QObject):
         if heading_changed:
             self.editorialChanged.emit()
 
+    @Slot(int, bool, bool, result="QVariantMap")
+    def rollLayout(self, columns: int, grouped: bool, dayRows: bool):
+        """Months, day dividers and rows of pictures for the Roll. Counts are per section."""
+        from semblon.native_shell.sections import build_sections
+
+        return build_sections(self._model.days(), int(columns), grouped=bool(grouped), day_rows=bool(dayRows))
+
+    @Slot(int, result="QVariantMap")
+    def cellInfo(self, index: int):
+        return self._model.row_info(int(index))
+
     @Slot(int, result=str)
     def dayAt(self, index: int) -> str:
         """Day key for a Field row (sticky header)."""

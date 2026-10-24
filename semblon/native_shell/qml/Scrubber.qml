@@ -1,113 +1,119 @@
 import QtQuick
 
-// Film-edge scrubber: year and month marks sized by how many photos each holds.
-// Hover shows where you would land. Drag to move. Up and down arrows work too.
+// Film-edge scrubber: one even slot per month under its year. Photo density shows as a short
+// bar, never as distance. The marker lives on the left rail, away from every label.
+// Click or drag to land on a month's header. Up, Down, Home and End step through months.
 Item {
     id: edge
     property var roll
-    property var density: shell.timelineDensity
-    property int curIndex: 0
     property real hoverY: -1
     readonly property bool dragging: seek.pressed
     readonly property bool hovered: seek.containsMouse || dragging
-    readonly property real innerTop: 12
-    readonly property real innerH: Math.max(1, height - 24)
+    readonly property real innerTop: 14
+    readonly property real innerH: Math.max(1, height - 28)
     readonly property int total: roll ? roll.count : 0
-    readonly property var segs: layoutSegments(density, innerH, total, roll ? roll.matchMode : false)
-    readonly property real fraction: total > 1 ? curIndex / (total - 1) : 0
+    readonly property var months: roll ? roll.monthList : []
+    readonly property string currentKey: roll ? roll.currentMonth : ""
+    readonly property real fraction: total > 1 ? linearIndex / (total - 1) : 0
+    property int linearIndex: 0
+    readonly property var slots: buildSlots(months, innerH)
+    readonly property real unit: slots.unit
+    readonly property real railW: 5
 
     width: Theme.edge
     z: 5
     Accessible.role: Accessible.Slider
-    Accessible.name: "Time scrubber. Up and down arrows move through your photos."
-    Accessible.description: labelAt(curIndex)
+    Accessible.name: "Time scrubber. Up and down arrows move month by month."
+    Accessible.description: roll && roll.heading !== "" ? roll.heading : ""
     activeFocusOnTab: true
-    Keys.onUpPressed: roll.jumpToFraction(Math.max(0, fraction - 0.05))
-    Keys.onDownPressed: roll.jumpToFraction(Math.min(1, fraction + 0.05))
     Keys.onPressed: function (event) {
-        if (event.key === Qt.Key_Home) { roll.jumpToFraction(0); event.accepted = true }
-        else if (event.key === Qt.Key_End) { roll.jumpToFraction(1); event.accepted = true }
+        if (event.key === Qt.Key_Up) { step(-1); event.accepted = true }
+        else if (event.key === Qt.Key_Down) { step(1); event.accepted = true }
+        else if (event.key === Qt.Key_Home) { stepTo(0); event.accepted = true }
+        else if (event.key === Qt.Key_End) { stepTo(months.length - 1); event.accepted = true }
     }
 
-    readonly property var monthNames: ["January", "February", "March", "April", "May", "June", "July",
-                                       "August", "September", "October", "November", "December"]
+    readonly property var shortMonths: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
-    // One block per year, tall enough to read, proportional to how many photos it holds.
-    function layoutSegments(d, h, count, matching) {
-        var out = []
-        if (matching || !d || d.length === 0 || count <= 0)
+    function buildSlots(list, h) {
+        var out = { items: [], unit: 0, labelEvery: 1 }
+        if (!list || list.length === 0)
             return out
-        var sum = 0
-        for (var i = 0; i < d.length; i++)
-            sum += d[i].count || 0
-        if (sum !== count)
-            return out
-        var raw = [], rawSum = 0
-        for (var j = 0; j < d.length; j++) {
-            var r = Math.max(46, h * (d[j].count || 0) / sum)
-            raw.push(r)
-            rawSum += r
+        var years = 0, last = "#"
+        for (var i = 0; i < list.length; i++) {
+            var y = list[i].key === "" ? "" : list[i].key.substring(0, 4)
+            if (y !== last) { years++; last = y }
         }
-        var y = innerTop, start = 0
-        for (var k = 0; k < d.length; k++) {
-            var seg = { label: String(d[k].label), count: d[k].count || 0, start: start, y: y, h: raw[k] * h / rawSum, months: [] }
-            var my = seg.y, ms = start
-            var months = d[k].months || []
-            for (var m = 0; m < months.length; m++) {
-                var mh = seg.count > 0 ? seg.h * (months[m].count || 0) / seg.count : 0
-                seg.months.push({ label: String(months[m].label), count: months[m].count || 0, start: ms, y: my, h: mh })
-                my += mh
-                ms += months[m].count || 0
+        var weight = list.length + years * 1.15
+        var u = Math.min(24, h / weight)
+        var maxCount = 1
+        for (var c = 0; c < list.length; c++)
+            maxCount = Math.max(maxCount, list[c].count)
+        var at = innerTop, prevYear = "#"
+        for (var k = 0; k < list.length; k++) {
+            var m = list[k]
+            var yr = m.key === "" ? "" : m.key.substring(0, 4)
+            if (yr !== prevYear) {
+                out.items.push({ kind: "year", label: m.key === "" ? "Undated" : yr, y: at, h: u * 1.15, key: m.key, index: k })
+                at += u * 1.15
+                prevYear = yr
             }
-            out.push(seg)
-            y += seg.h
-            start += seg.count
+            var mon = m.key === "" ? "" : edge.shortMonths[parseInt(m.key.substring(5, 7)) - 1]
+            out.items.push({ kind: "month", label: mon, y: at, h: u, key: m.key, index: k, count: m.count, share: m.count / maxCount, title: m.title })
+            at += u
         }
+        out.unit = u
+        out.labelEvery = u >= 13 ? 1 : (u >= 8 ? 3 : 0)
         return out
     }
-    function indexToY(i) {
-        if (segs.length === 0)
-            return innerTop + (total > 1 ? i / (total - 1) : 0) * innerH
-        for (var s = 0; s < segs.length; s++) {
-            var g = segs[s]
-            if (i < g.start + g.count || s === segs.length - 1)
-                return g.y + Math.min(1, (i - g.start) / Math.max(1, g.count)) * g.h
-        }
-        return innerTop
+    function slotAt(y) {
+        var items = slots.items
+        for (var i = 0; i < items.length; i++)
+            if (y < items[i].y + items[i].h)
+                return items[i]
+        return items.length > 0 ? items[items.length - 1] : null
     }
-    function yToIndex(y) {
-        var cy = Math.max(innerTop, Math.min(innerTop + innerH, y))
-        if (segs.length === 0)
-            return Math.round((cy - innerTop) / innerH * Math.max(0, total - 1))
-        for (var s = 0; s < segs.length; s++) {
-            var g = segs[s]
-            if (cy <= g.y + g.h || s === segs.length - 1)
-                return Math.max(0, Math.min(total - 1, g.start + Math.floor((cy - g.y) / Math.max(1, g.h) * g.count)))
-        }
+    function monthIndexOf(key) {
+        for (var i = 0; i < months.length; i++)
+            if (months[i].key === key)
+                return i
         return 0
     }
-    function labelAt(i) {
-        for (var s = 0; s < segs.length; s++) {
-            var g = segs[s]
-            if (i < g.start + g.count) {
-                for (var m = 0; m < g.months.length; m++) {
-                    var mo = g.months[m]
-                    if (i < mo.start + mo.count) {
-                        var n = parseInt(mo.label.substring(5, 7))
-                        return n >= 1 && n <= 12 ? monthNames[n - 1] + " " + g.label : g.label
-                    }
-                }
-                return g.label
-            }
+    function stepTo(i) {
+        if (months.length === 0) {
+            if (roll) roll.jumpToFraction(i <= 0 ? 0 : 1)
+            return
         }
-        return total > 0 ? "Photo " + (i + 1) + " of " + total : ""
+        roll.jumpToMonth(months[Math.max(0, Math.min(months.length - 1, i))].key)
     }
-    function isCurrentYear(g) { return curIndex >= g.start && curIndex < g.start + g.count }
+    function step(d) {
+        if (months.length === 0) {
+            if (roll) roll.jumpToFraction(Math.max(0, Math.min(1, fraction + d * 0.05)))
+            return
+        }
+        stepTo(monthIndexOf(currentKey) + d)
+    }
+    function slotFor(key) {
+        var items = slots.items
+        for (var i = 0; i < items.length; i++)
+            if (items[i].kind === "month" && items[i].key === key)
+                return items[i]
+        return null
+    }
+    function go(my) {
+        hoverY = my
+        if (slots.items.length === 0) {
+            roll.jumpToFraction(Math.max(0, Math.min(1, (my - innerTop) / innerH)))
+            return
+        }
+        var s = slotAt(my)
+        if (s)
+            roll.jumpToMonth(s.key)
+    }
 
     Connections {
         target: edge.roll ? edge.roll.view : null
-        function onContentYChanged() { edge.curIndex = edge.roll.topIndex() }
-        function onCountChanged() { edge.curIndex = edge.roll.topIndex() }
+        function onContentYChanged() { edge.linearIndex = edge.roll.topIndex() }
     }
 
     Rectangle {
@@ -115,6 +121,7 @@ Item {
         color: edge.hovered ? Theme.line : Theme.raised
         Behavior on color { ColorAnimation { duration: Theme.fast } }
         Rectangle { width: 1; height: parent.height; color: Theme.muted }
+        Rectangle { x: 1; width: edge.railW; height: parent.height; color: Theme.bg; opacity: 0.45 }
         Grain { anchors.fill: parent }
     }
     Rectangle {
@@ -126,73 +133,86 @@ Item {
         visible: edge.activeFocus
     }
 
+    // Slots: year headers and months.
     Repeater {
-        model: edge.segs
+        model: edge.slots.items
         delegate: Item {
-            id: yearBlock
-            readonly property bool here: edge.isCurrentYear(modelData)
-            x: 0
+            id: slot
+            readonly property bool isYear: modelData.kind === "year"
+            readonly property bool here: !isYear && modelData.key === edge.currentKey
+            readonly property bool hoverHere: edge.hovered && edge.hoverY >= modelData.y && edge.hoverY < modelData.y + modelData.h
             y: modelData.y
             width: edge.width
             height: modelData.h
-            Rectangle { x: 4; width: parent.width - 8; height: 1; color: here ? Theme.amber : Theme.muted }
+
+            Rectangle {
+                visible: slot.isYear
+                x: edge.railW + 3; width: parent.width - edge.railW - 6; height: 1; color: Theme.muted
+            }
             Text {
-                x: 7; y: 3
-                visible: yearBlock.height >= 18
+                visible: slot.isYear && slot.height >= 12
+                x: edge.railW + 5
+                y: 2
                 text: modelData.label
                 font.family: Theme.ui
-                font.pixelSize: Theme.small
+                font.pixelSize: 12
                 font.weight: Font.Bold
-                color: yearBlock.here ? Theme.amber : Theme.text
+                color: Theme.text
             }
-            Repeater {
-                model: modelData.months
-                delegate: Item {
-                    readonly property bool current: edge.curIndex >= modelData.start && edge.curIndex < modelData.start + modelData.count
-                    x: 0
-                    y: modelData.y - yearBlock.y
-                    width: edge.width
-                    height: modelData.h
-                    Rectangle {
-                        visible: index > 0
-                        x: parent.width - 12; width: 8; height: 1
-                        color: current ? Theme.amber : Theme.faint
-                    }
-                    Text {
-                        visible: parent.height >= 15
-                        anchors.right: parent.right
-                        anchors.rightMargin: 16
-                        y: index === 0 ? 17 : 1
-                        text: edge.monthNames[Math.max(0, parseInt(modelData.label.substring(5, 7)) - 1)].substring(0, 3)
-                        font.family: Theme.ui
-                        font.pixelSize: 10
-                        font.weight: current ? Font.Bold : Font.Medium
-                        color: current ? Theme.amber : Theme.muted
-                    }
-                }
+            // Density: a short bar, longer for busier months.
+            Rectangle {
+                visible: !slot.isYear
+                anchors.right: parent.right
+                anchors.rightMargin: 5
+                anchors.verticalCenter: parent.verticalCenter
+                width: 3 + 15 * (modelData.share || 0)
+                height: Math.max(1, Math.min(3, slot.height - 2))
+                color: slot.here || slot.hoverHere ? Theme.amber : Theme.faint
+            }
+            Rectangle {
+                visible: slot.here && edge.slots.labelEvery > 0
+                x: edge.railW + 3
+                anchors.verticalCenter: parent.verticalCenter
+                width: monthLabel.implicitWidth + 8
+                height: Math.min(slot.height, monthLabel.implicitHeight + 2)
+                radius: 2
+                color: Theme.amberSoft
+            }
+            Text {
+                id: monthLabel
+                visible: !slot.isYear && edge.slots.labelEvery > 0
+                         && (slot.here || modelData.index % edge.slots.labelEvery === 0)
+                x: edge.railW + 7
+                anchors.verticalCenter: parent.verticalCenter
+                text: modelData.label
+                font.family: Theme.ui
+                font.pixelSize: 10
+                font.weight: slot.here ? Font.Bold : Font.Medium
+                color: slot.here ? Theme.amber : Theme.muted
             }
         }
     }
 
-    // Where you are now.
+    // Where you are now: a marker on the left rail, so it never crosses a label.
     Rectangle {
-        id: knob
-        visible: edge.total > 0
-        x: 2
-        width: parent.width - 4
-        height: edge.dragging ? 6 : 4
-        radius: 3
+        id: marker
+        objectName: "scrubMarker"
+        readonly property var cur: edge.slotFor(edge.currentKey)
+        visible: edge.total > 0 && (edge.slots.items.length === 0 || cur !== null)
+        x: 1
+        width: edge.railW
+        radius: 2
         color: Theme.amber
-        y: edge.indexToY(edge.curIndex) - height / 2
+        height: cur ? Math.max(4, cur.h) : (edge.dragging ? 8 : 6)
+        y: cur ? cur.y : edge.innerTop + edge.fraction * (edge.innerH - height)
         Behavior on y { enabled: !edge.dragging; NumberAnimation { duration: Theme.fast } }
-        Behavior on height { NumberAnimation { duration: Theme.fast } }
     }
 
-    // Hover or drag: say where you would land.
+    // Hover or drag: say where you would land, on its own backplate to the left.
     Rectangle {
         id: bubble
-        visible: edge.hovered && edge.hoverY >= 0 && edge.total > 0
-        readonly property int idx: edge.yToIndex(edge.hoverY)
+        visible: edge.hovered && edge.hoverY >= 0 && edge.total > 0 && bubbleText.text !== ""
+        readonly property var s: edge.slotAt(edge.hoverY)
         x: -width - 8
         y: Math.max(4, Math.min(edge.height - height - 4, edge.hoverY - height / 2))
         width: bubbleText.implicitWidth + 20
@@ -202,7 +222,7 @@ Item {
         Text {
             id: bubbleText
             anchors.centerIn: parent
-            text: edge.labelAt(bubble.idx)
+            text: bubble.s ? (bubble.s.kind === "month" ? bubble.s.title : bubble.s.label) : ""
             font.family: Theme.ui
             font.pixelSize: Theme.small
             font.weight: Font.DemiBold
@@ -215,12 +235,8 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        function go(my) {
-            edge.hoverY = my
-            edge.roll.jumpToIndex(edge.yToIndex(my))
-        }
-        onPressed: function (m) { edge.forceActiveFocus(); go(m.y) }
-        onPositionChanged: function (m) { edge.hoverY = m.y; if (pressed) go(m.y) }
+        onPressed: function (m) { edge.forceActiveFocus(); edge.go(m.y) }
+        onPositionChanged: function (m) { edge.hoverY = m.y; if (pressed) edge.go(m.y) }
         onExited: edge.hoverY = -1
     }
 }
