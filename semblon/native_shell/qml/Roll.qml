@@ -237,6 +237,7 @@ Item {
     // First run. One sentence, one action. The folder you pick is never changed.
     Item {
         id: arrival
+        objectName: "emptyState"
         anchors.fill: parent
         anchors.rightMargin: Theme.edge + 10
         visible: shell.empty && !shell.jobActive

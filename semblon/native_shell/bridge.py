@@ -4298,9 +4298,9 @@ class ShellBridge(QObject):
             return
         answer = QMessageBox.question(
             None,
-            "Clear library",
-            "Remove the folder index, names, and kept finds from Semblon?\n\n"
-            "Photos on disk stay where they are.",
+            "Forget what Semblon learned?",
+            "Semblon will forget the folders you added, the names you gave and the finds you kept.\n\n"
+            "Your photo files stay exactly where they are, and you can add the folder again any time.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

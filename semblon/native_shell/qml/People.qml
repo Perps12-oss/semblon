@@ -4,6 +4,7 @@ import QtQuick
 // A group of faces is not a person until you give it a name. "Not sure" is always fine.
 Item {
     id: table
+    objectName: "peopleDesk"
     property bool active: shell.peopleOpen
     signal closed()
     visible: opacity > 0.01
@@ -119,6 +120,12 @@ Item {
                 TapHandler { onTapped: { prints.currentIndex = index; shell.selectGroup(subject) } }
             }
             Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+            DropArea {
+                anchors.fill: parent
+                keys: ["print"]
+                property string subjectId: subject
+                Rectangle { anchors.fill: parent; color: Theme.amber; opacity: parent.containsDrag ? 0.25 : 0 }
+            }
         }
     }
 
@@ -155,18 +162,29 @@ Item {
         }
         Flow {
             id: faces
+            objectName: "splitFaceGrid"
             anchors.top: sub.bottom
             anchors.topMargin: Theme.pad
             width: parent.width
             spacing: 6
             Repeater {
                 model: shell.selectedMembers.slice(0, 18)
-                Image {
+                Item {
+                    id: faceCell
                     width: 64; height: 64
-                    source: "image://face/" + modelData.face_id
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    TapHandler { onTapped: shell.openFocus(modelData.media_id) }
+                    property bool picked: { shell.splitSelectionCount; return shell.isSplitFaceSelected(modelData.face_id) }
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.CheckBox
+                    Accessible.name: "Face " + (index + 1) + (picked ? ", picked to split out" : "")
+                    Keys.onSpacePressed: shell.toggleSplitFace(modelData.face_id)
+                    Image {
+                        anchors.fill: parent
+                        source: "image://face/" + modelData.face_id
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                    }
+                    Rectangle { anchors.fill: parent; color: "transparent"; border.width: faceCell.picked || faceCell.activeFocus ? 3 : 0; border.color: Theme.amber }
+                    TapHandler { onTapped: shell.toggleSplitFace(modelData.face_id) }
                 }
             }
         }
@@ -215,6 +233,16 @@ Item {
                 onActivated: { shell.decide("name", shell.selectedSubject, nameInput.text.trim()); nameInput.text = "" }
             }
             Tool {
+                label: "Split picked faces out"
+                hint: "Tap faces above, then split them into their own group"
+                visible: shell.canSplitSelected
+                onActivated: shell.splitSelectedFaces()
+            }
+            Tool {
+                label: "See the photos"
+                onActivated: shell.openEvidence(shell.evidenceId)
+            }
+            Tool {
                 label: "Not sure yet"
                 hint: "Leave this group unknown. That is always fine."
                 onActivated: { shell.selectGroup(""); }
@@ -248,6 +276,7 @@ Item {
 
     // Named people are stacks you can drop a print onto.
     Row {
+        objectName: "mergeTargetFlow"
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: Theme.pad

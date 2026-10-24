@@ -88,7 +88,7 @@ Window {
     // Progress while a folder is read. Pictures appear behind it as they are ready.
     Rectangle {
         id: progress
-        objectName: "progress"
+        objectName: "jobBand"
         visible: shell.jobActive
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
@@ -121,8 +121,8 @@ Window {
             }
             Row {
                 spacing: Theme.gap
-                Tool { label: shell.jobState === "paused" ? "Keep going" : "Pause"; onActivated: shell.jobState === "paused" ? shell.resumeJob() : shell.pauseJob() }
-                Tool { label: "Stop"; onActivated: shell.cancelJob() }
+                Tool { objectName: "pauseJob"; label: shell.jobState === "paused" ? "Keep going" : "Pause"; onActivated: shell.jobState === "paused" ? shell.resumeJob() : shell.pauseJob() }
+                Tool { objectName: "cancelJob"; label: "Stop"; onActivated: shell.cancelJob() }
             }
         }
     }
@@ -164,34 +164,28 @@ Window {
         open: win.settingsOpen
         anchors.centerIn: parent
         width: Math.min(parent.width - 60, 560)
-        height: Math.min(parent.height - 80, 460)
+        height: Math.min(parent.height - 60, 680)
         onDismissed: { win.settingsOpen = false; roll.forceActiveFocus() }
-        Column {
+        SettingsBody { anchors.fill: parent }
+    }
+
+    Sheet {
+        id: activity
+        objectName: "activitySheet"
+        heading: "Recent activity"
+        open: shell.activityOpen
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 60, 520)
+        height: Math.min(parent.height - 80, 460)
+        onDismissed: { shell.closeActivity(); roll.forceActiveFocus() }
+        ListView {
             anchors.fill: parent
-            spacing: Theme.pad
-            Text { text: "Look"; font.family: Theme.ui; font.pixelSize: Theme.small; font.weight: Font.DemiBold; color: Theme.muted }
-            Row {
-                spacing: Theme.gap
-                Tool { label: "Darkroom"; selected: !shell.lightPalette; onActivated: shell.setAtmosphere("mica_dark") }
-                Tool { label: "Daylight"; selected: shell.lightPalette; onActivated: shell.setAtmosphere("light") }
-            }
-            Text { text: "Your photos"; font.family: Theme.ui; font.pixelSize: Theme.small; font.weight: Font.DemiBold; color: Theme.muted }
-            Text {
-                width: parent.width; wrapMode: Text.WordWrap
-                text: shell.archiveSummary
-                font.family: Theme.ui; font.pixelSize: Theme.body; color: Theme.text
-            }
-            Row {
-                spacing: Theme.gap
-                Tool { label: "Add a folder"; onActivated: shell.addFolder() }
-                Tool { label: "Check for new photos"; onActivated: shell.rescanFolder() }
-            }
-            Text {
-                width: parent.width; wrapMode: Text.WordWrap
-                text: "Forget everything Semblon has learned? Your photo files are never touched, and you can add the folder again any time."
-                font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted
-            }
-            Tool { label: "Start fresh"; onActivated: shell.clearLibrary() }
+            clip: true
+            spacing: 4
+            model: shell.activityRows
+            section.property: "section"
+            section.delegate: Text { text: section; font.family: Theme.ui; font.pixelSize: Theme.tiny; font.weight: Font.DemiBold; color: Theme.faint; topPadding: 8 }
+            delegate: Text { width: ListView.view.width; wrapMode: Text.WordWrap; text: modelData.text; font.family: Theme.ui; font.pixelSize: Theme.body; color: Theme.text }
         }
     }
 

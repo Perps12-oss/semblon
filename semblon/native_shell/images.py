@@ -186,7 +186,7 @@ def _memory_cache(thumb: bool) -> ImageDecodeCache:
 def peek_display_image(path: str, max_side: int, *, cache_dir: Path | None) -> QImage | object:
     """Return a decoded frame already in memory, or ``_MISS``."""
     thumb = cache_dir is not None and max_side <= _THUMB_CEILING
-    side = min(max_side, _THUMB_DISK) if thumb else max_side
+    side = (_TINY_DISK if max_side <= _TINY_DISK else _THUMB_DISK) if thumb else max_side
     key = _cache_key(path, side)
     if key is None:
         return _MISS
@@ -196,7 +196,7 @@ def peek_display_image(path: str, max_side: int, *, cache_dir: Path | None) -> Q
 def load_display_image(path: str, max_side: int, *, cache_dir: Path | None = None) -> QImage:
     """Thumbnails prefer a small JPEG beside the store. Focus frames stay in memory."""
     thumb = cache_dir is not None and max_side <= _THUMB_CEILING
-    side = min(max_side, _THUMB_DISK) if thumb else max_side
+    side = (_TINY_DISK if max_side <= _TINY_DISK else _THUMB_DISK) if thumb else max_side
     key = _cache_key(path, side)
     cache = _memory_cache(thumb)
     cached = cache.get(key) if key is not None else _MISS

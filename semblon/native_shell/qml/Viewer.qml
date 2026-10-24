@@ -43,7 +43,7 @@ Item {
         anchors.fill: parent
         anchors.margins: Theme.pad
         anchors.bottomMargin: 150
-        anchors.topMargin: 56
+        anchors.topMargin: 104
 
         Image {
             id: photo
@@ -65,6 +65,23 @@ Item {
                 width: photo.paintedWidth
                 height: photo.paintedHeight
 
+                Repeater {
+                    model: shell.focusObservationBoxes
+                    delegate: Rectangle {
+                        required property var modelData
+                        x: modelData.nx * canvas.width
+                        y: modelData.ny * canvas.height
+                        width: Math.max(2, modelData.nw * canvas.width)
+                        height: Math.max(2, modelData.nh * canvas.height)
+                        color: "transparent"
+                        border.width: shell.selectedObservationId === modelData.id ? 3 : 1
+                        border.color: shell.selectedObservationId === modelData.id ? Theme.amber : Theme.muted
+                        visible: !viewer.loupeOn
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Pick " + (modelData.tag || "this area")
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: shell.selectObservation(modelData.id) }
+                    }
+                }
                 Rectangle {
                     visible: viewer.lw > 0
                     x: viewer.lx; y: viewer.ly; width: viewer.lw; height: viewer.lh
@@ -114,6 +131,47 @@ Item {
             onActivated: { viewer.loupeOn = !viewer.loupeOn; if (!viewer.loupeOn) viewer.reset() }
         }
     }
+    Flow {
+        id: actions
+        x: Theme.pad
+        y: 56
+        width: parent.width - Theme.pad * 2
+        spacing: Theme.gap
+        Tool { objectName: "similarAction"; label: "Find similar"; primary: true; visible: shell.selectionOnFocus; onActivated: shell.findSimilar() }
+        Tool { label: "Find more like this photo"; onActivated: shell.findSimilarWhole() }
+        Tool { label: "Find faces like these"; onActivated: shell.findSimilarFaces() }
+        Tool { objectName: "nameThisArea"; label: "Describe this area"; visible: shell.selectionOnFocus && !shell.identifyBusy; onActivated: shell.nameSelection() }
+        Tool { objectName: "askPhoto"; label: "Ask about this photo"; onActivated: shell.askPhoto() }
+        Tool { label: "Pick on screen"; visible: shell.screenQueryAvailable; onActivated: shell.startScreenQuery() }
+        Tool { label: "Who is this?"; visible: shell.selectedObservationId !== ""; onActivated: shell.reviewFaceGroup(shell.selectedObservationId) }
+        Tool { label: "More like this"; visible: shell.similarState === "ready"; onActivated: shell.setSearchQuality("max") }
+        Tool { label: "Fewer, closer"; visible: shell.similarState === "ready"; onActivated: shell.setSearchQuality("fast") }
+    }
+    Text {
+        x: Theme.pad
+        anchors.bottom: strip.top
+        anchors.bottomMargin: 4
+        width: parent.width - Theme.pad * 2
+        text: shell.resultText
+        wrapMode: Text.WordWrap
+        font.family: Theme.ui
+        font.pixelSize: Theme.small
+        color: Theme.muted
+        visible: shell.resultText !== ""
+    }
+    Text {
+        objectName: "nameNote"
+        x: Theme.pad
+        anchors.bottom: strip.top
+        anchors.bottomMargin: 26
+        width: parent.width - Theme.pad * 2
+        text: shell.nameNote
+        wrapMode: Text.WordWrap
+        font.family: Theme.display
+        font.pixelSize: Theme.body
+        color: Theme.text
+        visible: shell.nameNote !== ""
+    }
     Text {
         anchors.right: parent.right
         anchors.top: parent.top
@@ -137,6 +195,7 @@ Item {
         visible: viewer.loupeOn || shell.similarState !== "idle"
         Rectangle { anchors.fill: parent; color: Theme.surface; Rectangle { width: parent.width; height: 1; color: Theme.line } }
         Text {
+            objectName: "searchStatus"
             x: Theme.pad; y: 8
             text: shell.searchBusy ? "Looking through your photos…"
                 : shell.similarState === "ready" ? (shell.similarCount === 0 ? "Nothing like that anywhere else yet." : shell.similarCount + " places this shows up")

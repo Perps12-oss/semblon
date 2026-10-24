@@ -106,6 +106,7 @@ Item {
                     onActivated: bar.focusEntry(bar.mode === "moment" ? "" : "moment")
                 }
                 Tool {
+                    objectName: "peopleButton"
                     label: "Find a person"
                     hint: "Review faces and give them names"
                     onActivated: bar.peopleRequested()
