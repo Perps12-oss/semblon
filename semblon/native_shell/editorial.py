@@ -139,6 +139,48 @@ def source_counts(store: Path) -> dict[str, int]:
 MEDIA_KINDS = ("all", "photo", "video")
 
 
+def day_detail(store: Path, day: str) -> dict:
+    """One call for the canvas: a day's photos, how many faces they hold, and named people.
+
+    Read-only. A face group is not a person here: only names someone typed are listed.
+    """
+    label = str(day or "").strip()
+    ids = list(scope_ids(Path(store)).get("day", {}).get(label, []))
+    detail = {
+        "day": label,
+        "heading": day_section_label(label) if ids else "",
+        "photos": ids,
+        "count": len(ids),
+        "faceCount": 0,
+        "people": [],
+    }
+    if not ids:
+        return detail
+    conn = connect(Path(store))
+    try:
+        marks = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            "SELECT p.display_name, COUNT(*) FROM faces f "
+            "JOIN observations o ON o.observation_id = f.observation_id "
+            "LEFT JOIN persons p ON p.person_id = f.person_id AND p.status = 'active' "
+            f"WHERE o.media_id IN ({marks}) AND f.status = 'ok' GROUP BY p.display_name",
+            ids,
+        ).fetchall()
+    except sqlite3.Error:
+        return detail
+    finally:
+        conn.close()
+    names = []
+    total = 0
+    for name, n in rows:
+        total += int(n or 0)
+        if name and str(name).strip():
+            names.append(str(name).strip())
+    detail["faceCount"] = total
+    detail["people"] = sorted(names)
+    return detail
+
+
 def video_ids(store: Path) -> set[str]:
     path = Path(store)
     if not path.is_file():

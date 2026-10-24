@@ -1,4 +1,4 @@
-﻿"""Native archive shell â€” Application client. Optional PySide6."""
+"""Native archive shell â€” Application client. Optional PySide6."""
 
 from __future__ import annotations
 
@@ -45,20 +45,20 @@ def test_shell_command_loads_qml_archive_not_the_widget_columns():
     host_text = (
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "host.py"
     ).read_text(encoding="utf-8")
-    assert "Shell.qml" in host_text
+    assert "Table.qml" in host_text
     assert "submit_ingest" not in host_text
     bridge = Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "bridge.py"
     text = bridge.read_text(encoding="utf-8")
     assert "submit_ingest" in text
     assert "open_review=False" in text
     qml_dir = Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml"
-    qml = (qml_dir / "Shell.qml").read_text(encoding="utf-8")
-    home = (qml_dir / "HomeLaunchpad.qml").read_text(encoding="utf-8")
-    assert "Add folder" in qml
-    assert "Add a folder" in home
-    assert 'objectName: "lensLine"' in qml
-    assert "GridView" in qml
-    assert "QListWidget" not in qml
+    table = (qml_dir / "Table.qml").read_text(encoding="utf-8")
+    roll = (qml_dir / "Roll.qml").read_text(encoding="utf-8")
+    assert "Add a folder" in table + roll
+    assert "GridView" in roll
+    assert "QListWidget" not in table + roll
+    assert not (qml_dir / "Shell.qml").exists()
+    assert not (qml_dir / "HomeLaunchpad.qml").exists()
 
 
 def test_archive_model_fetches_a_window_not_the_library(tmp_path):
@@ -106,6 +106,7 @@ def test_archive_model_fetches_a_window_not_the_library(tmp_path):
     assert sum(limit for _offset, limit in calls) < 500
 
 
+
 def test_shell_qml_shows_time_and_empty_archive(tmp_path, monkeypatch):
     pytest.importorskip("PySide6")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
@@ -118,12 +119,10 @@ def test_shell_qml_shows_time_and_empty_archive(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
     _app, engine = build_shell(tmp_path / "empty.sqlite", app=app)
     root = engine.rootObjects()[0]
-    lens = root.findChild(QObject, "lensLine")
     empty = root.findChild(QObject, "emptyState")
-    field = root.findChild(QObject, "fieldGrid")
-    assert lens is not None and lens.property("text") == "Time"
+    roll = root.findChild(QObject, "rollGrid")
     assert empty is not None and empty.property("visible") is True
-    assert field is not None and field.property("visible") is False
+    assert roll is not None
     shutdown_shell(engine)
 
 
@@ -167,31 +166,28 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
     assert bridge.count == 2
-    assert bridge.homeOpen is True
-    assert root.findChild(QObject, "emptyState").property("visible") is True
-    assert root.findChild(QObject, "fieldGrid").property("visible") is False
-    bridge.showLibrary()
-    app.processEvents()
-    assert bridge.homeOpen is False
     assert root.findChild(QObject, "emptyState").property("visible") is False
-    assert root.findChild(QObject, "archiveHeaderBand").property("visible") is True
-    assert root.findChild(QObject, "fieldGrid").property("visible") is False
-    assert root.findChild(QObject, "lensLine").property("text") == "Time"
     shot = tmp_path / "field.png"
     root.grabWindow().save(str(shot))
+    def settle():
+        import time
+
+        for _ in range(20):
+            app.processEvents()
+            time.sleep(0.03)
+
     bridge.openFocus("new")
-    app.processEvents()
+    settle()
     assert bridge.focusId == "new"
-    assert root.findChild(QObject, "focusLayer").property("visible") is True
+    assert root.findChild(QObject, "viewer").property("visible") is True
     bridge.focusNext()
     assert bridge.focusId == "old"
     bridge.focusPrev()
     assert bridge.focusId == "new"
     bridge.escape()
-    app.processEvents()
+    settle()
     assert bridge.focusId == ""
-    assert root.findChild(QObject, "focusLayer").property("visible") is False
-    assert root.findChild(QObject, "lensLine").property("text") == "Time"
+    assert root.findChild(QObject, "viewer").property("visible") is False
     bridge.openFocus("clip")
     app.processEvents()
     assert bridge.focusId == ""
@@ -361,7 +357,6 @@ def test_shell_ask_and_similar_use_application_media_id(tmp_path, monkeypatch):
     _app, engine = build_shell(store, app=app)
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
-    assert root.findChild(QObject, "lensLine").property("text") == "Time"
     bridge.openFocus("m1")
     bridge.askPhoto()
     assert asked == [("m1", None, {})]
@@ -378,7 +373,6 @@ def test_shell_ask_and_similar_use_application_media_id(tmp_path, monkeypatch):
     assert root.findChild(QObject, "askPhoto") is not None
     assert root.findChild(QObject, "findSimilar") is None
     assert root.findChild(QObject, "similarStrip") is not None
-    assert root.findChild(QObject, "resultText") is not None
     shutdown_shell(engine)
 
 
@@ -488,43 +482,35 @@ def test_bridge_archive_media_ask_similar_and_ingest_use_application(tmp_path, m
     assert "sqlite" not in host.lower()
 
 
-def test_focus_qml_keeps_the_strip_and_a_primary_similar_action():
-    """Region drag still fills the strip. Similar is also a primary action."""
+
+def test_viewer_keeps_the_strip_and_a_primary_similar_action():
+    """Drawing a region still fills the strip, and Find similar is a primary action."""
     qml_root = Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml"
-    qml = (qml_root / "Shell.qml").read_text(encoding="utf-8")
-    home = (qml_root / "HomeLaunchpad.qml").read_text(encoding="utf-8")
-    assert "shell.findSimilar()" in qml
-    assert "shellApi.findSimilarWhole()" in qml
-    assert "shell.resumeJob()" in home or "resumeJob()" in home
-    assert 'objectName: "resumeJob"' in home
-    assert 'objectName: "similarAction"' in qml
-    assert 'text: "Find similar"' in qml
-    assert 'objectName: "sameFaceDoor"' in qml
-    assert 'objectName: "duplicatesDoor"' in qml
-    assert 'text: "Search the whole photo"' in qml
-    assert 'objectName: "installSuggestedModel"' in qml
-    assert "shellApi.installSuggestedModel()" in qml
-    assert 'objectName: "screenQueryAction"' in qml
-    assert "shellApi.startScreenQuery()" in qml
-    assert 'sequence: "Ctrl+Shift+S"' in qml
-    assert 'objectName: "screenQueryModeAction"' in qml
-    assert "shellApi.toggleScreenQueryMode()" in qml
-    assert 'objectName: "screenQueryProgress"' in qml
-    assert 'objectName: "findSimilar"' not in qml
-    assert 'objectName: "similarStrip"' in qml
-    assert "shell.thumbFor(mediaId)" in qml
-    assert "shell.openFocus(mediaId)" in qml
-    assert "shell.clearDrawnQuery()" in qml
-    assert 'objectName: "primaryModeButton"' in qml
-    assert 'objectName: "advancedModeButton"' in qml
-    assert 'objectName: "runStatus"' in qml
-    assert 'objectName: "clearSplitSelection"' in qml
-    assert "shellApi.setAtmosphere(" in qml
-    assert "image://archive/t/" not in qml.split("similarStrip", 1)[-1].split("similarThumb", 1)[0]
+    viewer = (qml_root / "Viewer.qml").read_text(encoding="utf-8")
+    table = (qml_root / "Table.qml").read_text(encoding="utf-8")
+    roll = (qml_root / "Roll.qml").read_text(encoding="utf-8")
+    assert "shell.findSimilar()" in viewer
+    assert "shell.findSimilarWhole()" in viewer
+    assert "shell.resumeJob()" in roll
+    assert 'objectName: "emptyResume"' in roll
+    for name in (
+        "similarAction", "sameFaceDoor", "duplicatesDoor", "installSuggestedModel",
+        "screenQueryAction", "screenQueryModeAction", "screenQueryProgress", "similarStrip",
+    ):
+        assert f'objectName: "{name}"' in viewer, name
+    assert 'label: "Find similar"' in viewer
+    assert "shell.installSuggestedModel()" in viewer
+    assert "shell.startScreenQuery()" in viewer
+    assert 'sequence: "Ctrl+Shift+S"' in viewer
+    assert "shell.toggleScreenQueryMode()" in viewer
+    assert 'objectName: "findSimilar"' not in viewer
+    assert "shell.openFocus(mediaId)" in viewer
+    assert 'objectName: "primaryModeButton"' in (qml_root / "SettingsBody.qml").read_text(encoding="utf-8")
     host = (
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "host.py"
     ).read_text(encoding="utf-8")
     assert 'setContextProperty("similarModel"' in host
+    assert "similarModel" in viewer
 
 
 def test_drawn_region_strip_replaces_and_clears(tmp_path, monkeypatch):
@@ -580,7 +566,6 @@ def test_drawn_region_strip_replaces_and_clears(tmp_path, monkeypatch):
     _app, engine = build_shell(store, app=app)
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
-    assert root.findChild(QObject, "findSimilar") is None
     bridge.openFocus("a")
     bridge.clearDrawnQuery()
     assert calls == []
@@ -600,6 +585,11 @@ def test_drawn_region_strip_replaces_and_clears(tmp_path, monkeypatch):
     assert bridge.thumbFor("b") == "image://archive/t/b"
     assert "hidden" not in bridge.similarNote
     assert "i1" not in bridge.resultText
+    import time
+
+    for _ in range(20):
+        app.processEvents()
+        time.sleep(0.03)
     strip = root.findChild(QObject, "similarStrip")
     assert strip is not None and strip.property("visible") is True
     assert float(strip.property("width")) >= 72
@@ -944,9 +934,12 @@ def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monke
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
     assert root.findChild(QObject, "peopleButton") is not None
-    assert root.findChild(QObject, "commandField").property("visible") is False
+    import time
+
     bridge.openPeople()
-    app.processEvents()
+    for _ in range(20):
+        app.processEvents()
+        time.sleep(0.03)
     desk = root.findChild(QObject, "peopleDesk")
     assert desk.property("visible") is True
     assert bridge.peopleEmpty is False
@@ -971,7 +964,7 @@ def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monke
     assert calls == ["name", "merge", "split", "ignore", "note", "rule_out"]
     bridge.closePeople()
     assert bridge.peopleOpen is False
-    qml = Path(__file__).resolve().parents[1].joinpath("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
+    qml = Path(__file__).resolve().parents[1].joinpath("semblon/native_shell/qml/People.qml").read_text(encoding="utf-8")
     assert "review.html" not in qml
     assert 'text: "Play"' not in qml
     shutdown_shell(engine)
@@ -1316,8 +1309,6 @@ def test_job_band_exposes_pause_and_cancel(tmp_path, monkeypatch):
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
     assert root.findChild(QObject, "jobBand") is not None
-    pill = root.findChild(QObject, "taskPill")
-    assert pill is not None
     assert bridge.taskLabel == "Quiet"
     assert bridge.taskCount == 0
     bridge._timer.stop()

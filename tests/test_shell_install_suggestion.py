@@ -63,7 +63,7 @@ def test_region_model_install_suggestion_retries_search(tmp_path, monkeypatch):
         app.processEvents()
         assert bridge.similarState == "unavailable"
         assert bridge.installSuggestionVisible is True
-        assert "region model" in bridge.installSuggestionLabel.lower()
+        assert "finding-by-look" in bridge.installSuggestionLabel.lower()
 
         monkeypatch.setattr(
             QMessageBox,
@@ -172,7 +172,7 @@ def test_object_model_install_retries_the_same_screen_rect(tmp_path, monkeypatch
         app.processEvents()
         assert bridge.similarState == "ready"
         assert bridge.installSuggestionVisible is True
-        assert bridge.installSuggestionLabel == "Install object model"
+        assert bridge.installSuggestionLabel == "Get finding-by-object ready"
         assert calls["overlay"] == 1
         assert calls["screen"] == [(10, 20, 30, 40, "region")]
         monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
@@ -208,7 +208,7 @@ def test_description_install_retries_the_same_screen_rect(tmp_path, monkeypatch)
         bridge.startScreenQuery()
         app.processEvents()
         assert bridge.installSuggestionVisible is True
-        assert bridge.installSuggestionLabel == "Install description model"
+        assert bridge.installSuggestionLabel == "Get photo descriptions ready"
         monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
         installed = {"vlm": 0}
 

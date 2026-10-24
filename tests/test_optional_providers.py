@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from semblon.optional_providers import install_choice, optional_model_providers
 
 
@@ -10,6 +12,10 @@ def test_optional_models_are_byo_and_not_identity(monkeypatch):
     monkeypatch.delenv("SEMBLON_VLM", raising=False)
     monkeypatch.delenv("SEMBLON_OBJECT_PACK", raising=False)
     rows = {row["id"]: row for row in optional_model_providers()}
+    if any(row.get("ready") or row.get("state") == "AVAILABLE" for row in rows.values()):
+        pytest.skip(
+            "Optional extras are installed on this machine; this test asserts the clean-install state."
+        )
     assert set(rows) == {"object", "vlm"}
     for row in rows.values():
         assert row["identity"] is False
@@ -23,7 +29,7 @@ def test_install_choice_offers_one_model_for_the_current_search():
         "unavailable",
         "region.NO_PACK",
         {"optional_providers": [{"id": "object", "ready": False, "state": "MISSING"}]},
-    ) == ("region_pack", "Install region model")
+    ) == ("region_pack", "Get finding-by-look ready")
     assert install_choice(
         "ready",
         "",
@@ -33,12 +39,12 @@ def test_install_choice_offers_one_model_for_the_current_search():
                 {"id": "vlm", "ready": False, "state": "MISSING"},
             ]
         },
-    ) == ("object_pack", "Install object model")
+    ) == ("object_pack", "Get finding-by-object ready")
     assert install_choice(
         "ready",
         "",
         {"channels": [{"door": "object", "status": "UNAVAILABLE", "error_id": "object.PACK_MISSING"}]},
-    ) == ("object_pack", "Install object model")
+    ) == ("object_pack", "Get finding-by-object ready")
     assert install_choice(
         "ready",
         "",
@@ -48,7 +54,7 @@ def test_install_choice_offers_one_model_for_the_current_search():
                 {"id": "vlm", "ready": False, "state": "MISSING"},
             ]
         },
-    ) == ("vlm_local", "Install description model")
+    ) == ("vlm_local", "Get photo descriptions ready")
     assert install_choice(
         "ready",
         "",

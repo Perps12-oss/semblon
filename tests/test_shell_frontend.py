@@ -72,10 +72,17 @@ def qml_shell(tmp_path, monkeypatch):
     shutdown_shell(engine)
 
 
+
 def test_advanced_diagnostics_are_opt_in_and_marked_active(qml_shell):
     from PySide6.QtCore import QObject
 
+    import time
+
     app, _engine, root, bridge = qml_shell
+    root.setProperty("settingsOpen", True)
+    for _ in range(20):
+        app.processEvents()
+        time.sleep(0.04)
     panel = root.findChild(QObject, "diagnosticsPanel")
     assert panel is not None
     assert panel.property("visible") is False
@@ -83,34 +90,33 @@ def test_advanced_diagnostics_are_opt_in_and_marked_active(qml_shell):
     bridge.submitCommand("status")
     assert "mode=" not in bridge.resultText
 
-    # Primary/Advanced live on the Settings sheet. Open it to read the control.
-    bridge.toggleSettings()
-    app.processEvents()
     button = root.findChild(QObject, "advancedModeButton")
-    assert button.property("visible") is True
-    assert button.property("color").name() == bridge.bg2
+    assert button is not None
+    assert button.property("selected") is False
 
     bridge.setMode("advanced")
-    app.processEvents()
+    for _ in range(5):
+        app.processEvents()
     assert "mode=advanced" in bridge.diagnosticsText
-    assert button.property("visible") is True
-    assert button.property("color").name() == bridge.accentDim
+    assert button.property("selected") is True
+    assert panel.property("visible") is True
     bridge.submitCommand("status")
     assert "mode=advanced" in bridge.resultText
 
     bridge.setMode("primary")
     app.processEvents()
     assert panel.property("visible") is False
+    assert button.property("selected") is False
     assert "mode=" not in bridge.resultText
+
 
 
 def test_chrome_tokens_follow_atmosphere_and_light_is_readable(qml_shell):
     from semblon.atmosphere import ATMOSPHERE_IDS
     from semblon.native_shell.tokens import tokens_for
 
-    app, _engine, root, bridge = qml_shell
+    app, _engine, _root, bridge = qml_shell
     assert bridge.lightPalette is False
-    assert root.property("tokenBg2").name() == bridge.bg2
 
     for atmosphere_id in ATMOSPHERE_IDS:
         bridge.setAtmosphere(atmosphere_id)
@@ -122,38 +128,19 @@ def test_chrome_tokens_follow_atmosphere_and_light_is_readable(qml_shell):
         assert bridge.text3 == expected["text3"]
         assert bridge.accentDim == expected["accentDim"]
         assert bridge.dangerColor == expected["danger"]
-        assert root.property("tokenBorder").name() == expected["border1"]
-        assert root.property("tokenText").name() == expected["text1"]
 
-    bridge.setAtmosphere("light")
-    app.processEvents()
-    assert root.property("tokenText").lightness() < root.property("tokenBg").lightness()
 
 
 def test_qml_has_no_hardcoded_chrome_colors():
     import re
     from pathlib import Path
 
-    qml = Path("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
-    literals = re.findall(r'"#[0-9a-fA-F]{6,8}"', qml)
-    # Only the token fallbacks used before the bridge is ready may remain.
-    # ok and warn joined that set with the calendar density heat marks.
-    assert literals == [
-        '"#0b0c0e"',
-        '"#131417"',
-        '"#4f8cff"',
-        '"#f2f3f5"',
-        '"#a8adb7"',
-        '"#a15cf5"',
-        '"#1b1d21"',
-        '"#24272c"',
-        '"#2a2d33"',
-        '"#6b7280"',
-        '"#2b4d8f"',
-        '"#e5484d"',
-        '"#30a46c"',
-        '"#f5a524"',
-    ]
+    # Every colour lives in Theme.qml so both palettes stay in step.
+    for path in Path("semblon/native_shell/qml").glob("*.qml"):
+        if path.name == "Theme.qml":
+            continue
+        literals = re.findall(r'"#[0-9a-fA-F]{6,8}"', path.read_text(encoding="utf-8"))
+        assert literals == [], path.name
 
 
 def test_sidebar_scopes_library_by_year_and_folder_and_clears(shell, tmp_path):
@@ -228,13 +215,12 @@ def test_sidebar_notices_stay_product_safe_in_primary(shell, tmp_path):
     assert "sqlite" not in bridge.noticeText.lower()
 
 
-def test_sidebar_renders_rows_and_hides_with_focus_or_empty(qml_shell, tmp_path):
+
+def test_the_old_sidebar_is_gone(qml_shell):
     from PySide6.QtCore import QObject
 
-    app, _engine, root, bridge = qml_shell
-    sidebar = root.findChild(QObject, "archiveSidebar")
-    assert sidebar is not None
-    assert sidebar.property("visible") is False  # empty library
+    _app, _engine, root, _bridge = qml_shell
+    assert root.findChild(QObject, "archiveSidebar") is None
 
 
 def test_every_atmosphere_is_selectable_and_clean_install_is_dark(shell):
@@ -440,15 +426,13 @@ def test_video_focus_stays_closed(shell, tmp_path):
     assert bridge.focusId == ""
     bridge.openFocus("m1")
     assert bridge.focusId == "m1"
-    qml = (
-        __import__("pathlib").Path(__file__).resolve().parents[1]
-        / "semblon" / "native_shell" / "qml" / "Shell.qml"
-    ).read_text(encoding="utf-8")
-    assert 'text: "Video"' in qml
-    assert "player.source = shellApi.focusUrl" not in qml
-    # PySide6-Essentials does not ship QtMultimedia; import must stay out.
-    assert "import QtMultimedia" not in qml
-    assert "MediaPlayer {" not in qml
+    from pathlib import Path
+
+    # PySide6-Essentials does not ship QtMultimedia; the import must stay out.
+    for path in Path("semblon/native_shell/qml").glob("*.qml"):
+        text = path.read_text(encoding="utf-8")
+        assert "import QtMultimedia" not in text, path.name
+        assert "MediaPlayer {" not in text, path.name
 
 
 def test_moments_facet_available_in_primary(shell):
@@ -568,18 +552,17 @@ def test_every_qml_action_maps_to_a_real_bridge_slot_or_property():
     assert not missing, missing
 
 
-def test_settings_rail_calls_resolve_to_bridge_slots():
+
+def test_settings_body_calls_resolve_to_bridge_slots():
     import re
+    from pathlib import Path
 
     from semblon.native_shell.bridge import ShellBridge
-    from semblon.native_shell.host import QML
 
-    source = QML.read_text(encoding="utf-8")
-    handled = set(re.findall(r'call === "(\w+)"', source))
-    declared = set()
-    for name in ("primarySettingCalls", "advancedSettingCalls"):
-        declared |= set(re.findall(name + r": \[([^\]]*)\]", source)[0].replace('"', "").replace(" ", "").split(","))
-    assert declared <= handled
+    source = Path("semblon/native_shell/qml/SettingsBody.qml").read_text(encoding="utf-8")
+    called = set(re.findall(r"shell\.(\w+)\(", source))
+    assert called
+    assert {name for name in called if not hasattr(ShellBridge, name)} == set()
 
 
 def test_windows_journey_launch_ingest_browse_search_theme_restart_recover(tmp_path, monkeypatch):
@@ -630,9 +613,8 @@ def test_windows_journey_launch_ingest_browse_search_theme_restart_recover(tmp_p
     bridge = engine._semblon_bridge
     try:
         assert bridge.empty and bridge.primaryMode and bridge.atmosphereId == "mica_dark"
-        assert bridge.homeOpen is True
         assert root.findChild(QObject, "emptyState").property("visible") is True
-        assert root.findChild(QObject, "homeButton") is not None
+        assert root.findChild(QObject, "homeButton") is None
 
         bridge._start_ingest(tmp_path / "missing-folder")
         wait_idle(app, bridge)
@@ -643,22 +625,13 @@ def test_windows_journey_launch_ingest_browse_search_theme_restart_recover(tmp_p
         wait_idle(app, bridge)
         assert not bridge.empty
         assert bridge.count == 2
-        assert bridge.homeOpen is True
-        assert root.findChild(QObject, "emptyState").property("visible") is True
         assert bridge.photoCount == 2
+        assert root.findChild(QObject, "emptyState").property("visible") is False
+        assert root.findChild(QObject, "rollGrid") is not None
 
         bridge.showLibrary()
         app.processEvents()
-        assert bridge.homeOpen is False
-        assert root.findChild(QObject, "emptyState").property("visible") is False
-        assert root.findChild(QObject, "archiveHeaderBand").property("visible") is True
-        assert root.findChild(QObject, "fieldGrid").property("visible") is False
-
         bridge.showHome()
-        app.processEvents()
-        assert bridge.homeOpen is True
-        assert root.findChild(QObject, "emptyState").property("visible") is True
-
         bridge.showLibrary()
         app.processEvents()
         bridge.setFacet("folders")

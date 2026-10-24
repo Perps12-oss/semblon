@@ -59,3 +59,6 @@ version = {attr = "semblon.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["semblon*"]
+
+[tool.setuptools.package-data]
+"semblon.native_shell" = ["qml/*.qml", "qml/qmldir", "fonts/*.ttf", "fonts/*.txt"]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -59,6 +60,7 @@ from semblon.native_shell.editorial import (
     MEDIA_KINDS,
     UNDATED_DAY,
     calendar_month_cells,
+    day_detail,
     day_section_short_label,
     default_calendar_month,
     field_sections,
@@ -103,9 +105,9 @@ SCREEN_QUERY_MODE_TEXT_PRIORITY = "text_priority"
 SCREEN_QUERY_MODES = (SCREEN_QUERY_MODE_VISUAL, SCREEN_QUERY_MODE_TEXT_PRIORITY)
 
 _INSTALL_LABELS = {
-    "region_pack": "Install region model",
-    "object_pack": "Install object model",
-    "vlm_local": "Install description model",
+    "region_pack": "Get finding-by-look ready",
+    "object_pack": "Get finding-by-object ready",
+    "vlm_local": "Get photo descriptions ready",
 }
 _INSTALL_METHODS = {
     "region_pack": "install_region_pack",
@@ -114,24 +116,43 @@ _INSTALL_METHODS = {
 }
 _INSTALL_PROMPTS = {
     "region_pack": (
-        "Install region model?",
-        "Semblon will download the region model onto this computer.\n\n"
+        "Get finding-by-look ready?",
+        "Semblon will download a small add-on to this computer so it can find places that look like the "
+        "detail you pointed at.\n\n"
         "You stay on this screen. When it finishes, this search runs again.\n\n"
         "Continue?",
     ),
     "object_pack": (
-        "Install object model?",
-        "Semblon will download the object model onto this computer.\n\n"
+        "Get finding-by-object ready?",
+        "Semblon will download a small add-on to this computer so it can recognise things in pictures, "
+        "such as a bicycle or a cake.\n\n"
         "You stay on this screen. When it finishes, this search runs again.\n\n"
         "Continue?",
     ),
     "vlm_local": (
-        "Install description model?",
-        "Semblon will install picture description on this computer.\n\n"
+        "Get photo descriptions ready?",
+        "Semblon will set up photo descriptions on this computer.\n\n"
         "You stay on this screen. When it finishes, this search runs again.\n\n"
         "Continue?",
     ),
 }
+_SETUP_NAMES = {
+    "region_pack": "finding-by-look",
+    "object_pack": "finding-by-object",
+    "vlm_local": "photo descriptions",
+}
+_JARGON = re.compile(
+    r"\b(models?|packs?|quer(?:y|ies)|embeddings?|index(?:ed|es|ing)?|capabilit(?:y|ies)|schema|api|sha256|onnx)\b",
+    re.IGNORECASE,
+)
+
+
+def _plain(text: object, fallback: str) -> str:
+    """Words a person can read. Engine wording never reaches a dialog or banner."""
+    line = " ".join(str(text or "").split())
+    if not line or _JARGON.search(line):
+        return fallback
+    return line
 
 
 def reduced_motion() -> bool:
@@ -240,6 +261,9 @@ class _TaskThread(QThread):
             self.failed.emit(str(exc) or "task failed")
 
 
+_NO_MATCHES = object()
+
+
 class ShellBridge(QObject):
     lensChanged = Signal()
     focusChanged = Signal()
@@ -279,6 +303,7 @@ class ShellBridge(QObject):
         self._result_text = ""
         self._region_norm: tuple[float, float, float, float] | None = None
         self._similar = SimilarStripModel()
+        self._matches_prior = _NO_MATCHES
         self._similar_state = "idle"
         self._similar_note = ""
         self._similar_basis = ""
@@ -1559,9 +1584,9 @@ class ShellBridge(QObject):
     @Property(str, notify=screenQueryChanged)
     def screenQueryProgressLabel(self) -> str:
         if self._screen_query_state == "selecting":
-            return "Screen query in progress: drag a box on your screen."
+            return "Pick on screen in progress: drag a box on your screen."
         if self._screen_query_state == "searching":
-            return "Screen query in progress: searching your library."
+            return "Pick on screen: searching your photos."
         return ""
 
     @Property(str, notify=screenQueryChanged)
@@ -1744,7 +1769,7 @@ class ShellBridge(QObject):
 
     @Property(str, notify=similarChanged)
     def installSuggestionLabel(self) -> str:
-        return self._install_suggestion_label or "Install required model"
+        return self._install_suggestion_label or "Get this ready"
 
     @Property(str, notify=similarChanged)
     def similarPhase(self) -> str:
@@ -2024,7 +2049,7 @@ class ShellBridge(QObject):
         kept = list(self._similar._rows)
         self._publish_similar(
             "loading",
-            f"Similar ({label}): looking through photos already indexed.",
+            f"Similar ({label}): looking through photos Semblon has already seen.",
             kept,
             basis=basis,
             basis_label=label,
@@ -2174,23 +2199,23 @@ class ShellBridge(QObject):
             coarse = int((row[1] if row else 0) or 0)
         except sqlite3.Error:
             if self._job_active:
-                return "indexing", "Still indexing. Photos already added can be opened."
+                return "indexing", "Still looking through your photos. Ones already added can be opened."
             return "unknown", ""
         if patch > 0 and self._job_active:
-            result = ("patch", "Still indexing. This photo can already be searched.")
+            result = ("patch", "Still looking through your photos. This one can already be searched.")
         elif patch > 0:
             result = ("patch", "")
         elif self._job_active:
-            result = ("indexing", "Still indexing. Photos already added can be opened.")
+            result = ("indexing", "Still looking through your photos. Ones already added can be opened.")
         elif coarse > 0:
             result = (
                 "fallback",
-                "This photo has a coarse index only. Matches may miss the area you point at.",
+                "Semblon has only had a quick look at this photo. Matches may miss the area you point at.",
             )
         else:
             result = (
                 "unindexed",
-                "This photo is not indexed yet. Add its folder so search can see inside it.",
+                "Semblon has not looked at this photo yet. Add its folder so search can see inside it.",
             )
         if not self._job_active:
             if len(self._index_cache) > 256:
@@ -2219,6 +2244,59 @@ class ShellBridge(QObject):
     @property
     def similar_model(self) -> SimilarStripModel:
         return self._similar
+
+    @Property(bool, notify=similarChanged)
+    def matchesOnRoll(self) -> bool:
+        return self._matches_prior is not _NO_MATCHES
+
+    @Slot()
+    def showMatchesOnRoll(self) -> None:
+        """Lay the current matches out on the Roll, best first. Nothing is written."""
+        ids = [self._similar.media_id(row) for row in range(self._similar.rowCount())]
+        ids = [item for item in ids if item]
+        if not ids:
+            return
+        if self._matches_prior is _NO_MATCHES:
+            self._matches_prior = self._model.media_ids()
+        self._model.set_media_ids(ids)
+        self.similarChanged.emit()
+
+    @Slot()
+    def clearMatches(self) -> None:
+        if self._matches_prior is _NO_MATCHES:
+            return
+        prior = self._matches_prior
+        self._matches_prior = _NO_MATCHES
+        self._model.set_media_ids(prior)
+        self.similarChanged.emit()
+
+    @Slot(str, result="QVariantMap")
+    def dayDetail(self, day: str):
+        """A day's photos, face count and named people in one read for the Roll."""
+        return day_detail(self._prefs_store(), day)
+
+    @Slot(str)
+    def addFolderPath(self, folder: str) -> None:
+        """Add a folder that was dropped on the window. Files stay where they are."""
+        text = str(folder or "").strip()
+        if text.startswith("file:"):
+            text = QUrl(text).toLocalFile()
+        path = Path(text) if text else None
+        if path is None or not path.is_dir():
+            self._apply_result(
+                Result("unavailable", "That is not a folder. Drop a folder of photos, or use Add a folder.")
+            )
+            return
+        if self._jobs.busy:
+            return
+        self._start_ingest(path)
+
+    @Property(float, notify=jobChanged)
+    def jobFraction(self) -> float:
+        total = int(self._progress_total)
+        if total <= 0:
+            return 0.0
+        return max(0.0, min(1.0, float(self._progress_current) / float(total)))
 
     def _set_result(self, text: str) -> None:
         self._result_text = present_message(self._mode, text, fallback="Nothing was searched.")
@@ -2522,13 +2600,13 @@ class ShellBridge(QObject):
                 else f"Similar ({label}): nothing close enough."
             )
         elif install_action == "region_pack":
-            note = f"Similar ({label}): the region model is not installed."
+            note = f"Similar ({label}): finding by look isn't set up yet."
         elif install_action == "object_pack" and state == "unavailable":
-            note = f"Similar ({label}): the object model is not installed."
+            note = f"Similar ({label}): finding things in pictures isn't set up yet."
         elif install_action == "vlm_local" and state == "unavailable":
-            note = f"Similar ({label}): the description model is not installed."
+            note = f"Similar ({label}): photo descriptions aren't set up yet."
         elif state == "unavailable" and error_id == "region.NO_PATCH_INDEX":
-            note = f"Similar ({label}): these photos are not indexed for region search yet."
+            note = f"Similar ({label}): Semblon has not looked closely at these photos yet."
         elif error_id in {"region.ENCODE", "region.NO_IMAGE", "region.NO_STORE"}:
             state = "error"
             note = f"Similar ({label}): search failed."
@@ -3604,7 +3682,7 @@ class ShellBridge(QObject):
         if not self.screenQueryAvailable:
             self._publish_similar(
                 "unavailable",
-                "Screen query: only available on Windows.",
+                "Pick on screen: only available on Windows.",
                 [],
                 basis="region",
                 basis_label="Similar look",
@@ -3618,7 +3696,7 @@ class ShellBridge(QObject):
         self._set_install_suggestion("", "")
         self._publish_similar(
             "loading",
-            "Screen query in progress: drag a box on your screen.",
+            "Pick on screen in progress: drag a box on your screen.",
             [],
             basis="region",
             basis_label=(
@@ -3640,7 +3718,7 @@ class ShellBridge(QObject):
             self._set_install_suggestion("", "")
             self._publish_similar(
                 "unavailable",
-                f"Screen query: {exc}",
+                f"Pick on screen: {exc}",
                 [],
                 basis="region",
                 basis_label="Similar look",
@@ -3651,7 +3729,7 @@ class ShellBridge(QObject):
             self._set_screen_query_state("idle")
             self._publish_similar(
                 "empty",
-                "Screen query cancelled.",
+                "Pick on screen cancelled.",
                 [],
                 basis="region",
                 basis_label="Similar look",
@@ -4240,9 +4318,9 @@ class ShellBridge(QObject):
             return
         answer = QMessageBox.question(
             None,
-            "Clear library",
-            "Remove the folder index, names, and kept finds from Semblon?\n\n"
-            "Photos on disk stay where they are.",
+            "Forget what Semblon learned?",
+            "Semblon will forget the folders you added, the names you gave and the finds you kept.\n\n"
+            "Your photo files stay exactly where they are, and you can add the folder again any time.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -4345,14 +4423,14 @@ class ShellBridge(QObject):
             self._refresh_preflight()
             row = next((item for item in self._preflight_rows if item.get("id") == item_id), None)
         if row is None or row.get("status") == "ready":
-            self._apply_result(Result("ready", self._setup_line("That capability is already ready.")))
+            self._apply_result(Result("ready", self._setup_line("That extra is already ready.")))
             return
         if not row.get("installable"):
             self._apply_result(
                 Result(
                     "unavailable",
                     self._setup_line(
-                        str(row.get("detail") or "This capability cannot be installed from here.")
+                        str(row.get("detail") or "This extra can't be added from here.")
                     ),
                 )
             )
@@ -4363,7 +4441,7 @@ class ShellBridge(QObject):
         answer = QMessageBox.question(
             None,
             str(row.get("name") or "Install"),
-            str(row.get("confirm") or "Install this capability?"),
+            str(row.get("confirm") or "Add this extra?"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -4461,22 +4539,22 @@ class ShellBridge(QObject):
     @Slot()
     def chooseKnowledgePack(self) -> None:
         path, _selected = QFileDialog.getOpenFileName(
-            None, "Choose a knowledge pack", "", "JSON (*.json)"
+            None, "Choose the face files you downloaded", "", "JSON (*.json)"
         )
         if not path:
-            self._apply_result(Result("empty", "Pack: choose a local pack file."))
+            self._apply_result(Result("empty", "Face files: choose a file from this computer."))
             return
         self.inspectPack(path)
 
     @Slot()
     def chooseModelInstall(self) -> None:
-        source, _selected = QFileDialog.getOpenFileName(None, "Choose a model file", "", "All files (*.*)")
+        source, _selected = QFileDialog.getOpenFileName(None, "Choose the extra you downloaded", "", "All files (*.*)")
         if not source:
-            self._apply_result(Result("empty", "Model file: choose a local file."))
+            self._apply_result(Result("empty", "Extra: choose a file from this computer."))
             return
-        dest, _selected = QFileDialog.getSaveFileName(None, "Where to install the model file", "", "All files (*.*)")
+        dest, _selected = QFileDialog.getSaveFileName(None, "Where should the extra go?", "", "All files (*.*)")
         if not dest:
-            self._apply_result(Result("empty", "Model file: choose where to install it."))
+            self._apply_result(Result("empty", "Extra: choose where to put it."))
             return
         self.installModelFile(source, dest)
 
@@ -4511,10 +4589,10 @@ class ShellBridge(QObject):
             QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
-            self._apply_result(Result("empty", "Model install cancelled."))
+            self._apply_result(Result("empty", "Cancelled. Nothing was added."))
             return self._notice
         if self._install_thread is not None and self._install_thread.isRunning():
-            self._apply_result(Result("loading", "Model install is already running."))
+            self._apply_result(Result("loading", "Something is already being added."))
             return self._notice
         self._install_kind = kind
         self._install_retry = self._query_source
@@ -4557,14 +4635,14 @@ class ShellBridge(QObject):
     @Slot(object)
     def _on_install_suggested_ready(self, payload) -> None:
         self._install_thread = None
-        result = payload if isinstance(payload, Result) else Result("ready", "Model installed.")
+        result = payload if isinstance(payload, Result) else Result("ready", "Ready.")
         self._apply_result(result)
         if self._resume_current_query():
             return
         label = self._similar_basis_label or "Similar look"
         self._publish_similar(
             "empty",
-            f"Similar ({label}): model is ready. Search this area again.",
+            f"Similar ({label}): ready. Search this area again.",
             [],
             basis=self._similar_basis or "region",
             basis_label=label,
@@ -4576,16 +4654,16 @@ class ShellBridge(QObject):
         self._install_thread = None
         label = self._similar_basis_label or "Similar look"
         kind = self._install_kind or "region_pack"
-        self._set_install_suggestion(kind, _INSTALL_LABELS.get(kind, "Install required model"))
+        self._set_install_suggestion(kind, _INSTALL_LABELS.get(kind, "Get this ready"))
         self._publish_similar(
             "unavailable",
-            f"Similar ({label}): model install failed.",
+            f"Similar ({label}): couldn't be set up.",
             [],
             basis=self._similar_basis or "region",
             basis_label=label,
             persist=False,
         )
-        self._apply_result(Result("unavailable", str(message or "Model install failed.")))
+        self._apply_result(Result("unavailable", _plain(message, "That didn't finish. Nothing was changed. Your photos were not touched.")))
 
     @Slot()
     def findSimilarWhole(self) -> None:

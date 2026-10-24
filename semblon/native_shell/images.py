@@ -23,6 +23,7 @@ _MISS = object()
 _FOCUS_CEILING = 2048
 _THUMB_CEILING = 512
 _THUMB_DISK = 384
+_TINY_DISK = 96
 _DECODE_COUNT = 0
 _DECODE_LOCK = threading.Lock()
 _DISK_LOCK = threading.Lock()
@@ -185,7 +186,7 @@ def _memory_cache(thumb: bool) -> ImageDecodeCache:
 def peek_display_image(path: str, max_side: int, *, cache_dir: Path | None) -> QImage | object:
     """Return a decoded frame already in memory, or ``_MISS``."""
     thumb = cache_dir is not None and max_side <= _THUMB_CEILING
-    side = _THUMB_DISK if thumb else max_side
+    side = (_TINY_DISK if max_side <= _TINY_DISK else _THUMB_DISK) if thumb else max_side
     key = _cache_key(path, side)
     if key is None:
         return _MISS
@@ -195,7 +196,7 @@ def peek_display_image(path: str, max_side: int, *, cache_dir: Path | None) -> Q
 def load_display_image(path: str, max_side: int, *, cache_dir: Path | None = None) -> QImage:
     """Thumbnails prefer a small JPEG beside the store. Focus frames stay in memory."""
     thumb = cache_dir is not None and max_side <= _THUMB_CEILING
-    side = _THUMB_DISK if thumb else max_side
+    side = (_TINY_DISK if max_side <= _TINY_DISK else _THUMB_DISK) if thumb else max_side
     key = _cache_key(path, side)
     cache = _memory_cache(thumb)
     cached = cache.get(key) if key is not None else _MISS
@@ -384,9 +385,9 @@ class ArchiveImageProvider(QQuickAsyncImageProvider):
     def requestImageResponse(self, image_id: str, requestedSize):
         kind, _, media_id = str(image_id).partition("/")
         path = self._lookup(media_id) or ""
-        if kind == "t":
-            # One disk size for every grid cell. Qt scales it into the tile.
-            max_side = _THUMB_DISK
+        if kind in ("t", "s"):
+            # Two disk tiers: 96px for far-out zoom, 384px for everything closer.
+            max_side = _TINY_DISK if kind == "s" else _THUMB_DISK
             cache_dir = self._cache_dir
         else:
             ceiling = _FOCUS_CEILING

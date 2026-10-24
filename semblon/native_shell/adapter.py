@@ -215,7 +215,7 @@ class ArchiveAdapter:
             "note": "Object labels are not a person.",
         }
         if status == "UNAVAILABLE":
-            reason = str(rec.get("reason") or "Object search needs a NanoDet pack.")
+            reason = str(rec.get("reason") or "Finding things in pictures isn't set up yet.")
             return Result("unavailable", f"Object search: {reason}", {**meta, "media_ids": []})
         items = list(rec.get("items") or [])
         if status == "NO_RESULT" or not items:
@@ -413,7 +413,7 @@ class ArchiveAdapter:
         if rec.get("ok"):
             return Result(
                 "ready",
-                f"Library check: passed. {int(rec.get('media') or 0)} stills indexed.",
+                f"Library check: passed. {int(rec.get('media') or 0)} pictures checked.",
                 {"report": rec},
             )
         return Result(
@@ -499,10 +499,10 @@ class ArchiveAdapter:
         if missing:
             return Result(
                 "unavailable",
-                "Capabilities: some local tools are not installed.",
+                "Extras: some extras are not added yet.",
                 {"probes": probes, "visual": visual, "missing": missing},
             )
-        return Result("ready", "Capabilities: local tools report ready.", {"probes": probes, "visual": visual})
+        return Result("ready", "Extras: everything is ready.", {"probes": probes, "visual": visual})
 
     def gpu_status(self) -> Result:
         from semblon.engine import gpu_product_status, select_execution_provider

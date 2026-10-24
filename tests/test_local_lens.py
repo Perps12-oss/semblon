@@ -392,6 +392,10 @@ def test_name_this_area_leaves_the_matches(tmp_path, monkeypatch):
         bridge.setRegion(0.1, 0.2, 0.3, 0.25)
         bridge.findSimilar()
         assert bridge.similarId(0) == "m2"
+        import time
+        for _ in range(20):
+            app.processEvents()
+            time.sleep(0.05)
         root = engine.rootObjects()[0]
         button = root.findChild(QObject, "nameThisArea")
         assert button is not None

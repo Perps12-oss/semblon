@@ -1,4 +1,4 @@
-﻿"""Adapter and shell wiring for the blueprint v3 surface. No second archive."""
+"""Adapter and shell wiring for the blueprint v3 surface. No second archive."""
 
 from __future__ import annotations
 
@@ -167,57 +167,19 @@ def test_archive_model_filter_does_not_widen_the_window(tmp_path):
     assert calls == []
 
 
-def test_qml_exposes_four_operations_and_hides_places():
+def test_qml_exposes_the_few_doors_and_hides_places():
     root = Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "qml"
-    qml = (root / "Shell.qml").read_text(encoding="utf-8")
-    home = (root / "HomeLaunchpad.qml").read_text(encoding="utf-8")
-    sidebar = (root / "ContextSidebar.qml").read_text(encoding="utf-8")
-    assert '"rescan"' in qml
-    assert '"namedItems"' in qml
-    assert '"knowledgePack"' in qml
-    assert '"installModel"' in qml
-    assert "Named items" in qml
-    assert "Knowledge pack" in qml
-    assert "Install model" in qml
-    assert 'objectName: "namedItemsSheet"' in qml
-    assert 'objectName: "similarAction"' in qml
-    assert 'objectName: "archiveCard"' in home
-    assert 'objectName: "peopleCard"' in home
-    assert 'objectName: "discoverCard"' in home
-    assert "HomeLaunchpad" in qml
-    assert '"homeButton"' in qml
-    assert 'showHome' in qml
-    assert "ContextSidebar" in qml
-    assert 'objectName: "archiveSidebar"' in sidebar
-    assert 'objectName: "sidebarMoments"' in sidebar
-    assert "Explore your archive" not in sidebar
-    assert 'objectName: "archiveBrowseFlick"' in qml
-    assert 'text: "Video"' in qml
-    assert "facetBar" not in qml
-    assert "quickActionRail" not in qml
-    assert "librarySnapshot" not in qml
-    assert "There is more to remember." in home
-    assert "Visual discovery" in home
-    assert "Explore all capabilities" in home
-    assert "Places" not in qml
-    assert "Coming soon" not in home
-    assert "coming soon" not in home
-    assert 'objectName: "mainSidebar"' not in qml
-    assert "timelineRail" not in qml
-
-
-def test_empty_day_repaints_its_own_canvas():
-    qml = (
-        Path(__file__).resolve().parents[1]
-        / "semblon"
-        / "native_shell"
-        / "qml"
-        / "DayCell.qml"
-    ).read_text(encoding="utf-8")
-    assert "id: emptyDayOutline" in qml
-    assert "emptyDayOutline.requestPaint()" in qml
-    assert "parent.requestPaint()" not in qml
-
+    table = (root / "Table.qml").read_text(encoding="utf-8")
+    settings = (root / "SettingsBody.qml").read_text(encoding="utf-8")
+    light = (root / "LightTable.qml").read_text(encoding="utf-8")
+    assert 'objectName: "addFolder"' in table
+    assert 'objectName: "peopleButton"' in light
+    assert "shell.rescanFolder()" in settings
+    assert "shell.openNamedItems()" in settings
+    assert "shell.chooseKnowledgePack()" in settings
+    assert "shell.chooseModelInstall()" in settings
+    assert "Places" not in table
+    assert "coming soon" not in (table + settings + light).lower()
 
 def test_named_items_do_not_create_people(tmp_path):
     from semblon.user_region import persist_user_region
@@ -321,27 +283,13 @@ def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
     _qapp, engine = build_shell(store, app=app)
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
-    assert root.findChild(QObject, "facetBar") is None
-    assert root.findChild(QObject, "quickActionRail") is None
-    assert root.findChild(QObject, "librarySnapshot") is None
-    assert root.findChild(QObject, "homeButton") is not None
-    assert root.findChild(QObject, "settingsButton") is not None
-    assert bridge.homeOpen is True
-    assert root.findChild(QObject, "emptyState").property("visible") is True
-    assert root.findChild(QObject, "searchField").property("visible") is False
-    bridge.showLibrary()
-    app.processEvents()
-    assert bridge.homeOpen is False
-    assert root.findChild(QObject, "archiveSidebar") is not None
-    assert root.findChild(QObject, "searchField") is not None
-    assert root.findChild(QObject, "searchField").property("visible") is True
-    assert root.findChild(QObject, "commandField").property("visible") is False
+    assert root.findChild(QObject, "addFolder") is not None
     bridge.toggleSettings()
-    app.processEvents()
-    sheet = root.findChild(QObject, "settingsSheet")
-    assert sheet.property("visible") is True
+    for _ in range(20):
+        app.processEvents()
+    assert bridge.settingsOpen is True
     assert root.findChild(QObject, "primaryModeButton") is not None
-    assert root.findChild(QObject, "atmospherePicker") is not None
+    assert root.findChild(QObject, "advancedModeButton") is not None
     bridge.setFacet("days")
     app.processEvents()
     assert bridge.facet == "timeline"
@@ -354,7 +302,7 @@ def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
     bridge.setMode("advanced")
     app.processEvents()
     bridge.showCapabilities()
-    assert bridge.noticeText.startswith("Capabilities:")
+    assert bridge.noticeText.startswith("Extras:")
     bridge.cycleDensity()
     assert "Density is" in bridge.noticeText
     bridge.shutdown()

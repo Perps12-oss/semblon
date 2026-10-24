@@ -302,9 +302,9 @@ def test_runtime_pins_come_from_requirements_txt():
 
 
 def test_settings_offers_one_install_per_missing_capability():
-    qml = Path("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
+    qml = Path("semblon/native_shell/qml/SettingsBody.qml").read_text(encoding="utf-8")
     assert 'objectName: "preflightRepeater"' in qml
-    assert "shellApi.installPreflight(model.itemId)" in qml
+    assert "shell.installPreflight(modelData.itemId)" in qml
     assert "Install everything" not in qml
 
 
