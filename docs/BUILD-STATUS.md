@@ -12,6 +12,10 @@
 | Parent HEAD | (see git log on branch) |
 | Working tree at evidence | Permanent Home stage + capability catalogue; shell journey updated |
 
+## Behaviour landed — Contact Sheet / Light Table
+
+The shell is now one Roll with a film-edge time scrubber, a four-verb Light Table, a Ctrl+K palette, a loupe for "find a detail", and a People table. Design: `docs/UX-CONTACT-SHEET.md`. Backend additions are small bridge slots only; engine, schema and identity thresholds are unchanged.
+
 ## Behaviour landed — Safelight Desk
 
 The production shell is still the only GUI (`semblon shell`). Home is a first-arrival desk: one promise, **Add a folder**, three steps, then Library, Visual discovery, and People. Everyday labels no longer name engines, packs, or search internals. A notice banner separates a failure, a missing extra, and work in progress, and says the original files were not changed. Identity thresholds, schema, and face comparison were not edited. Plan: `docs/ux-overhaul-plan.md`.
