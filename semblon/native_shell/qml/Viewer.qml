@@ -287,6 +287,7 @@ Item {
     // Matches from the loupe, as a strip of small prints under the photo.
     Item {
         id: strip
+        objectName: "similarStrip"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

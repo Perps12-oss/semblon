@@ -25,6 +25,8 @@ QtObject {
     readonly property color danger: daylight ? "#a3261a" : "#ff8a7a"
     readonly property color ok: daylight ? "#386b1f" : "#a6d98a"
     readonly property color paper: "#f3ead8"
+    readonly property color paperInk: "#2a2118"
+    readonly property color paperMuted: "#5a4e3d"
     readonly property color scrim: daylight ? "#cc2a2118" : "#d9080605"
 
     // Type scale in logical pixels. Qt scales these with the display.

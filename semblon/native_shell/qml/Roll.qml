@@ -278,6 +278,26 @@ Item {
                     font.pixelSize: Theme.lead
                     color: Theme.muted
                 }
+                Text {
+                    objectName: "emptyStatus"
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    visible: shell.jobLabel !== "" || shell.canResume
+                    text: shell.jobLabel === "Last add failed"
+                          ? "The last add didn't finish. Your photos were not changed. Try again, or choose another folder."
+                          : (shell.canResume ? "The last add was stopped. Pick up where it left off, or choose another folder." : shell.jobLabel)
+                    font.family: Theme.ui
+                    font.pixelSize: Theme.body
+                    color: Theme.muted
+                }
+                Tool {
+                    objectName: "emptyResume"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    label: shell.jobLabel === "Last add failed" ? "Try again" : "Pick up where it left off"
+                    visible: shell.canResume && !shell.jobActive
+                    onActivated: shell.resumeJob()
+                }
                 Tool {
                     anchors.horizontalCenter: parent.horizontalCenter
                     label: "Choose a folder"

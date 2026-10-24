@@ -99,14 +99,14 @@ Item {
                     font.family: Theme.display
                     font.pixelSize: Theme.body
                     font.weight: named ? Font.DemiBold : Font.Normal
-                    color: "#2a2118"
+                    color: Theme.paperInk
                 }
                 Text {
                     x: 8; y: 144; width: 114
                     text: faceCount + (faceCount === 1 ? " photo" : " photos")
                     font.family: Theme.ui
                     font.pixelSize: Theme.tiny
-                    color: "#5a4e3d"
+                    color: Theme.paperMuted
                 }
                 DragHandler {
                     id: drag

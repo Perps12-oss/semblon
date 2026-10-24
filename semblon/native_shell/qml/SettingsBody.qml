@@ -72,6 +72,7 @@ Flickable {
             Tool { objectName: "primaryModeButton"; label: "Everyday"; selected: shell.mode === "primary"; onActivated: shell.setMode("primary") }
             Tool { objectName: "advancedModeButton"; label: "More detail"; selected: shell.mode === "advanced"; onActivated: shell.setMode("advanced") }
         }
+        Label { objectName: "diagnosticsPanel"; visible: shell.mode === "advanced"; text: shell.diagnosticsText; color: Theme.faint; font.family: "Consolas" }
 
         Heading { text: "How hard to look" }
         Label { text: "Search quality is " + shell.searchQualityLabel + "." }
