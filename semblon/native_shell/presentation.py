@@ -69,6 +69,21 @@ _SAFE_PRIMARY_EXACT = {
     "Unlabelled region.",
     "Face in the selection. Not a named person.",
     "Checked the matches.",
+    "The piece that finds a similar look is ready. Semblon will try that search again.",
+    "That piece was already here. Semblon will try the similar-look search again.",
+    "That extra piece is installed on this computer.",
+    "Choose a reference file on this computer.",
+    "That file is not a reference Semblon can use.",
+    "Semblon can now look for things in pictures. That search will run again.",
+    "Looking for things in pictures was already ready. That search will run again.",
+    "Semblon can now describe a picture. That will run again.",
+    "Describing a picture was already ready. It will run again.",
+    "Semblon is already looking at the screen.",
+    "Stopped looking at the screen.",
+    "Text first — read the words on screen.",
+    "Picture first — match the look on screen.",
+    "You pointed at words on the screen.",
+    "You pointed at something on the screen.",
 }
 
 _SAFE_PRIMARY_PATTERNS = (
@@ -107,6 +122,7 @@ _SAFE_PRIMARY_PATTERNS = (
     re.compile(r"^Named items: [^\n]+\.$"),
     re.compile(r"^Rescan: [^\n]+\.$"),
     re.compile(r"^Setup: [^\n]+\.$"),
+    re.compile(r"^Reference notes loaded \(\d+\)\.$"),
 )
 
 _WORD_REPLACEMENTS = (

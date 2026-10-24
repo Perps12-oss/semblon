@@ -689,8 +689,8 @@ class ShellBridge(QObject):
             "people": "Names",
             "text": "Text in photos",
             "object": "Objects",
-            "whole": "Whole photo",
-            "region": "Region",
+            "whole": "This photo",
+            "region": "A detail",
         }.get(mode, "Names")
 
     @Property(bool, notify=jobChanged)
@@ -1571,13 +1571,13 @@ class ShellBridge(QObject):
     @Property(str, notify=screenQueryChanged)
     def screenQueryModeLabel(self) -> str:
         if self._screen_query_mode == SCREEN_QUERY_MODE_TEXT_PRIORITY:
-            return "Screen mode: Text first"
-        return "Screen mode: Visual first"
+            return "Text first — read the words on screen"
+        return "Picture first — match the look on screen"
 
     @Slot()
     def toggleScreenQueryMode(self) -> None:
         if self.screenQueryInProgress:
-            self._apply_result(Result("unavailable", "Screen query is already in progress."))
+            self._apply_result(Result("unavailable", "Semblon is already looking at the screen."))
             return
         nxt = (
             SCREEN_QUERY_MODE_TEXT_PRIORITY
@@ -3657,7 +3657,7 @@ class ShellBridge(QObject):
                 basis_label="Similar look",
                 persist=False,
             )
-            self._apply_result(Result("empty", "Screen query cancelled."))
+            self._apply_result(Result("empty", "Stopped looking at the screen."))
             return
         self._begin_screen_search(rect)
 
@@ -3677,7 +3677,9 @@ class ShellBridge(QObject):
         self._region_norm = None
         self._selection_kind = str(mode_selection)
         self._selection_note = (
-            "Screen selection (text first)." if mode_selection == SCREEN_QUERY_MODE_TEXT_PRIORITY else "Screen selection."
+            "You pointed at words on the screen."
+            if mode_selection == SCREEN_QUERY_MODE_TEXT_PRIORITY
+            else "You pointed at something on the screen."
         )
         self.selectionChanged.emit()
         adapter = self._adapter
@@ -4328,10 +4330,10 @@ class ShellBridge(QObject):
     @Property(str, notify=preflightChanged)
     def preflightSummary(self) -> str:
         if not self._preflight_rows:
-            return "Capabilities this machine can run are ready."
+            return "Everything Semblon can do on this computer is ready."
         return (
-            "Some capabilities need setup. A missing model does not make another "
-            "search that capability."
+            "A few extras are not ready yet. Searches that do not need them still work, "
+            "and Semblon will say when one is missing."
         )
 
     @Slot(str)
