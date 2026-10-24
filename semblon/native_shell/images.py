@@ -7,6 +7,8 @@ not decode the whole library.
 
 from __future__ import annotations
 
+import hashlib
+import shutil
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -20,8 +22,10 @@ Lookup = Callable[[str], str | None]
 _MISS = object()
 _FOCUS_CEILING = 2048
 _THUMB_CEILING = 512
+_THUMB_DISK = 384
 _DECODE_COUNT = 0
 _DECODE_LOCK = threading.Lock()
+_DISK_LOCK = threading.Lock()
 
 
 class ImageDecodeCache:
@@ -66,14 +70,32 @@ def _image_bytes(image) -> int:
     return int(image.sizeInBytes())
 
 
-_CACHE = ImageDecodeCache()
+_THUMB_CACHE = ImageDecodeCache(max_items=240, max_bytes=80 * 1024 * 1024)
+_FOCUS_CACHE = ImageDecodeCache(max_items=8, max_bytes=96 * 1024 * 1024)
+
+
+def thumb_cache_dir(store: Path) -> Path:
+    """Small JPEGs beside the store. Originals are not written."""
+    store = Path(store)
+    return store.with_name(store.stem + ".thumbs")
+
+
+def clear_thumb_cache(store: Path) -> None:
+    directory = thumb_cache_dir(store)
+    if directory.is_dir():
+        shutil.rmtree(directory, ignore_errors=True)
 
 
 def reset_image_cache() -> None:
     global _DECODE_COUNT
-    _CACHE.clear()
+    clear_decoded_frames()
     with _DECODE_LOCK:
         _DECODE_COUNT = 0
+
+
+def clear_decoded_frames() -> None:
+    _THUMB_CACHE.clear()
+    _FOCUS_CACHE.clear()
 
 
 def image_decode_count() -> int:
@@ -96,6 +118,101 @@ def _cache_key(path: str, max_side: int):
     except OSError:
         return None
     return (str(file.resolve()), int(stat.st_mtime_ns), int(stat.st_size), int(max_side))
+
+
+def _disk_thumb_path(cache_dir: Path, key) -> Path:
+    digest = hashlib.sha1(repr(key).encode("utf-8")).hexdigest()
+    return Path(cache_dir) / digest[:2] / f"{digest}.jpg"
+
+
+def _read_disk_thumb(path: Path) -> QImage:
+    reader = QImageReader(str(path))
+    reader.setAutoTransform(True)
+    loaded = reader.read()
+    if loaded.isNull():
+        return QImage()
+    return loaded
+
+
+def _write_disk_thumb(path: Path, image: QImage) -> None:
+    if image.isNull():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_suffix(".jpg.part")
+    with _DISK_LOCK:
+        if image.save(str(partial), "JPEG", 82):
+            partial.replace(path)
+        elif partial.is_file():
+            partial.unlink(missing_ok=True)
+
+
+def _decode_original(path: str, max_side: int) -> QImage:
+    image = QImage()
+    file = Path(path) if path else None
+    if file is not None and file.is_file() and file.suffix.lower() in {
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".mkv",
+        ".webm",
+        ".m4v",
+    }:
+        return _video_frame(file, max_side)
+    if file is None or not file.is_file():
+        return image
+    reader = QImageReader(str(file))
+    reader.setAutoTransform(True)
+    size = reader.size()
+    if size.isValid() and max_side > 0:
+        longest = max(size.width(), size.height(), 1)
+        scale = min(1.0, float(max_side) / float(longest))
+        reader.setScaledSize(
+            QSize(
+                max(1, int(size.width() * scale)),
+                max(1, int(size.height() * scale)),
+            )
+        )
+    loaded = reader.read()
+    if not loaded.isNull():
+        image = loaded
+    return image
+
+
+def _memory_cache(thumb: bool) -> ImageDecodeCache:
+    return _THUMB_CACHE if thumb else _FOCUS_CACHE
+
+
+def peek_display_image(path: str, max_side: int, *, cache_dir: Path | None) -> QImage | object:
+    """Return a decoded frame already in memory, or ``_MISS``."""
+    thumb = cache_dir is not None and max_side <= _THUMB_CEILING
+    side = _THUMB_DISK if thumb else max_side
+    key = _cache_key(path, side)
+    if key is None:
+        return _MISS
+    return _memory_cache(thumb).get(key)
+
+
+def load_display_image(path: str, max_side: int, *, cache_dir: Path | None = None) -> QImage:
+    """Thumbnails prefer a small JPEG beside the store. Focus frames stay in memory."""
+    thumb = cache_dir is not None and max_side <= _THUMB_CEILING
+    side = _THUMB_DISK if thumb else max_side
+    key = _cache_key(path, side)
+    cache = _memory_cache(thumb)
+    cached = cache.get(key) if key is not None else _MISS
+    if cached is not _MISS:
+        return cached
+    image = QImage()
+    disk_path = _disk_thumb_path(cache_dir, key) if thumb and key is not None and cache_dir else None
+    if disk_path is not None and disk_path.is_file():
+        image = _read_disk_thumb(disk_path)
+    if image.isNull():
+        _note_decode()
+        image = _decode_original(path, side)
+        if disk_path is not None and not image.isNull():
+            _write_disk_thumb(disk_path, image)
+    if key is not None:
+        cache.put(key, image)
+    return image
 
 
 def _video_frame(path: Path, max_side: int) -> QImage:
@@ -126,64 +243,30 @@ def _video_frame(path: Path, max_side: int) -> QImage:
 
 
 class _Decode(QRunnable):
-    def __init__(self, response: "ArchiveImageResponse", path: str, max_side: int):
+    def __init__(self, response: "ArchiveImageResponse", path: str, max_side: int, cache_dir: Path | None):
         super().__init__()
         self._response = response
         self._path = path
         self._max_side = max_side
+        self._cache_dir = cache_dir
 
     def run(self) -> None:
         if self._response.cancelled:
             self._response.finished.emit()
             return
-        key = _cache_key(self._path, self._max_side)
-        cached = _CACHE.get(key) if key is not None else _MISS
-        if cached is not _MISS:
-            if not self._response.cancelled:
-                self._response._image = cached
-            self._response.finished.emit()
-            return
-        _note_decode()
-        image = QImage()
-        file = Path(self._path) if self._path else None
-        if file is not None and file.is_file() and file.suffix.lower() in {
-            ".mp4",
-            ".mov",
-            ".avi",
-            ".mkv",
-            ".webm",
-            ".m4v",
-        }:
-            image = _video_frame(file, self._max_side)
-        elif file is not None and file.is_file():
-            reader = QImageReader(str(file))
-            reader.setAutoTransform(True)
-            size = reader.size()
-            if size.isValid() and self._max_side > 0:
-                longest = max(size.width(), size.height(), 1)
-                scale = min(1.0, float(self._max_side) / float(longest))
-                reader.setScaledSize(
-                    QSize(
-                        max(1, int(size.width() * scale)),
-                        max(1, int(size.height() * scale)),
-                    )
-                )
-            loaded = reader.read()
-            if not loaded.isNull():
-                image = loaded
-        if key is not None:
-            _CACHE.put(key, image)
+        image = load_display_image(self._path, self._max_side, cache_dir=self._cache_dir)
         if not self._response.cancelled:
             self._response._image = image
         self._response.finished.emit()
 
 
 class ArchiveImageResponse(QQuickImageResponse):
-    def __init__(self, path: str, max_side: int):
+    def __init__(self, path: str, max_side: int, cache_dir: Path | None = None):
         super().__init__()
         self._image = QImage()
         self._path = path
         self._max_side = max_side
+        self._cache_dir = cache_dir
         self._cancelled = False
 
     @property
@@ -195,13 +278,12 @@ class ArchiveImageResponse(QQuickImageResponse):
 
     def start(self) -> None:
         """Decode after Qt has connected ``finished``. An immediate thread can finish first."""
-        key = _cache_key(self._path, self._max_side)
-        cached = _CACHE.get(key) if key is not None else _MISS
+        cached = peek_display_image(self._path, self._max_side, cache_dir=self._cache_dir)
         if cached is not _MISS:
             self._image = cached
             QTimer.singleShot(0, self.finished.emit)
             return
-        QThreadPool.globalInstance().start(_Decode(self, self._path, self._max_side))
+        QThreadPool.globalInstance().start(_Decode(self, self._path, self._max_side, self._cache_dir))
 
     def textureFactory(self):
         return QQuickTextureFactory.textureFactoryForImage(self._image)
@@ -294,19 +376,26 @@ class FaceCropImageResponse(QQuickImageResponse):
 class ArchiveImageProvider(QQuickAsyncImageProvider):
     """image://archive/t/<id> thumb, image://archive/f/<id> focus frame."""
 
-    def __init__(self, lookup: Lookup):
+    def __init__(self, lookup: Lookup, cache_dir: Path | None = None):
         super().__init__()
         self._lookup = lookup
+        self._cache_dir = Path(cache_dir) if cache_dir is not None else None
 
     def requestImageResponse(self, image_id: str, requestedSize):
         kind, _, media_id = str(image_id).partition("/")
         path = self._lookup(media_id) or ""
-        ceiling = _FOCUS_CEILING if kind == "f" else _THUMB_CEILING
-        max_side = 1600 if kind == "f" else 480
-        if requestedSize is not None and requestedSize.isValid():
-            max_side = max(requestedSize.width(), requestedSize.height(), 1)
-        max_side = min(int(max_side), ceiling)
-        response = ArchiveImageResponse(path, max_side)
+        if kind == "t":
+            # One disk size for every grid cell. Qt scales it into the tile.
+            max_side = _THUMB_DISK
+            cache_dir = self._cache_dir
+        else:
+            ceiling = _FOCUS_CEILING
+            max_side = 1600
+            if requestedSize is not None and requestedSize.isValid():
+                max_side = max(requestedSize.width(), requestedSize.height(), 1)
+            max_side = min(int(max_side), ceiling)
+            cache_dir = None
+        response = ArchiveImageResponse(path, max_side, cache_dir)
         response.start()
         return response
 

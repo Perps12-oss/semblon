@@ -30,7 +30,7 @@ Item {
 
     signal dayClicked(string day)
     signal dayDoubleClicked(string day)
-    signal thumbClicked(string mediaId)
+    signal thumbClicked(string mediaId, string day)
     signal rangeChosen(string startDay, string endDay)
     signal jumpRequested(string text)
     signal undatedClicked()
@@ -413,7 +413,7 @@ Item {
                         root.pendingClick = ""
                         root.dayDoubleClicked(day)
                     }
-                    onThumbActivated: function(mediaId) { root.thumbClicked(mediaId) }
+                    onThumbActivated: function(mediaId) { root.thumbClicked(mediaId, dayCell.dayKey) }
                     onEnteredDay: function(day, count) {
                         root.focusIndex = index
                         var mapped = dayCell.mapToItem(root, dayCell.width / 2, 0)

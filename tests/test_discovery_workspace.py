@@ -225,14 +225,23 @@ def test_indexing_progress_names_photos_already_added(tmp_path, monkeypatch):
         assert "already added" in bridge.jobLabel
         assert bridge.jobCurrent == 2
         assert bridge.jobTotal == 9
+        assert bridge.taskCount == 1
+        assert bridge.taskLabel == "1 task"
         from PySide6.QtCore import QObject
 
         root = engine.rootObjects()[0]
-        heroes = root.findChildren(QObject, "scanHero")
-        assert len(heroes) == 1
-        hero = heroes[0]
-        assert bool(hero.property("visible")) is True
-        assert float(hero.property("fraction")) == pytest.approx(2 / 9)
+        assert root.findChildren(QObject, "scanHero") == []
+        chip = root.findChild(QObject, "scanChip")
+        assert chip is not None
+        assert bool(chip.property("visible")) is True
+        assert chip.property("label") == "Scanning · 2 / 9"
+        bridge.openTasks()
+        app.processEvents()
+        sheet = root.findChild(QObject, "taskSheet")
+        assert sheet is not None
+        assert bool(sheet.property("visible")) is True
+        assert root.findChild(QObject, "pauseJob") is not None
+        assert root.findChild(QObject, "cancelJob") is not None
     finally:
         shutdown_shell(engine)
 

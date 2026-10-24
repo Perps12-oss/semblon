@@ -174,7 +174,8 @@ def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     app.processEvents()
     assert bridge.homeOpen is False
     assert root.findChild(QObject, "emptyState").property("visible") is False
-    assert root.findChild(QObject, "fieldGrid").property("visible") is True
+    assert root.findChild(QObject, "archiveHeaderBand").property("visible") is True
+    assert root.findChild(QObject, "fieldGrid").property("visible") is False
     assert root.findChild(QObject, "lensLine").property("text") == "Time"
     shot = tmp_path / "field.png"
     root.grabWindow().save(str(shot))
@@ -1313,9 +1314,25 @@ def test_job_band_exposes_pause_and_cancel(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
     _app, engine = build_shell(store, app=app)
     root = engine.rootObjects()[0]
+    bridge = engine._semblon_bridge
     assert root.findChild(QObject, "jobBand") is not None
+    pill = root.findChild(QObject, "taskPill")
+    assert pill is not None
+    assert bridge.taskLabel == "Quiet"
+    assert bridge.taskCount == 0
+    bridge._timer.stop()
+    bridge._job_active = True
+    bridge._job_state = "running"
+    bridge._progress_current = 1
+    bridge._progress_total = 4
+    bridge.jobChanged.emit()
+    bridge.openTasks()
+    app.processEvents()
+    assert bridge.taskCount == 1
     assert root.findChild(QObject, "pauseJob") is not None
     assert root.findChild(QObject, "cancelJob") is not None
+    bridge.closeTasks()
+    assert bridge.tasksOpen is False
     shutdown_shell(engine)
 
 

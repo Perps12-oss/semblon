@@ -299,6 +299,18 @@ Plan: `docs/decisions/2026-10-19-lens-style-retrieval.md`. Roadmap milestone 7.
 3. `revealDay` highlights a date without filtering. A no-date chip opens the undated bucket. Person and folder filters can mark days. Opening a photo shows file name, archive day, pixel size, and byte size inside Focus.
 4. Command: `QT_QPA_PLATFORM=offscreen python3 -m pytest tests/test_timeline_view.py -q` → **13 passed**.
 
+## Behaviour landed — one library workspace (2026-10-23)
+
+The calendar fills the library pane. A date (or the no-date chip) replaces it with that day's grid. A photo replaces the grid with Focus. Back and Escape take one step, and the task tray closes first. Year, month, and density stay on the calendar. Folder, moment, and Everything selections open the same grid. The split handle stays stored and is not shown. Contract: `docs/TIMELINE-VIEW.md`.
+
+Command: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_timeline_view.py tests/test_library_tasks.py tests/test_thumb_cache.py tests/test_shell_frontend.py tests/test_discovery_workspace.py tests/test_native_shell.py` → **95 passed**.
+
+## Behaviour landed — library work tray and grid thumbs (2026-10-23)
+
+1. The library is one workspace (calendar, then the day's grid, then Focus). A bottom pill stays on every depth. `Quiet` means nothing is scanning, and the sheet offers check-for-new-files or add-a-folder. A running add is `1 task`; a search at the same time makes `2 tasks`. Pause, resume, and cancel live on that sheet. A top-right chip shows `Scanning · current / total` and opens the same sheet. The old scan card no longer covers the field.
+2. Grid thumbs write one 384 px JPEG under `<store stem>.thumbs/` the first time a file is decoded. The next cell reads that JPEG. Focus frames stay in memory. Clear library deletes the folder. No new table and no writes into the photo folder.
+3. Command: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_library_tasks.py tests/test_thumb_cache.py tests/test_timeline_view.py tests/test_shell_frontend.py tests/test_discovery_workspace.py tests/test_native_shell.py` → **95 passed**.
+
 ## What this file will not absorb
 
 Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE gates stay in `docs/FACE-GATES.md`. Product vision stays in `docs/PRODUCT.md`.

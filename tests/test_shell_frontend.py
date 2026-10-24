@@ -651,7 +651,8 @@ def test_windows_journey_launch_ingest_browse_search_theme_restart_recover(tmp_p
         app.processEvents()
         assert bridge.homeOpen is False
         assert root.findChild(QObject, "emptyState").property("visible") is False
-        assert root.findChild(QObject, "fieldGrid").property("visible") is True
+        assert root.findChild(QObject, "archiveHeaderBand").property("visible") is True
+        assert root.findChild(QObject, "fieldGrid").property("visible") is False
 
         bridge.showHome()
         app.processEvents()
