@@ -100,7 +100,7 @@ def test_selection_survives_restore_and_states_are_distinct(tmp_path, monkeypatc
         assert bridge.selectionOnFocus is True
         assert abs(bridge.selectionW - 0.3) < 1e-6
         assert bridge.indexState == "unindexed"
-        assert "not indexed" in bridge.indexNote
+        assert "not looked at" in bridge.indexNote
         bridge.findSimilar()
         from PySide6.QtCore import QEventLoop, QTimer
 
@@ -303,7 +303,7 @@ def test_coarse_index_is_not_called_ready(tmp_path, monkeypatch):
         conn.close()
         bridge._refresh_index_note()
         assert bridge.indexState == "fallback"
-        assert "coarse index" in bridge.indexNote
+        assert "quick look" in bridge.indexNote
     finally:
         shutdown_shell(engine)
 

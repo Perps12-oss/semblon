@@ -130,10 +130,10 @@ class _ScreenSelectionDialog(QDialog):
 def select_screen_region(parent=None) -> tuple[int, int, int, int] | None:
     """Return a global screen rectangle selected by the user."""
     if sys.platform != "win32":
-        raise ScreenSelectionUnavailable("Screen query is only available on Windows.")
+        raise ScreenSelectionUnavailable("Picking on screen is only available on Windows.")
     app = QApplication.instance()
     if app is None:
-        raise ScreenSelectionUnavailable("Screen query is unavailable without a Qt app.")
+        raise ScreenSelectionUnavailable("Picking on screen is unavailable without a Qt app.")
     screens = list(QGuiApplication.screens())
     if not screens:
         raise ScreenSelectionUnavailable("No active screen was found.")

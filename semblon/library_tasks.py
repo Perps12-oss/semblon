@@ -98,7 +98,7 @@ def library_work(snapshot: dict) -> dict:
         rows.append(
             {
                 "id": "unindexed",
-                "title": "This photo is not indexed",
+                "title": "Semblon has not looked at this photo",
                 "detail": index_note or "Add its folder so search can see inside it.",
                 "actions": [follow],
                 "counts": True,

@@ -479,7 +479,7 @@ def _take_kind(store, *, crop, limit, cancelled, channels, grouped, ranked, spec
                 "door": "kind",
                 "status": _SKIPPED,
                 "similarity_basis": _KIND_BASIS,
-                "reason": "These photos are not indexed for same-kind search yet.",
+                "reason": "Semblon has not looked closely at these photos for same-kind search yet.",
                 "count": 0,
             }
         )

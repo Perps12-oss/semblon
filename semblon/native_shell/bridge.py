@@ -1564,9 +1564,9 @@ class ShellBridge(QObject):
     @Property(str, notify=screenQueryChanged)
     def screenQueryProgressLabel(self) -> str:
         if self._screen_query_state == "selecting":
-            return "Screen query in progress: drag a box on your screen."
+            return "Pick on screen in progress: drag a box on your screen."
         if self._screen_query_state == "searching":
-            return "Screen query in progress: searching your library."
+            return "Pick on screen: searching your photos."
         return ""
 
     @Property(str, notify=screenQueryChanged)
@@ -2029,7 +2029,7 @@ class ShellBridge(QObject):
         kept = list(self._similar._rows)
         self._publish_similar(
             "loading",
-            f"Similar ({label}): looking through photos already indexed.",
+            f"Similar ({label}): looking through photos Semblon has already seen.",
             kept,
             basis=basis,
             basis_label=label,
@@ -2179,23 +2179,23 @@ class ShellBridge(QObject):
             coarse = int((row[1] if row else 0) or 0)
         except sqlite3.Error:
             if self._job_active:
-                return "indexing", "Still indexing. Photos already added can be opened."
+                return "indexing", "Still looking through your photos. Ones already added can be opened."
             return "unknown", ""
         if patch > 0 and self._job_active:
-            result = ("patch", "Still indexing. This photo can already be searched.")
+            result = ("patch", "Still looking through your photos. This one can already be searched.")
         elif patch > 0:
             result = ("patch", "")
         elif self._job_active:
-            result = ("indexing", "Still indexing. Photos already added can be opened.")
+            result = ("indexing", "Still looking through your photos. Ones already added can be opened.")
         elif coarse > 0:
             result = (
                 "fallback",
-                "This photo has a coarse index only. Matches may miss the area you point at.",
+                "Semblon has only had a quick look at this photo. Matches may miss the area you point at.",
             )
         else:
             result = (
                 "unindexed",
-                "This photo is not indexed yet. Add its folder so search can see inside it.",
+                "Semblon has not looked at this photo yet. Add its folder so search can see inside it.",
             )
         if not self._job_active:
             if len(self._index_cache) > 256:
@@ -2586,7 +2586,7 @@ class ShellBridge(QObject):
         elif install_action == "vlm_local" and state == "unavailable":
             note = f"Similar ({label}): the description model is not installed."
         elif state == "unavailable" and error_id == "region.NO_PATCH_INDEX":
-            note = f"Similar ({label}): these photos are not indexed for region search yet."
+            note = f"Similar ({label}): Semblon has not looked closely at these photos yet."
         elif error_id in {"region.ENCODE", "region.NO_IMAGE", "region.NO_STORE"}:
             state = "error"
             note = f"Similar ({label}): search failed."
@@ -3662,7 +3662,7 @@ class ShellBridge(QObject):
         if not self.screenQueryAvailable:
             self._publish_similar(
                 "unavailable",
-                "Screen query: only available on Windows.",
+                "Pick on screen: only available on Windows.",
                 [],
                 basis="region",
                 basis_label="Similar look",
@@ -3676,7 +3676,7 @@ class ShellBridge(QObject):
         self._set_install_suggestion("", "")
         self._publish_similar(
             "loading",
-            "Screen query in progress: drag a box on your screen.",
+            "Pick on screen in progress: drag a box on your screen.",
             [],
             basis="region",
             basis_label=(
@@ -3698,7 +3698,7 @@ class ShellBridge(QObject):
             self._set_install_suggestion("", "")
             self._publish_similar(
                 "unavailable",
-                f"Screen query: {exc}",
+                f"Pick on screen: {exc}",
                 [],
                 basis="region",
                 basis_label="Similar look",
@@ -3709,7 +3709,7 @@ class ShellBridge(QObject):
             self._set_screen_query_state("idle")
             self._publish_similar(
                 "empty",
-                "Screen query cancelled.",
+                "Pick on screen cancelled.",
                 [],
                 basis="region",
                 basis_label="Similar look",

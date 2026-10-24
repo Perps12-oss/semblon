@@ -13,6 +13,7 @@ ADVANCED = "advanced"
 MODES = (PRIMARY, ADVANCED)
 
 _SAFE_PRIMARY_EXACT = {
+    "That is not a folder. Drop a folder of photos, or use Add a folder.",
     "Nothing was searched.",
     "Similar search could not run.",
     "Semblon couldn't complete that step.",
@@ -60,10 +61,10 @@ _SAFE_PRIMARY_EXACT = {
     "The library could not be cleared.",
     "Library cleared. Photos on disk were kept. Add a folder to start again.",
     "A match is a similar region, not proof it is the same object.",
-    "Still indexing. Photos already added can be opened.",
-    "Still indexing. This photo can already be searched.",
-    "This photo is not indexed yet. Add its folder so search can see inside it.",
-    "This photo has a coarse index only. Matches may miss the area you point at.",
+    "Still looking through your photos. Ones already added can be opened.",
+    "Still looking through your photos. This one can already be searched.",
+    "Semblon has not looked at this photo yet. Add its folder so search can see inside it.",
+    "Semblon has only had a quick look at this photo. Matches may miss the area you point at.",
     "Naming this area.",
     "This area could not be named.",
     "Unlabelled region.",
