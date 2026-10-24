@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -104,9 +105,9 @@ SCREEN_QUERY_MODE_TEXT_PRIORITY = "text_priority"
 SCREEN_QUERY_MODES = (SCREEN_QUERY_MODE_VISUAL, SCREEN_QUERY_MODE_TEXT_PRIORITY)
 
 _INSTALL_LABELS = {
-    "region_pack": "Install region model",
-    "object_pack": "Install object model",
-    "vlm_local": "Install description model",
+    "region_pack": "Get finding-by-look ready",
+    "object_pack": "Get finding-by-object ready",
+    "vlm_local": "Get photo descriptions ready",
 }
 _INSTALL_METHODS = {
     "region_pack": "install_region_pack",
@@ -115,24 +116,43 @@ _INSTALL_METHODS = {
 }
 _INSTALL_PROMPTS = {
     "region_pack": (
-        "Install region model?",
-        "Semblon will download the region model onto this computer.\n\n"
+        "Get finding-by-look ready?",
+        "Semblon will download a small add-on to this computer so it can find places that look like the "
+        "detail you pointed at.\n\n"
         "You stay on this screen. When it finishes, this search runs again.\n\n"
         "Continue?",
     ),
     "object_pack": (
-        "Install object model?",
-        "Semblon will download the object model onto this computer.\n\n"
+        "Get finding-by-object ready?",
+        "Semblon will download a small add-on to this computer so it can recognise things in pictures, "
+        "such as a bicycle or a cake.\n\n"
         "You stay on this screen. When it finishes, this search runs again.\n\n"
         "Continue?",
     ),
     "vlm_local": (
-        "Install description model?",
-        "Semblon will install picture description on this computer.\n\n"
+        "Get photo descriptions ready?",
+        "Semblon will set up photo descriptions on this computer.\n\n"
         "You stay on this screen. When it finishes, this search runs again.\n\n"
         "Continue?",
     ),
 }
+_SETUP_NAMES = {
+    "region_pack": "finding-by-look",
+    "object_pack": "finding-by-object",
+    "vlm_local": "photo descriptions",
+}
+_JARGON = re.compile(
+    r"\b(models?|packs?|quer(?:y|ies)|embeddings?|index(?:ed|es|ing)?|capabilit(?:y|ies)|schema|api|sha256|onnx)\b",
+    re.IGNORECASE,
+)
+
+
+def _plain(text: object, fallback: str) -> str:
+    """Words a person can read. Engine wording never reaches a dialog or banner."""
+    line = " ".join(str(text or "").split())
+    if not line or _JARGON.search(line):
+        return fallback
+    return line
 
 
 def reduced_motion() -> bool:
@@ -1749,7 +1769,7 @@ class ShellBridge(QObject):
 
     @Property(str, notify=similarChanged)
     def installSuggestionLabel(self) -> str:
-        return self._install_suggestion_label or "Install required model"
+        return self._install_suggestion_label or "Get this ready"
 
     @Property(str, notify=similarChanged)
     def similarPhase(self) -> str:
@@ -2580,11 +2600,11 @@ class ShellBridge(QObject):
                 else f"Similar ({label}): nothing close enough."
             )
         elif install_action == "region_pack":
-            note = f"Similar ({label}): the region model is not installed."
+            note = f"Similar ({label}): finding by look isn't set up yet."
         elif install_action == "object_pack" and state == "unavailable":
-            note = f"Similar ({label}): the object model is not installed."
+            note = f"Similar ({label}): finding things in pictures isn't set up yet."
         elif install_action == "vlm_local" and state == "unavailable":
-            note = f"Similar ({label}): the description model is not installed."
+            note = f"Similar ({label}): photo descriptions aren't set up yet."
         elif state == "unavailable" and error_id == "region.NO_PATCH_INDEX":
             note = f"Similar ({label}): Semblon has not looked closely at these photos yet."
         elif error_id in {"region.ENCODE", "region.NO_IMAGE", "region.NO_STORE"}:
@@ -4403,14 +4423,14 @@ class ShellBridge(QObject):
             self._refresh_preflight()
             row = next((item for item in self._preflight_rows if item.get("id") == item_id), None)
         if row is None or row.get("status") == "ready":
-            self._apply_result(Result("ready", self._setup_line("That capability is already ready.")))
+            self._apply_result(Result("ready", self._setup_line("That extra is already ready.")))
             return
         if not row.get("installable"):
             self._apply_result(
                 Result(
                     "unavailable",
                     self._setup_line(
-                        str(row.get("detail") or "This capability cannot be installed from here.")
+                        str(row.get("detail") or "This extra can't be added from here.")
                     ),
                 )
             )
@@ -4421,7 +4441,7 @@ class ShellBridge(QObject):
         answer = QMessageBox.question(
             None,
             str(row.get("name") or "Install"),
-            str(row.get("confirm") or "Install this capability?"),
+            str(row.get("confirm") or "Add this extra?"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -4519,22 +4539,22 @@ class ShellBridge(QObject):
     @Slot()
     def chooseKnowledgePack(self) -> None:
         path, _selected = QFileDialog.getOpenFileName(
-            None, "Choose a knowledge pack", "", "JSON (*.json)"
+            None, "Choose the face files you downloaded", "", "JSON (*.json)"
         )
         if not path:
-            self._apply_result(Result("empty", "Pack: choose a local pack file."))
+            self._apply_result(Result("empty", "Face files: choose a file from this computer."))
             return
         self.inspectPack(path)
 
     @Slot()
     def chooseModelInstall(self) -> None:
-        source, _selected = QFileDialog.getOpenFileName(None, "Choose a model file", "", "All files (*.*)")
+        source, _selected = QFileDialog.getOpenFileName(None, "Choose the extra you downloaded", "", "All files (*.*)")
         if not source:
-            self._apply_result(Result("empty", "Model file: choose a local file."))
+            self._apply_result(Result("empty", "Extra: choose a file from this computer."))
             return
-        dest, _selected = QFileDialog.getSaveFileName(None, "Where to install the model file", "", "All files (*.*)")
+        dest, _selected = QFileDialog.getSaveFileName(None, "Where should the extra go?", "", "All files (*.*)")
         if not dest:
-            self._apply_result(Result("empty", "Model file: choose where to install it."))
+            self._apply_result(Result("empty", "Extra: choose where to put it."))
             return
         self.installModelFile(source, dest)
 
@@ -4569,10 +4589,10 @@ class ShellBridge(QObject):
             QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
-            self._apply_result(Result("empty", "Model install cancelled."))
+            self._apply_result(Result("empty", "Cancelled. Nothing was added."))
             return self._notice
         if self._install_thread is not None and self._install_thread.isRunning():
-            self._apply_result(Result("loading", "Model install is already running."))
+            self._apply_result(Result("loading", "Something is already being added."))
             return self._notice
         self._install_kind = kind
         self._install_retry = self._query_source
@@ -4615,14 +4635,14 @@ class ShellBridge(QObject):
     @Slot(object)
     def _on_install_suggested_ready(self, payload) -> None:
         self._install_thread = None
-        result = payload if isinstance(payload, Result) else Result("ready", "Model installed.")
+        result = payload if isinstance(payload, Result) else Result("ready", "Ready.")
         self._apply_result(result)
         if self._resume_current_query():
             return
         label = self._similar_basis_label or "Similar look"
         self._publish_similar(
             "empty",
-            f"Similar ({label}): model is ready. Search this area again.",
+            f"Similar ({label}): ready. Search this area again.",
             [],
             basis=self._similar_basis or "region",
             basis_label=label,
@@ -4634,16 +4654,16 @@ class ShellBridge(QObject):
         self._install_thread = None
         label = self._similar_basis_label or "Similar look"
         kind = self._install_kind or "region_pack"
-        self._set_install_suggestion(kind, _INSTALL_LABELS.get(kind, "Install required model"))
+        self._set_install_suggestion(kind, _INSTALL_LABELS.get(kind, "Get this ready"))
         self._publish_similar(
             "unavailable",
-            f"Similar ({label}): model install failed.",
+            f"Similar ({label}): couldn't be set up.",
             [],
             basis=self._similar_basis or "region",
             basis_label=label,
             persist=False,
         )
-        self._apply_result(Result("unavailable", str(message or "Model install failed.")))
+        self._apply_result(Result("unavailable", _plain(message, "That didn't finish. Nothing was changed. Your photos were not touched.")))
 
     @Slot()
     def findSimilarWhole(self) -> None:

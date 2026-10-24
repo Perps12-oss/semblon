@@ -391,7 +391,7 @@ def _capability_rows(probes: dict) -> list[dict]:
             else (
                 (face_note or "Face weights are missing.")
                 + " Semblon does not download identity weights. Place the files locally, then run "
-                "semblon lab pack-accept. Installing a face model does not name anyone."
+                "semblon lab pack-accept. Adding face files does not name anyone."
             ),
         )
         )

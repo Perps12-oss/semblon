@@ -302,7 +302,7 @@ def test_shell_exposes_facet_settings_and_similar(tmp_path, monkeypatch):
     bridge.setMode("advanced")
     app.processEvents()
     bridge.showCapabilities()
-    assert bridge.noticeText.startswith("Capabilities:")
+    assert bridge.noticeText.startswith("Extras:")
     bridge.cycleDensity()
     assert "Density is" in bridge.noticeText
     bridge.shutdown()

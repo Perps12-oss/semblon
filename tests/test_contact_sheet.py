@@ -1,5 +1,9 @@
 """Contact Sheet shell: the small backend pieces the Roll, loupe and first run rely on."""
 
+import ast
+import re
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -95,3 +99,54 @@ def test_one_gui_remains(bridge):
     assert not any((qml / name).exists() for name in ("Shell.qml", "HomeLaunchpad.qml"))
     for path in qml.glob("*.qml"):
         assert "QtQuick.Controls" not in path.read_text(encoding="utf-8"), path.name
+
+BANNED = re.compile(
+    r"\b(models?|packs?|quer(?:y|ies)|embeddings?|index(?:ed|es|ing)?|capabilit(?:y|ies)|schema|apis?)\b",
+    re.IGNORECASE,
+)
+
+
+def _python_strings(path):
+    tree = ast.parse(Path(path).read_text(encoding="utf-8"))
+    docs = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = node.body[0] if node.body else None
+            if isinstance(first, ast.Expr) and isinstance(getattr(first, "value", None), ast.Constant):
+                docs.add(id(first.value))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs:
+            text = node.value
+            if " " in text and not re.match(r"\s*(SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|PRAGMA)\b", text, re.I):
+                yield node.lineno, text
+
+
+def test_no_engine_words_in_anything_a_person_reads():
+    """Banned words must not appear in shell QML text or in dialog/banner/install strings."""
+    hits = []
+    for path in Path("semblon/native_shell/qml").glob("*.qml"):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith("//"):
+                continue
+            for literal in re.findall(r'"((?:[^"\\]|\\.)*)"', line):
+                if " " in literal and BANNED.search(literal):
+                    hits.append(f"{path.name}:{number}: {literal}")
+    for name in (
+        "semblon/native_shell/bridge.py",
+        "semblon/native_shell/adapter.py",
+        "semblon/native_shell/presentation.py",
+        "semblon/optional_providers.py",
+    ):
+        for number, text in _python_strings(name):
+            if BANNED.search(text):
+                hits.append(f"{name}:{number}: {text[:80]}")
+    assert not hits, "engine words reach people:\n" + "\n".join(hits)
+
+
+def test_install_failure_text_never_leaks_engine_words():
+    from semblon.native_shell.bridge import _plain
+
+    fallback = "That didn't finish."
+    assert _plain("region pack install refused: sha256=abc", fallback) == fallback
+    assert _plain("", fallback) == fallback
+    assert _plain("The disk is full.", fallback) == "The disk is full."
