@@ -432,3 +432,31 @@ def test_install_question_is_a_themed_sheet_with_verbs_and_inline_progress(tmp_p
         from semblon.native_shell.host import shutdown_shell
 
         shutdown_shell(engine)
+
+def test_bottom_bar_verbs_show_pressed_state_and_focus_ring(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject
+
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        for _ in range(5):
+            app.processEvents()
+        labels = ["Find a moment", "Find a person", "Find a detail", "Tidy up"]
+        for label in labels:
+            tool = _by_label(root, label)
+            assert tool is not None and tool.property("dimmed") is False
+            tool.forceActiveFocus()
+            app.processEvents()
+            rings = [c for c in tool.findChildren(QObject) if c.objectName() == "focusRing"]
+            assert rings and rings[0].property("visible") is True, label
+        moment = _by_label(root, "Find a moment")
+        assert moment.property("selected") is False
+        moment.activated.emit()
+        app.processEvents()
+        assert moment.property("selected") is True
+        moment.activated.emit()
+        app.processEvents()
+        assert moment.property("selected") is False
+    finally:
+        from semblon.native_shell.host import shutdown_shell
+
+        shutdown_shell(engine)

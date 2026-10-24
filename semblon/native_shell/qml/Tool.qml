@@ -23,6 +23,8 @@ Item {
 
     Accessible.role: Accessible.Button
     Accessible.name: label
+    Accessible.checkable: selected
+    Accessible.checked: selected
     Accessible.description: dimmed ? whyDimmed : hint
     Accessible.onPressAction: tool.fire()
 
@@ -46,6 +48,7 @@ Item {
         Behavior on color { ColorAnimation { duration: Theme.fast } }
     }
     Rectangle {
+        objectName: "focusRing"
         anchors.fill: parent
         anchors.margins: -3
         radius: Theme.pill
