@@ -59,6 +59,7 @@ from semblon.native_shell.editorial import (
     MEDIA_KINDS,
     UNDATED_DAY,
     calendar_month_cells,
+    day_detail,
     day_section_short_label,
     default_calendar_month,
     field_sections,
@@ -240,6 +241,9 @@ class _TaskThread(QThread):
             self.failed.emit(str(exc) or "task failed")
 
 
+_NO_MATCHES = object()
+
+
 class ShellBridge(QObject):
     lensChanged = Signal()
     focusChanged = Signal()
@@ -279,6 +283,7 @@ class ShellBridge(QObject):
         self._result_text = ""
         self._region_norm: tuple[float, float, float, float] | None = None
         self._similar = SimilarStripModel()
+        self._matches_prior = _NO_MATCHES
         self._similar_state = "idle"
         self._similar_note = ""
         self._similar_basis = ""
@@ -2219,6 +2224,59 @@ class ShellBridge(QObject):
     @property
     def similar_model(self) -> SimilarStripModel:
         return self._similar
+
+    @Property(bool, notify=similarChanged)
+    def matchesOnRoll(self) -> bool:
+        return self._matches_prior is not _NO_MATCHES
+
+    @Slot()
+    def showMatchesOnRoll(self) -> None:
+        """Lay the current matches out on the Roll, best first. Nothing is written."""
+        ids = [self._similar.media_id(row) for row in range(self._similar.rowCount())]
+        ids = [item for item in ids if item]
+        if not ids:
+            return
+        if self._matches_prior is _NO_MATCHES:
+            self._matches_prior = self._model.media_ids()
+        self._model.set_media_ids(ids)
+        self.similarChanged.emit()
+
+    @Slot()
+    def clearMatches(self) -> None:
+        if self._matches_prior is _NO_MATCHES:
+            return
+        prior = self._matches_prior
+        self._matches_prior = _NO_MATCHES
+        self._model.set_media_ids(prior)
+        self.similarChanged.emit()
+
+    @Slot(str, result="QVariantMap")
+    def dayDetail(self, day: str):
+        """A day's photos, face count and named people in one read for the Roll."""
+        return day_detail(self._prefs_store(), day)
+
+    @Slot(str)
+    def addFolderPath(self, folder: str) -> None:
+        """Add a folder that was dropped on the window. Files stay where they are."""
+        text = str(folder or "").strip()
+        if text.startswith("file:"):
+            text = QUrl(text).toLocalFile()
+        path = Path(text) if text else None
+        if path is None or not path.is_dir():
+            self._apply_result(
+                Result("unavailable", "That is not a folder. Drop a folder of photos, or use Add a folder.")
+            )
+            return
+        if self._jobs.busy:
+            return
+        self._start_ingest(path)
+
+    @Property(float, notify=jobChanged)
+    def jobFraction(self) -> float:
+        total = int(self._progress_total)
+        if total <= 0:
+            return 0.0
+        return max(0.0, min(1.0, float(self._progress_current) / float(total)))
 
     def _set_result(self, text: str) -> None:
         self._result_text = present_message(self._mode, text, fallback="Nothing was searched.")

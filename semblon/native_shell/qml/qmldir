@@ -1,0 +1,10 @@
+singleton Theme 1.0 Theme.qml
+Grain 1.0 Grain.qml
+Tool 1.0 Tool.qml
+Roll 1.0 Roll.qml
+Scrubber 1.0 Scrubber.qml
+Viewer 1.0 Viewer.qml
+LightTable 1.0 LightTable.qml
+People 1.0 People.qml
+CommandPalette 1.0 CommandPalette.qml
+Sheet 1.0 Sheet.qml

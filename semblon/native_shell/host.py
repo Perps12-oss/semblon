@@ -23,7 +23,20 @@ from semblon.native_shell.images import (
 from semblon.native_shell.model import ArchiveModel
 from semblon.process import default_store_path
 
-QML = Path(__file__).resolve().parent / "qml" / "Shell.qml"
+QML = Path(__file__).resolve().parent / "qml" / "Table.qml"
+FONT_DIR = Path(__file__).resolve().parent / "fonts"
+
+
+def load_bundled_fonts() -> list[str]:
+    """Register Fraunces and Inter from the package so Windows never substitutes them."""
+    from PySide6.QtGui import QFontDatabase
+
+    families: list[str] = []
+    for font in sorted(FONT_DIR.glob("*.ttf")):
+        font_id = QFontDatabase.addApplicationFont(str(font))
+        if font_id >= 0:
+            families.extend(QFontDatabase.applicationFontFamilies(font_id))
+    return families
 
 
 def _ensure_quick_style() -> None:
@@ -45,6 +58,7 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     qapp = app or QApplication.instance() or QApplication([])
     qapp.setApplicationName("Semblon")
     qapp.setOrganizationName("Semblon")
+    load_bundled_fonts()
     _ensure_quick_style()
     path = Path(store) if store is not None else default_store_path()
     jobs = Application(path)
