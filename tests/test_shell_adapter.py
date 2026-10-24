@@ -71,6 +71,23 @@ def test_tokens_match_the_blueprint_dark_contract():
     assert DENSITY_PX["cozy"] == 160
 
 
+def test_each_named_atmosphere_paints_its_own_accent():
+    from semblon.atmosphere import ATMOSPHERE_IDS
+    from semblon.native_shell.tokens import tokens_for
+
+    accents = {
+        (
+            tokens_for(atmosphere_id)["bg0"],
+            tokens_for(atmosphere_id)["bg1"],
+            tokens_for(atmosphere_id)["accent"],
+        )
+        for atmosphere_id in ATMOSPHERE_IDS
+    }
+    assert len(accents) == len(ATMOSPHERE_IDS)
+    assert tokens_for("light")["bg0"] != tokens_for("mica_dark")["bg0"]
+    assert tokens_for("not-a-theme")["accent"] == tokens_for("mica_dark")["accent"]
+
+
 def test_event_channel_rejects_unknown_names():
     channel = ShellEvents()
     channel.record(JOB_STARTED, {"resume": False})
