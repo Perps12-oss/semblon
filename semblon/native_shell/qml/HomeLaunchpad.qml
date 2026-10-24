@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
-// Permanent editorial launchpad. Visible empty or populated — never onboarding-only.
+// First arrival and return desk. One reading surface, not a dashboard.
 Item {
     id: root
     objectName: "emptyState"
@@ -15,33 +15,44 @@ Item {
     property string archiveSummary: ""
     property string searchModeShort: "Names"
     property bool advancedMode: false
-    property color tokenBg: "#0a0b10"
-    property color tokenBg1: "#151820"
-    property color tokenBg2: "#22252d"
-    property color tokenBg3: "#2c303a"
-    property color tokenAccent: "#4f8cff"
-    property color tokenAccentDim: "#2b4d8f"
-    property color tokenText: "#f2f3f5"
-    property color tokenMuted: "#a8adb7"
-    property color tokenFaint: "#6b7280"
-    property color tokenBorder: "#2a2f3a"
+    property color tokenBg: "#10161C"
+    property color tokenBg1: "#141A22"
+    property color tokenBg2: "#1C2430"
+    property color tokenBg3: "#243044"
+    property color tokenAccent: "#2DD4BF"
+    property color tokenAccentDim: "#12343A"
+    property color tokenText: "#F4F7FB"
+    property color tokenMuted: "#A8B3C2"
+    property color tokenFaint: "#7E8B9C"
+    property color tokenBorder: "#2A3544"
 
     property bool catalogueOpen: false
     property string catalogueFilter: ""
 
+    readonly property string displayFace: "Noto Serif"
+    readonly property string uiFace: "Inter"
+
     readonly property var catalogueRows: [
-        { id: "library", title: "Library", body: "Browse the collection, including its timeline.", action: "library", availability: "Available", advanced: false },
-        { id: "discover", title: "Visual discovery", body: "Point or draw inside a photo to find similar regions.", action: "discover", availability: "Available", advanced: false },
-        { id: "people", title: "People", body: "Review groupings. A group is not yet a person.", action: "people", availability: "Available", advanced: false },
-        { id: "searchNames", title: "Search names", body: "Find named people from what you remember.", action: "searchNames", availability: "Available", advanced: false },
-        { id: "searchText", title: "Text in photos", body: "Search text found in photos when OCR is available.", action: "searchText", availability: "Optional", advanced: false },
-        { id: "searchObjects", title: "Objects in photos", body: "Search labelled objects when an object pack is installed.", action: "searchObjects", availability: "Optional", advanced: false },
-        { id: "ask", title: "Ask photo", body: "Read and describe the open photo.", action: "ask", availability: "Available", advanced: false },
-        { id: "keeps", title: "Kept finds", body: "Reopen a visual search you saved.", action: "keeps", availability: "Available", advanced: false },
-        { id: "activity", title: "Activity", body: "Recent imports and processing.", action: "activity", availability: "Available", advanced: false },
-        { id: "duplicates", title: "Duplicates", body: "Find exact and near duplicates.", action: "duplicates", availability: "Advanced", advanced: true },
-        { id: "appearance", title: "Appearance", body: "Theme and density live in Settings.", action: "appearance", availability: "Available", advanced: false }
+        { id: "library", title: "Library", body: "Walk through your pictures by time.", action: "library", availability: "Ready", advanced: false },
+        { id: "discover", title: "Visual discovery", body: "Open a picture, point at a detail, and find it again.", action: "discover", availability: "Ready", advanced: false },
+        { id: "people", title: "People", body: "Look at suggested groups. A group is not a person until you name them.", action: "people", availability: "Ready", advanced: false },
+        { id: "searchNames", title: "Search names", body: "Find someone you have already named.", action: "searchNames", availability: "Ready", advanced: false },
+        { id: "searchText", title: "Text in photos", body: "Find words that appear inside pictures, when reading text is ready.", action: "searchText", availability: "Extra", advanced: false },
+        { id: "searchObjects", title: "Things in photos", body: "Find things Semblon can recognise, once that extra piece is installed.", action: "searchObjects", availability: "Extra", advanced: false },
+        { id: "ask", title: "Ask about a picture", body: "Read what Semblon can say about the open picture.", action: "ask", availability: "Ready", advanced: false },
+        { id: "keeps", title: "Kept finds", body: "Open a search you saved, with the same picture and the same detail.", action: "keeps", availability: "Ready", advanced: false },
+        { id: "activity", title: "Recent activity", body: "See what was added and what finished.", action: "activity", availability: "Ready", advanced: false },
+        { id: "duplicates", title: "Copies", body: "Look for pictures that are the same, or nearly the same.", action: "duplicates", availability: "More options", advanced: true },
+        { id: "appearance", title: "Look and feel", body: "Colour theme and photo size live in Settings.", action: "appearance", availability: "Ready", advanced: false }
     ]
+
+    function inkOn(bg) {
+        function lin(u) {
+            return u <= 0.03928 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4)
+        }
+        var L = 0.2126 * lin(bg.r) + 0.7152 * lin(bg.g) + 0.0722 * lin(bg.b)
+        return L > 0.42 ? "#101418" : "#f7f4ee"
+    }
 
     function rowVisible(row) {
         if (row.advanced && !advancedMode)
@@ -98,72 +109,89 @@ Item {
         color: tokenBg
     }
 
+    // Signature rule. Marks this as a desk, not a panel.
+    Rectangle {
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: 3
+        color: tokenAccent
+    }
+
     Flickable {
         id: scroll
         anchors.fill: parent
+        anchors.leftMargin: 3
         contentWidth: width
-        contentHeight: page.implicitHeight + 80
+        contentHeight: page.implicitHeight + 96
         clip: true
         boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
         Column {
             id: page
-            width: Math.min(760, parent.width - 64)
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: 48
-            spacing: 18
+            width: Math.min(1040, parent.width - 72)
+            x: 36
+            y: 28
+            spacing: 16
 
-            // —— Launchpad ——
             Column {
                 width: parent.width
-                spacing: 18
+                spacing: 28
                 visible: !catalogueOpen
 
-                Text {
-                    width: parent.width
-                    text: "YOUR VISUAL MEMORY"
-                    color: tokenFaint
-                    font.family: "Segoe UI"
-                    font.pixelSize: 12
-                    font.letterSpacing: 1.2
-                    horizontalAlignment: Text.AlignHCenter
-                }
-                Text {
-                    width: parent.width
-                    text: "There is more to remember."
-                    color: tokenText
-                    font.family: "Segoe UI Variable"
-                    font.pixelSize: 28
-                    font.weight: Font.DemiBold
-                    wrapMode: Text.WordWrap
-                    horizontalAlignment: Text.AlignHCenter
-                }
-                Text {
-                    width: parent.width
-                    text: "Find a photo, follow a visual detail, or explore a connection you hadn't noticed."
-                    color: tokenMuted
-                    font.family: "Segoe UI"
-                    font.pixelSize: 15
-                    wrapMode: Text.WordWrap
-                    horizontalAlignment: Text.AlignHCenter
-                }
-
-                // Search well
                 Column {
                     width: parent.width
+                    spacing: 10
+
+                    Text {
+                        text: "A PRIVATE PLACE FOR YOUR PICTURES"
+                        color: tokenAccent
+                        font.family: root.uiFace
+                        font.pixelSize: 11
+                        font.letterSpacing: 2.2
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        width: Math.min(parent.width, 640)
+                        text: "There is more to remember."
+                        color: tokenText
+                        font.family: root.displayFace
+                        font.pixelSize: parent.width < 640 ? 36 : 44
+                        font.weight: Font.Medium
+                        lineHeight: 0.95
+                        wrapMode: Text.WordWrap
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: text
+                    }
+                    Text {
+                        width: Math.min(parent.width, 560)
+                        text: emptyArchive
+                              ? "Your pictures stay in their folders. Add one folder, open a picture, and point at something you want to find again."
+                              : "Open a picture, point at a detail, or return to someone you have already named."
+                        color: tokenMuted
+                        font.family: root.uiFace
+                        font.pixelSize: 16
+                        lineHeight: 1.35
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                Column {
+                    width: Math.min(parent.width, 640)
                     spacing: 8
 
                     Rectangle {
                         width: parent.width
-                        height: 44
-                        radius: 10
-                        color: tokenBg2
+                        height: 52
+                        radius: 0
+                        color: "transparent"
                         border.color: homeSearch.activeFocus ? tokenAccent : tokenBorder
-                        border.width: 1
+                        border.width: homeSearch.activeFocus ? 1.5 : 1
 
                         Row {
                             anchors.fill: parent
-                            anchors.leftMargin: 14
+                            anchors.leftMargin: 16
                             anchors.rightMargin: 12
                             spacing: 10
 
@@ -173,22 +201,23 @@ Item {
                                 width: parent.width - modeChip.width - 10
                                 height: parent.height
                                 verticalAlignment: TextInput.AlignVCenter
-                                placeholderText: "Search names"
+                                placeholderText: emptyArchive ? "Search names after you have named someone" : "Search names"
                                 placeholderTextColor: tokenFaint
                                 color: tokenText
-                                font.family: "Segoe UI"
-                                font.pixelSize: 14
+                                font.family: root.uiFace
+                                font.pixelSize: 15
                                 background: Item {}
                                 selectByMouse: true
+                                Accessible.name: "Search names"
                                 onAccepted: if (shellReady) shellApi.submitCommand(text)
                             }
                             Rectangle {
                                 id: modeChip
                                 width: modeChipLabel.implicitWidth + 16
                                 height: 26
-                                radius: 6
+                                radius: 0
                                 anchors.verticalCenter: parent.verticalCenter
-                                color: tokenBg3
+                                color: "transparent"
                                 border.color: tokenBorder
                                 border.width: 1
                                 Text {
@@ -196,104 +225,106 @@ Item {
                                     anchors.centerIn: parent
                                     text: searchModeShort
                                     color: tokenMuted
-                                    font.family: "Segoe UI"
+                                    font.family: root.uiFace
                                     font.pixelSize: 11
+                                    font.letterSpacing: 0.6
                                 }
                             }
                         }
                     }
                     Text {
                         width: parent.width
-                        text: "Typing searches names. Text in photos and objects are other modes in Settings. A region search starts from Visual discovery."
+                        text: "This looks up people you have named. Words inside pictures, and things in pictures, are other searches in Settings. A detail search starts from Visual discovery."
                         color: tokenFaint
-                        font.family: "Segoe UI"
+                        font.family: root.uiFace
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
-                        horizontalAlignment: Text.AlignHCenter
                     }
                 }
 
-                // State band
                 Column {
                     width: parent.width
-                    spacing: 10
+                    spacing: 14
 
                     Text {
                         objectName: "emptyStatus"
-                        width: parent.width
+                        width: Math.min(parent.width, 640)
                         visible: jobLabel !== "" || canResume
                         text: jobLabel === "Last add failed"
-                              ? "The last add didn't finish. Try again or choose another folder."
-                              : (canResume ? "The last add was stopped. Resume it or choose another folder." : jobLabel)
+                              ? "The last add didn't finish. Your pictures were not changed. Try again, or choose another folder."
+                              : (canResume ? "The last add was stopped. Resume it, or choose another folder." : jobLabel)
                         color: tokenMuted
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
+                        font.family: root.uiFace
+                        font.pixelSize: 14
                         wrapMode: Text.WordWrap
-                        horizontalAlignment: Text.AlignHCenter
                     }
 
                     Text {
-                        width: parent.width
+                        width: Math.min(parent.width, 640)
                         visible: jobRunning
-                        text: "Adding your folder. The library will unlock here as media is indexed."
+                        text: "Adding your folder. Pictures that are ready can already be opened in the library."
                         color: tokenMuted
-                        font.family: "Segoe UI"
-                        font.pixelSize: 14
+                        font.family: root.uiFace
+                        font.pixelSize: 15
                         wrapMode: Text.WordWrap
-                        horizontalAlignment: Text.AlignHCenter
                     }
 
-                    // Empty: dominant Add a folder
                     Rectangle {
                         objectName: "homeAddFolder"
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: Math.max(180, addPrimaryLabel.implicitWidth + 48)
-                        height: 44
-                        radius: 8
+                        width: Math.max(240, addPrimaryLabel.implicitWidth + 56)
+                        height: 56
+                        radius: 0
                         visible: emptyArchive && !jobRunning
-                        color: addPrimaryArea.containsMouse ? tokenAccentDim : tokenAccent
+                        color: addPrimaryArea.containsMouse ? tokenText : tokenAccent
+                        border.width: addPrimaryArea.activeFocus ? 2 : 0
+                        border.color: tokenText
+
                         Text {
                             id: addPrimaryLabel
                             anchors.centerIn: parent
                             text: "Add a folder"
-                            color: tokenText
-                            font.family: "Segoe UI"
-                            font.pixelSize: 15
+                            color: addPrimaryArea.containsMouse ? tokenBg : root.inkOn(parent.color)
+                            font.family: root.uiFace
+                            font.pixelSize: 16
                             font.weight: Font.DemiBold
+                            font.letterSpacing: 0.4
                         }
                         MouseArea {
                             id: addPrimaryArea
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
+                            Accessible.name: "Add a folder of pictures"
+                            Accessible.role: Accessible.Button
                             onClicked: root.runAction("addFolder")
                         }
                     }
 
-                    // Loaded: compact summary + quiet add
                     Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: 16
+                        spacing: 18
                         visible: !emptyArchive && !jobRunning
 
                         Text {
-                            text: archiveSummary
-                            color: tokenMuted
-                            font.family: "Segoe UI"
-                            font.pixelSize: 14
+                            text: archiveSummary !== "" ? archiveSummary : "Your library is ready."
+                            color: tokenText
+                            font.family: root.displayFace
+                            font.pixelSize: 20
                             anchors.verticalCenter: parent.verticalCenter
                         }
                         Text {
                             objectName: "homeAddFolderQuiet"
                             text: "Add a folder"
                             color: quietAddArea.containsMouse ? tokenText : tokenAccent
-                            font.family: "Segoe UI"
+                            font.family: root.uiFace
                             font.pixelSize: 14
+                            font.underline: quietAddArea.containsMouse
                             anchors.verticalCenter: parent.verticalCenter
+                            Accessible.name: "Add another folder"
+                            Accessible.role: Accessible.Button
                             MouseArea {
                                 id: quietAddArea
                                 anchors.fill: parent
-                                anchors.margins: -4
+                                anchors.margins: -6
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: root.runAction("addFolder")
@@ -303,12 +334,11 @@ Item {
 
                     Rectangle {
                         objectName: "emptyResume"
-                        anchors.horizontalCenter: parent.horizontalCenter
                         width: resumeEmptyLabel.implicitWidth + 36
-                        height: 40
-                        radius: 8
-                        color: resumeEmptyArea.containsMouse ? tokenAccentDim : tokenBg2
-                        border.color: tokenBorder
+                        height: 44
+                        radius: 0
+                        color: resumeEmptyArea.containsMouse ? tokenAccentDim : "transparent"
+                        border.color: tokenAccent
                         border.width: 1
                         visible: canResume && !jobRunning
                         Text {
@@ -317,7 +347,7 @@ Item {
                             anchors.centerIn: parent
                             text: jobLabel === "Last add failed" ? "Try again" : "Resume"
                             color: tokenText
-                            font.family: "Segoe UI"
+                            font.family: root.uiFace
                             font.pixelSize: 14
                         }
                         MouseArea {
@@ -325,124 +355,199 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
+                            Accessible.name: resumeEmptyLabel.text
+                            Accessible.role: Accessible.Button
                             onClicked: root.runAction("resume")
                         }
                     }
                 }
 
-                Text {
-                    width: parent.width
-                    text: "Explore"
-                    color: tokenFaint
-                    font.family: "Segoe UI"
-                    font.pixelSize: 12
-                    font.letterSpacing: 0.6
-                    horizontalAlignment: Text.AlignHCenter
-                }
-
-                // Capability cards
                 Column {
+                    id: firstRunGuide
+                    objectName: "firstRunGuide"
                     width: parent.width
-                    spacing: 12
+                    spacing: 0
+                    visible: emptyArchive && !jobRunning
+
+                    Text {
+                        text: "START HERE"
+                        color: tokenFaint
+                        font.family: root.uiFace
+                        font.pixelSize: 11
+                        font.letterSpacing: 1.8
+                        bottomPadding: 12
+                    }
 
                     Repeater {
                         model: [
-                            { objectName: "archiveCard", icon: "library", title: "Library", action: "library" },
-                            { objectName: "discoverCard", icon: "similar", title: "Visual discovery", action: "discover" },
-                            { objectName: "peopleCard", icon: "people", title: "People", action: "people" }
+                            { n: "01", title: "Add pictures", body: "Choose a folder. Semblon reads it here and leaves the files where they are." },
+                            { n: "02", title: "Point at a detail", body: "Open one picture and point, or draw around the thing you want to find again." },
+                            { n: "03", title: "Name someone only when you are sure", body: "Suggested groups are not people. Unknown is a fine answer." }
                         ]
-                        delegate: Rectangle {
-                            objectName: modelData.objectName
-                            width: page.width
-                            height: cardCol.implicitHeight + 28
-                            radius: 12
-                            color: cardArea.containsMouse ? tokenBg2 : tokenBg1
-                            border.color: tokenBorder
-                            border.width: 1
-                            readonly property string cardBody: {
-                                if (modelData.action === "library")
-                                    return "Browse the collection, including its timeline."
-                                if (modelData.action === "discover")
-                                    return emptyArchive
-                                           ? "Point or draw inside a photo to find similar regions. Add a folder first."
-                                           : "Point or draw inside a photo to find similar regions."
-                                return "Review groupings. A group is not yet a person."
+                        delegate: Column {
+                            width: firstRunGuide.width
+                            spacing: 0
+
+                            Rectangle {
+                                width: parent.width
+                                height: 1
+                                color: tokenBorder
                             }
-
                             Row {
-                                id: cardCol
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                anchors.leftMargin: 16
-                                anchors.rightMargin: 16
-                                spacing: 14
+                                width: parent.width
+                                spacing: 18
+                                topPadding: 8
+                                bottomPadding: 8
 
-                                DuotoneIcon {
-                                    width: 22
-                                    height: 22
-                                    icon: modelData.icon
-                                    fillColor: tokenAccent
-                                    cutoutColor: tokenBg1
-                                    anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    text: modelData.n
+                                    color: tokenAccent
+                                    font.family: root.displayFace
+                                    font.pixelSize: 22
+                                    width: 48
                                 }
                                 Column {
-                                    width: parent.width - 36
+                                    width: parent.width - 66
                                     spacing: 4
+                                    Text {
+                                        text: modelData.title
+                                        color: tokenText
+                                        font.family: root.displayFace
+                                        font.pixelSize: 20
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: modelData.body
+                                        color: tokenMuted
+                                        font.family: root.uiFace
+                                        font.pixelSize: 14
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: tokenBorder
+                    }
+                }
+
+                Column {
+                    width: parent.width
+                    spacing: 14
+
+                    Text {
+                        text: "GO FURTHER"
+                        color: tokenFaint
+                        font.family: root.uiFace
+                        font.pixelSize: 11
+                        font.letterSpacing: 1.8
+                    }
+
+                    Grid {
+                        width: parent.width
+                        columns: parent.width < 720 ? 1 : 3
+                        columnSpacing: 18
+                        rowSpacing: 18
+
+                        Repeater {
+                            model: [
+                                { objectName: "archiveCard", index: "01", title: "Library", action: "library" },
+                                { objectName: "discoverCard", index: "02", title: "Visual discovery", action: "discover" },
+                                { objectName: "peopleCard", index: "03", title: "People", action: "people" }
+                            ]
+                            delegate: Rectangle {
+                                objectName: modelData.objectName
+                                width: page.width < 720 ? page.width : (page.width - 36) / 3
+                                height: cardCol.implicitHeight + 36
+                                radius: 0
+                                color: cardArea.containsMouse ? tokenBg1 : "transparent"
+                                border.color: cardArea.containsMouse ? tokenAccent : tokenBorder
+                                border.width: 1
+
+                                readonly property string cardBody: {
+                                    if (modelData.action === "library")
+                                        return "Browse the collection, including its timeline."
+                                    if (modelData.action === "discover")
+                                        return emptyArchive
+                                               ? "Point or draw inside a photo to find similar regions. Add a folder first."
+                                               : "Point or draw inside a photo to find similar regions."
+                                    return "Review groupings. A group is not yet a person."
+                                }
+
+                                Column {
+                                    id: cardCol
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 16
+                                    spacing: 8
+
+                                    Text {
+                                        text: modelData.index
+                                        color: tokenAccent
+                                        font.family: root.displayFace
+                                        font.pixelSize: 13
+                                        font.letterSpacing: 1
+                                    }
                                     Text {
                                         width: parent.width
                                         text: modelData.title
                                         color: tokenText
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 16
-                                        font.weight: Font.DemiBold
+                                        font.family: root.displayFace
+                                        font.pixelSize: 22
                                         wrapMode: Text.WordWrap
                                     }
                                     Text {
                                         width: parent.width
                                         text: cardBody
                                         color: tokenMuted
-                                        font.family: "Segoe UI"
+                                        font.family: root.uiFace
                                         font.pixelSize: 13
                                         wrapMode: Text.WordWrap
+                                        lineHeight: 1.3
                                     }
                                 }
-                            }
-                            MouseArea {
-                                id: cardArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.runAction(modelData.action)
+                                MouseArea {
+                                    id: cardArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    Accessible.name: modelData.title
+                                    Accessible.role: Accessible.Button
+                                    onClicked: root.runAction(modelData.action)
+                                }
                             }
                         }
                     }
                 }
 
-                Column {
-                    width: parent.width
-                    spacing: 6
-                    topPadding: 8
+                Row {
+                    spacing: 16
 
                     Text {
-                        width: parent.width
-                        text: "There is more to explore"
+                        text: "There is more to explore."
                         color: tokenFaint
-                        font.family: "Segoe UI"
-                        font.pixelSize: 12
-                        horizontalAlignment: Text.AlignHCenter
+                        font.family: root.uiFace
+                        font.pixelSize: 13
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
                         objectName: "exploreAllCapabilities"
-                        anchors.horizontalCenter: parent.horizontalCenter
                         text: "Explore all capabilities"
                         color: catalogueLinkArea.containsMouse ? tokenText : tokenAccent
-                        font.family: "Segoe UI"
+                        font.family: root.uiFace
                         font.pixelSize: 14
+                        font.underline: catalogueLinkArea.containsMouse
+                        Accessible.name: "Explore all capabilities"
+                        Accessible.role: Accessible.Button
                         MouseArea {
                             id: catalogueLinkArea
                             anchors.fill: parent
-                            anchors.margins: -4
+                            anchors.margins: -6
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
@@ -454,62 +559,66 @@ Item {
                 }
             }
 
-            // —— Catalogue ——
             Column {
                 width: parent.width
-                spacing: 14
+                spacing: 18
                 visible: catalogueOpen
 
-                Row {
+                Text {
+                    objectName: "catalogueBack"
+                    text: "Back to the start"
+                    color: backArea.containsMouse ? tokenText : tokenAccent
+                    font.family: root.uiFace
+                    font.pixelSize: 14
+                    Accessible.name: "Back to the start"
+                    Accessible.role: Accessible.Button
+                    MouseArea {
+                        id: backArea
+                        anchors.fill: parent
+                        anchors.margins: -6
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: catalogueOpen = false
+                    }
+                }
+                Text {
                     width: parent.width
-                    spacing: 12
-                    Text {
-                        objectName: "catalogueBack"
-                        text: "← Home"
-                        color: backArea.containsMouse ? tokenText : tokenAccent
-                        font.family: "Segoe UI"
-                        font.pixelSize: 14
-                        anchors.verticalCenter: parent.verticalCenter
-                        MouseArea {
-                            id: backArea
-                            anchors.fill: parent
-                            anchors.margins: -4
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: catalogueOpen = false
-                        }
-                    }
-                    Text {
-                        text: "All capabilities"
-                        color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 20
-                        font.weight: Font.DemiBold
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
+                    text: "What you can do"
+                    color: tokenText
+                    font.family: root.displayFace
+                    font.pixelSize: 40
+                    wrapMode: Text.WordWrap
+                }
+                Text {
+                    width: Math.min(parent.width, 560)
+                    text: "Every door below is something Semblon can already do. Extras say so before you open them."
+                    color: tokenMuted
+                    font.family: root.uiFace
+                    font.pixelSize: 15
+                    wrapMode: Text.WordWrap
                 }
 
                 Rectangle {
-                    width: parent.width
-                    height: 36
-                    radius: 8
-                    color: tokenBg2
+                    width: Math.min(parent.width, 480)
+                    height: 44
+                    color: "transparent"
                     border.color: catalogueSearch.activeFocus ? tokenAccent : tokenBorder
                     border.width: 1
                     TextField {
                         id: catalogueSearch
                         objectName: "catalogueFilterField"
                         anchors.fill: parent
-                        anchors.leftMargin: 12
-                        anchors.rightMargin: 12
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
                         verticalAlignment: TextInput.AlignVCenter
-                        placeholderText: "Filter capabilities"
+                        placeholderText: "Find something you can do"
                         placeholderTextColor: tokenFaint
                         color: tokenText
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
+                        font.family: root.uiFace
+                        font.pixelSize: 14
                         background: Item {}
                         selectByMouse: true
+                        Accessible.name: "Find something you can do"
                         onTextChanged: catalogueFilter = text
                     }
                 }
@@ -518,34 +627,32 @@ Item {
                     model: catalogueRows
                     delegate: Rectangle {
                         width: page.width
-                        height: catCol.implicitHeight + 24
-                        radius: 10
+                        height: visible ? catCol.implicitHeight + 28 : 0
                         visible: root.rowVisible(modelData)
-                        color: catArea.containsMouse ? tokenBg2 : tokenBg1
+                        color: catArea.containsMouse ? tokenBg1 : "transparent"
                         border.color: tokenBorder
-                        border.width: 1
+                        border.width: visible ? 1 : 0
 
                         Column {
                             id: catCol
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            anchors.margins: 14
+                            anchors.margins: 16
                             spacing: 4
                             Row {
-                                spacing: 10
+                                spacing: 12
                                 Text {
                                     text: modelData.title
                                     color: tokenText
-                                    font.family: "Segoe UI"
-                                    font.pixelSize: 15
-                                    font.weight: Font.DemiBold
+                                    font.family: root.displayFace
+                                    font.pixelSize: 20
                                 }
                                 Text {
                                     text: modelData.availability
                                     color: tokenFaint
-                                    font.family: "Segoe UI"
-                                    font.pixelSize: 11
+                                    font.family: root.uiFace
+                                    font.pixelSize: 12
                                     anchors.verticalCenter: parent.verticalCenter
                                 }
                             }
@@ -553,8 +660,8 @@ Item {
                                 width: parent.width
                                 text: modelData.body
                                 color: tokenMuted
-                                font.family: "Segoe UI"
-                                font.pixelSize: 13
+                                font.family: root.uiFace
+                                font.pixelSize: 14
                                 wrapMode: Text.WordWrap
                             }
                         }
@@ -563,6 +670,8 @@ Item {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
+                            Accessible.name: modelData.title
+                            Accessible.role: Accessible.Button
                             onClicked: root.runAction(modelData.action)
                         }
                     }

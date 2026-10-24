@@ -12,6 +12,12 @@
 | Parent HEAD | (see git log on branch) |
 | Working tree at evidence | Permanent Home stage + capability catalogue; shell journey updated |
 
+## Behaviour landed — Safelight Desk
+
+The production shell is still the only GUI (`semblon shell`). Home is a first-arrival desk: one promise, **Add a folder**, three steps, then Library, Visual discovery, and People. Everyday labels no longer name engines, packs, or search internals. A notice banner separates a failure, a missing extra, and work in progress, and says the original files were not changed. Identity thresholds, schema, and face comparison were not edited. Plan: `docs/ux-overhaul-plan.md`.
+
+Linux check on this branch, 2026-10-24: `xvfb-run -a .venv/bin/python -m pytest -q` → **988 passed, 7 skipped**.
+
 ## Status vocabulary
 
 | Status | Meaning |

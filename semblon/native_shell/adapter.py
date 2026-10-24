@@ -620,16 +620,16 @@ class ArchiveAdapter:
 
         file_path = Path(path)
         if not file_path.is_file():
-            return Result("unavailable", "Pack: choose a local pack file.", {})
+            return Result("unavailable", "Choose a reference file on this computer.", {})
         try:
             pack = load_pack(file_path)
         except (PackError, OSError, ValueError) as exc:
             raise AdapterError("pack.INVALID", str(exc)) from exc
         if not pack:
-            return Result("unavailable", "Pack: that file is not a pack.", {})
+            return Result("unavailable", "That file is not a reference Semblon can use.", {})
         os.environ["SEMBLON_LKG_PACK"] = str(file_path.resolve())
         count = len(pack.get("entries") or [])
-        return Result("ready", f"Pack: {count} entries in the local file.", {"count": count, "path": str(file_path)})
+        return Result("ready", f"Reference notes loaded ({count}).", {"count": count, "path": str(file_path)})
 
     def install_model_file(self, source: str, dest: str) -> Result:
         from semblon.model_install import InstallError, install_model
@@ -638,7 +638,7 @@ class ArchiveAdapter:
             rec = install_model(Path(source), Path(dest))
         except InstallError as exc:
             raise AdapterError("model.INSTALL", str(exc)) from exc
-        return Result("ready", "Model file: installed locally.", {"path": rec.get("path"), "state": rec.get("state")})
+        return Result("ready", "That extra piece is installed on this computer.", {"path": rec.get("path"), "state": rec.get("state")})
 
     def install_region_pack(self) -> Result:
         """User-confirmed one-click installer for the pinned region encoder."""
@@ -650,9 +650,9 @@ class ArchiveAdapter:
             raise AdapterError("region_pack.INSTALL", str(exc), state="unavailable") from exc
         changed = bool(rec.get("changed"))
         message = (
-            "Region model installed. Similar look will retry now."
+            "The piece that finds a similar look is ready. Semblon will try that search again."
             if changed
-            else "Region model already installed. Similar look will retry now."
+            else "That piece was already here. Semblon will try the similar-look search again."
         )
         return Result(
             "ready",
@@ -675,9 +675,9 @@ class ArchiveAdapter:
             raise AdapterError("object_pack.INSTALL", str(exc), state="unavailable") from exc
         changed = bool(rec.get("changed"))
         message = (
-            "Object model installed. This search will run again."
+            "Semblon can now look for things in pictures. That search will run again."
             if changed
-            else "Object model already installed. This search will run again."
+            else "Looking for things in pictures was already ready. That search will run again."
         )
         return Result(
             "ready",
@@ -700,9 +700,9 @@ class ArchiveAdapter:
             raise AdapterError("vlm.INSTALL", str(exc), state="unavailable") from exc
         changed = bool(rec.get("changed"))
         message = (
-            "Description model installed. This search will run again."
+            "Semblon can now describe a picture. That will run again."
             if changed
-            else "Description model already installed. This search will run again."
+            else "Describing a picture was already ready. It will run again."
         )
         return Result(
             "ready",

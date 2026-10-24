@@ -217,10 +217,35 @@ ApplicationWindow {
         return ""
     }
     readonly property var primarySettingCalls: ["cycleDensity", "libraryHealth", "showActivity", "modePeople", "modeText", "modeObject", "rescan", "resetDefaults", "clearLibrary"]
-    readonly property var primarySettingLabels: ["Density", "Library health", "Activity", "Search people", "Search text", "Search objects", "Rescan", "Reset defaults", "Clear library"]
+    readonly property var primarySettingLabels: ["Photo size", "Check the library", "Recent activity", "Search by name", "Search words in pictures", "Search things in pictures", "Look through the folder again", "Reset how it looks", "Clear the library index"]
     readonly property var advancedSettingCalls: ["scanDuplicates", "showCapabilities", "gpuAuto", "gpuOff", "namedItems", "knowledgePack", "installModel"]
-    readonly property var advancedSettingLabels: ["Duplicates", "Capabilities", "GPU auto", "GPU off", "Named items", "Knowledge pack", "Install model"]
-    font.family: "Segoe UI"
+    readonly property var advancedSettingLabels: ["Look for copies", "What is installed", "Use the graphics card when it helps", "Don't use the graphics card", "Things you have named", "Knowledge pack", "Install model"]
+    readonly property string displayFace: "Noto Serif"
+    readonly property string uiFace: "Inter"
+    font.family: uiFace
+    font.pixelSize: 13
+
+    function friendlyCapability(row) {
+        var id = row ? String(row.itemId || row.id || "") : ""
+        var known = {
+            "region_pack": ["Finding a similar look", "The extra piece that matches a detail you point at is not on this computer yet. Colour matching still works, and Semblon will say when that is all it used."],
+            "object_pack": ["Things in pictures", "Semblon cannot name things in pictures until this extra piece is installed. It never decides who someone is."],
+            "vlm_local": ["Describing a picture", "A local description is not ready. Semblon will not download it on its own."],
+            "ocr": ["Words in pictures", "Reading words inside pictures is not ready on this computer."],
+            "clip": ["A broader sense of the picture", "This optional extra is not installed. Semblon will not fetch it by itself."],
+            "face_pack": ["Recognising faces", "The files used to notice faces are not on this computer yet. Semblon does not download them. Naming someone stays your decision."],
+            "opencv_load": ["Reading pictures", "Semblon could not open its picture reader on this computer."],
+            "architecture": ["This computer", "Semblon is not running as the native build for this computer, so some picture work may be slower."],
+            "authenticode": ["A signed installer", "This copy is not signed. That does not change the pictures already here."],
+            "model_licence": ["Permission to include extras", "Some extras stay ones you add yourself."],
+            "preflight": ["Setup check", "The check could not finish. Your pictures were not changed."]
+        }
+        if (known[id])
+            return { title: known[id][0], body: known[id][1] }
+        var title = row && row.name ? String(row.name) : "Something extra"
+        var body = row && row.detail ? String(row.detail) : ""
+        return { title: title, body: body }
+    }
 
     function handleSetting(call) {
         if (!shellReady)
@@ -392,17 +417,30 @@ ApplicationWindow {
             // Brand + collapse
             Item {
                 width: parent.width
-                height: 36
+                height: sidebarCollapsed ? 36 : 52
 
-                Text {
+                Column {
                     visible: !sidebarCollapsed
                     anchors.left: parent.left
+                    anchors.right: collapseBtn.left
+                    anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Semblon"
-                    color: tokenText
-                    font.family: "Segoe UI Variable"
-                    font.pixelSize: 18
-                    font.weight: Font.DemiBold
+                    spacing: 0
+
+                    Text {
+                        text: "Semblon"
+                        color: tokenText
+                        font.family: window.displayFace
+                        font.pixelSize: 22
+                        font.weight: Font.Medium
+                    }
+                    Text {
+                        text: "Pictures, kept here"
+                        color: tokenFaint
+                        font.family: window.uiFace
+                        font.pixelSize: 11
+                        font.letterSpacing: 0.4
+                    }
                 }
 
                 Rectangle {
@@ -475,9 +513,9 @@ ApplicationWindow {
                         return false
                     }
                     anchors.fill: parent
-                    radius: 8
+                    radius: 0
                     color: navSelected
-                           ? Qt.rgba(1, 1, 1, 0.08)
+                           ? Qt.rgba(1, 1, 1, 0.06)
                            : (navArea.containsMouse ? Qt.rgba(1, 1, 1, 0.04) : "transparent")
                     objectName: navId === "people" ? "peopleButton" :
                                 navId === "settings" ? "settingsButton" :
@@ -513,9 +551,10 @@ ApplicationWindow {
                         Text {
                             visible: !sidebarCollapsed
                             text: navLabel
-                            color: (navSelected || navArea.containsMouse) ? tokenText : tokenMuted
-                            font.family: "Segoe UI"
+                            color: navSelected ? tokenAccent : (navArea.containsMouse ? tokenText : tokenMuted)
+                            font.family: window.uiFace
                             font.pixelSize: 13
+                            font.letterSpacing: navSelected ? 0.4 : 0
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
@@ -759,25 +798,81 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
 
-        Row {
+        Rectangle {
             id: jobBand
             objectName: "jobBand"
             anchors.left: parent.left
+            anchors.right: parent.right
             anchors.top: parent.top
-            anchors.leftMargin: 28
-            anchors.topMargin: 8
-            spacing: 16
-            z: 2
+            anchors.leftMargin: 20
+            anchors.rightMargin: 20
+            anchors.topMargin: 16
+            z: 6
+            radius: 0
             visible: shellReady && !jobRunning && (shellApi.surfaceState === "error" || shellApi.surfaceState === "unavailable" || shellApi.surfaceState === "loading")
+            color: shellReady && shellApi.surfaceState === "error"
+                   ? Qt.rgba(tokenDanger.r, tokenDanger.g, tokenDanger.b, 0.16)
+                   : tokenBg2
+            border.color: shellReady && shellApi.surfaceState === "error" ? tokenDanger : tokenBorder
+            border.width: 1
+            implicitHeight: bandCol.implicitHeight + 28
+            height: visible ? implicitHeight : 0
 
-            Text {
-                objectName: "surfaceState"
-                text: shellReady
-                      ? (shellApi.noticeText || (shellApi.surfaceState === "loading" ? "Working…" : "Something went wrong. Try again."))
-                      : ""
-                color: shellReady && shellApi.surfaceState === "error" ? tokenDanger : tokenMuted
-                font.family: "Segoe UI"
-                font.pixelSize: 13
+            Column {
+                id: bandCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 14
+                spacing: 4
+
+                Text {
+                    objectName: "surfaceState"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: {
+                        if (!shellReady)
+                            return ""
+                        if (shellApi.noticeText)
+                            return shellApi.noticeText
+                        if (shellApi.surfaceState === "loading")
+                            return "Working…"
+                        if (shellApi.surfaceState === "unavailable")
+                            return "That is not available on this computer yet."
+                        return "Something went wrong. Try again."
+                    }
+                    color: shellReady && shellApi.surfaceState === "error" ? tokenText : tokenText
+                    font.family: window.uiFace
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.surfaceState === "error"
+                    text: "Your original pictures were not changed."
+                    color: tokenMuted
+                    font.family: window.uiFace
+                    font.pixelSize: 13
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.surfaceState === "loading"
+                    text: "This can take a moment. Pictures that are already here stay open."
+                    color: tokenMuted
+                    font.family: window.uiFace
+                    font.pixelSize: 13
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: shellReady && shellApi.surfaceState === "unavailable"
+                    text: "Other ways of looking through your pictures still work."
+                    color: tokenMuted
+                    font.family: window.uiFace
+                    font.pixelSize: 13
+                }
             }
         }
 
@@ -836,7 +931,7 @@ ApplicationWindow {
                 Text {
                     width: parent.width
                     visible: activityRowsSafe.length === 0
-                    text: shellReady ? (shellApi.noticeText || "Nothing processed yet.") : ""
+                    text: shellReady ? (shellApi.noticeText || "Nothing has been added yet.") : ""
                     color: tokenMuted
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -892,8 +987,16 @@ ApplicationWindow {
                 Text {
                     text: "Settings"
                     color: tokenText
-                    font.pixelSize: 16
-                    font.family: "Segoe UI"
+                    font.pixelSize: 22
+                    font.family: window.displayFace
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "How Semblon looks, and what it can do on this computer."
+                    color: tokenMuted
+                    font.pixelSize: 12
+                    font.family: window.uiFace
                 }
                 Text {
                     width: parent.width
@@ -905,11 +1008,11 @@ ApplicationWindow {
                 }
                 Text {
                     width: parent.width
-                    text: "Mode"
+                    text: "How much to show"
                     color: tokenFaint
                     font.pixelSize: 11
                     font.letterSpacing: 0.4
-                    font.family: "Segoe UI"
+                    font.family: window.uiFace
                 }
                 Row {
                     width: parent.width
@@ -924,9 +1027,10 @@ ApplicationWindow {
                         border.width: 1
                         Text {
                             anchors.centerIn: parent
-                            text: "Primary"
+                            text: "Everyday"
                             color: primaryModeSafe ? tokenText : tokenMuted
                             font.pixelSize: 12
+                            font.family: window.uiFace
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -944,9 +1048,10 @@ ApplicationWindow {
                         border.width: 1
                         Text {
                             anchors.centerIn: parent
-                            text: "Advanced"
+                            text: "More detail"
                             color: advancedModeSafe ? tokenText : tokenMuted
                             font.pixelSize: 12
+                            font.family: window.uiFace
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -957,11 +1062,11 @@ ApplicationWindow {
                 }
                 Text {
                     width: parent.width
-                    text: "Search quality"
+                    text: "How hard to look"
                     color: tokenFaint
                     font.pixelSize: 11
                     font.letterSpacing: 0.4
-                    font.family: "Segoe UI"
+                    font.family: window.uiFace
                 }
                 Text {
                     objectName: "searchQualityLabel"
@@ -1061,11 +1166,11 @@ ApplicationWindow {
                 }
                 Text {
                     width: parent.width
-                    text: "Capabilities"
+                    text: "What's ready"
                     color: tokenFaint
                     font.pixelSize: 11
                     font.letterSpacing: 0.4
-                    font.family: "Segoe UI"
+                    font.family: window.uiFace
                 }
                 Text {
                     objectName: "preflightSummary"
@@ -1082,13 +1187,27 @@ ApplicationWindow {
                     delegate: Column {
                         width: settingsColumn.width
                         spacing: 4
+                        readonly property var spoken: window.friendlyCapability({
+                            id: model.id,
+                            itemId: model.itemId,
+                            name: model.name,
+                            detail: model.detail
+                        })
                         Text {
                             width: parent.width
                             wrapMode: Text.WordWrap
-                            text: name + ". " + detail
+                            text: spoken.title
                             color: tokenText
+                            font.pixelSize: 13
+                            font.family: window.displayFace
+                        }
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: spoken.body
+                            color: tokenMuted
                             font.pixelSize: 12
-                            font.family: "Segoe UI"
+                            font.family: window.uiFace
                         }
                         Rectangle {
                             visible: installable
@@ -1118,11 +1237,11 @@ ApplicationWindow {
                 }
                 Text {
                     width: parent.width
-                    text: "Appearance"
+                    text: "Look and feel"
                     color: tokenFaint
                     font.pixelSize: 11
                     font.letterSpacing: 0.4
-                    font.family: "Segoe UI"
+                    font.family: window.uiFace
                 }
                 ComboBox {
                     id: atmospherePicker
@@ -1130,7 +1249,7 @@ ApplicationWindow {
                     width: parent.width
                     model: shellReady ? shellApi.atmosphereChoices : []
                     textRole: "label"
-                    displayText: (currentIndex >= 0 && model.length > currentIndex) ? model[currentIndex].label : "Atmosphere"
+                    displayText: (currentIndex >= 0 && model.length > currentIndex) ? model[currentIndex].label : "Colour theme"
                     palette.window: tokenBg2
                     palette.base: tokenBg2
                     palette.button: tokenBg2
@@ -1311,9 +1430,17 @@ ApplicationWindow {
                     Text {
                         text: "People"
                         color: tokenText
-                        font.pixelSize: 22
-                        font.family: "Segoe UI Variable"
-                        font.weight: Font.DemiBold
+                        font.pixelSize: 40
+                        font.family: window.displayFace
+                        font.weight: Font.Medium
+                    }
+                    Text {
+                        width: parent.width
+                        text: "Name someone only when you recognise them. Until then, a group is only a suggestion."
+                        color: tokenMuted
+                        font.family: window.uiFace
+                        font.pixelSize: 15
+                        wrapMode: Text.WordWrap
                     }
 
                     Text {
@@ -1353,11 +1480,26 @@ ApplicationWindow {
                         }
                     }
 
-                    Text {
-                        objectName: "peopleEmpty"
+                    Column {
+                        width: parent.width
+                        spacing: 6
                         visible: shellReady && shell.peopleEmpty
-                        text: "No groups yet."
-                        color: tokenMuted
+
+                        Text {
+                            objectName: "peopleEmpty"
+                            text: "No groups yet."
+                            color: tokenText
+                            font.family: window.displayFace
+                            font.pixelSize: 22
+                        }
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "Add pictures that include people. Semblon will suggest groups. A suggestion is not a person until you give them a name. Unknown is a fine answer."
+                            color: tokenMuted
+                            font.family: window.uiFace
+                            font.pixelSize: 14
+                        }
                     }
 
                     Row {
@@ -1378,10 +1520,10 @@ ApplicationWindow {
                                 spacing: 12
 
                                 Text {
-                                    text: "Candidate groups"
+                                    text: "Groups to look at"
                                     color: tokenText
-                                    font.pixelSize: 16
-                                    font.family: "Segoe UI"
+                                    font.pixelSize: 18
+                                    font.family: window.displayFace
                                 }
 
                                 ListView {
@@ -1483,7 +1625,7 @@ ApplicationWindow {
                                         spacing: 2
 
                                         Text {
-                                            text: selectedTitleSafe !== "" ? selectedTitleSafe : "Select a candidate group"
+                                            text: selectedTitleSafe !== "" ? selectedTitleSafe : "Choose a group"
                                             color: tokenText
                                             font.pixelSize: 20
                                             font.family: "Segoe UI Variable"
@@ -1495,7 +1637,7 @@ ApplicationWindow {
                                                   ? ((shellApi.selectedBandLabel || "") + " · "
                                                      + selectedCountSafe
                                                      + (selectedCountSafe === 1 ? " face" : " faces"))
-                                                  : "Choose a candidate group to review evidence, merge, name, note, or split faces. Name confirms a person."
+                                                  : "Choose a group. You can name them, leave them unknown, or say these faces are not the same person."
                                             color: tokenMuted
                                             font.pixelSize: 13
                                             wrapMode: Text.WordWrap
@@ -1505,7 +1647,7 @@ ApplicationWindow {
                                     Text {
                                         objectName: "peopleEvidence"
                                         visible: shellReady && shell.evidenceId !== ""
-                                        text: "Open evidence"
+                                        text: "See these photos"
                                         color: evidenceArea.containsMouse ? tokenText : tokenAccent
                                         font.pixelSize: 14
                                         anchors.verticalCenter: parent.verticalCenter
@@ -2261,8 +2403,8 @@ ApplicationWindow {
                         width: parent.width
                         visible: libraryGridOpen && !fieldSectionsActiveSafe && grid.count === 0
                         text: shellReady && shellApi.scopeKind === "day"
-                              ? "No photos on this day."
-                              : "No media found for this selection."
+                              ? "No photos on this day. Back returns to the calendar."
+                              : "Nothing in this view. Go back, or try another day."
                         color: tokenMuted
                         font.family: "Segoe UI"
                         font.pixelSize: 13
@@ -4262,7 +4404,7 @@ ApplicationWindow {
                             color: screenQueryHit.containsMouse ? tokenBg3 : tokenBg2
                             Text {
                                 anchors.centerIn: parent
-                                text: "Query screen"
+                                text: "Find this on my screen"
                                 color: tokenText
                                 font.family: "Segoe UI"
                                 font.pixelSize: 13
@@ -4272,7 +4414,7 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                Accessible.name: "Query screen"
+                                Accessible.name: "Find this on my screen"
                                 Accessible.role: Accessible.Button
                                 onClicked: {
                                     window.focusMoreOpen = false

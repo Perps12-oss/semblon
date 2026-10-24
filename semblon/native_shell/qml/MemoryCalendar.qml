@@ -232,8 +232,8 @@ Item {
                 objectName: "calendarTitle"
                 text: root.title || ""
                 color: tokenText
-                font.family: "Segoe UI Variable"
-                font.pixelSize: 22
+                font.family: "Noto Serif"
+                font.pixelSize: 28
                 font.weight: Font.DemiBold
                 verticalAlignment: Text.AlignVCenter
                 height: 36
@@ -242,7 +242,7 @@ Item {
             TextField {
                 id: jumpField
                 objectName: "calendarJump"
-                placeholderText: "YYYY-MM-DD"
+                placeholderText: "Example: 2026-10-24"
                 color: tokenText
                 placeholderTextColor: tokenFaint
                 font.family: "Segoe UI"
