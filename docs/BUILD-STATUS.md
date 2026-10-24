@@ -336,3 +336,4 @@ Command: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_timeline_view.py 
 Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE gates stay in `docs/FACE-GATES.md`. Product vision stays in `docs/PRODUCT.md`.
 
 - Contact Sheet polish pass (PR #187): drop-zone first run, sticky month header, day breaks, clearer scrubber, receding bar, plain-words install dialogs, keyboard loupe and People actions. See docs/UX-CONTACT-SHEET.md.
+- Contact Sheet fix-up pass (PR #187): month grouping and header corrected (per-month sections and counts), real day rows, even scrubber, in-theme confirm sheet replaces native pop-ups, pressed and focus states on the bottom bar. See docs/UX-CONTACT-SHEET.md.

@@ -21,3 +21,15 @@ Screenshots: `docs/evidence/contact-sheet/`.
 - Bottom bar: the Roll reserves bar height plus a margin at the end of a scroll; the bar shrinks and fades while scrolling and returns when scrolling stops or the pointer nears it. "Everything" is now "More... Ctrl+K" (Cmd+K on macOS).
 - Language: install and download dialogs describe what becomes possible ("Get finding-by-look ready"). A test scans user-visible strings for banned engine words.
 - Keyboard: loupe (L, arrows move, Shift+arrows resize, Enter finds) and People (S same as the next group, X send away, Tab to a "Same as" stack then Enter).
+
+## Fix-up pass
+
+- The Roll is a sectioned list: a month row, then one row per day (frame tag such as "SAT 8 FEB" and that day's count), then that day's photos. Every photo sits under its own month and day. Counts are per month and per day.
+- The sticky band names the month under it. A scrubber landing is only honoured while that month's header is still at the band.
+- The scrubber has even month slots, density as a small bar, a marker on the left rail, and lands exactly on the month header.
+- Gutter between pictures is `Theme.gutter` (5px) at every size.
+- Add a folder and Settings live in the sticky band, never over pictures.
+- Pictures: lift and amber hairline on hover, date and time chip, selected state (Ctrl/Shift click, keyboard). Grid centre-crops; the photo view shows the whole picture.
+- Every question and install runs in one in-theme sheet (verb buttons, size and privacy lines, inline progress, search re-runs on its own). No native pop-ups remain; only the system folder picker is native.
+- Bottom bar: the active verb shows a pressed state; every verb has a visible focus ring. The edge scrubber hides in the picture and People views.
+- Evidence: `docs/evidence/contact-sheet/fx-*.png` (after) and `before-fixup/` (before).
