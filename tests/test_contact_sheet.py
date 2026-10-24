@@ -150,3 +150,259 @@ def test_install_failure_text_never_leaks_engine_words():
     assert _plain("region pack install refused: sha256=abc", fallback) == fallback
     assert _plain("", fallback) == fallback
     assert _plain("The disk is full.", fallback) == "The disk is full."
+
+# --- Pointer and keyboard interaction (offscreen window, simulated input) ---
+
+def _spin(app, seconds=0.5):
+    import time
+
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.02)
+
+
+def _boot_with_photo(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor, QImage
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell
+
+    photo = tmp_path / "a.png"
+    img = QImage(480, 320, QImage.Format.Format_RGB32)
+    img.fill(QColor("#885522"))
+    img.save(str(photo))
+    store = tmp_path / "s.sqlite"
+    from semblon.store import connect, init_db
+
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+        ("m1", "folder", str(photo), "h", 480, 320, 1_503_000_000_000_000_000, 1),
+    )
+    conn.commit()
+    conn.close()
+    app = QApplication.instance() or QApplication([])
+    _a, engine = build_shell(store, app=app)
+    root = engine.rootObjects()[0]
+    root.resize(1200, 800)
+    root.show()
+    _spin(app, 1.5)
+    return app, engine, root, engine._semblon_bridge
+
+
+def _open_viewer(app, root, bridge):
+    from PySide6.QtCore import QMetaObject, QObject
+
+    bridge.openFocus("m1")
+    _spin(app, 1.0)
+    viewer = root.findChild(QObject, "viewer")
+    QMetaObject.invokeMethod(viewer, "forceActiveFocus")
+    _spin(app, 0.2)
+    return viewer
+
+
+def test_loupe_pointer_drag_selects_a_detail(tmp_path, monkeypatch):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        viewer = _open_viewer(app, root, bridge)
+        QTest.keyClick(root, Qt.Key.Key_L)
+        _spin(app, 0.2)
+        assert viewer.property("loupeOn") is True
+        cx, cy = root.width() // 2, root.height() // 2 - 40
+        QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(cx - 60, cy - 40))
+        for step in range(1, 9):
+            QTest.mouseMove(root, QPoint(cx - 60 + step * 15, cy - 40 + step * 10))
+            app.processEvents()
+        QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(cx + 60, cy + 40))
+        _spin(app, 0.3)
+        assert viewer.property("lw") > 100 and viewer.property("lh") > 70
+        nx, ny, nw, nh = bridge._region_norm
+        assert nw > 0 and nh > 0 and 0 <= nx <= 1 and 0 <= ny <= 1
+        assert bridge._selection_kind == "drawn"
+    finally:
+        shutdown_shell(engine)
+
+
+def test_loupe_keyboard_only_selects_a_detail(tmp_path, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        viewer = _open_viewer(app, root, bridge)
+        shift = Qt.KeyboardModifier.ShiftModifier
+        QTest.keyClick(root, Qt.Key.Key_L)
+        _spin(app, 0.3)
+        assert viewer.property("loupeOn") is True
+        QTest.keyClick(root, Qt.Key.Key_Right)
+        _spin(app, 0.2)
+        assert viewer.property("lw") > 0
+        start_x = viewer.property("lx")
+        QTest.keyClick(root, Qt.Key.Key_Right)
+        assert viewer.property("lx") > start_x
+        start_w = viewer.property("lw")
+        QTest.keyClick(root, Qt.Key.Key_Right, shift)
+        assert viewer.property("lw") > start_w
+        assert bridge.focusId == "m1"
+        QTest.keyClick(root, Qt.Key.Key_Return)
+        _spin(app, 0.2)
+        assert bridge._selection_kind == "drawn"
+        assert bridge._region_norm[2] > 0
+    finally:
+        shutdown_shell(engine)
+
+
+def _boot_people(tmp_path, monkeypatch):
+    from semblon.application import Application
+
+    calls = []
+
+    def fake_board(self, run_id=None):
+        return {
+            "items": [
+                {"cluster_id": cid, "face_count": 2, "named": False, "person_names": [],
+                 "members": [{"media_id": "m1", "face_id": f"f{cid}"}]}
+                for cid in ("c1", "c2")
+            ]
+        }
+
+    def record(name):
+        def _inner(*args, **kwargs):
+            calls.append((name, args[-2:] if name == "merge" else ()))
+            return {"display_name": "Ada"}
+        return _inner
+
+    monkeypatch.setattr(Application, "board", fake_board)
+    monkeypatch.setattr("semblon.review_board.merge_clusters", record("merge"))
+    monkeypatch.setattr("semblon.review_board.ignore_subject", record("ignore"))
+    monkeypatch.setattr("semblon.process.latest_run_id", lambda store, **kwargs: "run-1")
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    bridge.openPeople()
+    _spin(app, 1.0)
+    return app, engine, root, bridge, calls
+
+
+def test_people_pointer_drag_merges_one_print_onto_another(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject, QPoint, QPointF, Qt
+    from PySide6.QtQuick import QQuickItem
+    from PySide6.QtTest import QTest
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge, calls = _boot_people(tmp_path, monkeypatch)
+    try:
+        grid = root.findChild(QObject, "printGrid")
+        plates = [p for p in grid.property("contentItem").childItems() if p.objectName() == "print"]
+        assert len(plates) == 2
+        centres = [p.mapToScene(QPointF(70, 80)).toPoint() for p in plates]
+        a, b = centres
+        QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, a)
+        for step in range(1, 13):
+            QTest.mouseMove(root, QPoint(a.x() + (b.x() - a.x()) * step // 12, a.y() + (b.y() - a.y()) * step // 12))
+            app.processEvents()
+        QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, b)
+        _spin(app, 0.3)
+        assert [c[0] for c in calls] == ["merge"]
+    finally:
+        shutdown_shell(engine)
+
+
+def test_people_keyboard_merges_and_sends_away_without_a_mouse(tmp_path, monkeypatch):
+    from PySide6.QtCore import QMetaObject, QObject, Qt
+    from PySide6.QtTest import QTest
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge, calls = _boot_people(tmp_path, monkeypatch)
+    try:
+        grid = root.findChild(QObject, "printGrid")
+        QMetaObject.invokeMethod(grid, "forceActiveFocus")
+        _spin(app, 0.2)
+        QTest.keyClick(root, Qt.Key.Key_S)
+        _spin(app, 0.3)
+        assert [c[0] for c in calls] == ["merge"]
+        QTest.keyClick(root, Qt.Key.Key_X)
+        _spin(app, 0.3)
+        assert [c[0] for c in calls][-1] == "ignore"
+    finally:
+        shutdown_shell(engine)
+
+
+def _by_label(root, label):
+    from PySide6.QtCore import QObject
+
+    for item in root.findChildren(QObject):
+        if item.property("label") == label and item.property("dimmed") is not None:
+            return item
+    return None
+
+
+def test_first_run_has_one_primary_action_and_dimmed_verbs(tmp_path, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell, shutdown_shell
+
+    app = QApplication.instance() or QApplication([])
+    _a, engine = build_shell(tmp_path / "empty.sqlite", app=app)
+    root = engine.rootObjects()[0]
+    root.resize(1200, 800)
+    root.show()
+    _spin(app, 1.5)
+    try:
+        assert root.findChild(QObject, "addFolder").property("visible") is False
+        assert root.findChild(QObject, "chooseFolder").property("visible") is True
+        for label in ("Find a person", "Find a detail"):
+            verb = _by_label(root, label)
+            assert verb.property("dimmed") is True
+            assert verb.property("whyDimmed") == "Add photos first"
+            assert verb.property("activeFocusOnTab") is True
+        more = root.findChild(QObject, "moreButton").property("label")
+        assert more.startswith("More\u2026") and "Everything" not in more
+        palettes = [o for o in root.findChildren(QObject) if o.property("actions") is not None and o.property("open") is not None]
+        ids = {a["id"] for a in palettes[0].property("actions").toVariant()}
+        assert "add" in ids and "settings" in ids
+        assert not ids & {"people", "duplicates", "find", "region"}
+    finally:
+        shutdown_shell(engine)
+
+
+def test_with_photos_the_add_button_returns_and_verbs_wake(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, _bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        assert root.findChild(QObject, "addFolder").property("visible") is True
+        assert _by_label(root, "Find a person").property("dimmed") is False
+        assert root.findChild(QObject, "chooseFolder").property("visible") is False
+    finally:
+        shutdown_shell(engine)
+
+
+def test_day_breaks_use_frame_number_tags(tmp_path, monkeypatch):
+    from PySide6.QtCore import QMetaObject, QObject, Q_RETURN_ARG, Q_ARG
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, _bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        roll = next(o for o in root.findChildren(QObject) if o.property("dayBreaks") is not None)
+        ok, tag = QMetaObject.invokeMethod(
+            roll, "frameTag", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "2024-09-14")
+        ), None
+        assert ok == "SAT 14 SEP"
+    finally:
+        shutdown_shell(engine)

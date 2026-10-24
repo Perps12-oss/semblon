@@ -61,14 +61,30 @@ Item {
         model: peopleModel
         activeFocusOnTab: true
         keyNavigationEnabled: true
+        objectName: "printGrid"
+        // Keyboard twin of the drags: Enter picks, S marks as the same as the first named target, X sends it away.
+        Keys.onPressed: function (e) {
+            if (prints.currentIndex < 0 && prints.count > 0) prints.currentIndex = 0
+            var it = prints.currentItem
+            if (!it) return
+            if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { shell.selectGroup(it.subj); e.accepted = true }
+            else if (e.key === Qt.Key_X) { shell.selectGroup(it.subj); shell.decide("ignore", it.subj, ""); e.accepted = true }
+            else if (e.key === Qt.Key_S) {
+                shell.selectGroup(it.subj)
+                var c = shell.mergeCandidates
+                if (c.length > 0) shell.decide("merge", it.subj, c[0].subject)
+                e.accepted = true
+            }
+        }
         Accessible.role: Accessible.List
-        Accessible.name: "Groups of faces. Press Enter to choose one."
+        Accessible.name: "Groups of faces. Enter picks one. S marks it the same as the next group. X sends it away."
         delegate: Item {
             id: plate
             width: prints.cellWidth
             height: prints.cellHeight
             readonly property bool chosen: shell.selectedSubject === subject
-            Keys.onReturnPressed: shell.selectGroup(subject)
+            readonly property string subj: subject
+            objectName: "print"
             Accessible.role: Accessible.Button
             Accessible.name: (named ? title : "Unnamed group") + ", " + faceCount + (faceCount === 1 ? " photo" : " photos")
 
@@ -286,11 +302,17 @@ Item {
             Rectangle {
                 id: stack
                 property string subjectId: modelData.subject !== undefined ? modelData.subject : ""
+                objectName: "sameAsStack"
                 width: 120; height: 40
+                activeFocusOnTab: true
+                Keys.onReturnPressed: shell.decide("merge", shell.selectedSubject, stack.subjectId)
+                Keys.onSpacePressed: shell.decide("merge", shell.selectedSubject, stack.subjectId)
+                Accessible.role: Accessible.Button
+                Accessible.name: "Same as " + (modelData.title || "")
                 radius: Theme.pill
                 color: stackDrop.containsDrag ? Theme.amber : Theme.surface
-                border.width: 1
-                border.color: Theme.line
+                border.width: activeFocus ? 3 : 1
+                border.color: activeFocus ? Theme.amber : Theme.line
                 visible: subjectId !== ""
                 Text {
                     anchors.centerIn: parent

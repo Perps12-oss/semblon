@@ -49,10 +49,38 @@ Item {
     Rectangle { anchors.fill: parent; color: Theme.bg; opacity: 0.97 }
 
     Keys.onEscapePressed: { shell.escape(); viewer.closed() }
-    Keys.onLeftPressed: shell.focusPrev()
-    Keys.onRightPressed: shell.focusNext()
+    // While the loupe is on, arrows steer the circle instead of changing photo.
+    Keys.onLeftPressed: function (e) { if (!(loupeOn && keyRegion(e))) shell.focusPrev() }
+    Keys.onRightPressed: function (e) { if (!(loupeOn && keyRegion(e))) shell.focusNext() }
+    Keys.onUpPressed: function (e) { if (loupeOn) keyRegion(e); else e.accepted = false }
+    Keys.onDownPressed: function (e) { if (loupeOn) keyRegion(e); else e.accepted = false }
+    Keys.onReturnPressed: function (e) { if (loupeOn) keyRegion(e); else e.accepted = false }
+    Keys.onEnterPressed: function (e) { if (loupeOn) keyRegion(e); else e.accepted = false }
     Keys.onPressed: function (e) {
         if (e.key === Qt.Key_L) { loupeOn = !loupeOn; e.accepted = true }
+    }
+    // Keyboard-only loupe: arrows move the circle, Shift+arrows resize it, Enter searches.
+    function keyRegion(e) {
+        var w = photo.paintedWidth, h = photo.paintedHeight
+        if (w <= 0) return false
+        var step = Math.max(4, Math.min(w, h) * 0.04)
+        var dx = 0, dy = 0
+        if (e.key === Qt.Key_Left) dx = -step
+        else if (e.key === Qt.Key_Right) dx = step
+        else if (e.key === Qt.Key_Up) dy = -step
+        else if (e.key === Qt.Key_Down) dy = step
+        else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { search(); return true }
+        else return false
+        if (lw < 8 || lh < 8) {
+            var s = Math.min(w, h) * 0.25
+            lw = s; lh = s; lx = (w - s) / 2; ly = (h - s) / 2
+        }
+        if (e.modifiers & Qt.ShiftModifier) {
+            lw = Math.max(8, Math.min(w - lx, lw + dx)); lh = Math.max(8, Math.min(h - ly, lh + dy))
+        } else {
+            lx = Math.max(0, Math.min(w - lw, lx + dx)); ly = Math.max(0, Math.min(h - lh, ly + dy))
+        }
+        return true
     }
 
     Item {
@@ -172,7 +200,7 @@ Item {
         Tool { label: "Previous"; onActivated: shell.focusPrev() }
         Tool { label: "Next"; onActivated: shell.focusNext() }
         Tool {
-            label: viewer.loupeOn ? "Loupe on: drag over a detail" : "Find a detail"
+            label: viewer.loupeOn ? "Loupe on: drag, or use arrow keys and Enter" : "Find a detail"
             hint: "Draw around anything in the photo to find it in other photos"
             primary: viewer.loupeOn
             onActivated: { viewer.loupeOn = !viewer.loupeOn; if (!viewer.loupeOn) viewer.reset() }
