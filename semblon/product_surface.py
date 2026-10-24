@@ -361,6 +361,9 @@ def processing_home_snapshot(
         eta_s = getattr(ev, "eta_s", eta_s)
         stage = getattr(ev, "stage", stage)
         kind = getattr(ev, "kind", kind)
+        outcome = getattr(ev, "outcome", None)
+    else:
+        outcome = None
     if pace is None and not paused and elapsed_s is not None and files_processed:
         pace = ScanPace()
         pace.observe(files_processed, elapsed_s)
@@ -373,6 +376,7 @@ def processing_home_snapshot(
         faces_found=faces_found,
         elapsed_s=elapsed_s,
         pace=pace,
+        outcome=outcome,
     )
     _ = eta_s  # event field stays available; the card computes ETA from pace
     return {

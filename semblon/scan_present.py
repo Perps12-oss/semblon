@@ -111,13 +111,18 @@ def scan_stats(
     files_processed: int | None,
     files_total: int | None,
     faces_found: int | None,
+    unit: str = "files",
 ) -> str:
-    """``{n} of {n} files · {n} faces found``. Omit a part the event does not have."""
+    """``{n} of {n} files · {n} faces found``. Omit a part the event does not have.
+
+    Tier 2 passes ``unit='indexed'`` so the card can say how much of the
+    semantic tail is done without pretending the library is still blocked.
+    """
     bits: list[str] = []
     done = _as_int(files_processed)
     total = _as_int(files_total)
     if done is not None and total is not None and total >= 0:
-        bits.append(f"{done} of {total} files")
+        bits.append(f"{done} of {total} {unit}")
     faces = _as_int(faces_found)
     if faces is not None and faces >= 0:
         bits.append(f"{faces} faces found")
@@ -165,13 +170,19 @@ def scan_card(
     faces_found: int | None = None,
     elapsed_s: float | None = None,
     pace: ScanPace | None = None,
+    outcome: str | None = None,
 ) -> dict[str, str]:
+    title = scan_title(stage=stage, kind=kind, paused=paused)
+    if outcome == "indexed" and not paused and kind in _RUNNING:
+        title = "Indexing pictures for search…"
+    unit = "indexed" if outcome == "indexed" else "files"
     return {
-        "title": scan_title(stage=stage, kind=kind, paused=paused),
+        "title": title,
         "stats": scan_stats(
             files_processed=files_processed,
             files_total=files_total,
             faces_found=faces_found,
+            unit=unit,
         ),
         "meta": scan_meta(
             files_processed=files_processed,

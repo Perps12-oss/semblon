@@ -1,9 +1,12 @@
 """Ingest: folder of stills (+ S7a sampled video) → media / observations / faces. No cluster.
 
-Pipeline: one-pass discover → bounded hash → skip → decode/embed (YuNet + SFace) →
-batched SQLite writer. Video frames stream; never materialize all samples.
-Opt-in --workers > 1 parallelizes hashing only (product default 1; cap MAX_WORKERS).
-No --batch until batched inference exists.
+Stills are three queues, one writer. Tier 0 writes the library row and returns.
+Tier 1 writes faces, the histogram, and contours. Tier 2 writes DINOv2 region
+tokens. Each tier commits on its own and skips a file whose work_items bit is
+already set, so a restart does not pay for the finished prefix.
+
+Video frames stay one stream. Opt-in --workers > 1 parallelizes hashing only
+(product default 1; cap MAX_WORKERS). No --batch until batched inference exists.
 """
 
 from __future__ import annotations
@@ -57,6 +60,17 @@ from semblon.identity_config import (
     EXPECTED_FACE_DIM,
 )
 from semblon.providers import YuNetSFaceProvider
+from semblon.scan_tiers import (
+    TIER_LIBRARY,
+    TIER_OBSERVE,
+    TIER_SEMANTIC,
+    header_geometry,
+    load_still,
+    requested_mask,
+    save_work_item,
+    split_observers,
+    still_observation_id,
+)
 from semblon.store import connect, delete_observation_tree, init_db, stamp_unfinished_runs, writer_lock
 from semblon.temporal import (
     DEFAULT_SAMPLE_HZ,
@@ -770,6 +784,17 @@ def ingest(
         last_commit = t0
         last_emit = 0.0
         sigint = {"hit": False}
+        phase_ms = {
+            "decode_ms": 0.0,
+            "face_ms": 0.0,
+            "contours_ms": 0.0,
+            "hist_ms": 0.0,
+            "dino_ms": 0.0,
+            "commit_ms": 0.0,
+            "wait_ms": 0.0,
+        }
+        tier_wall = {"library": 0.0, "faces": 0.0, "indexed": 0.0}
+        tier2_state = "not_requested"
 
         def _on_sigint(_signum, _frame):
             sigint["hit"] = True
@@ -791,17 +816,26 @@ def ingest(
                 return
             now = time.perf_counter()
             if force or dirty >= COMMIT_EVERY_N or (now - last_commit) >= COMMIT_EVERY_S:
+                started = time.perf_counter()
                 conn.commit()
+                phase_ms["commit_ms"] += (time.perf_counter() - started) * 1000.0
                 dirty = 0
                 last_commit = now
 
-        def tick(path: Path, outcome: str, *, force: bool = False) -> None:
+        def tick(
+            path: Path,
+            outcome: str,
+            *,
+            force: bool = False,
+            current: int | None = None,
+        ) -> None:
             nonlocal completed, last_emit
             completed += 1
+            shown = completed if current is None else current
             now = time.perf_counter()
             if (
                 force
-                or completed >= n_files
+                or shown >= n_files
                 or last_emit == 0.0
                 or (now - last_emit) >= PROGRESS_THROTTLE_S
             ):
@@ -811,9 +845,9 @@ def ingest(
                     make_event(
                         STAGE_INGEST,
                         KIND_PROGRESS,
-                        current=completed,
+                        current=shown,
                         total=n_files,
-                        files_processed=completed,
+                        files_processed=shown,
                         files_total=n_files,
                         faces_found=n_faces,
                         path=str(path),
@@ -823,143 +857,421 @@ def ingest(
                     ),
                 )
 
-        def persist_still(
-            *,
-            path: Path,
-            digest: str,
-            media_id: str | None,
-            mtime_ns: int,
-            byte_size: int,
-            data: bytes | None,
-        ) -> None:
-            nonlocal n_media, n_faces, n_ok, n_lq, n_rej, n_fail, dirty
-            if want_cancel():
-                return
-            with writer_lock():
-                maybe_commit()
-            img0 = _decode_bgr(data, path)
-            if img0 is None:
-                n_fail += 1
-                tick(path, "failed", force=True)
-                return
-            h, w = img0.shape[:2]
-            try:
-                faces = embed_bgr(app, img0)
-            except Exception:
-                n_fail += 1
-                tick(path, "failed", force=True)
-                return
+        def _stamp(rec: dict, bit: int, *, orientation: int | None = None, thumb: bytes | None = None) -> None:
+            nonlocal dirty
+            if reprocess and bit == TIER_LIBRARY:
+                rec["mask"] = TIER_LIBRARY
+            else:
+                rec["mask"] = int(rec.get("mask") or 0) | bit
+            save_work_item(
+                conn,
+                path=rec["path"],
+                mtime_ns=rec["mtime_ns"],
+                byte_size=rec["byte_size"],
+                sha256=rec.get("sha256"),
+                media_id=rec.get("media_id"),
+                mask=int(rec["mask"]),
+                orientation=orientation,
+                thumb_jpeg=thumb,
+                updated_at=datetime.now(timezone.utc).isoformat(),
+            )
+            dirty += 1
 
-            with writer_lock():
-                if media_id is None:
+        def _bind_media(rec: dict, digest: str, width: int | None, height: int | None) -> None:
+            nonlocal n_media, dirty
+            media_id = rec.get("media_id")
+            if media_id is None:
+                row = conn.execute("SELECT media_id FROM media WHERE sha256=?", (digest,)).fetchone()
+                if row is not None:
+                    media_id = str(row[0])
+                    if _remember_path(conn, media_id, rec["path"], rec["mtime_ns"], rec["byte_size"]):
+                        dirty += 1
+                    if not reprocess:
+                        rec["mask"] = int(rec.get("mask") or 0) | infer_from_media(media_id)
+                else:
                     media_id = claim_new_media(
                         conn,
                         source_type="folder",
-                        path=path,
+                        path=rec["path"],
                         digest=digest,
-                        width=w,
-                        height=h,
-                        mtime_ns=mtime_ns,
-                        byte_size=byte_size,
+                        width=width,
+                        height=height,
+                        mtime_ns=rec["mtime_ns"],
+                        byte_size=rec["byte_size"],
                     )
                     n_media += 1
                     dirty += 1
-                elif _remember_path(conn, media_id, path, mtime_ns, byte_size):
-                    dirty += 1
-
-                obs_id = uuid.uuid4().hex
-                conn.execute(
-                    "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
-                    (obs_id, media_id, None, None, run_id),
-                )
+            elif _remember_path(conn, media_id, rec["path"], rec["mtime_ns"], rec["byte_size"]):
                 dirty += 1
-                nf, nok, nlq, nrej = _persist_faces(
-                    conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+            if width and height and media_id is not None:
+                conn.execute(
+                    "UPDATE media SET width=?, height=? WHERE media_id=? AND width IS NULL",
+                    (int(width), int(height), media_id),
                 )
-                n_faces += nf
-                n_ok += nok
-                n_lq += nlq
-                n_rej += nrej
-                dirty += max(nf, 1)
-                if extra_observers:
-                    observe_bgr(
-                        conn,
-                        observation_id=obs_id,
-                        run_id=run_id,
-                        img=img0,
-                        observers=extra_observers,
-                    )
-                    dirty += 1
-                maybe_commit()
-            tick(path, "processed")
+            rec["media_id"] = media_id
+            rec["sha256"] = digest
 
-        # --- stills: hash → skip → decode/embed ---
-        if workers == 1:
-            for index, path in enumerate(files, start=1):
+        def infer_from_media(media_id: str) -> int:
+            from semblon.scan_tiers import infer_mask
+
+            return infer_mask(conn, media_id)
+
+        def _commit_library(rec: dict, digest: str, data: bytes) -> str:
+            width, height, orientation, thumb = header_geometry(data)
+            if width and height and int(width) * int(height) > MAX_IMAGE_PIXELS:
+                rec["failed"] = True
+                return "fail"
+            if not width or not height:
+                started = time.perf_counter()
+                img = _decode_bgr(data, rec["path"])
+                phase_ms["decode_ms"] += (time.perf_counter() - started) * 1000.0
+                if img is None:
+                    rec["failed"] = True
+                    return "fail"
+                height, width = img.shape[:2]
+            with writer_lock():
+                maybe_commit()
+                if digest in seen_sha:
+                    rec["sha256"] = digest
+                    rec["media_id"] = seen_sha[digest]
+                    rec["mask"] = need
+                    rec["duplicate"] = True
+                    _stamp(rec, 0)
+                    maybe_commit(force=True)
+                    return "same_run"
+                _bind_media(rec, digest, width, height)
+                if (
+                    not reprocess
+                    and rec.get("media_id")
+                    and (int(rec["mask"]) & need) == need
+                ):
+                    seen_sha[digest] = rec["media_id"]
+                    _stamp(rec, 0)
+                    maybe_commit(force=True)
+                    return "seen"
+                _stamp(rec, TIER_LIBRARY, orientation=orientation, thumb=thumb)
+                if rec.get("media_id"):
+                    seen_sha[digest] = rec["media_id"]
+                maybe_commit(force=True)
+            return "ok"
+
+        need = requested_mask(observer_list)
+        seen_sha: dict[str, str] = {}
+        observe_obs, semantic_obs = split_observers(extra_observers)
+        color_obs = tuple(token for token in observe_obs if token in {"color", "appearance"})
+        object_obs = tuple(token for token in observe_obs if token == "object")
+        rest_obs = tuple(token for token in observe_obs if token not in {"color", "appearance", "object"})
+
+        records: list[dict] = []
+        for path in files:
+            if want_cancel():
+                cancelled = True
+                break
+            try:
+                records.append(load_still(conn, path))
+            except OSError:
+                n_fail += 1
+                tick(path, "failed", force=True)
+
+        work: list[dict] = []
+        if not cancelled:
+            for index, rec in enumerate(records, start=1):
+                done = (not reprocess) and rec.get("sha256") and not rec["needs_hash"]
+                if done and (int(rec["mask"]) & need) == need:
+                    if rec.get("media_id") and still_observation_id(conn, rec["media_id"], run_id):
+                        n_skip_same += 1
+                        outcome = "skipped_same_run"
+                    else:
+                        n_skip_seen += 1
+                        outcome = "skipped_seen"
+                    with writer_lock():
+                        _stamp(rec, 0)
+                    tick(rec["path"], outcome, current=index)
+                else:
+                    work.append(rec)
+
+        def _apply_library(
+            rec: dict,
+            index: int,
+            *,
+            digest: str | None = None,
+            data: bytes | None = None,
+        ) -> None:
+            nonlocal n_fail, n_skip_same, n_skip_seen
+            if rec.get("failed"):
+                return
+            if rec["needs_hash"]:
+                if digest is None or data is None:
+                    return
+                status = _commit_library(rec, digest, data)
+                if status == "fail" or rec.get("failed"):
+                    n_fail += 1
+                    tick(rec["path"], "failed", force=True)
+                    return
+                if status == "same_run":
+                    n_skip_same += 1
+                    rec["needs_hash"] = False
+                    tick(rec["path"], "skipped_same_run", current=index)
+                    return
+                if status == "seen":
+                    n_skip_seen += 1
+                    rec["needs_hash"] = False
+                    tick(rec["path"], "skipped_seen", current=index)
+                    return
+            else:
+                with writer_lock():
+                    _stamp(rec, TIER_LIBRARY)
+                    maybe_commit(force=True)
+            rec["needs_hash"] = False
+            tick(rec["path"], "library", current=index)
+
+        def _run_tier0() -> None:
+            nonlocal cancelled, n_fail
+            started = time.perf_counter()
+            queue = [
+                rec
+                for rec in work
+                if not rec.get("failed")
+                and (reprocess or rec["needs_hash"] or not (int(rec["mask"]) & TIER_LIBRARY))
+            ]
+            # One still at a time. Holding every file's bytes until the folder
+            # finishes is what froze the shell on a real photo folder.
+            if workers == 1:
+                for index, rec in enumerate(queue, start=1):
+                    if want_cancel():
+                        cancelled = True
+                        break
+                    if rec.get("failed"):
+                        continue
+                    if not rec["needs_hash"]:
+                        _apply_library(rec, index)
+                        continue
+                    try:
+                        digest, data, mtime_ns, byte_size = _read_and_hash(rec["path"])
+                    except OSError:
+                        rec["failed"] = True
+                        n_fail += 1
+                        tick(rec["path"], "failed", force=True)
+                        continue
+                    rec["mtime_ns"] = mtime_ns
+                    rec["byte_size"] = byte_size
+                    _apply_library(rec, index, digest=digest, data=data)
+            else:
+                pending = [rec for rec in queue if rec["needs_hash"]]
+                by_path = {rec["path"]: rec for rec in pending}
+                index_of = {rec["path"]: i for i, rec in enumerate(queue, start=1)}
+                for hrec in _iter_hash_results(
+                    [rec["path"] for rec in pending],
+                    workers=workers,
+                    want_cancel=want_cancel,
+                ):
+                    if want_cancel():
+                        cancelled = True
+                        break
+                    path = Path(hrec["path"])
+                    rec = by_path.get(path)
+                    if rec is None:
+                        continue
+                    if hrec.get("outcome") == "failed":
+                        rec["failed"] = True
+                        n_fail += 1
+                        tick(path, "failed", force=True)
+                        continue
+                    rec["mtime_ns"] = int(hrec["mtime_ns"])
+                    rec["byte_size"] = int(hrec["byte_size"])
+                    _apply_library(
+                        rec,
+                        index_of.get(path, 0),
+                        digest=str(hrec["digest"]),
+                        data=hrec.get("data") or b"",
+                    )
+                    hrec["data"] = b""
+                if not cancelled:
+                    for index, rec in enumerate(queue, start=1):
+                        if want_cancel():
+                            cancelled = True
+                            break
+                        if rec.get("failed") or rec["path"] in by_path:
+                            continue
+                        _apply_library(rec, index)
+            tier_wall["library"] += time.perf_counter() - started
+            maybe_commit(force=True)
+
+        def _ensure_observation(rec: dict) -> str | None:
+            nonlocal dirty
+            media_id = rec.get("media_id")
+            if not media_id:
+                return None
+            existing = still_observation_id(conn, media_id, run_id)
+            if existing:
+                return existing
+            obs_id = uuid.uuid4().hex
+            conn.execute(
+                "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+                (obs_id, media_id, None, None, run_id),
+            )
+            dirty += 1
+            return obs_id
+
+        def _run_tier1() -> None:
+            nonlocal cancelled, n_faces, n_ok, n_lq, n_rej, n_fail, dirty
+            started = time.perf_counter()
+            queue = [
+                rec
+                for rec in work
+                if not rec.get("failed")
+                and not rec.get("duplicate")
+                and rec.get("media_id")
+                and (reprocess or not (int(rec["mask"]) & TIER_OBSERVE))
+            ]
+            for index, rec in enumerate(queue, start=1):
                 if want_cancel():
                     cancelled = True
                     break
+                t_decode = time.perf_counter()
+                img0 = _decode_bgr(None, rec["path"])
+                phase_ms["decode_ms"] += (time.perf_counter() - t_decode) * 1000.0
+                if img0 is None:
+                    n_fail += 1
+                    tick(rec["path"], "failed", force=True)
+                    continue
+                height, width = img0.shape[:2]
                 try:
-                    digest, data, mtime_ns, byte_size = _read_and_hash(path)
-                except OSError:
+                    t_face = time.perf_counter()
+                    faces = embed_bgr(app, img0)
+                    phase_ms["face_ms"] += (time.perf_counter() - t_face) * 1000.0
+                except Exception:
                     n_fail += 1
-                    tick(path, "failed", force=True)
+                    tick(rec["path"], "failed", force=True)
                     continue
-                reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
-                if reason in {"seen", "same_run"}:
-                    if _remember_path(conn, media_id, path, mtime_ns, byte_size):
+                with writer_lock():
+                    maybe_commit()
+                    conn.execute(
+                        "UPDATE media SET width=?, height=? WHERE media_id=?",
+                        (int(width), int(height), rec["media_id"]),
+                    )
+                    obs_id = _ensure_observation(rec)
+                    if obs_id is None:
+                        n_fail += 1
+                        tick(rec["path"], "failed", force=True)
+                        continue
+                    nf, nok, nlq, nrej = _persist_faces(
+                        conn, obs_id=obs_id, run_id=run_id, pack_id=pid, faces=faces
+                    )
+                    n_faces += nf
+                    n_ok += nok
+                    n_lq += nlq
+                    n_rej += nrej
+                    dirty += max(nf, 1)
+                    # Close the face write before histogram and contours.
+                    # Those run before their own inserts, and an open
+                    # transaction here blocks the shell's reads.
+                    maybe_commit(force=True)
+                    if color_obs:
+                        t_hist = time.perf_counter()
+                        observe_bgr(
+                            conn,
+                            observation_id=obs_id,
+                            run_id=run_id,
+                            img=img0,
+                            observers=color_obs,
+                        )
+                        phase_ms["hist_ms"] += (time.perf_counter() - t_hist) * 1000.0
                         dirty += 1
-                    if reason == "seen":
-                        n_skip_seen += 1
-                        tick(path, "skipped_seen")
-                    else:
-                        n_skip_same += 1
-                        tick(path, "skipped_same_run")
-                    continue
-                persist_still(
-                    path=path,
-                    digest=digest,
-                    media_id=media_id,
-                    mtime_ns=mtime_ns,
-                    byte_size=byte_size,
-                    data=data,
-                )
+                        maybe_commit(force=True)
+                    if object_obs:
+                        t_obj = time.perf_counter()
+                        observe_bgr(
+                            conn,
+                            observation_id=obs_id,
+                            run_id=run_id,
+                            img=img0,
+                            observers=object_obs,
+                        )
+                        phase_ms["contours_ms"] += (time.perf_counter() - t_obj) * 1000.0
+                        dirty += 1
+                        maybe_commit(force=True)
+                    if rest_obs:
+                        observe_bgr(
+                            conn,
+                            observation_id=obs_id,
+                            run_id=run_id,
+                            img=img0,
+                            observers=rest_obs,
+                        )
+                        dirty += 1
+                        maybe_commit(force=True)
+                    _stamp(rec, TIER_OBSERVE)
+                    maybe_commit(force=True)
+                tick(rec["path"], "faces", current=index)
+            tier_wall["faces"] += time.perf_counter() - started
+            maybe_commit(force=True)
+
+        def _run_tier2() -> None:
+            nonlocal cancelled, tier2_state, dirty
+            if not (semantic_obs and (need & TIER_SEMANTIC)):
+                return
+            from semblon.region_encoder import index_image_regions, probe_region_pack
+
+            ready, _note = probe_region_pack()
+            if not ready:
+                tier2_state = "pack_missing"
+                return
+            tier2_state = "ran"
+            started = time.perf_counter()
+            queue = [
+                rec
+                for rec in work
+                if not rec.get("failed")
+                and not rec.get("duplicate")
+                and rec.get("media_id")
+                and (reprocess or not (int(rec["mask"]) & TIER_SEMANTIC))
+            ]
+            for index, rec in enumerate(queue, start=1):
                 if want_cancel():
                     cancelled = True
                     break
-        else:
-            for rec in _iter_hash_results(files, workers=workers, want_cancel=want_cancel):
-                if want_cancel():
-                    cancelled = True
-                    break
-                path = Path(rec["path"])
-                if rec.get("outcome") == "failed":
+                t_decode = time.perf_counter()
+                img0 = _decode_bgr(None, rec["path"])
+                phase_ms["decode_ms"] += (time.perf_counter() - t_decode) * 1000.0
+                if img0 is None:
                     n_fail += 1
-                    tick(path, "failed", force=True)
+                    tick(rec["path"], "failed", force=True)
                     continue
-                digest = rec["digest"]
-                reason, media_id = media_skip_reason(conn, digest, run_id, reprocess=reprocess)
-                if reason in {"seen", "same_run"}:
-                    if _remember_path(conn, media_id, path, rec["mtime_ns"], rec["byte_size"]):
-                        dirty += 1
-                    if reason == "seen":
-                        n_skip_seen += 1
-                        tick(path, "skipped_seen")
-                    else:
-                        n_skip_same += 1
-                        tick(path, "skipped_same_run")
-                    continue
-                persist_still(
-                    path=path,
-                    digest=digest,
-                    media_id=media_id,
-                    mtime_ns=rec["mtime_ns"],
-                    byte_size=rec["byte_size"],
-                    data=rec.get("data"),
-                )
-                if want_cancel():
-                    cancelled = True
-                    break
+                with writer_lock():
+                    maybe_commit()
+                    obs_id = _ensure_observation(rec)
+                    if obs_id is None:
+                        n_fail += 1
+                        continue
+                    maybe_commit(force=True)
+                    t_dino = time.perf_counter()
+                    try:
+                        indexed = index_image_regions(
+                            conn,
+                            observation_id=obs_id,
+                            run_id=run_id,
+                            img=img0,
+                        )
+                    except Exception:
+                        indexed = None
+                    phase_ms["dino_ms"] += (time.perf_counter() - t_dino) * 1000.0
+                    if indexed is None or indexed.get("ready") is False:
+                        maybe_commit(force=True)
+                        continue
+                    dirty += 1
+                    _stamp(rec, TIER_SEMANTIC)
+                    maybe_commit(force=True)
+                tick(rec["path"], "indexed", current=index)
+            tier_wall["indexed"] += time.perf_counter() - started
+            maybe_commit(force=True)
+
+        if not cancelled:
+            _run_tier0()
+        if not cancelled:
+            _run_tier1()
+        if not cancelled:
+            _run_tier2()
 
         # --- videos: hash → skip → stream frames (never list()) ---
         for offset, path in enumerate(videos, start=1):
@@ -1127,7 +1439,13 @@ def ingest(
             "observers": list(observer_list),
             "gpu": ep["gpu"],
             "cancelled": bool(cancelled),
+            "tier0_s": round(tier_wall["library"], 3),
+            "tier1_s": round(tier_wall["faces"], 3),
+            "tier2_s": round(tier_wall["indexed"], 3),
+            "tier2": tier2_state,
         }
+        for key, value in phase_ms.items():
+            timings[key] = round(value, 1)
         if n_files and timings["ingest_s"] > 0:
             timings["images_per_second"] = round(n_files / timings["ingest_s"], 4)
             timings["faces_per_second"] = round(n_faces / timings["ingest_s"], 4)

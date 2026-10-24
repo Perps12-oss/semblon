@@ -4714,7 +4714,7 @@ class ShellBridge(QObject):
             now = time.monotonic()
             if now - self._library_refresh_at >= 0.75:
                 self._library_refresh_at = now
-                self._refresh_library()
+                self._refresh_library(editorial=False)
                 self._refresh_index_note()
 
     @Slot()
@@ -4803,14 +4803,27 @@ class ShellBridge(QObject):
         left = _format_span(max(1, int(round(remaining))))
         return f"{elapsed} elapsed. About {left} left."
 
-    def _refresh_library(self) -> None:
+    def _refresh_library(self, *, editorial: bool = True) -> None:
         self._path_cache.clear()
         self._index_cache.clear()
         self._session.invalidate_reads()
-        self._model.reload()
+        # A running scan must not rebuild year/day/folder id lists on the UI
+        # thread. That walk opens a writer connection per list and stalls the
+        # shell for the whole folder. The field stays a SQL window until the
+        # job ends, which is when the calendar catches up.
+        if (
+            not editorial
+            and self._model.media_ids() is not None
+            and not self._scope_kind
+            and not self._person_field_filter
+        ):
+            self._model.set_media_ids(None)
+        else:
+            self._model.reload()
         self._events.record(LIBRARY_CHANGED, {"count": int(self._jobs.archive_count())})
         empty = self._jobs.archive_count() == 0
-        self._reload_editorial()
+        if editorial:
+            self._reload_editorial()
         focus_id = self._session.focus_id
         if focus_id and self._jobs.media(focus_id) is None:
             self._session.clear_focus()
