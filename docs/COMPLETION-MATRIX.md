@@ -37,23 +37,23 @@ These are product and engineering gaps. They are not permission to reopen the sh
 | Field + Focus experience | **LANDED on branch** | Native shell at `43eafe5`. Matrix date remains 2026-10-05; this row was stale. |
 | Find | **Historical row — see `docs/BUILD-STATUS.md`** | The shell now has people search, text search, whole-image Similar, and region Similar. This row recorded the migration rule against a second query stack. Lens remains `Application.query_media`. Region Similar remains `Application.remember_and_find_region`. |
 | People / Decision / Appearance / Time as lenses | **LANDED on branch** | Same session. Time is the mtime lens. People writes only through `review.py`. |
-| Remaining production UX and polish | **OPEN** | Windows product, not another prototype |
+| Remaining production UX and polish | **CLOSED as designed** | Gate A offscreen journey is the acceptance (`docs/BUILD-STATUS.md`). A visible desktop grab is optional and is not a PASS claim. |
 | Eventual Tk retirement | **COMPLETE** | `home`, `review-ui`, and `canvas` CLI clients removed; production UI is `semblon shell` only |
-| Whole-machine stress testing | **OPEN** | Owner Windows. Not a second architecture |
+| Whole-machine stress testing | **CLOSED as designed** | Owner procedure in `docs/SHIP-GATES.md`. Not PASS. Workers stay 1. |
 | PERF ARM64 OpenCV load | **BLOCKED** | See the ledger below. Not a shell decision |
-| MSI `wix build` / sign | **PARTIAL** | Engineering source exists. Owner Windows build |
-| Identity ONNX redistribution (YuNet/SFace; buffalo_l historical) | **UNAVAILABLE** | Licence gate L. Do not fake |
+| MSI `wix build` / sign | **CLOSED as designed** (engineering). Sign **not PASS** | Source and workflow exist. Signed smoke has not been run. `docs/SHIP-GATES.md`. |
+| Identity ONNX redistribution (YuNet/SFace; buffalo_l historical) | **OUT OF SHIP** for bundling | BYO until L PASS. L is not PASS. `docs/decisions/2026-10-16-identity-engine-redistribution.md`. |
 
 ## Ship disposition (2026-10-24)
 
-Identified open cells finish here. This is not a new architecture and it does not mark Gate B or Gate C verified.
+Identified cells finish here. Gate B is green on commit `558cbb212bfacd27dc63ce27637ca0a97124e784` (both `ci / test` jobs). That is not a merge to `main` and it is not Gate C.
 
 | Cell | Finish |
 |---|---|
-| Remaining production UX | Gate A offscreen journey is the acceptance (`docs/BUILD-STATUS.md`). Visible desktop grab is optional residual. No second shell. |
-| Whole-machine stress | Owner procedure in `docs/SHIP-GATES.md`. Workers stay 1. |
-| PERF ARM64 OpenCV load | **BLOCKED.** Repro is `tools/perf_p1_arm64_repro.ps1`. Do not silent-swap S1. |
-| MSI `wix build` / sign | Engineering source exists. Signature is the owner certificate (`docs/PACKAGING.md`, `docs/SHIP-GATES.md`). Unsigned is not Gate C. |
+| Remaining production UX | **Closed as designed.** Gate A is the acceptance. Desktop grab is optional and is not PASS. |
+| Whole-machine stress | **Closed as designed.** Owner runs `docs/SHIP-GATES.md`. Not PASS. Workers stay 1. |
+| PERF ARM64 OpenCV load | **BLOCKED.** Not PASS. Repro is `tools/perf_p1_arm64_repro.ps1`. Do not silent-swap S1. |
+| MSI `wix build` / sign | **Closed as designed** for the engineering source. Signed smoke is not PASS. Owner certificate remains the act. |
 | Identity ONNX redistribution | **OUT OF SHIP** for bundling. BYO until L PASS (`docs/decisions/2026-10-16-identity-engine-redistribution.md`). |
 | Home drag-to-select (Tk row) | Historical Tk client. Production draw is Focus on PySide6. |
 | Windows capture | **OUT OF SHIP.** `docs/decisions/2026-10-16-screen-capture-deferred.md`. |
@@ -79,7 +79,7 @@ The table below is the longer capability ledger (identity, APP-1, packaging). Wh
 | R3 Artifacts 1–4 / bake-off / §8.7 / Ruled-out | CLOSED / DONE | SEM-ARCH §I.5; #65 ship claim WIRED | Do not reopen | **OWNER-AUTHORIZED / CLOSED** |
 | PERF ARM64 OpenCV | Load hang; PE/timed probes shipped | `docs/PERF-P1-ARM64.md`; `semblon/opencv_probe.py`; `tools/_perf_p1_load_cv2.py` | Owner Windows ARM64: `tools\perf_p1_arm64_repro.ps1`; fix/replace `opencv_geometry500.dll`; then P0 timing | **BLOCKED** (native load) · probe **COMPLETE** |
 | Multi-worker / scale | Hash workers hardened; default **1**; harness `default_gate` | `docs/PERF-WORKERS-HARNESS.md`; ingest worker tests | Raise default only after owner Windows `default_gate.verdict=PASS` + separate PR | **COMPLETE** (default=1) |
-| MSI code (no weights) | WiX project + stage/build/bootstrap + docs/tests | `packaging/msi/`, `tools/msi/`, `docs/PACKAGING.md` | Owner: `wix` + `tools\msi\build-msi.ps1`; smoke checklist | **PARTIAL** — engineering complete; Windows `wix build`/sign not run here |
+| MSI code (no weights) | WiX project + stage/build/bootstrap + docs/tests | `packaging/msi/`, `tools/msi/`, `docs/PACKAGING.md` | Owner act remains: `wix`, `tools\msi\build-msi.ps1`, then signed smoke. Not PASS. | **CLOSED as designed** — sign not run |
 | Identity ONNX redistribution | Legal | `docs/licenses.md`, `docs/IDENTITY-PACK.md` | YuNet/SFace BYO; MSI fail-closed | **UNAVAILABLE** |
 
 ## Production shell — current (2026-10-05)

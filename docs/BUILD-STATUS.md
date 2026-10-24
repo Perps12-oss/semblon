@@ -7,8 +7,8 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-24 (synthetic Lens rank bar on this branch; Gates B and C unchanged) |
-| Branch | `main` at audit start |
+| Evidence date | 2026-10-24 (commit `558cbb212bfacd27dc63ce27637ca0a97124e784`; not merged to `main`) |
+| Branch | `cursor/ship-identified-gaps-eff9` |
 | Parent HEAD | (see git log on branch) |
 | Working tree at evidence | Permanent Home stage + capability catalogue; shell journey updated |
 
@@ -29,15 +29,15 @@
 | Gate | Meaning | Status |
 |---|---|---|
 | A — Core product | Archive continuity, Similar honesty, context where metadata permits | **VERIFIED** (offscreen production shell + unit). Visible desktop `SEMBLON_VISIBLE_SHELL=1` not required for these acceptance criteria; optional residual. |
-| B — Engineering baseline | Supported CI, lock, identity path, honest safety/privacy | **IN PROGRESS** — procedure is `docs/SHIP-GATES.md`. Not VERIFIED until the `test` job exits 0 on a runner. The 2026-10-23 cost cut keeps Actions on Windows Python 3.12 only. |
+| B — Engineering baseline | Supported CI on the current workflow | **GREEN on this commit** `558cbb212bfacd27dc63ce27637ca0a97124e784`. Both `ci / test` jobs succeeded: [run 40122825488](https://github.com/Perps12-oss/semblon/actions/runs/40122825488/job/120957878614) and [run 40122814924](https://github.com/Perps12-oss/semblon/actions/runs/40122814924/job/120957843502). Devin Review succeeded on the same pull request. Linux `xvfb-run -a .venv/bin/python -m pytest -q` → exit 0, **988 passed, 7 skipped**. This is not a merge to `main`. The 2026-10-23 cost cut still means Actions ran Windows Python 3.12 only; Ubuntu, 3.11, 3.13, 3.14, the lock compile, and `pip-audit` were not those jobs. |
 | C — Release | Offline clean install + intended assets + **signed** installer | **BLOCKED** on the certificate. Weights are bring-your-own (`docs/decisions/2026-10-16-identity-engine-redistribution.md`). Unsigned MSI is not Gate C. Owner steps: `docs/SHIP-GATES.md`. |
 
 ## Dual verdict
 
 | Verdict | Value |
 |---|---|
-| **1. Product and engineering completion** | **NOT COMPLETE** — Gate A done; Gate B still open (needs GHA green + owner pack evidence); Gate C blocked |
-| **2. Release readiness** | **NOT READY** — Gate C blocked |
+| **1. Product and engineering completion** | **NOT COMPLETE** — Gate A verified. Gate B is green on commit `558cbb2` and is not a merge to `main`. Gate C is not signed. Confirmatory precision, Q/L/I/P, ARM64 OpenCV load, and whole-machine stress are not PASS. |
+| **2. Release readiness** | **NOT READY** — Gate C signed MSI smoke has not been run. Weights stay bring-your-own. |
 | **3. This roadmap pass (milestones 1–3)** | **COMPLETE** — acceptance evidenced (prior Gate A pass) |
 
 Out of ship by an existing decision or by the schema freeze: **02** encryption, **08** product screen capture, albums (not a product workflow; no new table). See `docs/SHIP-GATES.md`.
@@ -46,18 +46,18 @@ Out of ship by an existing decision or by the schema freeze: **02** encryption, 
 
 | ID | Priority | Status | Evidence / remaining |
 |---|---|---|---|
-| 01 Win crash / Python matrix | P0 | IN PROGRESS | SciPy markers + policy. Clean 3.14 venv: nonshell **31 passed**, shell Focus + Gate A journey **2 passed** after dropping `QtMultimedia` (Essentials). **CI matrix green not evidenced this run** — aggregate job `test` republishes required context. |
+| 01 Win crash / Python matrix | P0 | **GREEN on this commit** for the current `ci / test` job | Windows Python 3.12 `test` succeeded twice on `558cbb212bfacd27dc63ce27637ca0a97124e784` (the two job URLs under Gate B). Not the 3.11–3.14 × Ubuntu matrix. Not a merge to `main`. |
 | 02 Encrypted store | P2 | OUT OF SHIP | `docs/decisions/2026-10-16-store-encryption-deferred.md` lines 7–9. Plaintext store. Do not claim SQLCipher or DPAPI. |
 | 03 Signed offline MSI | P1 | IMPLEMENTED (eng) / BLOCKED (cert) | `tools/msi/build-msi.ps1` + `.github/workflows/msi-release.yml` (WiX v4/v5 via `dotnet tool wix`). Signs only when `CODE_SIGNING_PFX_*` secrets set; unsigned upload is engineering-only. |
 | 04 Identity engine / pack | P0 | **IMPLEMENTED** (YuNet+SFace runtime) / **BLOCKED** (L redistribute, Q Semblon eval, P native ARM64) | Production path `opencv/yunet_sface`; `insightface` removed from deps; buffalo_l not loaded. BYO pack + pin. Smoke: ingest→cluster→name→reembed on Lena (x64). Gates: L OPEN, Q OPEN (provisional eps=0.45), I partial (pipeline wired), P partial. `docs/IDENTITY-PACK.md`. PRODUCT.md FaceKit wording unchanged until product-approval decision. |
-| 05 Hashed dependency lock | P1 | IMPLEMENTED | `requirements.lock.txt` present. Not VERIFIED until CI lock step + clean install evidence from GHA. |
+| 05 Hashed dependency lock | P1 | IMPLEMENTED | `requirements.lock.txt` is present. The green `ci / test` jobs on this commit do not run the lock compile. Not PASS. |
 | 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | `tools/facekit_owner_evidence.py` + `.github/workflows/facekit-owner.yml` + `docs/FACEKIT-OWNER.md`. No owner pack on this machine — evidence JSON not PASS. |
 | 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Unchanged. |
 | 08 Screen-capture privacy | P1 | OUT OF SHIP | `docs/decisions/2026-10-16-screen-capture-deferred.md` lines 7–9. Lab capture only. |
-| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18); multi-leg path **IMPLEMENTED**; synthetic rank bar **PASS** 5/5 (2026-10-24); precision refused | Dense `region_patch` late interaction remains the appearance door. Focus Similar region fuses text/object/optional SigLIP after the first look. `feature_rerank` scales each door by the best value in the pool. Published RRF weights and floors are unchanged. Kind door stays `SKIPPED` without SigLIP. ANN is out of ship (`docs/SHIP-GATES.md`). Photographic eval gate is not reopened. Responsiveness evidence from 2026-10-22 is unchanged: chunked scoring 97 ms, repeated crop 0.7 ms, one batched forward 2.96 s versus 8.14 s serial. Native ARM64 and Python 3.14 were not remeasured. |
+| 09 Visual-memory search | P0 | **CLOSED** for the synthetic rank bar. Precision is not PASS. | `docs/evidence/lens-retrieval-eval.json`: `status` **PASS** (line 2), `counts.passed` **5** (line 319), `precision` **null** (line 6), kind door **SKIPPED** (lines 65, 126, 187, 247, 308), `ann_justified` **false** (line 326). SigLIP is not installed. ANN is out of ship. Photographic milestone 2 stays the separate verified set. |
 | 10 Archive continuity | P0 | **VERIFIED** | Missing Focus notice; ingest rename reconnect; copy/basename safety; Gate A journey on Unicode folder. |
 | 11 Contextual discovery | P1 | **VERIFIED** | `openFocusInContext` day scope includes same-day neighbours and excludes other days; missing-date honest. |
-| 12 Unified experience + docs | P0/P1 | **VERIFIED** (milestones 1–3) | Gate A journey + ROADMAP sync. Milestones 4–5 / Gates B–C remain. |
+| 12 Unified experience + docs | P0/P1 | **VERIFIED** (milestones 1–4). Milestone 7 synthetic bar closed. | Gate A journey. Milestone 4 keep-a-discovery is verified. Gate B is green on this commit. Gate C is not PASS. |
 
 ## Behaviour landed this blocker-resolution pass
 
@@ -145,13 +145,13 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 
 ## Outstanding blockers (exact)
 
-1. **GHA CI matrix green** (Gate B) — workflow file was wiped on `f0c42e6` and is restored in the readiness audit. Jobs on the last intact workflow never started (no runner, no logs). Remote green is still not evidenced.
+1. **GHA `ci / test` on this commit** — **closed.** Both jobs succeeded on `558cbb212bfacd27dc63ce27637ca0a97124e784`: https://github.com/Perps12-oss/semblon/actions/runs/40122825488/job/120957878614 and https://github.com/Perps12-oss/semblon/actions/runs/40122814924/job/120957843502. Devin Review succeeded. Not a merge to `main`. The wider Python matrix was not these jobs.
 2. **FaceKit owner pack run** (issue 06) — helper/workflow ready; needs real pack → PASS evidence JSON.
 3. **Identity weight redistribution** (Gate C) — YuNet/SFace and historical buffalo_l are BYO. Commercial redistribute still UNAVAILABLE. `docs/PRODUCT.md` still names FaceKit as the only engine; that sentence was not rewritten.
 4. **Authenticode certificate** (Gate C) — signing path in `msi-release.yml`; secrets not provisioned.
 5. WiX owner run on a machine with WiX + (optional) cert — workflow exists; not executed here.
 6. **Named-face recluster** — repaired: a multi-face `name` decision now locks every `policy.face_ids` entry, and `name_faces` refuses a conflicting `attach_to_person_id`. `merge_clusters` still copies one shared `person_id` onto survivor faces; that stamp is the tested review contract (`tests/test_review.py`), not an unapproved threshold change.
-7. **Store is plaintext.** Encryption remains the deferred decision. Do not claim SQLCipher or DPAPI.
+7. **Store is plaintext.** **Closed as out of ship.** `docs/decisions/2026-10-16-store-encryption-deferred.md` lines 7–9. Do not claim SQLCipher or DPAPI.
 8. **Replaced file path** — repaired in `claim_new_media`: the previous digest no longer keeps the path, so an old crop cannot read the new bytes. Confirmed identities on the old digest are not deleted.
 9. **Erasure centroid** — repaired: deleting a person drops or rebuilds `clusters.centroid` from the faces that remain.
 10. **`docs/PERF-P1-ARM64.md` identity cell** — corrected. The 2026-09-22 FaceKit / `eps=0.40` sentence is historical. Current engine text is YuNet + SFace. The OpenCV load block is unchanged. No threshold was edited.
@@ -318,7 +318,8 @@ Command: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_timeline_view.py 
 2. `brand-acme` and `part-logo` place the relevant hit above the hard negative. The kind door is still `SKIPPED` (SigLIP pack absent). That skip is the missing-pack contract, not a failed search.
 3. Confirmatory precision stays null. The loader and the manifest rules are `docs/LENS-CONFIRMATORY.md`. Gates B and C procedures are `docs/SHIP-GATES.md`.
 4. Command: `.venv/bin/python tools/eval_lens_retrieval.py --eval-set synthetic` → exit 0, status **PASS**, 5/5, precision null, `ann_justified` false, `exact_scan_ms` 43.428 on this run (corpus 10). Identity rows were not written. `--eval-set confirmatory` → exit 1, status `not_confirmatory`, precision null. That refusal is the missing frozen file, not a rank-bar failure.
-5. Command: `xvfb-run -a .venv/bin/python -m pytest -q` → exit 0, **988 passed, 7 skipped** (Linux Python 3.12, offscreen Qt). This is not a GitHub Actions green run. Gate B stays IN PROGRESS.
+5. Command: `xvfb-run -a .venv/bin/python -m pytest -q` → exit 0, **988 passed, 7 skipped** (Linux Python 3.12, offscreen Qt).
+6. Gate B on this same commit: both GitHub `ci / test` jobs succeeded (URLs in the Gates table). Devin Review succeeded. That green is this commit, not a merge to `main`.
 
 ## What this file will not absorb
 

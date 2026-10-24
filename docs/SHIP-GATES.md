@@ -2,7 +2,7 @@
 
 **Product contract:** `docs/PRODUCT.md` (unchanged).  
 **Status tracker:** `docs/BUILD-STATUS.md`.  
-**This file** closes every identified gap that this checkout cannot execute, by an existing decision or by a procedure a reader can run without a new product decision.
+**This file** records which identified gaps are closed, which are closed as a written procedure with an owner act still visible, and which are out of ship.
 
 No new schema columns. No identity-threshold edits. No second application path.
 
@@ -25,7 +25,7 @@ No new schema columns. No identity-threshold edits. No second application path.
 python tools/eval_lens_retrieval.py --eval-set synthetic
 ```
 
-Recorded result lives in `docs/evidence/lens-retrieval-eval.json`. Precision is null. The kind door is `SKIPPED` when SigLIP is absent; that is the specified missing-pack behaviour (`docs/decisions/2026-10-19-lens-style-retrieval.md` slice 2). Confirmatory precision waits on `docs/LENS-CONFIRMATORY.md`.
+Recorded result: `docs/evidence/lens-retrieval-eval.json` `status` PASS (line 2), `counts.passed` 5 (line 319), `precision` null (line 6), kind door `SKIPPED` (lines 65, 126, 187, 247, 308), `ann_justified` false (line 326). The kind skip is the missing-pack contract (`docs/decisions/2026-10-19-lens-style-retrieval.md` slice 2). SigLIP is not claimed present. Confirmatory precision is not PASS (`docs/LENS-CONFIRMATORY.md`).
 
 ## Out of ship by an existing decision
 
@@ -46,29 +46,24 @@ Reopening ANN requires a new measurement, not a new product idea: time an exact 
 
 ## Gate B — engineering baseline
 
-**Finish state:** procedure below. This checkout cannot mark it VERIFIED. GitHub Actions on this branch is the evidence, after a runner actually starts.
+**Finish state:** **GREEN on commit `558cbb212bfacd27dc63ce27637ca0a97124e784`.** Not a merge to `main`.
 
-Current workflow (accepted cost cut, `docs/decisions/2026-10-16-python-support-policy.md` 2026-10-23 paragraph): `.github/workflows/ci.yml` runs Python 3.12 on `windows-latest` only. Ubuntu, 3.11, 3.13, 3.14, the lock compile, and `pip-audit` are not on Actions. `requires-python` stays `>=3.11,<3.15`. That cost cut is not evidence the other cells pass, and it is not permission to drop 3.11 from the advertised range.
+Both `ci / test` jobs succeeded:
 
-Green means:
+- https://github.com/Perps12-oss/semblon/actions/runs/40122825488/job/120957878614
+- https://github.com/Perps12-oss/semblon/actions/runs/40122814924/job/120957843502
 
-1. The `test` job on the commit finishes with exit 0 (a queued job with `runner_id` 0 is not green).
-2. Local Linux, from a clean `.venv`, the cloud command exits 0:
+Devin Review succeeded on https://github.com/Perps12-oss/semblon/pull/184.
 
-```text
-xvfb-run -a .venv/bin/python -m pytest -q
-```
+Linux evidence already recorded: `xvfb-run -a .venv/bin/python -m pytest -q` → exit 0, **988 passed, 7 skipped**.
 
-An interpreter-finalizer abort after a green summary (historical exit 134) is not a pass and not, by itself, a GitHub failure. Report the exit code.
+The workflow that went green is `.github/workflows/ci.yml`: Python 3.12 on `windows-latest` (`docs/decisions/2026-10-16-python-support-policy.md`, 2026-10-23 cost cut). Ubuntu, 3.11, 3.13, 3.14, the lock compile, and `pip-audit` were not these jobs. `requires-python` stays `>=3.11,<3.15`. That cost cut is not evidence the other cells pass, and it is not permission to drop 3.11 from the advertised range.
 
-3. `python tools/assert_one_opencv.py` prints one headless OpenCV.
-4. Owner pack evidence is a separate file (`docs/FACEKIT-OWNER.md`). Missing pack is not a CI failure. It is issue 06, below.
-
-Do not restore the eight-cell matrix in the same change as a product fix unless the cost-cut paragraph is amended by a decision. Do not claim the matrix is green from a laptop log.
+Owner pack evidence stays issue 06 (`docs/FACEKIT-OWNER.md`). A missing pack is not a failure of these two jobs, and it is not Q/L/I/P PASS.
 
 ## Gate C — signed code install, weights brought by the owner
 
-**Finish state:** code MSI procedure exists. Signature and licence letters are owner inputs. Bundling weights is out of ship (table above). An unsigned upload is an engineering build, not Gate C (`docs/PACKAGING.md`).
+**Finish state:** **closed as designed.** Signed MSI smoke is not PASS. Signature and licence letters are the owner act. Bundling weights is out of ship (table above). An unsigned upload is an engineering build, not Gate C (`docs/PACKAGING.md`).
 
 Owner, on Windows:
 
@@ -82,6 +77,8 @@ Sign locally with `-SignThumbprint` or `-SignPfxPath`, or dispatch `.github/work
 Until those secrets exist, release readiness stays **NOT READY**. That is an absent certificate, not an open product question. The product already requires a signed, versioned package (`docs/PRODUCT.md` workflow 5). The commands above are how that package is produced.
 
 ## Identity gates L, Q, I, P
+
+**Finish state:** **closed as designed.** L, Q, I, and P are not PASS.
 
 Runtime code path is YuNet + SFace (`docs/IDENTITY-PACK.md`, `docs/BUILD-STATUS.md` issue 04). `docs/PRODUCT.md` still names FaceKit. This ship does not edit that sentence: the evaluation record says a product-approval decision is a separate act and this work is not that act (`docs/decisions/2026-10-16-identity-engine-evaluation.md`).
 
@@ -104,7 +101,7 @@ Workflow: `.github/workflows/facekit-owner.yml`. A missing JSON is not PASS.
 
 ## ARM64 OpenCV load
 
-**Finish state:** blocked on the owner machine. Probe code is complete.
+**Finish state:** **closed as designed.** Native load is **BLOCKED** and is not PASS. Probe code is complete.
 
 ```text
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\perf_p1_arm64_repro.ps1
@@ -114,7 +111,7 @@ Pass is a load that returns, then P0 timing, with `process_execution()` `native`
 
 ## Whole-machine stress
 
-**Finish state:** owner procedure. Not a second architecture.
+**Finish state:** **closed as designed.** Not PASS. Not a second architecture.
 
 Run on the owner Windows machine, workers left at 1 (`docs/PERF-WORKERS-HARNESS.md`):
 
@@ -131,4 +128,4 @@ Field, Focus, Home, People, and the library workspace are on the PySide6 shell. 
 
 ## Honest release line
 
-The archive code path for point, find, context, and keep is in tree. Synthetic Lens ranks meet the rank bar. The product is **not** release-ready until Gate B’s `test` job is green on a runner and Gate C’s signed code MSI has been smoked, with weights still brought by the owner. Say that. Do not mark a refused precision number, a skipped kind door, or an unsigned MSI as a pass.
+On commit `558cbb212bfacd27dc63ce27637ca0a97124e784`, Gate B is green and the synthetic Lens rank bar is PASS 5/5 with precision null. The product is **not release-ready**. Gate C signed MSI smoke has not been run. Confirmatory precision, Q/L/I/P, ARM64 OpenCV load, whole-machine stress, and a present SigLIP pack are not PASS. Weights stay with the owner.
