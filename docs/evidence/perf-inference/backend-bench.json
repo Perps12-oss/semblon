@@ -1,0 +1,192 @@
+{
+  "backends": {
+    "opencv_dnn": {
+      "cpu_s": 3.4108964959999994,
+      "cpu_utilization_approx": 3.2424206682586676,
+      "faces_per_image_mean": 1.3333333333333333,
+      "faces_total": 64,
+      "info": {
+        "FaceDetectorYN": true,
+        "FaceRecognizerSF": true,
+        "backend": "opencv_dnn",
+        "detect_long_side_override": null,
+        "dnn_module": true,
+        "hashes": {
+          "sface": {
+            "expected_sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+            "matches_identity_pack_pin": true,
+            "name": "face_recognition_sface_2021dec.onnx",
+            "path": "/tmp/semblon-perf-lab/models/face_recognition_sface_2021dec.onnx",
+            "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"
+          },
+          "yunet": {
+            "expected_sha256": null,
+            "matches_identity_pack_pin": true,
+            "name": "face_detection_yunet_2026may.onnx",
+            "note": "2026may preferred by production; IDENTITY-PACK.md pins 2023mar SHA only",
+            "path": "/tmp/semblon-perf-lab/models/face_detection_yunet_2026may.onnx",
+            "sha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0"
+          }
+        },
+        "nms_threshold": 0.3,
+        "providers": [
+          "OpenCV_DNN_CPU"
+        ],
+        "score_threshold": 0.7,
+        "sface": "/tmp/semblon-perf-lab/models/face_recognition_sface_2021dec.onnx",
+        "yunet": "/tmp/semblon-perf-lab/models/face_detection_yunet_2026may.onnx"
+      },
+      "latency": {
+        "decode": {
+          "mean_s": 0.002273444916670068,
+          "n": 48,
+          "p50_s": 0.0012975760000131231,
+          "p95_s": 0.005912725500076021,
+          "sum_s": 0.10912535600016326
+        },
+        "face_align": {
+          "mean_s": 8.877100000859173e-05,
+          "n": 48,
+          "p50_s": 5.874949994222334e-05,
+          "p95_s": 0.0003073286499329697,
+          "sum_s": 0.004261008000412403
+        },
+        "sface_embed": {
+          "mean_s": 0.0062674852083285755,
+          "n": 48,
+          "p50_s": 0.004692159499938953,
+          "p95_s": 0.021280226700116596,
+          "sum_s": 0.3008392899997716
+        },
+        "total_with_decode": {
+          "mean_s": 0.021900795312509064,
+          "n": 48,
+          "p50_s": 0.012111715999992612,
+          "p95_s": 0.05787070790001393,
+          "sum_s": 1.0512381750004351
+        },
+        "view_prep": {
+          "mean_s": 0.0009315344791644975,
+          "n": 48,
+          "p50_s": 6.5044999928431935e-06,
+          "p95_s": 0.004821207950010375,
+          "sum_s": 0.04471365499989588
+        },
+        "yunet_detect": {
+          "mean_s": 0.012277533833334076,
+          "n": 48,
+          "p50_s": 0.005900624499986407,
+          "p95_s": 0.02694883934994436,
+          "sum_s": 0.5893216240000356
+        }
+      },
+      "peak_rss_mb": 315.67578125,
+      "rss_delta_mb": 104.01953125,
+      "wall_s": 1.0519598920000135
+    },
+    "ort_yunet_sface": {
+      "cpu_s": 13.067140567,
+      "cpu_utilization_approx": 3.1243673814691966,
+      "faces_per_image_mean": 1.3333333333333333,
+      "faces_total": 64,
+      "info": {
+        "available_providers": [
+          "AzureExecutionProvider",
+          "CPUExecutionProvider"
+        ],
+        "backend": "ort_yunet_sface",
+        "det_fixed_hw": null,
+        "det_input_name": "input",
+        "detect_long_side_override": null,
+        "fixed_shape_note": null,
+        "hashes": {
+          "sface": {
+            "expected_sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+            "matches_identity_pack_pin": true,
+            "name": "face_recognition_sface_2021dec.onnx",
+            "path": "/tmp/semblon-perf-lab/models/face_recognition_sface_2021dec.onnx",
+            "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"
+          },
+          "yunet": {
+            "expected_sha256": null,
+            "matches_identity_pack_pin": true,
+            "name": "face_detection_yunet_2026may.onnx",
+            "note": "2026may preferred by production; IDENTITY-PACK.md pins 2023mar SHA only",
+            "path": "/tmp/semblon-perf-lab/models/face_detection_yunet_2026may.onnx",
+            "sha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0"
+          }
+        },
+        "nms_threshold": 0.3,
+        "ort_version": "1.30.0",
+        "providers": [
+          "CPUExecutionProvider"
+        ],
+        "rec_input_name": "data",
+        "requested_intra_op_threads": null,
+        "score_threshold": 0.7,
+        "sface": "/tmp/semblon-perf-lab/models/face_recognition_sface_2021dec.onnx",
+        "yunet": "/tmp/semblon-perf-lab/models/face_detection_yunet_2026may.onnx"
+      },
+      "latency": {
+        "decode": {
+          "mean_s": 0.002841035437500731,
+          "n": 48,
+          "p50_s": 0.0016755574999933742,
+          "p95_s": 0.007111922400002867,
+          "sum_s": 0.1363697010000351
+        },
+        "face_align": {
+          "mean_s": 0.0004080547083304964,
+          "n": 48,
+          "p50_s": 0.00027228399994783103,
+          "p95_s": 0.0014402442500511367,
+          "sum_s": 0.019586625999863827
+        },
+        "sface_embed": {
+          "mean_s": 0.023341028583343377,
+          "n": 48,
+          "p50_s": 0.023190742500105443,
+          "p95_s": 0.05357705260000214,
+          "sum_s": 1.1203693720004821
+        },
+        "total_with_decode": {
+          "mean_s": 0.08711163333333143,
+          "n": 48,
+          "p50_s": 0.05662596749994009,
+          "p95_s": 0.2142031278000445,
+          "sum_s": 4.181358399999908
+        },
+        "view_prep": {
+          "mean_s": 0.0012845929791633164,
+          "n": 48,
+          "p50_s": 1.1078499937866582e-05,
+          "p95_s": 0.005517621650011506,
+          "sum_s": 0.06166046299983918
+        },
+        "yunet_detect": {
+          "mean_s": 0.05921144933333503,
+          "n": 48,
+          "p50_s": 0.03016730449996885,
+          "p95_s": 0.14539263685004472,
+          "sum_s": 2.8421495680000817
+        }
+      },
+      "peak_rss_mb": 360.05078125,
+      "rss_delta_mb": 0.0,
+      "wall_s": 4.182331643999987
+    }
+  },
+  "corpus": {
+    "count": 48,
+    "path": "/workspace/docs/evidence/perf-inference-48still/stills"
+  },
+  "detect_long_side": null,
+  "host": {
+    "opencv_threads": 4,
+    "os_machine": "x86_64",
+    "process_arch": "x64",
+    "process_execution": "native"
+  },
+  "note": "Linux cloud timings are a numerical/API proxy. Native Windows ARM64 must be re-measured on the owner machine; x64-on-ARM64 remains emulated.",
+  "status": "MEASURED"
+}
