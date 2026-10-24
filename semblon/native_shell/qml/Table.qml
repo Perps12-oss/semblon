@@ -197,6 +197,8 @@ Window {
         }
     }
 
+    Confirm { id: confirmSheet; anchors.fill: parent; z: 50 }
+
     CommandPalette {
         id: palette
         anchors.fill: parent

@@ -390,3 +390,45 @@ def test_with_photos_the_add_button_returns_and_verbs_wake(tmp_path, monkeypatch
         assert root.findChild(QObject, "chooseFolder").property("visible") is False
     finally:
         shutdown_shell(engine)
+
+def test_no_native_pop_ups_remain():
+    import pathlib
+
+    import semblon
+
+    root = pathlib.Path(semblon.__file__).parent
+    offenders = [
+        str(p.relative_to(root))
+        for p in root.rglob("*.py")
+        if "QMessageBox" in p.read_text(encoding="utf8", errors="ignore")
+    ]
+    assert offenders == []
+
+
+def test_install_question_is_a_themed_sheet_with_verbs_and_inline_progress(tmp_path, monkeypatch):
+    from semblon.native_shell.adapter import Result
+
+    monkeypatch.setenv("SEMBLON_SEARCH_SYNC", "1")
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        monkeypatch.setattr(
+            bridge._adapter,  # noqa: SLF001 - test seam
+            "install_region_pack",
+            lambda: Result("ready", "Ready."),
+        )
+        bridge._install_suggestion = "region_pack"  # noqa: SLF001
+        bridge.installSuggestedModel()
+        ask = bridge.confirm
+        assert ask["open"] and ask["yes"] == "Get it ready" and ask["no"] == "Not now"
+        assert any("Nothing leaves your computer" in f for f in ask["facts"])
+        assert any("MB" in f or "download" in f for f in ask["facts"])
+        bridge.confirmDecline()
+        assert not bridge.confirm["open"]
+        bridge.installSuggestedModel()
+        bridge.confirmAccept()
+        assert bridge.confirm["open"] and bridge.confirm["busy"]
+        assert "ready" in bridge.confirm["progress"].lower()
+    finally:
+        from semblon.native_shell.host import shutdown_shell
+
+        shutdown_shell(engine)

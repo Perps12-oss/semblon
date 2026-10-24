@@ -22,7 +22,7 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QFileDialog
 
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
@@ -114,26 +114,25 @@ _INSTALL_METHODS = {
     "object_pack": "install_object_pack",
     "vlm_local": "install_vlm",
 }
+_NOTHING_LEAVES = "Nothing leaves your computer except the add-on download."
 _INSTALL_PROMPTS = {
     "region_pack": (
         "Get finding-by-look ready?",
-        "Semblon will download a small add-on to this computer so it can find places that look like the "
-        "detail you pointed at.\n\n"
-        "You stay on this screen. When it finishes, this search runs again.\n\n"
-        "Continue?",
+        "Semblon needs a small add-on on this computer to find places that look like the detail you pointed at. "
+        "When it is ready, this search runs again on its own.",
+        ["About 85 MB, downloaded once.", _NOTHING_LEAVES],
     ),
     "object_pack": (
         "Get finding-by-object ready?",
-        "Semblon will download a small add-on to this computer so it can recognise things in pictures, "
-        "such as a bicycle or a cake.\n\n"
-        "You stay on this screen. When it finishes, this search runs again.\n\n"
-        "Continue?",
+        "Semblon needs a small add-on on this computer to recognise things in pictures, such as a bicycle or a cake. "
+        "When it is ready, this search runs again on its own.",
+        ["A small download, once.", _NOTHING_LEAVES],
     ),
     "vlm_local": (
         "Get photo descriptions ready?",
-        "Semblon will set up photo descriptions on this computer.\n\n"
-        "You stay on this screen. When it finishes, this search runs again.\n\n"
-        "Continue?",
+        "Semblon will set up photo descriptions on this computer. "
+        "When it is ready, this search runs again on its own.",
+        ["Everything stays on this computer."],
     ),
 }
 _SETUP_NAMES = {
@@ -286,6 +285,7 @@ class ShellBridge(QObject):
     screenQueryChanged = Signal()
     preflightChanged = Signal()
     tasksChanged = Signal()
+    confirmChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -369,6 +369,9 @@ class ShellBridge(QObject):
         self._selected_observation = ""
         self._activity_rows: list[dict] = []
         self._activity_open = False
+        self._confirm = {"open": False, "busy": False}
+        self._confirm_yes = self._confirm_no = None
+        self._confirm_keep = False
         self._tasks_open = False
         self._mode = self._load_shell_mode()
         self._atmosphere_id = self._load_atmosphere_id()
@@ -4321,23 +4324,68 @@ class ShellBridge(QObject):
         self.lensChanged.emit()
         self.editorialChanged.emit()
 
+    @Property("QVariantMap", notify=confirmChanged)
+    def confirm(self) -> dict:
+        return dict(self._confirm)
+
+    def _ask(self, title, body, facts=(), *, yes="Continue", no="Not now", danger=False,
+             keep_open=False, on_yes=None, on_no=None) -> None:
+        self._confirm = {
+            "open": True, "busy": False, "title": title, "body": body, "facts": list(facts),
+            "yes": yes, "no": no, "danger": bool(danger), "progress": "",
+        }
+        self._confirm_yes, self._confirm_no, self._confirm_keep = on_yes, on_no, keep_open
+        self.confirmChanged.emit()
+
+    def _confirm_progress(self, text: str) -> None:
+        if self._confirm.get("open"):
+            self._confirm = {**self._confirm, "busy": True, "progress": text}
+            self.confirmChanged.emit()
+
+    def _confirm_close(self) -> None:
+        if self._confirm.get("open"):
+            self._confirm = {"open": False, "busy": False}
+            self.confirmChanged.emit()
+
+    @Slot()
+    def confirmAccept(self) -> None:
+        if not self._confirm.get("open") or self._confirm.get("busy"):
+            return
+        action, keep = self._confirm_yes, self._confirm_keep
+        self._confirm_yes = self._confirm_no = None
+        if not keep:
+            self._confirm_close()
+        if action:
+            action()
+
+    @Slot()
+    def confirmDecline(self) -> None:
+        if not self._confirm.get("open") or self._confirm.get("busy"):
+            return
+        action = self._confirm_no
+        self._confirm_yes = self._confirm_no = None
+        self._confirm_close()
+        if action:
+            action()
+
     @Slot()
     def clearLibrary(self) -> None:
         """Drop the folder index and names. Original files stay on disk."""
         if self._jobs.busy:
             self._apply_result(Result("unavailable", "A folder is being added. Wait until that finishes."))
             return
-        answer = QMessageBox.question(
-            None,
+        self._ask(
             "Forget what Semblon learned?",
-            "Semblon will forget the folders you added, the names you gave and the finds you kept.\n\n"
-            "Your photo files stay exactly where they are, and you can add the folder again any time.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            "Semblon will forget the folders you added, the names you gave and the finds you kept.",
+            ["Your photo files stay exactly where they are.", "You can add the folder again any time."],
+            yes="Forget it all",
+            no="Keep everything",
+            danger=True,
+            on_yes=self._clear_library_now,
+            on_no=lambda: self._apply_result(Result("empty", "Library clear was cancelled.")),
         )
-        if answer != QMessageBox.StandardButton.Yes:
-            self._apply_result(Result("empty", "Library clear was cancelled."))
-            return
+
+    def _clear_library_now(self) -> None:
         self._stop_search(publish=False)
         try:
             self._jobs.wipe_library()
@@ -4449,16 +4497,19 @@ class ShellBridge(QObject):
         if self._preflight_thread is not None and self._preflight_thread.isRunning():
             self._apply_result(Result("loading", self._setup_line("An install is already running.")))
             return
-        answer = QMessageBox.question(
-            None,
-            str(row.get("name") or "Install"),
+        self._ask(
+            f"Get {row.get('name') or 'this'} ready?",
             str(row.get("confirm") or "Add this extra?"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            [_NOTHING_LEAVES] if row.get("downloads") else [],
+            yes="Get it ready",
+            no="Not now",
+            keep_open=True,
+            on_yes=lambda: self._start_preflight_install(item_id, row),
+            on_no=lambda: self._apply_result(Result("empty", self._setup_line("Nothing was added."))),
         )
-        if answer != QMessageBox.StandardButton.Yes:
-            self._apply_result(Result("empty", self._setup_line("Install cancelled.")))
-            return
+
+    def _start_preflight_install(self, item_id: str, row: dict) -> None:
+        self._confirm_progress("Getting it ready\u2026")
         self._apply_result(
             Result("loading", self._setup_line(f"Installing {row.get('name') or item_id}."))
         )
@@ -4475,6 +4526,7 @@ class ShellBridge(QObject):
         thread.start()
 
     def _on_preflight_installed(self, rec: object) -> None:
+        self._confirm_close()
         self._refresh_preflight()
         result = rec if isinstance(rec, dict) else {}
         if result.get("ready") and result.get("skipped"):
@@ -4493,6 +4545,7 @@ class ShellBridge(QObject):
         )
 
     def _on_preflight_failed(self, message: str) -> None:
+        self._confirm_close()
         self._refresh_preflight()
         self._apply_result(Result("unavailable", self._setup_line(message or "Install failed.")))
 
@@ -4591,20 +4644,24 @@ class ShellBridge(QObject):
         if prompt is None:
             self._apply_result(Result("empty", "No install action is available right now."))
             return self._notice
-        title, body = prompt
-        answer = QMessageBox.question(
-            None,
-            title,
-            body,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            self._apply_result(Result("empty", "Cancelled. Nothing was added."))
-            return self._notice
+        title, body, facts = prompt
         if self._install_thread is not None and self._install_thread.isRunning():
             self._apply_result(Result("loading", "Something is already being added."))
             return self._notice
+        self._ask(
+            title,
+            body,
+            facts,
+            yes="Get it ready",
+            no="Not now",
+            keep_open=True,
+            on_yes=lambda: self._start_suggested_install(kind),
+            on_no=lambda: self._apply_result(Result("empty", "Nothing was added.")),
+        )
+        return self._notice
+
+    def _start_suggested_install(self, kind: str) -> None:
+        self._confirm_progress(f"Getting {_SETUP_NAMES.get(kind, 'it')} ready\u2026 You can keep this window open.")
         self._install_kind = kind
         self._install_retry = self._query_source
         self._install_retry_rect = self._screen_query_rect
@@ -4625,7 +4682,6 @@ class ShellBridge(QObject):
         thread.failed.connect(self._on_install_suggested_failed)
         self._install_thread = thread
         thread.start()
-        return self._notice
 
     def _resume_current_query(self) -> bool:
         """Repeat the search the user was already on. Does not open a new screen drag."""
@@ -4646,6 +4702,7 @@ class ShellBridge(QObject):
     @Slot(object)
     def _on_install_suggested_ready(self, payload) -> None:
         self._install_thread = None
+        self._confirm_close()
         result = payload if isinstance(payload, Result) else Result("ready", "Ready.")
         self._apply_result(result)
         if self._resume_current_query():
@@ -4663,6 +4720,7 @@ class ShellBridge(QObject):
     @Slot(str)
     def _on_install_suggested_failed(self, message: str) -> None:
         self._install_thread = None
+        self._confirm_close()
         label = self._similar_basis_label or "Similar look"
         kind = self._install_kind or "region_pack"
         self._set_install_suggestion(kind, _INSTALL_LABELS.get(kind, "Get this ready"))

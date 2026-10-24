@@ -261,8 +261,6 @@ def test_reset_defaults_returns_to_dark_primary_without_losing_library(shell, tm
 
 
 def test_clear_library_drops_the_index_and_keeps_originals(shell, tmp_path, monkeypatch):
-    from PySide6.QtWidgets import QMessageBox
-
     from semblon.atmosphere import ATMOSPHERE_IDS
 
     store = tmp_path / "clear.sqlite"
@@ -281,8 +279,8 @@ def test_clear_library_drops_the_index_and_keeps_originals(shell, tmp_path, monk
     bridge.openFocus("m0")
     assert bridge.focusId == "m0"
     assert bridge.keptCount == 1
-    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
     bridge.clearLibrary()
+    bridge.confirmAccept()
     assert bridge.resultText == "Library cleared. Photos on disk were kept. Add a folder to start again."
     assert bridge._jobs.archive_count() == 0
     assert bridge._model.rowCount() == 0
@@ -298,14 +296,12 @@ def test_clear_library_drops_the_index_and_keeps_originals(shell, tmp_path, monk
 def test_clear_library_cancel_and_busy_leave_the_index(shell, tmp_path, monkeypatch):
     from types import SimpleNamespace
 
-    from PySide6.QtWidgets import QMessageBox
-
     store = tmp_path / "keep.sqlite"
     bridge = shell(store)
     _seed(store, tmp_path, n=2)
     bridge._model.reload()
-    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.No)
     bridge.clearLibrary()
+    bridge.confirmDecline()
     assert bridge.resultText == "Library clear was cancelled."
     assert bridge._jobs.archive_count() == 2
 

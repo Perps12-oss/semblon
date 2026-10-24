@@ -30,7 +30,7 @@ def test_region_model_install_suggestion_retries_search(tmp_path, monkeypatch):
     pytest.importorskip("PySide6")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     monkeypatch.setenv("SEMBLON_SEARCH_SYNC", "1")
-    from PySide6.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtWidgets import QApplication
 
     from semblon.application import Application
     from semblon.native_shell.adapter import Result
@@ -66,11 +66,6 @@ def test_region_model_install_suggestion_retries_search(tmp_path, monkeypatch):
         assert "finding-by-look" in bridge.installSuggestionLabel.lower()
 
         monkeypatch.setattr(
-            QMessageBox,
-            "question",
-            lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
-        )
-        monkeypatch.setattr(
             bridge._adapter,  # noqa: SLF001 - test seam
             "install_region_pack",
             lambda: Result("ready", "Region model installed. Similar look will retry now."),
@@ -78,6 +73,7 @@ def test_region_model_install_suggestion_retries_search(tmp_path, monkeypatch):
         retried = {"count": 0}
         monkeypatch.setattr(bridge, "findSimilar", lambda: retried.__setitem__("count", retried["count"] + 1))
         bridge.installSuggestedModel()
+        bridge.confirmAccept()
         deadline = time.time() + 3
         while time.time() < deadline:
             app.processEvents()
@@ -157,8 +153,6 @@ def _screen_shell(tmp_path, monkeypatch, providers):
 
 
 def test_object_model_install_retries_the_same_screen_rect(tmp_path, monkeypatch):
-    from PySide6.QtWidgets import QMessageBox
-
     from semblon.native_shell.adapter import Result
     from semblon.native_shell.host import shutdown_shell
 
@@ -175,7 +169,6 @@ def test_object_model_install_retries_the_same_screen_rect(tmp_path, monkeypatch
         assert bridge.installSuggestionLabel == "Get finding-by-object ready"
         assert calls["overlay"] == 1
         assert calls["screen"] == [(10, 20, 30, 40, "region")]
-        monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
         installed = {"object": 0}
 
         def _install():
@@ -184,6 +177,7 @@ def test_object_model_install_retries_the_same_screen_rect(tmp_path, monkeypatch
 
         monkeypatch.setattr(bridge._adapter, "install_object_pack", _install)  # noqa: SLF001 - test seam
         bridge.installSuggestedModel()
+        bridge.confirmAccept()
         _wait_install(app, bridge)
         assert installed["object"] == 1
         assert calls["overlay"] == 1
@@ -194,8 +188,6 @@ def test_object_model_install_retries_the_same_screen_rect(tmp_path, monkeypatch
 
 
 def test_description_install_retries_the_same_screen_rect(tmp_path, monkeypatch):
-    from PySide6.QtWidgets import QMessageBox
-
     from semblon.native_shell.adapter import Result
     from semblon.native_shell.host import shutdown_shell
 
@@ -209,7 +201,6 @@ def test_description_install_retries_the_same_screen_rect(tmp_path, monkeypatch)
         app.processEvents()
         assert bridge.installSuggestionVisible is True
         assert bridge.installSuggestionLabel == "Get photo descriptions ready"
-        monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
         installed = {"vlm": 0}
 
         def _install():
@@ -218,6 +209,7 @@ def test_description_install_retries_the_same_screen_rect(tmp_path, monkeypatch)
 
         monkeypatch.setattr(bridge._adapter, "install_vlm", _install)  # noqa: SLF001 - test seam
         bridge.installSuggestedModel()
+        bridge.confirmAccept()
         _wait_install(app, bridge)
         assert installed["vlm"] == 1
         assert calls["overlay"] == 1
