@@ -145,6 +145,15 @@ Item {
             heading = "Closest matches"; headingCount = photoCount; currentMonth = ""
             return
         }
+        if (pinnedMonth !== "") {
+            // A landing is only honoured while that month's header is still at the band.
+            var pm = monthMap[pinnedMonth]
+            var pit = pm ? grid.itemAtIndex(pm.row) : null
+            var pt = pit ? pit.y - grid.contentY : -1000
+            var atEnd = grid.contentY >= grid.contentHeight - grid.height + grid.bottomMargin - 2
+            if (pt < -4 || pt > (atEnd ? grid.height : band.height + 24))
+                pinnedMonth = ""
+        }
         var key = pinnedMonth !== "" ? pinnedMonth : rows[Math.min(rows.length - 1, rowAtTop())].month
         var m = monthMap[key]
         currentMonth = key

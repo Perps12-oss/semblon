@@ -432,3 +432,23 @@ def test_a_real_folder_of_mixed_dates_groups_by_month(tmp_path, monkeypatch):
     for name, _y, _m, _d, w, h in spec:
         shown = load_display_image(str(folder / f"{name}.jpg"), 400)
         assert abs(shown.width() / shown.height() - w / h) < 0.05
+
+def test_heading_unpins_after_a_scrubber_landing_when_the_view_moves_on(tmp_path, monkeypatch):
+    from semblon.native_shell.host import shutdown_shell
+
+    store, days = _store(tmp_path)
+    app, engine, root, roll, grid, bridge = _boot(store, monkeypatch, height=620)
+    try:
+        months = sorted({d[:7] for d in days}, reverse=True)
+        key = months[3]
+        _call(roll, "jumpToMonth", key)
+        _spin(app, 0.2)
+        assert roll.property("currentMonth") == key
+        # Move the view without the scrubber (keyboard, wheel, selection scroll).
+        for dy in (160, 420, 900, 1500):
+            grid.setProperty("contentY", float(grid.property("contentY")) + dy)
+            _spin(app, 0.05)
+            top = int(_call(roll, "topIndex"))
+            assert roll.property("heading") == _month_title(bridge.dayAt(top)), dy
+    finally:
+        shutdown_shell(engine)

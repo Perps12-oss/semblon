@@ -61,6 +61,10 @@ Window {
         anchors.bottom: parent.bottom
         visible: rollView.count > 0
         width: visible ? Theme.edge : 0
+        // Pictures and people use the full width; the edge comes back with the roll.
+        opacity: viewer.active || people.active ? 0 : 1
+        enabled: opacity > 0.5
+        Behavior on opacity { NumberAnimation { duration: Theme.fast } }
     }
     LightTable {
         id: table
