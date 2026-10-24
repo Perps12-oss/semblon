@@ -33,6 +33,16 @@ def pytest_sessionstart(session):  # noqa: ARG001
         print(f"preflight: required packages not ready: {names}", file=sys.stderr)
 
 
+@pytest.fixture(autouse=True)
+def _utc_picture_clock(monkeypatch):
+    """Tests state their dates in UTC; the day clock is the machine's zone, so pin it for them."""
+    from datetime import timezone
+
+    from semblon import clock
+
+    monkeypatch.setattr(clock, "LOCAL_ZONE", timezone.utc)
+
+
 @pytest.fixture(scope="session")
 def qapp():
     app = QApplication.instance() or QApplication([])

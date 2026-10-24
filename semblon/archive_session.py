@@ -12,7 +12,6 @@ from __future__ import annotations
 import sqlite3
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
@@ -49,13 +48,10 @@ def time_lens() -> Lens:
 
 
 def day_key(mtime_ns: int | None) -> str:
-    """The day a picture belongs to on the timeline (UTC, same clock everywhere)."""
-    if not mtime_ns:
-        return ""
-    try:
-        return datetime.fromtimestamp(int(mtime_ns) / 1e9, tz=timezone.utc).strftime("%Y-%m-%d")
-    except (OSError, OverflowError, ValueError):
-        return ""
+    """The day a picture belongs to on the timeline: the local day, same clock everywhere."""
+    from .clock import local_day
+
+    return local_day(mtime_ns)
 
 
 @dataclass(frozen=True)

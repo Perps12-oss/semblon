@@ -31,13 +31,10 @@ _STRIP_CAP = 48
 
 def _when(mtime_ns: int | None) -> str:
     """"8 Feb 2025, 14:32" on the same clock the day dividers use."""
-    from datetime import datetime, timezone
+    from ..clock import local_datetime
 
-    if not mtime_ns:
-        return ""
-    try:
-        stamp = datetime.fromtimestamp(int(mtime_ns) / 1e9, tz=timezone.utc)
-    except (OSError, OverflowError, ValueError):
+    stamp = local_datetime(mtime_ns)
+    if stamp is None:
         return ""
     return f"{stamp.day} {stamp.strftime('%b %Y, %H:%M')}"
 

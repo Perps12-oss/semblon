@@ -6,7 +6,6 @@ No album schema. No identity writes. Filters Memory Canvas via media_ids.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 
 from semblon.memory import _folder_name, events
@@ -66,14 +65,9 @@ def _media_rows(store: Path) -> list[dict]:
 
 
 def _day_key(mtime_ns: int | None) -> str:
-    if not mtime_ns:
-        return "Unknown day"
-    try:
-        return datetime.fromtimestamp(int(mtime_ns) / 1e9, tz=timezone.utc).strftime(
-            "%Y-%m-%d"
-        )
-    except (OSError, OverflowError, ValueError):
-        return "Unknown day"
+    from .clock import local_day
+
+    return local_day(mtime_ns) or "Unknown day"
 
 
 def timeline_buckets(store: Path) -> list[dict]:
