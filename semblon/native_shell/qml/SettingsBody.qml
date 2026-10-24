@@ -77,9 +77,9 @@ Flickable {
         Label { text: "Search quality is " + shell.searchQualityLabel + "." }
         Flow {
             width: parent.width; spacing: Theme.gap
-            Tool { label: "Quick"; selected: shell.searchQuality === "fast"; onActivated: shell.setSearchQuality("fast") }
+            Tool { objectName: "qualityFast"; label: "Quick"; selected: shell.searchQuality === "fast"; onActivated: shell.setSearchQuality("fast") }
             Tool { label: "Balanced"; selected: shell.searchQuality === "balanced"; onActivated: shell.setSearchQuality("balanced") }
-            Tool { label: "Thorough"; selected: shell.searchQuality === "max"; onActivated: shell.setSearchQuality("max") }
+            Tool { objectName: "qualityMax"; label: "Thorough"; selected: shell.searchQuality === "max"; onActivated: shell.setSearchQuality("max") }
         }
         Flow {
             width: parent.width; spacing: Theme.gap

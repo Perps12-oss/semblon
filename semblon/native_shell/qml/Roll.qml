@@ -79,6 +79,7 @@ Item {
 
     GridView {
         id: grid
+        objectName: "rollGrid"
         anchors.fill: parent
         anchors.rightMargin: Theme.edge + 10
         model: archiveModel

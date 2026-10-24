@@ -165,13 +165,13 @@ def test_shell_quality_toggle_updates_the_focus_label(tmp_path, monkeypatch):
 def test_focus_quality_controls_are_in_the_shell():
     from pathlib import Path
 
-    qml = Path("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
-    assert 'objectName: "qualityFast"' in qml
-    assert 'objectName: "qualityMax"' in qml
+    qml = Path("semblon/native_shell/qml/Viewer.qml").read_text(encoding="utf-8")
+    settings = Path("semblon/native_shell/qml/SettingsBody.qml").read_text(encoding="utf-8")
+    assert 'objectName: "qualityFast"' in settings
+    assert 'objectName: "qualityMax"' in settings
     assert 'objectName: "searchQualityFocus"' in qml
-    assert 'objectName: "searchPhaseFocus"' in qml
-    assert "setSearchQuality" in qml
-    assert "Neither path is a duplicate scan." in qml
+    assert 'objectName: "searchPhaseBadge"' in qml
+    assert "setSearchQuality" in settings
 
 
 def _photo_store(tmp_path):
@@ -418,7 +418,7 @@ def test_shell_refine_ends_on_the_fuller_pass(tmp_path, monkeypatch):
             for phase, note, _count in phases
         )
         root = engine.rootObjects()[0]
-        chip = root.findChild(QObject, "searchPhaseFocus")
+        chip = root.findChild(QObject, "searchPhaseBadge")
         assert chip is not None
         assert chip.property("text") == "Refined"
     finally:

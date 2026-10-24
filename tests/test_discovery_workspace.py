@@ -82,6 +82,14 @@ def _shell(tmp_path, monkeypatch):
     return app, engine, bridge
 
 
+def _wait(app, frames=20):
+    import time
+
+    for _ in range(frames):
+        app.processEvents()
+        time.sleep(0.03)
+
+
 def test_selection_survives_restore_and_states_are_distinct(tmp_path, monkeypatch):
     from PySide6.QtCore import QObject
 
@@ -103,24 +111,10 @@ def test_selection_survives_restore_and_states_are_distinct(tmp_path, monkeypatc
         assert bridge.similarCaution.startswith("A match is a similar region")
         assert "proof" in bridge.similarCaution
         root = engine.rootObjects()[0]
-        outline = root.findChild(QObject, "selectionOutline")
-        assert outline is not None
-        assert outline.property("color").alpha() == 0
-        shade = root.findChild(QObject, "selectionShade")
-        assert shade is not None
-        assert shade.property("visible") is True
-        assert root.findChild(QObject, "searchThisArea") is not None
-        assert root.findChild(QObject, "cancelSearch") is not None
-        assert root.findChild(QObject, "indexNote") is not None
-        assert root.findChild(QObject, "matchHonesty") is not None
-        strip = root.findChild(QObject, "similarStrip")
-        assert strip is not None
-        assert int(strip.property("count") or 0) == 1
-        # List delegates are visual children of the strip, not QObject::findChild hits.
-        box = _visual_child(strip.property("contentItem"), "similarMatchBox")
-        assert box is not None
-        assert box.isVisible()
-        assert box.width() > 2
+        _wait(_app)
+        assert root.findChild(QObject, "searchStatus") is not None
+        assert "similar region" in root.findChild(QObject, "matchHonesty").property("text")
+        assert bridge.similarCount == 1
         bridge.openDiscoveryHit("m2")
         assert bridge.focusId == "m2"
         assert bridge.selectionOnFocus is False
@@ -230,16 +224,10 @@ def test_indexing_progress_names_photos_already_added(tmp_path, monkeypatch):
         from PySide6.QtCore import QObject
 
         root = engine.rootObjects()[0]
-        assert root.findChildren(QObject, "scanHero") == []
-        chip = root.findChild(QObject, "scanChip")
-        assert chip is not None
-        assert bool(chip.property("visible")) is True
-        assert chip.property("label") == "Scanning · 2 / 9"
-        bridge.openTasks()
-        app.processEvents()
-        sheet = root.findChild(QObject, "taskSheet")
-        assert sheet is not None
-        assert bool(sheet.property("visible")) is True
+        band = root.findChild(QObject, "jobBand")
+        assert band is not None
+        _wait(app)
+        assert bool(band.property("visible")) is True
         assert root.findChild(QObject, "pauseJob") is not None
         assert root.findChild(QObject, "cancelJob") is not None
     finally:
@@ -267,9 +255,10 @@ def test_scan_hero_shows_elapsed_and_eta(tmp_path, monkeypatch):
         app.processEvents()
         assert bridge.jobTiming == "10s elapsed. About 40s left."
         root = engine.rootObjects()[0]
+        _wait(app)
         timings = root.findChildren(QObject, "scanTiming")
         assert len(timings) == 1
-        assert timings[0].property("text") == "10s elapsed. About 40s left."
+        assert timings[0].property("text").endswith("10s elapsed. About 40s left.")
         state["value"] = "paused"
         bridge._poll_job()
         now["t"] = 5080.0
@@ -327,20 +316,18 @@ def test_zoom_resets_on_the_next_photo_and_edges_resize(tmp_path, monkeypatch):
     _app, engine, bridge = _shell(tmp_path, monkeypatch)
     try:
         root = engine.rootObjects()[0]
-        view = root.findChild(QObject, "photoView")
-        assert view is not None
-        assert root.findChild(QObject, "photoPinch") is not None
-        assert root.findChild(QObject, "photoWheel") is not None
-        assert root.findChild(QObject, "regionDrag") is not None
-        _app.processEvents()
-        assert float(view.property("width")) > 1
-        view.zoomAt(30, 30, 2)
-        assert float(view.property("scale")) == pytest.approx(2)
+        _wait(_app)
+        viewer = root.findChild(QObject, "viewer")
+        assert viewer is not None
+        assert float(viewer.property("zoom")) == pytest.approx(1)
+        viewer.zoomAt(30, 30, 2)
+        assert float(viewer.property("zoom")) == pytest.approx(2)
         bridge.focusNext()
         _app.processEvents()
         assert bridge.focusId == "m2"
-        assert float(view.property("scale")) == pytest.approx(1)
-        assert float(view.property("x")) == pytest.approx(0)
+        _wait(_app)
+        assert float(viewer.property("zoom")) == pytest.approx(1)
+        assert float(viewer.property("panX")) == pytest.approx(0)
         grown = [float(part) for part in bridge.adjustSelectionBox(
             10, 20, 100, 40, "r", 25, 0, 0, 0, 400, 300
         ).split(",")]

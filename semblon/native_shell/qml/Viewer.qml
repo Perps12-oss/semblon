@@ -3,6 +3,7 @@ import QtQuick
 // One picture, large. Drag a loupe over any detail to find it again elsewhere.
 Item {
     id: viewer
+    objectName: "viewer"
     property bool active: shell.focusId !== ""
     property bool loupeOn: false
     property real lx: 0
@@ -10,6 +11,9 @@ Item {
     property real lw: 0
     property real lh: 0
     property bool drawing: false
+    property real zoom: 1
+    property real panX: 0
+    property real panY: 0
     signal closed()
 
     visible: opacity > 0.01
@@ -19,6 +23,19 @@ Item {
     Accessible.role: Accessible.Pane
     Accessible.name: "Photo " + shell.focusName
 
+    function resetZoom() { zoom = 1; panX = 0; panY = 0 }
+    // Zoom toward a point in the stage so the detail under the cursor stays put.
+    function zoomAt(px, py, factor) {
+        var z = Math.max(1, Math.min(8, zoom * factor))
+        var k = z / zoom
+        var cx = stage.width / 2, cy = stage.height / 2
+        panX = (px - cx) - ((px - cx) - panX) * k
+        panY = (py - cy) - ((py - cy) - panY) * k
+        zoom = z
+        if (zoom === 1) { panX = 0; panY = 0 }
+    }
+    property string shownId: shell.focusId
+    onShownIdChanged: resetZoom()
     function reset() { lx = 0; ly = 0; lw = 0; lh = 0; loupeOn = false; shell.clearDrawnQuery() }
     function search() {
         if (lw < 8 || lh < 8 || photo.paintedWidth <= 0)
@@ -45,6 +62,16 @@ Item {
         anchors.bottomMargin: 150
         anchors.topMargin: 104
 
+        Item {
+            id: zoomLayer
+            objectName: "photoView"
+            width: stage.width
+            height: stage.height
+            x: viewer.panX
+            y: viewer.panY
+            scale: (viewer.active ? 1 : 0.94) * viewer.zoom
+            transformOrigin: Item.Center
+            Behavior on scale { enabled: viewer.zoom === 1; NumberAnimation { duration: Theme.medium; easing.type: Theme.easing } }
         Image {
             id: photo
             anchors.fill: parent
@@ -54,8 +81,6 @@ Item {
             source: shell.focusId === "" ? "" : "image://archive/f/" + shell.focusId
             sourceSize.width: Math.max(1, Math.round(stage.width * Screen.devicePixelRatio))
             sourceSize.height: Math.max(1, Math.round(stage.height * Screen.devicePixelRatio))
-            scale: viewer.active ? 1 : 0.94
-            Behavior on scale { NumberAnimation { duration: Theme.medium; easing.type: Theme.easing } }
             Accessible.ignored: true
 
             Item {
@@ -107,6 +132,28 @@ Item {
                 }
             }
         }
+        }
+        DragHandler {
+            enabled: viewer.zoom > 1 && !viewer.loupeOn
+            target: null
+            property real bx: 0
+            property real by: 0
+            onActiveChanged: if (active) { bx = viewer.panX; by = viewer.panY }
+            onActiveTranslationChanged: if (active) { viewer.panX = bx + activeTranslation.x; viewer.panY = by + activeTranslation.y }
+        }
+        WheelHandler {
+            onWheel: function (e) { viewer.zoomAt(point.position.x, point.position.y, Math.exp(e.angleDelta.y / 400)) }
+        }
+        PinchHandler {
+            target: null
+            property real start: 1
+            onActiveChanged: if (active) start = viewer.zoom
+            onActiveScaleChanged: if (active) viewer.zoomAt(centroid.position.x, centroid.position.y, start * activeScale / viewer.zoom)
+        }
+        TapHandler {
+            enabled: !viewer.loupeOn
+            onDoubleTapped: viewer.zoom > 1 ? viewer.resetZoom() : viewer.zoomAt(point.position.x, point.position.y, 2.5)
+        }
         Text {
             anchors.centerIn: parent
             visible: photo.status === Image.Loading
@@ -138,15 +185,67 @@ Item {
         width: parent.width - Theme.pad * 2
         spacing: Theme.gap
         Tool { objectName: "similarAction"; label: "Find similar"; primary: true; visible: shell.selectionOnFocus; onActivated: shell.findSimilar() }
-        Tool { label: "Find more like this photo"; onActivated: shell.findSimilarWhole() }
-        Tool { label: "Find faces like these"; onActivated: shell.findSimilarFaces() }
+        Tool { objectName: "wholePhoto"; label: "Find more like this photo"; hint: "Shortcut W"; onActivated: shell.findSimilarWhole() }
+        Tool { objectName: "sameFaceDoor"; label: "Find faces like these"; hint: "Shortcut F"; onActivated: shell.findSimilarFaces() }
+        Tool { objectName: "duplicatesDoor"; label: "Find duplicates"; hint: "Ctrl+D"; onActivated: shell.scanDuplicates() }
         Tool { objectName: "nameThisArea"; label: "Describe this area"; visible: shell.selectionOnFocus && !shell.identifyBusy; onActivated: shell.nameSelection() }
         Tool { objectName: "askPhoto"; label: "Ask about this photo"; onActivated: shell.askPhoto() }
-        Tool { label: "Pick on screen"; visible: shell.screenQueryAvailable; onActivated: shell.startScreenQuery() }
+        Tool { objectName: "screenQueryAction"; label: "Pick on screen"; hint: "Ctrl+Shift+S"; visible: shell.screenQueryAvailable && !shell.screenQueryInProgress; onActivated: shell.startScreenQuery() }
+        Tool { objectName: "screenQueryModeAction"; label: shell.screenQueryModeLabel; visible: shell.screenQueryAvailable; onActivated: shell.toggleScreenQueryMode() }
+        Tool { objectName: "installSuggestedModel"; label: "Add the helper this search needs"; visible: shell.installSuggestionVisible && !shell.searchBusy; onActivated: shell.installSuggestedModel() }
         Tool { label: "Who is this?"; visible: shell.selectedObservationId !== ""; onActivated: shell.reviewFaceGroup(shell.selectedObservationId) }
         Tool { label: "More like this"; visible: shell.similarState === "ready"; onActivated: shell.setSearchQuality("max") }
         Tool { label: "Fewer, closer"; visible: shell.similarState === "ready"; onActivated: shell.setSearchQuality("fast") }
     }
+    Row {
+        id: refine
+        x: Theme.pad
+        y: actions.y + actions.height + 6
+        spacing: Theme.gap
+        visible: shell.selectionOnFocus
+        Text { text: "Match on"; anchors.verticalCenter: parent.verticalCenter; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted }
+        Tool { objectName: "refineSameLook"; label: "Same look"; primary: shell.refineMode !== "kind"; onActivated: shell.setRefineMode("same") }
+        Tool { objectName: "refineSameKind"; label: "Same kind"; primary: shell.refineMode === "kind"; onActivated: shell.setRefineMode("kind") }
+        Rectangle {
+            width: 190; height: 34; radius: 3
+            color: "transparent"
+            border.width: refineWord.activeFocus ? 2 : 1
+            border.color: refineWord.activeFocus ? Theme.amber : Theme.line
+            TextInput {
+                id: refineWord
+                objectName: "refineWord"
+                anchors.fill: parent
+                anchors.margins: 8
+                verticalAlignment: TextInput.AlignVCenter
+                text: shell.refineModifier
+                font.family: Theme.ui
+                font.pixelSize: Theme.small
+                color: Theme.text
+                selectByMouse: true
+                clip: true
+                Accessible.name: "Add a word to narrow the search"
+                onAccepted: shell.setRefineModifier(text)
+                Text { visible: !parent.text && !parent.activeFocus; text: "Add a word, such as red"; font: parent.font; color: Theme.faint }
+            }
+        }
+    }
+    Row {
+        x: Theme.pad
+        anchors.bottom: strip.top
+        anchors.bottomMargin: 48
+        spacing: Theme.gap
+        Text { objectName: "searchDoorLabel"; text: shell.searchDoorLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; font.weight: Font.DemiBold; color: Theme.amber }
+        Text { objectName: "searchQualityFocus"; text: "Search: " + shell.searchQualityLabel; visible: shell.similarState !== "idle"; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.faint }
+        Text { objectName: "searchPhaseBadge"; text: shell.similarPhaseLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted }
+        Text { objectName: "searchTiming"; text: shell.searchTimingLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.faint }
+        Text { objectName: "nameConfidence"; text: shell.nameConfidenceLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted }
+        Text { objectName: "screenQueryProgress"; text: shell.screenQueryProgressLabel; visible: shell.screenQueryInProgress; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.amber }
+    }
+    Shortcut { sequence: "S"; enabled: viewer.active && shell.selectionOnFocus; onActivated: shell.findSimilar() }
+    Shortcut { sequence: "W"; enabled: viewer.active; onActivated: shell.findSimilarWhole() }
+    Shortcut { sequence: "F"; enabled: viewer.active; onActivated: shell.findSimilarFaces() }
+    Shortcut { sequence: "Ctrl+D"; enabled: viewer.active; onActivated: shell.scanDuplicates() }
+    Shortcut { sequence: "Ctrl+Shift+S"; enabled: shell.screenQueryAvailable && !shell.screenQueryInProgress; onActivated: shell.startScreenQuery() }
     Text {
         x: Theme.pad
         anchors.bottom: strip.top
@@ -194,6 +293,20 @@ Item {
         height: 130
         visible: viewer.loupeOn || shell.similarState !== "idle"
         Rectangle { anchors.fill: parent; color: Theme.surface; Rectangle { width: parent.width; height: 1; color: Theme.line } }
+        Text {
+            objectName: "matchHonesty"
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.pad
+            y: 8
+            width: parent.width * 0.45
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideRight
+            text: shell.similarCaution
+            visible: shell.similarState === "ready" && text !== ""
+            font.family: Theme.ui
+            font.pixelSize: Theme.tiny
+            color: Theme.faint
+        }
         Text {
             objectName: "searchStatus"
             x: Theme.pad; y: 8

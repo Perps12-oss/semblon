@@ -116,6 +116,7 @@ Window {
                 }
             }
             Text {
+                objectName: "scanTiming"
                 text: (shell.jobTotal > 0 ? shell.jobCurrent + " of " + shell.jobTotal + " photos. " : "") + shell.jobTiming
                 font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted
             }
