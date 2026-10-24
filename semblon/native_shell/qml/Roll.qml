@@ -13,10 +13,25 @@ Item {
     readonly property real maxCell: 560
     readonly property int columns: Math.max(1, Math.floor(width / cellSize))
     readonly property real cellW: width / columns
-    readonly property real monthH: 64
+    readonly property real monthH: 36
     readonly property real dayH: 34
 
     property var rows: []                    // month / day / photos rows, in display order
+    // Exact row geometry. Every row's height is known, so nothing is ever estimated: where a row
+    // sits, how tall the whole roll is and which row is under the header are plain arithmetic.
+    readonly property var rowTop: {
+        var t = [0], y = 0
+        for (var i = 0; i < rows.length; i++) {
+            var k = rows[i].kind
+            y += k === "photos" ? cellW : (k === "month" ? monthH : dayH)
+            t.push(y)
+        }
+        return t
+    }
+    readonly property real totalH: rowTop[rowTop.length - 1]
+    property int winFirst: 0
+    property int winLast: -1
+    readonly property int slotCount: Math.max(32, Math.ceil((winLast - winFirst + 8) / 16) * 16)
     property var monthList: []               // [{key, title, count, first, row}]
     property var photoRows: []               // row numbers that hold pictures
     property var monthMap: ({})
@@ -109,27 +124,37 @@ Item {
             s--
         return s
     }
+    function rowAtY(y) {
+        var lo = 0, hi = rows.length - 1, found = 0
+        while (lo <= hi) {
+            var mid = (lo + hi) >> 1
+            if (rowTop[mid] <= y) { found = mid; lo = mid + 1 }
+            else hi = mid - 1
+        }
+        return found
+    }
+    function updateWindow() {
+        if (rows.length === 0) {
+            winFirst = 0; winLast = -1
+            return
+        }
+        var buffer = 900
+        winFirst = rowAtY(grid.contentY - buffer)
+        winLast = rowAtY(grid.contentY + grid.height + buffer)
+    }
     function placeRow(r) {
         if (rows.length === 0)
             return
         internalMove = true
-        grid.positionViewAtIndex(r, ListView.Beginning)
-        var it = grid.itemAtIndex(r)
-        if (it) {
-            var y = it.y - band.height
-            var maxY = grid.contentHeight - grid.height + grid.bottomMargin
-            grid.contentY = clamp(y, -grid.topMargin, Math.max(-grid.topMargin, maxY))
-        }
+        var maxY = totalH - grid.height + grid.bottomMargin
+        grid.contentY = clamp(rowTop[r] - band.height, -grid.topMargin, Math.max(-grid.topMargin, maxY))
         internalMove = false
+        updateWindow()
     }
 
     // --- reading the position -----------------------------------------------------------
     function rowAtTop() {
-        var y = grid.contentY + band.height + 2
-        var r = grid.indexAt(grid.width / 2, y)
-        if (r < 0)
-            r = grid.indexAt(grid.width / 2, y + 14)
-        return r < 0 ? 0 : r
+        return rows.length === 0 ? 0 : rowAtY(grid.contentY + band.height + 2)
     }
     function topIndex() {
         if (rows.length === 0)
@@ -146,12 +171,11 @@ Item {
             return
         }
         if (pinnedMonth !== "") {
-            // A landing is only honoured while that month's header is still at the band.
+            // A landing is only honoured while that month's header is still at or above the band's lower edge.
             var pm = monthMap[pinnedMonth]
-            var pit = pm ? grid.itemAtIndex(pm.row) : null
-            var pt = pit ? pit.y - grid.contentY : -1000
-            var atEnd = grid.contentY >= grid.contentHeight - grid.height + grid.bottomMargin - 2
-            if (pt < -4 || pt > (atEnd ? grid.height : band.height + 24))
+            var pt = pm ? rowTop[pm.row] - grid.contentY : -1000
+            var atEnd = grid.contentY >= totalH - grid.height + grid.bottomMargin - 2
+            if (pt < -4 || pt > (atEnd ? grid.height : band.height + 2))
                 pinnedMonth = ""
         }
         var key = pinnedMonth !== "" ? pinnedMonth : rows[Math.min(rows.length - 1, rowAtTop())].month
@@ -186,24 +210,15 @@ Item {
     // Where a month's header row sits in the viewport right now (for the scrubber and for checks).
     function monthTopInView(key) {
         var m = monthMap[key]
-        var it = m ? grid.itemAtIndex(m.row) : null
-        return it ? it.y - grid.contentY : -1
+        return m ? rowTop[m.row] - grid.contentY : -1
     }
     function ensureVisible(i) {
         var r = rowOfPhoto(i)
-        var it = grid.itemAtIndex(r)
-        if (!it) {
-            grid.positionViewAtIndex(r, ListView.Contain)
-            it = grid.itemAtIndex(r)
-        }
-        if (!it)
-            return
         internalMove = true
-        var top = it.y - grid.contentY
-        var bottom = top + it.height
+        var top = rowTop[r] - grid.contentY
+        var bottom = top + cellW
         if (top < band.height + 4) {
-            var s = grid.itemAtIndex(startOfRow(r))
-            var ty = (s ? s.y : it.y) - band.height - 4
+            var ty = rowTop[startOfRow(r)] - band.height - 4
             grid.contentY = Math.max(-grid.topMargin, ty)
         } else if (bottom > grid.height - bottomInset) {
             grid.contentY += bottom - (grid.height - bottomInset)
@@ -288,12 +303,13 @@ Item {
     function openCurrent() {
         if (photoCount <= 0)
             return
-        var it = grid.itemAtIndex(rowOfPhoto(currentPhoto))
-        var col = currentPhoto - rows[rowOfPhoto(currentPhoto)].first
-        var p = it ? it.mapToItem(roll, col * cellW, 0) : Qt.point(width / 2 - 50, height / 2 - 50)
-        opened(shell.cellInfo(currentPhoto).mediaId, Qt.rect(p.x, p.y, cellW, cellW))
+        var r = rowOfPhoto(currentPhoto)
+        var col = currentPhoto - rows[r].first
+        opened(shell.cellInfo(currentPhoto).mediaId,
+               Qt.rect(col * cellW, rowTop[r] - grid.contentY, cellW, cellW))
     }
 
+    onRowTopChanged: { updateWindow(); refreshHeading() }
     onColumnsChanged: if (columns !== laidColumns) relayout(zooming ? zoomAnchor : -1)
     onCellSizeChanged: if (zooming && photoCount > 0) jumpToIndex(zoomAnchor)
     onMatchModeChanged: relayout(0)
@@ -308,15 +324,14 @@ Item {
     }
     Timer { id: zoomHold; interval: Theme.medium + 80; onTriggered: roll.zooming = false }
 
-    ListView {
+    Flickable {
         id: grid
         objectName: "rollGrid"
         anchors.fill: parent
-        model: roll.rows
         clip: true
-        cacheBuffer: 1200
+        contentWidth: width
+        contentHeight: roll.totalH
         boundsBehavior: Flickable.StopAtBounds
-        keyNavigationEnabled: false
         activeFocusOnTab: true
         focus: true
         topMargin: band.height + 6
@@ -327,9 +342,11 @@ Item {
         Accessible.role: Accessible.List
         Accessible.name: "Your photos, newest first. Use the arrow keys to move, Enter to open, Space to select."
 
+        onHeightChanged: roll.updateWindow()
         onContentYChanged: {
             if (!roll.internalMove)
                 roll.pinnedMonth = ""
+            roll.updateWindow()
             roll.refreshHeading()
             settle.restart()
         }
@@ -365,48 +382,46 @@ Item {
             event.accepted = ok
         }
 
-        delegate: Item {
+        // A fixed set of slots is reused as rows scroll by: row r always lives in slot r mod N, so
+        // only rows that enter the window are rebuilt.
+        Repeater {
+          model: roll.slotCount
+          delegate: Item {
             id: rowItem
-            required property var modelData
+            required property int index
+            readonly property int row: roll.winFirst + (((index - roll.winFirst) % roll.slotCount) + roll.slotCount) % roll.slotCount
+            readonly property bool live: row <= roll.winLast && row < roll.rows.length
+            readonly property var rowData: live ? roll.rows[row] : ({ kind: "none" })
+            visible: live
+            y: live ? roll.rowTop[row] : 0
             width: grid.width
-            height: modelData.kind === "photos" ? roll.cellW
-                  : (modelData.kind === "month" ? roll.monthH : roll.dayH)
+            height: rowData.kind === "photos" ? roll.cellW
+                  : (rowData.kind === "month" ? roll.monthH : (rowData.kind === "day" ? roll.dayH : 0))
 
             // Month divider.
             Item {
                 objectName: "monthRow"
-                visible: rowItem.modelData.kind === "month"
+                visible: rowItem.rowData.kind === "month"
                 anchors.fill: parent
                 Rectangle {
                     x: Theme.gutter / 2
                     width: parent.width - Theme.gutter
-                    y: 20
+                    y: 18
                     height: 1
                     color: Theme.amberEdge
-                }
-                Text {
-                    x: Theme.gutter / 2
-                    y: 28
-                    text: String(rowItem.modelData.title || "").toUpperCase() + "   \u00b7   "
-                          + rowItem.modelData.count + (rowItem.modelData.count === 1 ? " photo" : " photos")
-                    font.family: Theme.ui
-                    font.pixelSize: Theme.small
-                    font.weight: Font.Bold
-                    font.letterSpacing: 1.8
-                    color: Theme.amber
                 }
             }
 
             // Day divider in contact-sheet frame-number style.
             Item {
                 objectName: "dayRow"
-                visible: rowItem.modelData.kind === "day"
+                visible: rowItem.rowData.kind === "day"
                 anchors.fill: parent
                 Text {
                     id: dayTag
                     x: Theme.gutter / 2
                     anchors.verticalCenter: parent.verticalCenter
-                    text: rowItem.modelData.tag || ""
+                    text: rowItem.rowData.tag || ""
                     font.family: Theme.ui
                     font.pixelSize: 11
                     font.weight: Font.Bold
@@ -418,7 +433,7 @@ Item {
                     anchors.left: dayTag.right
                     anchors.leftMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    text: rowItem.modelData.count + (rowItem.modelData.count === 1 ? " photo" : " photos")
+                    text: rowItem.rowData.count + (rowItem.rowData.count === 1 ? " photo" : " photos")
                     font.family: Theme.ui
                     font.pixelSize: 11
                     font.letterSpacing: 0.6
@@ -437,11 +452,11 @@ Item {
 
             // A row of prints.
             Repeater {
-                model: rowItem.modelData.kind === "photos" ? rowItem.modelData.n : 0
+                model: rowItem.rowData.kind === "photos" ? rowItem.rowData.n : 0
                 delegate: Item {
                     id: cell
                     required property int index
-                    readonly property int photo: rowItem.modelData.first + index
+                    readonly property int photo: rowItem.rowData.first + index
                     readonly property var info: shell.cellInfo(photo)
                     readonly property bool current: roll.currentPhoto === photo
                     readonly property bool chosen: roll.selected[photo] === true
@@ -572,6 +587,7 @@ Item {
                     }
                 }
             }
+        }
         }
 
         // Ctrl + wheel zooms. A plain wheel scrolls.

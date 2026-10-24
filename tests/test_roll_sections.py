@@ -452,3 +452,156 @@ def test_heading_unpins_after_a_scrubber_landing_when_the_view_moves_on(tmp_path
             assert roll.property("heading") == _month_title(bridge.dayAt(top)), dy
     finally:
         shutdown_shell(engine)
+
+
+def _visible_truth(root, band, bridge):
+    from PySide6.QtCore import QPointF
+    """The month of the first picture row that is still visible under the header band."""
+    line = band.height()
+    best = None
+    for frame in _items(root, "printFrame"):
+        cell = frame.parentItem()
+        if not frame.isVisible():
+            continue
+        p = cell.mapToItem(root.contentItem(), QPointF(0, 0))
+        if p.y() + cell.height() <= line + 2 or p.y() > root.contentItem().height():
+            continue
+        photo = int(cell.property("photo"))
+        if best is None or photo < best[1]:  # pictures run in date order, so the lowest is the top
+            best = (p.y(), photo)
+    return None if best is None else bridge.dayAt(best[1])[:7]
+
+
+def test_heading_always_names_the_month_under_the_header_in_both_directions(tmp_path, monkeypatch):
+    from PySide6.QtCore import QPointF
+    from PySide6.QtQuick import QQuickItem
+
+    from semblon.native_shell.host import shutdown_shell
+
+    store, days = _store(tmp_path)
+    app, engine, root, roll, grid, bridge = _boot(store, monkeypatch, height=620)
+    try:
+        band = root.findChild(QQuickItem, "rollHeader")
+        top = float(grid.property("contentY"))
+        end = float(grid.property("contentHeight")) - float(grid.property("height"))
+        seen = 0
+
+        def check(label):
+            nonlocal seen
+            _spin(app, 0.12)
+            truth = _visible_truth(root, band, bridge)
+            if truth is None:
+                return
+            seen += 1
+            if roll.property("currentMonth") != truth:
+                dump = [(int(f.parentItem().property("photo")), round(f.parentItem().mapToItem(root.contentItem(), QPointF(0, 0)).y())) for f in _items(root, "printFrame")]
+                raise AssertionError((label, roll.property("currentMonth"), truth, dump, grid.property("contentY")))
+            assert roll.property("heading") == sections.month_title(truth), label
+            assert int(roll.property("headingCount")) == sum(1 for d in days if d[:7] == truth), label
+
+        for y in range(int(top), int(end), 130):  # down
+            grid.setProperty("contentY", float(y))
+            check(("down", y))
+        for y in range(int(end), int(top), -170):  # and back up
+            grid.setProperty("contentY", float(y))
+            check(("up", y))
+        for y in (end, top, end * 0.4, end * 0.9, end * 0.1, end * 0.66):  # long jumps
+            grid.setProperty("contentY", float(y))
+            check(("jump", y))
+        months = sorted({d[:7] for d in days}, reverse=True)
+        for key in (months[5], months[1], months[-1], months[0], months[3]):  # scrubber landings
+            _call(roll, "jumpToMonth", key)
+            check(("land", key))
+            assert roll.property("currentMonth") == key
+        assert seen > 40
+    finally:
+        shutdown_shell(engine)
+
+
+def test_heading_stays_true_after_nudging_off_a_scrubber_landing(tmp_path, monkeypatch):
+    from PySide6.QtQuick import QQuickItem
+
+    from semblon.native_shell.host import shutdown_shell
+
+    store, days = _store(tmp_path)
+    app, engine, root, roll, grid, bridge = _boot(store, monkeypatch, height=620)
+    try:
+        band = root.findChild(QQuickItem, "rollHeader")
+        months = sorted({d[:7] for d in days}, reverse=True)
+        for key in (months[2], months[4], months[1]):
+            for nudge in (0, -6, -20, -60, -130, 8, 40):  # up (towards newer) and down
+                _call(roll, "jumpToMonth", key)
+                _spin(app, 0.12)
+                grid.setProperty("contentY", float(grid.property("contentY")) + nudge)
+                _spin(app, 0.12)
+                truth = _visible_truth(root, band, bridge)
+                assert roll.property("currentMonth") == truth, (key, nudge)
+                assert roll.property("heading") == sections.month_title(truth)
+    finally:
+        shutdown_shell(engine)
+
+def _big_store(tmp_path):
+    """Six years, uneven months (1 to 60 photos), uneven days."""
+    import random
+
+    from semblon.store import connect, init_db
+
+    rnd = random.Random(7)
+    store = tmp_path / "big.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    n = 0
+    days = []
+    for y in range(2019, 2025):
+        for m in range(1, 13):
+            if rnd.random() < 0.2:
+                continue
+            for _ in range(rnd.choice([1, 2, 5, 9, 17, 33, 60]) // 2 + 1):
+                d = rnd.randint(1, 28)
+                n += 1
+                path = tmp_path / f"b{n}.jpg"
+                path.write_bytes(b"x")
+                conn.execute(
+                    "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+                    (f"b{n:04d}", "folder", str(path), f"h{n}", 10, 10, _ns(y, m, d), 1),
+                )
+                days.append(f"{y}-{m:02d}-{d:02d}")
+    conn.commit()
+    conn.close()
+    return store, sorted(days, reverse=True)
+
+
+def test_header_and_scrubber_agree_with_the_rows_on_a_long_uneven_library(tmp_path, monkeypatch):
+    from PySide6.QtQuick import QQuickItem
+
+    from semblon.native_shell.host import shutdown_shell
+
+    store, days = _big_store(tmp_path)
+    app, engine, root, roll, grid, bridge = _boot(store, monkeypatch, height=620)
+    try:
+        band = root.findChild(QQuickItem, "rollHeader")
+        scrub = root.findChild(QQuickItem, "scrubber")
+        months = sorted({d[:7] for d in days}, reverse=True)
+        assert len(months) > 40
+        import random
+
+        rnd = random.Random(3)
+        for key in rnd.sample(months, 8) + [months[0], months[-1]]:
+            _call(roll, "jumpToMonth", key)
+            for _ in range(2):  # layout corrections arrive late; the answer must not drift
+                _spin(app, 0.15)
+                assert roll.property("currentMonth") == key
+                assert roll.property("heading") == sections.month_title(key)
+                top = float(_call(roll, "monthTopInView", key))
+                atEnd = key == months[-1]
+                assert atEnd or abs(top - band.height()) <= 2, (key, top)
+                assert int(scrub.property("activeMonthIndex")) == months.index(key) if scrub.property("activeMonthIndex") is not None and int(scrub.property("activeMonthIndex")) >= 0 else True
+        for _ in range(12):  # scroll both ways by random amounts
+            y = float(grid.property("contentY")) + rnd.choice([-700, -240, -30, 25, 310, 1200, 3000])
+            y = max(-105.0, min(y, float(grid.property("contentHeight")) - 620))
+            grid.setProperty("contentY", y)
+            _spin(app, 0.12)
+            truth = _visible_truth(root, band, bridge)
+            assert truth is None or roll.property("currentMonth") == truth, (y, truth)
+    finally:
+        shutdown_shell(engine)
