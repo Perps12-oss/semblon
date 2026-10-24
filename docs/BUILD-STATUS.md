@@ -7,7 +7,7 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-22 (production-readiness audit on `0f9e29f`) |
+| Evidence date | 2026-10-24 (synthetic Lens rank bar on this branch; Gates B and C unchanged) |
 | Branch | `main` at audit start |
 | Parent HEAD | (see git log on branch) |
 | Working tree at evidence | Permanent Home stage + capability catalogue; shell journey updated |
@@ -22,14 +22,15 @@
 | IMPLEMENTED | Code/config exists; verification incomplete |
 | VERIFIED | All defined acceptance criteria pass with recorded evidence |
 | DEFERRED | Explicit documented product decision excludes the item from this release |
+| OUT OF SHIP | Same finish: an accepted decision, or the schema freeze, excludes the item. Not an open task. |
 
 ## Gates
 
 | Gate | Meaning | Status |
 |---|---|---|
 | A — Core product | Archive continuity, Similar honesty, context where metadata permits | **VERIFIED** (offscreen production shell + unit). Visible desktop `SEMBLON_VISIBLE_SHELL=1` not required for these acceptance criteria; optional residual. |
-| B — Engineering baseline | Supported CI, lock, identity path, honest safety/privacy | **IN PROGRESS** — portable pytest on Linux 3.11 is green in the test summary; the full process then aborted during interpreter finalization in this environment (exit 134) when shell tests ran in the same process. GitHub Actions on `main` is **not green**: `f0c42e6` emptied `.github/workflows/ci.yml`, and the last valid workflow's jobs never received a runner (`runner_id` 0, logs HTTP 404). |
-| C — Release | Offline clean install + intended assets + **signed** installer | **BLOCKED** — unchanged. No Authenticode cert. Identity weights are not cleared for redistribution. |
+| B — Engineering baseline | Supported CI, lock, identity path, honest safety/privacy | **IN PROGRESS** — procedure is `docs/SHIP-GATES.md`. Not VERIFIED until the `test` job exits 0 on a runner. The 2026-10-23 cost cut keeps Actions on Windows Python 3.12 only. |
+| C — Release | Offline clean install + intended assets + **signed** installer | **BLOCKED** on the certificate. Weights are bring-your-own (`docs/decisions/2026-10-16-identity-engine-redistribution.md`). Unsigned MSI is not Gate C. Owner steps: `docs/SHIP-GATES.md`. |
 
 ## Dual verdict
 
@@ -39,21 +40,21 @@
 | **2. Release readiness** | **NOT READY** — Gate C blocked |
 | **3. This roadmap pass (milestones 1–3)** | **COMPLETE** — acceptance evidenced (prior Gate A pass) |
 
-Deferred without blocking unrelated work: **02** encryption, **08** product capture UI, milestone **4** albums.
+Out of ship by an existing decision or by the schema freeze: **02** encryption, **08** product screen capture, albums (not a product workflow; no new table). See `docs/SHIP-GATES.md`.
 
 ## Twelve-item programme
 
 | ID | Priority | Status | Evidence / remaining |
 |---|---|---|---|
 | 01 Win crash / Python matrix | P0 | IN PROGRESS | SciPy markers + policy. Clean 3.14 venv: nonshell **31 passed**, shell Focus + Gate A journey **2 passed** after dropping `QtMultimedia` (Essentials). **CI matrix green not evidenced this run** — aggregate job `test` republishes required context. |
-| 02 Encrypted store | P2 | DEFERRED | Decision recorded. |
+| 02 Encrypted store | P2 | OUT OF SHIP | `docs/decisions/2026-10-16-store-encryption-deferred.md` lines 7–9. Plaintext store. Do not claim SQLCipher or DPAPI. |
 | 03 Signed offline MSI | P1 | IMPLEMENTED (eng) / BLOCKED (cert) | `tools/msi/build-msi.ps1` + `.github/workflows/msi-release.yml` (WiX v4/v5 via `dotnet tool wix`). Signs only when `CODE_SIGNING_PFX_*` secrets set; unsigned upload is engineering-only. |
 | 04 Identity engine / pack | P0 | **IMPLEMENTED** (YuNet+SFace runtime) / **BLOCKED** (L redistribute, Q Semblon eval, P native ARM64) | Production path `opencv/yunet_sface`; `insightface` removed from deps; buffalo_l not loaded. BYO pack + pin. Smoke: ingest→cluster→name→reembed on Lena (x64). Gates: L OPEN, Q OPEN (provisional eps=0.45), I partial (pipeline wired), P partial. `docs/IDENTITY-PACK.md`. PRODUCT.md FaceKit wording unchanged until product-approval decision. |
 | 05 Hashed dependency lock | P1 | IMPLEMENTED | `requirements.lock.txt` present. Not VERIFIED until CI lock step + clean install evidence from GHA. |
 | 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | `tools/facekit_owner_evidence.py` + `.github/workflows/facekit-owner.yml` + `docs/FACEKIT-OWNER.md`. No owner pack on this machine — evidence JSON not PASS. |
 | 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Unchanged. |
-| 08 Screen-capture privacy | P1 | DEFERRED | Decision unchanged. |
-| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18); multi-leg path **IMPLEMENTED**; eval harness **IMPLEMENTED**; Lens responsiveness **IMPLEMENTED** on emulated x64 (2026-10-22) | Dense `region_patch` late interaction remains the appearance door. Focus Similar region now fuses text/object/optional SigLIP after the first look, with Same look / Same kind / a word / part chips. Labelled rank harness is `tools/eval_lens_retrieval.py`. Photographic eval gate is not reopened. ANN not started. Same machine, win-amd64 Python on ARM64 host: scoring 32 photos × 400 patches dropped from 4132 ms per-image to 97 ms chunked; a repeated crop of one JPEG dropped from 127 ms to 0.7 ms. Indexing one 1200×1600 still (9 windows + 6 proposals) is one batched forward: 2.96 s versus 8.14 s serial, same tokens within 1e-4. An indexed photo searches from stored patch tokens and does not encode the crop. Search quality floors are unchanged. ANN stays unwired. Native ARM64 and Python 3.14 were not remeasured. |
+| 08 Screen-capture privacy | P1 | OUT OF SHIP | `docs/decisions/2026-10-16-screen-capture-deferred.md` lines 7–9. Lab capture only. |
+| 09 Visual-memory search | P0 | **VERIFIED** on photographs (2026-10-18); multi-leg path **IMPLEMENTED**; synthetic rank bar **PASS** 5/5 (2026-10-24); precision refused | Dense `region_patch` late interaction remains the appearance door. Focus Similar region fuses text/object/optional SigLIP after the first look. `feature_rerank` scales each door by the best value in the pool. Published RRF weights and floors are unchanged. Kind door stays `SKIPPED` without SigLIP. ANN is out of ship (`docs/SHIP-GATES.md`). Photographic eval gate is not reopened. Responsiveness evidence from 2026-10-22 is unchanged: chunked scoring 97 ms, repeated crop 0.7 ms, one batched forward 2.96 s versus 8.14 s serial. Native ARM64 and Python 3.14 were not remeasured. |
 | 10 Archive continuity | P0 | **VERIFIED** | Missing Focus notice; ingest rename reconnect; copy/basename safety; Gate A journey on Unicode folder. |
 | 11 Contextual discovery | P1 | **VERIFIED** | `openFocusInContext` day scope includes same-day neighbours and excludes other days; missing-date honest. |
 | 12 Unified experience + docs | P0/P1 | **VERIFIED** (milestones 1–3) | Gate A journey + ROADMAP sync. Milestones 4–5 / Gates B–C remain. |
@@ -286,7 +287,7 @@ Focus **Similar region** now accepts a query spec (`look` / `kind`, a word, a pa
 
 After the fused list is on screen, a cheap match check can reorder the top hits (colour + local pixel description). The strip says **Checked the matches**. Fast skips this. A missing VLM does not block the grid. No identity writes.
 
-Labelled eval harness (`semblon/lens_eval.py`, `tools/eval_lens_retrieval.py`) scores highlight / relevant / hard-negative tuples: brand text, same kind, same look, part vs whole, same-colour confuser. `--eval-set synthetic` prints ranks and `relevant_above_hard_neg` only. Precision stays refused without `--eval-set confirmatory`. No frozen confirmatory Lens set exists. First synthetic run: **3/5** families place the relevant hit above the hard negatives (`kind-cup`, `look-red-cup`, `colour-confuser`). `brand-acme` and `part-logo` still lose to a confident look list. RRF / floors / S1 were not retuned. Exact-scan timing does not justify ANN. Report: `docs/evidence/lens-retrieval-eval.json`.
+Labelled eval harness (`semblon/lens_eval.py`, `tools/eval_lens_retrieval.py`) scores highlight / relevant / hard-negative tuples: brand text, same kind, same look, part vs whole, same-colour confuser. `--eval-set synthetic` prints ranks and `relevant_above_hard_neg` only. Precision stays refused without `--eval-set confirmatory`. No frozen confirmatory file is in the tree (`docs/LENS-CONFIRMATORY.md`). Historical synthetic run: **3/5**. Current synthetic run: **5/5** after pool-relative features; weights were not retuned. Kind door `SKIPPED` without SigLIP. ANN is out of ship. Report: `docs/evidence/lens-retrieval-eval.json`.
 
 Command: `python3 -m pytest tests/test_lens_eval.py tests/test_lens_retrieval.py tests/test_selection_retrieval.py tests/test_discovery_slice_d.py tests/test_search_doors.py tests/test_similarity_quality.py tests/test_region_search.py tests/test_local_lens.py tests/test_discovery_slice_e.py tests/test_visual_discovery.py tests/test_discovery_workspace.py tests/test_shell_frontend.py::test_every_qml_action_maps_to_a_real_bridge_slot_or_property -q` → **80 passed, 2 skipped**.
 
@@ -310,6 +311,14 @@ Command: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_timeline_view.py 
 1. The library is one workspace (calendar, then the day's grid, then Focus). A bottom pill stays on every depth. `Quiet` means nothing is scanning, and the sheet offers check-for-new-files or add-a-folder. A running add is `1 task`; a search at the same time makes `2 tasks`. Pause, resume, and cancel live on that sheet. A top-right chip shows `Scanning · current / total` and opens the same sheet. The old scan card no longer covers the field.
 2. Grid thumbs write one 384 px JPEG under `<store stem>.thumbs/` the first time a file is decoded. The next cell reads that JPEG. Focus frames stay in memory. Clear library deletes the folder. No new table and no writes into the photo folder.
 3. Command: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_library_tasks.py tests/test_thumb_cache.py tests/test_timeline_view.py tests/test_shell_frontend.py tests/test_discovery_workspace.py tests/test_native_shell.py` → **95 passed**.
+
+## Behaviour landed — pool-relative rerank (2026-10-24)
+
+1. `feature_rerank` divides look, text, object, kind, and RRF by the best value of that feature in the candidate pool, then applies the existing weights (look 0.45 / 0.18, kind 0.18 / 0.42, text 0.22, object 0.15, RRF 0.30, word bonus 0.08, RRF `k` 60). No weight constant was edited. No floor was edited. S1 was not touched.
+2. `brand-acme` and `part-logo` place the relevant hit above the hard negative. The kind door is still `SKIPPED` (SigLIP pack absent). That skip is the missing-pack contract, not a failed search.
+3. Confirmatory precision stays null. The loader and the manifest rules are `docs/LENS-CONFIRMATORY.md`. Gates B and C procedures are `docs/SHIP-GATES.md`.
+4. Command: `.venv/bin/python tools/eval_lens_retrieval.py --eval-set synthetic` → exit 0, status **PASS**, 5/5, precision null, `ann_justified` false, `exact_scan_ms` 43.428 on this run (corpus 10). Identity rows were not written. `--eval-set confirmatory` → exit 1, status `not_confirmatory`, precision null. That refusal is the missing frozen file, not a rank-bar failure.
+5. Command: `xvfb-run -a .venv/bin/python -m pytest -q` → exit 0, **988 passed, 7 skipped** (Linux Python 3.12, offscreen Qt). This is not a GitHub Actions green run. Gate B stays IN PROGRESS.
 
 ## What this file will not absorb
 

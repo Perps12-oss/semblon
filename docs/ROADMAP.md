@@ -14,15 +14,15 @@ This file lists the product-completion sequence. It does not redefine the vision
 | 2 | Look into a picture — point, understand, find across the archive, show where the match sits | **VERIFIED** on the photographic set | `docs/evidence/photo-region-eval.json`. Four photographs. Viewpoint and lighting both rank above the same-colour distractor. Match box meets the paste. |
 | 3 | Recover the context — Similar hit → day + surrounding photos | **VERIFIED** | Issue 11. Same-day neighbours in Field; other days excluded; missing-date honest. |
 | 4 | Keep a discovery | **VERIFIED** | Kept finds sit beside the library in `{store}.discoveries.json`. No new table. |
-| 5 | Trust and release | **IN PROGRESS** / Gate C **BLOCKED** | YuNet+SFace runtime landed (buffalo_l retired from deps). Still need: L PASS or permanent BYO ship stance, Q Semblon eval, native ARM64, GHA green, Authenticode cert, lockfile refresh without insightface. |
-| 6 | Face → archive discovery | **IN PROGRESS** (slices A–E code; Q/L ops open) | A–E: face similar, review handoff, person→Time, unified results, OCR→Field, NanoDet BYO. Plan: `docs/decisions/2026-10-16-yunet-sface-discovery-plan.md`. Q calibration + MSI weight L PASS remain external. |
-| 7 | Multi-leg local retrieval — decompose highlight, language door, RRF + rerank, refinement spec | **IMPLEMENTED** (interactive path + eval harness) | Query spec + RRF/rerank + BM25 + part/word chrome + after-grid match check + labelled rank harness. Heavy VLM and ANN still off the path. `docs/decisions/2026-10-19-lens-style-retrieval.md`. |
+| 5 | Trust and release | **IN PROGRESS** / Gate C **BLOCKED** on the certificate | BYO weights are the ship stance (`docs/decisions/2026-10-16-identity-engine-redistribution.md`). Q, native ARM64, GHA green, and Authenticode are owner procedures in `docs/SHIP-GATES.md`. |
+| 6 | Face → archive discovery | **IN PROGRESS** (slices A–E code; Q/L/P not PASS) | A–E landed. Q does not transfer S1 thresholds. L stays BYO until a licence letter. `docs/SHIP-GATES.md`. |
+| 7 | Multi-leg local retrieval — decompose highlight, language door, RRF + rerank, refinement spec | **IMPLEMENTED**; synthetic rank bar **PASS** 5/5 | Pool-relative rerank, weights unchanged, precision refused. ANN and a heavy VLM are out of ship. `docs/decisions/2026-10-19-lens-style-retrieval.md`. |
 
 ## Pass verdict
 
 Milestones **1–3 are COMPLETE** for the acceptance criteria that can be evidenced in this environment (offscreen production shell + unit tests).  
-Milestone **7** is implemented on the interactive path (query spec, fuse, refine chrome) plus the labelled eval harness. It does not reopen milestone 2. ANN stays off.  
-The overall product is **NOT COMPLETE** until Gates B and C close. See BUILD-STATUS dual verdict.
+Milestone **7** is implemented on the interactive path. The synthetic rank bar is PASS 5/5. Precision stays refused. It does not reopen milestone 2. ANN is out of ship.  
+The overall product is **NOT COMPLETE** until Gates B and C close. See BUILD-STATUS dual verdict and `docs/SHIP-GATES.md`.
 
 ## Rule
 

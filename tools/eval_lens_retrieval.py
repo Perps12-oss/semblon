@@ -39,8 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--out",
-        default=str(OUT),
-        help="JSON report path",
+        default=None,
+        help="JSON report path. Synthetic defaults to docs/evidence/lens-retrieval-eval.json. "
+        "Confirmatory defaults to docs/evidence/lens-confirmatory-eval.json so it does not replace the synthetic report.",
     )
     parser.add_argument(
         "--work",
@@ -50,7 +51,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         kind = normalize_eval_set(args.eval_set)
-        report = run_eval(Path(args.work), eval_set=kind, out=Path(args.out))
+        if args.out:
+            out = Path(args.out)
+        elif kind == EVAL_SET_CONFIRMATORY:
+            out = ROOT / "docs" / "evidence" / "lens-confirmatory-eval.json"
+        else:
+            out = OUT
+        report = run_eval(Path(args.work), eval_set=kind, out=out)
     except LensEvalError as exc:
         print(f"ERROR {exc}")
         return 2
@@ -63,7 +70,6 @@ def main(argv: list[str] | None = None) -> int:
         )
     if kind == EVAL_SET_CONFIRMATORY:
         print(report.get("precision_reason") or "precision refused")
-        return 1
     return 0 if report.get("status") == "PASS" else 1
 
 

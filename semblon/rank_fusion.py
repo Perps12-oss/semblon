@@ -38,18 +38,41 @@ def feature_rerank(
     spec=None,
     limit: int = 20,
 ) -> list[dict]:
-    """Rescore fused hits. Uses door scores already on the row."""
+    """Rescore fused hits. Uses door scores already on the row.
+
+    Door scores are not on one scale (cosine, an OCR flag, an RRF sum near
+    1/60). Each feature is divided by the best value in this pool before the
+    published weights are applied. The weights themselves stay fixed.
+    """
     query = spec if isinstance(spec, QuerySpec) else parse_query_spec(spec)
-    packed = []
+    prepared: list[tuple[dict, dict[str, float]]] = []
     for item in items:
         if not isinstance(item, dict):
             continue
         doors = item.get("door_scores") if isinstance(item.get("door_scores"), dict) else {}
-        visual = _unit(doors.get(DOOR_LOOK, item.get("visual_score")))
-        text = _unit(doors.get(DOOR_TEXT, item.get("text_score")))
-        obj = _unit(doors.get(DOOR_OBJECT, item.get("object_score")))
-        kind = _unit(doors.get(DOOR_KIND, item.get("kind_score")))
-        rrf = _unit(item.get("rrf") or item.get("score"))
+        prepared.append(
+            (
+                item,
+                {
+                    "visual": _unit(doors.get(DOOR_LOOK, item.get("visual_score"))),
+                    "text": _unit(doors.get(DOOR_TEXT, item.get("text_score"))),
+                    "obj": _unit(doors.get(DOOR_OBJECT, item.get("object_score"))),
+                    "kind": _unit(doors.get(DOOR_KIND, item.get("kind_score"))),
+                    "rrf": _unit(item.get("rrf") or item.get("score")),
+                },
+            )
+        )
+    peaks = {
+        key: max((feats[key] for _item, feats in prepared), default=0.0)
+        for key in ("visual", "text", "obj", "kind", "rrf")
+    }
+    packed = []
+    for item, feats in prepared:
+        visual = _pool_fraction(feats["visual"], peaks["visual"])
+        text = _pool_fraction(feats["text"], peaks["text"])
+        obj = _pool_fraction(feats["obj"], peaks["obj"])
+        kind = _pool_fraction(feats["kind"], peaks["kind"])
+        rrf = _pool_fraction(feats["rrf"], peaks["rrf"])
         score = (
             query.look_weight * visual
             + 0.22 * text
@@ -57,7 +80,7 @@ def feature_rerank(
             + query.kind_weight * kind
             + 0.30 * rrf
         )
-        if query.modifier and text > 0:
+        if query.modifier and feats["text"] > 0:
             score += 0.08
         row = dict(item)
         row["score"] = float(score)
@@ -71,6 +94,13 @@ def feature_rerank(
         )
     )
     return packed[: max(1, int(limit))]
+
+
+def _pool_fraction(value: float, peak: float) -> float:
+    """Map one door onto 0–1 inside this candidate pool. A missing door stays 0."""
+    if peak <= 0:
+        return 0.0
+    return value / peak
 
 
 def _unit(value) -> float:

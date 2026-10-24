@@ -44,6 +44,23 @@ These are product and engineering gaps. They are not permission to reopen the sh
 | MSI `wix build` / sign | **PARTIAL** | Engineering source exists. Owner Windows build |
 | Identity ONNX redistribution (YuNet/SFace; buffalo_l historical) | **UNAVAILABLE** | Licence gate L. Do not fake |
 
+## Ship disposition (2026-10-24)
+
+Identified open cells finish here. This is not a new architecture and it does not mark Gate B or Gate C verified.
+
+| Cell | Finish |
+|---|---|
+| Remaining production UX | Gate A offscreen journey is the acceptance (`docs/BUILD-STATUS.md`). Visible desktop grab is optional residual. No second shell. |
+| Whole-machine stress | Owner procedure in `docs/SHIP-GATES.md`. Workers stay 1. |
+| PERF ARM64 OpenCV load | **BLOCKED.** Repro is `tools/perf_p1_arm64_repro.ps1`. Do not silent-swap S1. |
+| MSI `wix build` / sign | Engineering source exists. Signature is the owner certificate (`docs/PACKAGING.md`, `docs/SHIP-GATES.md`). Unsigned is not Gate C. |
+| Identity ONNX redistribution | **OUT OF SHIP** for bundling. BYO until L PASS (`docs/decisions/2026-10-16-identity-engine-redistribution.md`). |
+| Home drag-to-select (Tk row) | Historical Tk client. Production draw is Focus on PySide6. |
+| Windows capture | **OUT OF SHIP.** `docs/decisions/2026-10-16-screen-capture-deferred.md`. |
+| SigLIP / SAM2 / translation / VLM / landmarks | Optional BYO. A missing pack is reported. None of them write `faces.person_id` or `embeddings.modality='face'`. SigLIP kind door skips when absent. |
+| Fast index | Exact derived matrix is the product index. ANN is **out of ship** (`docs/decisions/2026-10-19-lens-style-retrieval.md` slice 9). |
+| Circuit breaker | Process memory only, by the row’s own contract. Not a store column. |
+
 ## Capability ledger
 
 The table below is the longer capability ledger (identity, APP-1, packaging). Where an older sentence names Tk Home as the production GUI, the CLOSED section above wins.
