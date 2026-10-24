@@ -1717,6 +1717,46 @@ def test_bridge_exposes_read_only_editorial_counts(tmp_path, monkeypatch):
         bridge.shutdown()
 
 
+def test_scan_progress_keeps_the_field_windowed(tmp_path, monkeypatch):
+    """Progress must not rebuild the calendar id lists on the UI thread."""
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.application import Application
+    from semblon.native_shell.bridge import ShellBridge
+    from semblon.native_shell.events import JOB_PROGRESS
+    from semblon.native_shell.model import ArchiveModel
+    from semblon.store import connect, init_db
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.close()
+    _app = QApplication.instance() or QApplication([])
+    bridge = ShellBridge(ArchiveModel(Application(store)), Application(store))
+    calls = {"n": 0}
+
+    def editorial():
+        calls["n"] += 1
+
+    bridge._reload_editorial = editorial
+    bridge._model.set_media_ids(["p1"])
+    bridge._scope_kind = ""
+    bridge._person_field_filter = False
+    bridge._events.record(JOB_PROGRESS, {"current": 1, "total": 4, "stage": "ingest"})
+    bridge._library_refresh_at = 0.0
+    try:
+        bridge._flush_progress()
+        assert calls["n"] == 0
+        assert bridge._model.media_ids() is None
+        assert bridge._progress_current == 1
+        bridge._refresh_library()
+        assert calls["n"] == 1
+    finally:
+        bridge.shutdown()
+
+
 def test_gate_a_archive_similar_and_context_journey(tmp_path, monkeypatch):
     """Milestones 1–3: reconnect, honest Similar, day context with neighbours (offscreen)."""
     import time

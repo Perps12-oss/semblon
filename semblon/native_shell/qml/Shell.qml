@@ -4702,8 +4702,8 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: 14
-        width: scanChipText.implicitWidth + 22
-        height: 28
+        width: Math.max(scanChipText.implicitWidth, scanTimingText.implicitWidth) + 22
+        height: scanTimingText.text !== "" ? 40 : 28
         radius: 14
         color: tokenBg1
         border.color: tokenAccent
@@ -4722,11 +4722,24 @@ ApplicationWindow {
 
         Text {
             id: scanChipText
-            anchors.centerIn: parent
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: scanTimingText.text !== "" ? 4 : 7
             text: scanChip.label
             color: tokenText
             font.family: "Segoe UI"
             font.pixelSize: 12
+        }
+        Text {
+            id: scanTimingText
+            objectName: "scanTiming"
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: scanChipText.bottom
+            visible: text !== ""
+            text: shellReady ? shellApi.jobTiming : ""
+            color: tokenMuted
+            font.family: "Segoe UI"
+            font.pixelSize: 11
         }
         MouseArea {
             anchors.fill: parent
@@ -4812,6 +4825,16 @@ ApplicationWindow {
                         width: parent.width
                         wrapMode: Text.WordWrap
                         text: taskSummarySafe
+                        color: tokenMuted
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                    }
+
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: text !== ""
+                        text: shellReady && jobRunning ? shellApi.jobTiming : ""
                         color: tokenMuted
                         font.family: "Segoe UI"
                         font.pixelSize: 12

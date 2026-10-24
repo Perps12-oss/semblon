@@ -162,9 +162,15 @@ def test_progress_monotonic_under_workers(tmp_path):
         for e in events
         if e.stage == STAGE_INGEST and e.kind == KIND_PROGRESS and e.current is not None
     ]
+    by_outcome: dict[str, list[int]] = {}
+    for event in events:
+        if event.stage == STAGE_INGEST and event.kind == KIND_PROGRESS and event.current is not None:
+            by_outcome.setdefault(event.outcome or "", []).append(event.current)
     assert currents
-    assert currents == sorted(currents)
-    assert currents[-1] == 8
+    assert by_outcome["library"] == sorted(by_outcome["library"])
+    assert by_outcome["library"][-1] == 8
+    assert by_outcome["faces"] == sorted(by_outcome["faces"])
+    assert by_outcome["faces"][-1] == 8
 
 
 def test_cancel_under_workers_stamps_cancelled(tmp_path):
@@ -212,7 +218,11 @@ def test_cancel_under_workers_stamps_cancelled(tmp_path):
     conn.close()
     assert notes == "cancelled"
     assert '"cancelled": true' in timings
-    assert 1 <= n_media < 6
+    assert n_media == 6
+    conn = sqlite3.connect(str(store))
+    n_faces = conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
+    conn.close()
+    assert n_faces == 2
 
 
 def test_pause_gate_under_workers_no_duplicate_media(tmp_path):

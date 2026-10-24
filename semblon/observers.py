@@ -161,6 +161,13 @@ def color_histogram(img) -> bytes:
     if arr.ndim != 3 or arr.shape[2] < 3:
         vec = np.zeros(APPEARANCE_DIM, dtype=np.float32)
         return vec.tobytes()
+    height, width = arr.shape[:2]
+    long_side = max(height, width)
+    # Eight bins do not need every pixel. Walking a 24MP frame here was
+    # most of a second, on top of the face detector, for every still.
+    if long_side > 256:
+        step = max(1, int(long_side) // 256)
+        arr = arr[::step, ::step]
     b, g, r = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
     hist = []
     for ch in (r, g, b):
@@ -180,24 +187,47 @@ def contour_objects(img, *, min_area: int = 400, max_regions: int = 8) -> list[d
     arr = np.asarray(img)
     if arr.ndim != 3:
         return []
-    gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
+    height, width = arr.shape[:2]
+    work = arr
+    sx = sy = 1.0
+    long_side = max(height, width)
+    if long_side > 1280:
+        scale = 1280.0 / float(long_side)
+        new_w = max(1, int(round(width * scale)))
+        new_h = max(1, int(round(height * scale)))
+        work = cv2.resize(arr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        sx = width / float(new_w)
+        sy = height / float(new_h)
+    gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     _, thr = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     contours, _ = cv2.findContours(thr, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    h, w = gray.shape[:2]
+    work_h, work_w = gray.shape[:2]
+    area_scale = sx * sy
     out = []
     scored = []
     for c in contours:
-        area = float(cv2.contourArea(c))
+        area = float(cv2.contourArea(c)) * area_scale
         if area < min_area:
             continue
         x, y, bw, bh = cv2.boundingRect(c)
-        if bw >= w * 0.98 and bh >= h * 0.98:
+        if bw >= work_w * 0.98 and bh >= work_h * 0.98:
             continue
-        scored.append((area, (float(x), float(y), float(x + bw), float(y + bh))))
+        scored.append(
+            (
+                area,
+                (float(x) * sx, float(y) * sy, float(x + bw) * sx, float(y + bh) * sy),
+            )
+        )
     scored.sort(reverse=True)
     for area, bbox in scored[:max_regions]:
-        out.append({"bbox": bbox, "score": min(1.0, area / float(max(w * h, 1))), "class": "region"})
+        out.append(
+            {
+                "bbox": bbox,
+                "score": min(1.0, area / float(max(width * height, 1))),
+                "class": "region",
+            }
+        )
     return out
 
 

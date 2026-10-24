@@ -97,7 +97,7 @@ def test_embed_failure_is_retried(tmp_path):
 
     first = _run_ingest(folder, store, embed)
     assert first["failed"] == 1
-    assert _counts(store) == (0, 0, 0)
+    assert _counts(store) == (0, 1, 0)
     second = _run_ingest(folder, store, embed)
     assert second["ok"] >= 1
     obs, media, faces = _counts(store)
@@ -599,3 +599,42 @@ if (-not (Test-Path -LiteralPath $env:FAKE_PY)) { exit 2 }
     )
     assert dot.returncode == 0, dot.stderr
     assert not (sourced / ".venv").exists()
+
+
+def test_opencv_already_orients_so_ingest_does_not_decode_again(monkeypatch):
+    import cv2
+    from PIL import Image
+
+    from semblon.ingest import _orient_display
+
+    rgb = np.zeros((24, 40, 3), dtype=np.uint8)
+    rgb[0, 0] = (255, 0, 0)
+    image = Image.fromarray(rgb, mode="RGB")
+    exif = image.getexif()
+    exif[274] = 6
+    payload = _jpeg_bytes(image, exif=exif.tobytes())
+    buf = np.frombuffer(payload, dtype=np.uint8)
+    shown = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    stored = cv2.imdecode(buf, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+    assert shown is not None and stored is not None
+    assert shown.shape[:2] != stored.shape[:2]
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("ingest must not decode the still a second time")
+
+    monkeypatch.setattr("PIL.ImageOps.exif_transpose", _boom)
+    assert _orient_display(shown, payload) is shown
+    plain = _jpeg_bytes(Image.fromarray(rgb, mode="RGB"))
+    plain_img = cv2.imdecode(np.frombuffer(plain, dtype=np.uint8), cv2.IMREAD_COLOR)
+    assert _orient_display(plain_img, plain) is plain_img
+
+
+def _jpeg_bytes(image, *, exif: bytes | None = None) -> bytes:
+    from io import BytesIO
+
+    buf = BytesIO()
+    kwargs = {"format": "JPEG", "quality": 95}
+    if exif is not None:
+        kwargs["exif"] = exif
+    image.save(buf, **kwargs)
+    return buf.getvalue()

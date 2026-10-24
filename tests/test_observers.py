@@ -337,3 +337,27 @@ def test_overlay_boxes_skip_dual_write_faces():
     assert "object" in kinds
 
 
+def test_contour_boxes_stay_on_the_original_when_the_photo_is_large():
+    from semblon.observers import contour_objects
+
+    img = np.zeros((3000, 4000, 3), dtype=np.uint8)
+    img[600:1400, 800:1800] = 255
+    rows = contour_objects(img, min_area=400)
+    assert rows
+    x1, y1, x2, y2 = rows[0]["bbox"]
+    assert x2 > 1280
+    assert x1 == pytest.approx(800, abs=16)
+    assert y1 == pytest.approx(600, abs=16)
+    assert x2 == pytest.approx(1800, abs=16)
+    assert y2 == pytest.approx(1400, abs=16)
+
+
+def test_large_frame_colour_matches_a_flat_colour():
+    from semblon.observers import color_histogram
+
+    colour = (10, 20, 200)
+    small = np.full((32, 32, 3), colour, dtype=np.uint8)
+    large = np.full((2000, 3000, 3), colour, dtype=np.uint8)
+    assert color_histogram(small) == color_histogram(large)
+
+

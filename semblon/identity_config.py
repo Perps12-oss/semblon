@@ -20,7 +20,16 @@ SFACE_ONNX = "face_recognition_sface_2021dec.onnx"
 EXPECTED_FACE_DIM = 128
 
 # Detection / quality (ingest). Independent of buffalo_l.
+# FaceDetectorYN.create needs an initial size. That size is not the thumbnail
+# a still is shrunk to: runtime detection uses DETECT_LONG_SIDE.
 DET_SIZE = (320, 320)
+# Longest side YuNet is asked to look at. Full-frame detection is what made
+# a hard-drive folder take days. Boxes are mapped back onto the original
+# image; SFace crops that original, not this view.
+DETECT_LONG_SIDE = 1280
+# Do not shrink a wide still so far that a face at the quality floor
+# (CLUSTER_MIN_SIDE) falls under this many pixels on the detector.
+DETECT_MIN_FACE_PX = 24
 DET_SCORE_MIN = 0.70
 NMS_THRESHOLD = 0.30
 TOP_K = 5000

@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 
 DDL = """
 PRAGMA journal_mode=WAL;
@@ -157,6 +157,18 @@ CREATE INDEX IF NOT EXISTS ix_faces_person ON faces(person_id);
 CREATE INDEX IF NOT EXISTS ix_clusters_run ON clusters(run_id);
 CREATE INDEX IF NOT EXISTS ix_observations_run ON observations(run_id);
 CREATE INDEX IF NOT EXISTS ix_decisions_run_kind ON decisions(run_id, kind);
+
+CREATE TABLE IF NOT EXISTS work_items (
+  path           TEXT PRIMARY KEY,
+  mtime_ns       INTEGER NOT NULL,
+  byte_size      INTEGER NOT NULL,
+  sha256         TEXT,
+  media_id       TEXT,
+  tier_done_mask INTEGER NOT NULL DEFAULT 0,
+  orientation    INTEGER,
+  thumb_jpeg     BLOB,
+  updated_at     TEXT
+);
 """
 
 
@@ -190,6 +202,7 @@ _WRITER = threading.RLock()
 
 # Biometric and library tables. schema_meta and schema_migrations stay.
 LIBRARY_TABLES = (
+    "work_items",
     "eval_pairs",
     "eval_sets",
     "decisions",
@@ -400,10 +413,25 @@ ALTER TABLE decisions_new RENAME TO decisions;
 CREATE INDEX IF NOT EXISTS ix_decisions_run_kind ON decisions(run_id, kind);
 """
 
+MIGRATION_5 = """
+CREATE TABLE IF NOT EXISTS work_items (
+  path           TEXT PRIMARY KEY,
+  mtime_ns       INTEGER NOT NULL,
+  byte_size      INTEGER NOT NULL,
+  sha256         TEXT,
+  media_id       TEXT,
+  tier_done_mask INTEGER NOT NULL DEFAULT 0,
+  orientation    INTEGER,
+  thumb_jpeg     BLOB,
+  updated_at     TEXT
+);
+"""
+
 MIGRATIONS = (
     (2, MIGRATION_2),
     (3, MIGRATION_3),
     (4, MIGRATION_4),
+    (5, MIGRATION_5),
 )
 
 

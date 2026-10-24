@@ -258,11 +258,14 @@ def test_discover_and_ingest_counters_are_truthful(tmp_path):
     assert discover_done[0].files_total == 2
     assert discover_done[0].total == 2
     ingest_prog = [e for e in events if e.stage == STAGE_INGEST and e.kind == KIND_PROGRESS]
-    assert [e.current for e in ingest_prog] == [1, 2]
-    assert ingest_prog[-1].total == 2
-    assert ingest_prog[-1].percent == 100.0
-    assert ingest_prog[-1].faces_found == 3
-    assert ingest_prog[0].path.endswith("a.jpg")
+    library = [e for e in ingest_prog if e.outcome == "library"]
+    faces = [e for e in ingest_prog if e.outcome == "faces"]
+    assert [e.current for e in library] == [1, 2]
+    assert library[-1].total == 2
+    assert faces[-1].current == 2
+    assert faces[-1].total == 2
+    assert faces[-1].faces_found == 3
+    assert library[0].path.endswith("a.jpg")
     ingest_done = [e for e in events if e.stage == STAGE_INGEST and e.kind == KIND_COMPLETED][0]
     assert ingest_done.files_processed == 2
     assert ingest_done.files_total == 2
@@ -396,7 +399,7 @@ def test_ingest_cancel_emits_cancelled_not_completed(tmp_path):
     conn.close()
     assert row[0] == "cancelled"
     assert '"cancelled": true' in row[1]
-    assert n_media == 1
+    assert n_media == 2
     assert n_faces == 1
 
 
