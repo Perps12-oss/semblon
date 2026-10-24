@@ -69,6 +69,7 @@ Item {
             if (!it) return
             if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { shell.selectGroup(it.subj); e.accepted = true }
             else if (e.key === Qt.Key_X) { shell.selectGroup(it.subj); shell.decide("ignore", it.subj, ""); e.accepted = true }
+            else if (e.key === Qt.Key_M) { shell.selectGroup(it.subj); picker.openPicker(); e.accepted = true }
             else if (e.key === Qt.Key_S) {
                 shell.selectGroup(it.subj)
                 var c = shell.mergeCandidates
@@ -77,7 +78,7 @@ Item {
             }
         }
         Accessible.role: Accessible.List
-        Accessible.name: "Groups of faces. Enter picks one. S marks it the same as the next group. X sends it away."
+        Accessible.name: "Groups of faces. Enter picks one. M chooses who it is the same as. S marks it the same as the next group. X sends it away."
         delegate: Item {
             id: plate
             width: prints.cellWidth
@@ -86,7 +87,7 @@ Item {
             readonly property string subj: subject
             objectName: "print"
             Accessible.role: Accessible.Button
-            Accessible.name: (named ? title : "Unnamed group") + ", " + faceCount + (faceCount === 1 ? " photo" : " photos")
+            Accessible.name: label + (twin ? ", same name as another person" : "") + ", " + faceCount + (faceCount === 1 ? " photo" : " photos")
 
             Rectangle {
                 id: card
@@ -102,15 +103,33 @@ Item {
                 Drag.hotSpot.y: height / 2
                 Drag.source: plate
                 states: State { when: drag.active; PropertyChanges { target: card; z: 50; scale: 1.06 } }
-                Image {
+                Item {
+                    objectName: "faceFan"
                     x: 8; y: 8; width: 114; height: 114
-                    source: faceId ? "image://face/" + faceId : "image://archive/t/" + mediaId
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
+                    clip: false
+                    Repeater {
+                        model: faceIds.length > 0 ? faceIds.length : 1
+                        // Back of the stack first, so the first face lies on top.
+                        Rectangle {
+                            readonly property int slot: (faceIds.length > 0 ? faceIds.length : 1) - 1 - index
+                            width: faceIds.length > 1 ? 82 : 106; height: width
+                            x: (114 - width) / 2 + (faceIds.length > 1 ? (slot - 1) * 14 : 0)
+                            y: (114 - height) / 2 + (faceIds.length > 1 ? (slot === 1 ? 0 : 6) : 0)
+                            rotation: faceIds.length > 1 ? (slot - 1) * 7 : 0
+                            color: "#ffffff"
+                            border.width: 2; border.color: "#ffffff"
+                            Image {
+                                anchors.fill: parent; anchors.margins: 2
+                                source: faceIds.length > 0 ? "image://face/" + faceIds[slot] : (mediaId ? "image://archive/t/" + mediaId : "")
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                            }
+                        }
+                    }
                 }
                 Text {
                     x: 8; y: 126; width: 114
-                    text: named ? title : "Unnamed"
+                    text: label
                     elide: Text.ElideRight
                     font.family: Theme.display
                     font.pixelSize: Theme.body
@@ -119,10 +138,11 @@ Item {
                 }
                 Text {
                     x: 8; y: 144; width: 114
-                    text: faceCount + (faceCount === 1 ? " photo" : " photos")
+                    text: faceCount + (faceCount === 1 ? " photo" : " photos") + (twin ? " · same name as another" : "")
+                    elide: Text.ElideRight
                     font.family: Theme.ui
                     font.pixelSize: Theme.tiny
-                    color: Theme.paperMuted
+                    color: twin ? Theme.paperInk : Theme.paperMuted
                 }
                 DragHandler {
                     id: drag
@@ -158,7 +178,7 @@ Item {
 
         Text {
             id: who
-            text: shell.selectedTitle
+            text: shell.selectedLabel
             font.family: Theme.display
             font.pixelSize: Theme.title
             color: Theme.text
@@ -255,6 +275,14 @@ Item {
                 onActivated: shell.splitSelectedFaces()
             }
             Tool {
+                id: sameAsTool
+                objectName: "sameAsButton"
+                label: "Same as…"
+                hint: "Say this is the same person as another group (shortcut: M)"
+                visible: shell.mergeCandidates.length > 0
+                onActivated: picker.openPicker()
+            }
+            Tool {
                 label: "See the photos"
                 onActivated: shell.openEvidence(shell.evidenceId)
             }
@@ -290,42 +318,95 @@ Item {
         }
     }
 
-    // Named people are stacks you can drop a print onto.
-    Row {
-        objectName: "mergeTargetFlow"
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: Theme.pad
-        spacing: Theme.gap
-        Repeater {
-            model: shell.mergeCandidates
+    // One searchable "Same as…" picker replaces a row of chips that could run off the screen.
+    Rectangle {
+        id: picker
+        objectName: "sameAsPicker"
+        property bool shown: false
+        visible: shown
+        anchors.fill: parent
+        color: Theme.scrim
+        z: 20
+        function openPicker() { if (shell.mergeCandidates.length === 0) return; shown = true; find.text = ""; find.forceActiveFocus() }
+        function closePicker() { shown = false; prints.forceActiveFocus() }
+        function pick(subject) { shell.sameAs(subject); closePicker() }
+        function matches() {
+            var q = find.text.trim().toLowerCase(), out = [], c = shell.mergeCandidates
+            for (var i = 0; i < c.length; ++i)
+                if (q === "" || String(c[i].label).toLowerCase().indexOf(q) >= 0) out.push(c[i])
+            return out
+        }
+        MouseArea { anchors.fill: parent; onClicked: picker.closePicker() }
+        Rectangle {
+            width: Math.min(parent.width - Theme.pad * 2, 420)
+            height: Math.min(parent.height - Theme.pad * 2, 480)
+            anchors.centerIn: parent
+            radius: Theme.radius
+            color: Theme.surface
+            border.width: 1; border.color: Theme.line
+            MouseArea { anchors.fill: parent }
+            Text {
+                id: pickHead
+                x: Theme.pad; y: Theme.pad
+                text: "Same as…"
+                font.family: Theme.display; font.pixelSize: Theme.title; color: Theme.text
+            }
             Rectangle {
-                id: stack
-                property string subjectId: modelData.subject !== undefined ? modelData.subject : ""
-                objectName: "sameAsStack"
-                width: 120; height: 40
-                activeFocusOnTab: true
-                Keys.onReturnPressed: shell.decide("merge", shell.selectedSubject, stack.subjectId)
-                Keys.onSpacePressed: shell.decide("merge", shell.selectedSubject, stack.subjectId)
-                Accessible.role: Accessible.Button
-                Accessible.name: "Same as " + (modelData.title || "")
-                radius: Theme.pill
-                color: stackDrop.containsDrag ? Theme.amber : Theme.surface
-                border.width: activeFocus ? 3 : 1
-                border.color: activeFocus ? Theme.amber : Theme.line
-                visible: subjectId !== ""
-                Text {
-                    anchors.centerIn: parent
-                    text: "Same as " + (modelData.title || "")
-                    elide: Text.ElideRight
-                    width: parent.width - 16
-                    horizontalAlignment: Text.AlignHCenter
-                    font.family: Theme.ui
-                    font.pixelSize: Theme.small
-                    color: stackDrop.containsDrag ? Theme.onAmber : Theme.text
+                id: findBox
+                x: Theme.pad; width: parent.width - Theme.pad * 2; height: 40
+                anchors.top: pickHead.bottom; anchors.topMargin: Theme.gap
+                radius: Theme.radius; color: Theme.bg
+                border.width: find.activeFocus ? 2 : 1
+                border.color: find.activeFocus ? Theme.amber : Theme.line
+                TextInput {
+                    id: find
+                    objectName: "sameAsFilter"
+                    anchors.fill: parent; anchors.margins: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    font.family: Theme.ui; font.pixelSize: Theme.body; color: Theme.text
+                    clip: true
+                    Accessible.name: "Search for the group or person this is the same as"
+                    Keys.onEscapePressed: picker.closePicker()
+                    Keys.onDownPressed: list.forceActiveFocus()
+                    onAccepted: { var m = picker.matches(); if (m.length > 0) picker.pick(m[0].subject) }
+                    Text { visible: find.text === ""; text: "Search by name"; font: find.font; color: Theme.faint }
                 }
-                DropArea { id: stackDrop; anchors.fill: parent; keys: ["print"]; property string subjectId: stack.subjectId }
-                TapHandler { onTapped: shell.decide("merge", shell.selectedSubject, stack.subjectId) }
+            }
+            ListView {
+                id: list
+                objectName: "sameAsList"
+                x: Theme.pad; width: parent.width - Theme.pad * 2
+                anchors.top: findBox.bottom; anchors.topMargin: Theme.gap
+                anchors.bottom: parent.bottom; anchors.bottomMargin: Theme.pad
+                clip: true
+                spacing: 4
+                model: { find.text; shell.mergeCandidates; picker.matches() }
+                keyNavigationEnabled: true
+                Keys.onEscapePressed: picker.closePicker()
+                Keys.onReturnPressed: if (currentItem) picker.pick(currentItem.subj)
+                delegate: Rectangle {
+                    readonly property string subj: modelData.subject
+                    width: list.width; height: 48; radius: Theme.radius
+                    color: ListView.isCurrentItem ? Theme.bg : "transparent"
+                    border.width: ListView.isCurrentItem && list.activeFocus ? 2 : 0
+                    border.color: Theme.amber
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Same as " + modelData.label
+                    Image {
+                        x: 6; y: 4; width: 40; height: 40
+                        source: modelData.faceId ? "image://face/" + modelData.faceId : ""
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                    }
+                    Text {
+                        x: 56; width: parent.width - 64; height: parent.height
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                        text: modelData.label + "  ·  " + modelData.faceCount + (modelData.faceCount === 1 ? " photo" : " photos")
+                        font.family: Theme.ui; font.pixelSize: Theme.body; color: Theme.text
+                    }
+                    TapHandler { onTapped: picker.pick(modelData.subject) }
+                }
             }
         }
     }

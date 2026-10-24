@@ -39,7 +39,7 @@ Item {
         Accessible.role: Accessible.Dialog
         Accessible.name: confirm.ask.title || ""
         Accessible.description: confirm.ask.body || ""
-        Keys.onEscapePressed: if (!confirm.busy) shell.confirmDecline()
+        Keys.onEscapePressed: if (!confirm.busy) shell.confirmDismiss()
 
         Grain { anchors.fill: parent }
 

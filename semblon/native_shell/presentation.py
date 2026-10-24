@@ -24,6 +24,8 @@ _SAFE_PRIMARY_EXACT = {
     "Split the selected faces into a new group.",
     "Marked this as not the same person.",
     "Saved your decision.",
+    "These are two named people, so Semblon will not join them. Rename one to tell them apart.",
+    "Pick a different group to say this is the same.",
     "No reviewed run yet.",
     "A name or note is required.",
     "People groups are unavailable right now.",

@@ -372,6 +372,8 @@ class ShellBridge(QObject):
         self._confirm = {"open": False, "busy": False}
         self._confirm_yes = self._confirm_no = None
         self._confirm_keep = False
+        self._confirm_dismiss_is_no = True
+        self._name_apart = False
         self._tasks_open = False
         self._mode = self._load_shell_mode()
         self._atmosphere_id = self._load_atmosphere_id()
@@ -2817,6 +2819,11 @@ class ShellBridge(QObject):
             return ""
         return str(row.get("title") or "")
 
+    @Property(str, notify=peopleChanged)
+    def selectedLabel(self) -> str:
+        row = self._people.row(self._selected_subject)
+        return str(row.get("label") or "") if row else ""
+
     @Property(int, notify=peopleChanged)
     def selectedCount(self) -> int:
         row = self._people.row(self._selected_subject)
@@ -3434,6 +3441,15 @@ class ShellBridge(QObject):
                     "members": list(members),
                 }
             )
+        counts: dict[str, int] = {}
+        for row in rows:
+            row["faceIds"] = [str(m.get("face_id") or "") for m in row["members"] if m.get("face_id")][:3]
+            row["label"] = self._friendly_label(row)
+            if row["named"]:
+                key = row["title"].strip().casefold()
+                counts[key] = counts.get(key, 0) + 1
+        for row in rows:
+            row["twin"] = bool(row["named"]) and counts.get(row["title"].strip().casefold(), 0) > 1
         self._people.set_rows(rows)
         self._review_text = self._adapter.review_counts().message
         self._unresolved_text = self._adapter.unresolved(include_rejected=self._mode == ADVANCED).message
@@ -3446,6 +3462,24 @@ class ShellBridge(QObject):
             self._person_days = []
         else:
             self._reload_person_days()
+
+    @staticmethod
+    def _friendly_label(row: dict) -> str:
+        if row["named"]:
+            return row["title"]
+        kind = str(row.get("kind") or "")
+        if kind == "track":
+            return "Face from a video"
+        if kind == "unassigned":
+            return "Single face"
+        return "Unnamed group"
+
+    def _same_name_row(self, subject: str, name: str) -> dict | None:
+        key = str(name or "").strip().casefold()
+        for row in self._people._rows:
+            if row["subject"] != subject and row.get("named") and row["title"].strip().casefold() == key:
+                return row
+        return None
 
     @Slot()
     def escape(self) -> None:
@@ -4070,6 +4104,11 @@ class ShellBridge(QObject):
         item = self._item_for_decision(subject)
         try:
             if kind == "name":
+                twin = None if self._name_apart else self._same_name_row(subject, text)
+                own = self._people.row(subject)
+                if twin and not (own and own.get("named") and own.get("personId") == twin.get("personId")):
+                    self._ask_same_name(subject, text.strip(), twin)
+                    return self._people_note
                 rec = apply_name(self._jobs.store, run_id, item, text)
                 return self._after_decision(decision_success("name", str(rec.get("display_name") or "")))
             if kind == "ignore":
@@ -4080,6 +4119,11 @@ class ShellBridge(QObject):
                 return self._after_decision(decision_success("note"))
             if kind == "merge":
                 other = text.strip()
+                a, b = self._people.row(subject), self._people.row(other)
+                if a and b and a.get("named") and b.get("named") and a.get("personId") != b.get("personId"):
+                    return self._after_decision(
+                        "These are two named people, so Semblon will not join them. Rename one to tell them apart."
+                    )
                 apply_merge(self._jobs.store, run_id, [subject, other])
                 return self._after_decision(decision_success("merge"))
             if kind == "split":
@@ -4099,6 +4143,35 @@ class ShellBridge(QObject):
         except Exception as exc:  # noqa: BLE001 — show the decision failure
             return self._after_decision(str(exc))
         return self._after_decision("That decision is not available.")
+
+    def _ask_same_name(self, subject: str, name: str, twin: dict) -> None:
+        count = int(twin.get("faceCount") or 0)
+        self._ask(
+            f"You already have someone called {name}",
+            f"One group is already named {name}, with {count} {'photo' if count == 1 else 'photos'}. Is this the same person?",
+            ["Same person puts the two groups together.", "Someone else keeps both, so you can tell them apart."],
+            yes="Same person",
+            no="Someone else",
+            on_yes=lambda: self.decide("merge", str(twin["subject"]), subject),
+            on_no=lambda: self._name_as_someone_else(subject, name),
+            dismiss_is_no=False,
+        )
+
+    def _name_as_someone_else(self, subject: str, name: str) -> None:
+        self._name_apart = True
+        try:
+            self.decide("name", subject, name)
+        finally:
+            self._name_apart = False
+
+    @Slot(str, result=str)
+    def sameAs(self, target: str) -> str:
+        """The single 'Same as…' picker: the selected group is the same as `target`."""
+        if not self._selected_subject or not target or target == self._selected_subject:
+            return self._after_decision("Pick a different group to say this is the same.")
+        named_target = bool((self._people.row(target) or {}).get("named"))
+        first, second = (target, self._selected_subject) if named_target else (self._selected_subject, target)
+        return self.decide("merge", first, second)
 
     @Slot(result=str)
     def mergeSelectedGroup(self) -> str:
@@ -4329,12 +4402,13 @@ class ShellBridge(QObject):
         return dict(self._confirm)
 
     def _ask(self, title, body, facts=(), *, yes="Continue", no="Not now", danger=False,
-             keep_open=False, on_yes=None, on_no=None) -> None:
+             keep_open=False, on_yes=None, on_no=None, dismiss_is_no=True) -> None:
         self._confirm = {
             "open": True, "busy": False, "title": title, "body": body, "facts": list(facts),
             "yes": yes, "no": no, "danger": bool(danger), "progress": "",
         }
         self._confirm_yes, self._confirm_no, self._confirm_keep = on_yes, on_no, keep_open
+        self._confirm_dismiss_is_no = dismiss_is_no
         self.confirmChanged.emit()
 
     def _confirm_progress(self, text: str) -> None:
@@ -4357,6 +4431,15 @@ class ShellBridge(QObject):
             self._confirm_close()
         if action:
             action()
+
+    @Slot()
+    def confirmDismiss(self) -> None:
+        """Escape: closes the sheet. Only counts as the second choice when that is harmless."""
+        if self._confirm.get("open") and not self._confirm.get("busy") and not self._confirm_dismiss_is_no:
+            self._confirm_yes = self._confirm_no = None
+            self._confirm_close()
+            return
+        self.confirmDecline()
 
     @Slot()
     def confirmDecline(self) -> None:

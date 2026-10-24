@@ -955,7 +955,11 @@ def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monke
     assert bridge.focusId == ""
     assert bridge.peopleOpen is True
     assert bridge.decide("name", "c1", "") == "A name or note is required."
-    assert bridge.decide("name", "c1", "Ada") == "Saved name: Ada."
+    # Another group is already called Ada, so Semblon asks before creating a second one.
+    bridge.decide("name", "c1", "Ada")
+    assert bridge.confirm["open"] and bridge.confirm["yes"] == "Same person"
+    bridge.confirmDecline()
+    assert bridge.peopleNote == "Saved name: Ada."
     assert bridge.decide("merge", "c1", "c2").startswith("Merged")
     assert bridge.decide("split", "c1", "f1").startswith("Split")
     assert bridge.decide("ignore", "c1", "") == "Left this group unknown."
@@ -1035,7 +1039,7 @@ def test_people_split_uses_visual_face_selection_and_merge_target(tmp_path, monk
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
     assert root.findChild(QObject, "splitFaceGrid") is not None
-    assert root.findChild(QObject, "mergeTargetFlow") is not None
+    assert root.findChild(QObject, "sameAsPicker") is not None
     bridge.openPeople()
     bridge.selectGroup("c1")
     crop = bridge.face_crop_spec("f1")

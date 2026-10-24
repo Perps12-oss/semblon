@@ -210,6 +210,9 @@ _GROUP_FACE = Qt.ItemDataRole.UserRole + 6
 _GROUP_KIND = Qt.ItemDataRole.UserRole + 7
 _GROUP_BAND = Qt.ItemDataRole.UserRole + 8
 _GROUP_BAND_LABEL = Qt.ItemDataRole.UserRole + 9
+_GROUP_LABEL = Qt.ItemDataRole.UserRole + 10
+_GROUP_FACES = Qt.ItemDataRole.UserRole + 11
+_GROUP_TWIN = Qt.ItemDataRole.UserRole + 12
 
 
 class PeopleModel(QAbstractListModel):
@@ -235,6 +238,9 @@ class PeopleModel(QAbstractListModel):
             _GROUP_KIND: b"kind",
             _GROUP_BAND: b"band",
             _GROUP_BAND_LABEL: b"bandLabel",
+            _GROUP_LABEL: b"label",
+            _GROUP_FACES: b"faceIds",
+            _GROUP_TWIN: b"twin",
         }
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
@@ -259,6 +265,12 @@ class PeopleModel(QAbstractListModel):
             return row.get("band") or ""
         if role == _GROUP_BAND_LABEL:
             return row.get("bandLabel") or ""
+        if role == _GROUP_LABEL:
+            return row.get("label") or row["title"]
+        if role == _GROUP_FACES:
+            return list(row.get("faceIds") or [])
+        if role == _GROUP_TWIN:
+            return bool(row.get("twin"))
         return None
 
     def set_rows(self, rows: list[dict]) -> None:

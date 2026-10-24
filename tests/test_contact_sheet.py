@@ -460,3 +460,126 @@ def test_bottom_bar_verbs_show_pressed_state_and_focus_ring(tmp_path, monkeypatc
         from semblon.native_shell.host import shutdown_shell
 
         shutdown_shell(engine)
+
+
+def _boot_people_with(tmp_path, monkeypatch, items):
+    from semblon.application import Application
+
+    calls = []
+
+    def record(name):
+        def _inner(*args, **kwargs):
+            calls.append((name, args[-1] if name == "merge" else None))
+            return {"display_name": "Ada"}
+        return _inner
+
+    monkeypatch.setattr(Application, "board", lambda self, run_id=None: {"items": items})
+    monkeypatch.setattr("semblon.review_board.merge_clusters", record("merge"))
+    monkeypatch.setattr("semblon.review_board.name_cluster", record("name"))
+    monkeypatch.setattr("semblon.process.latest_run_id", lambda store, **kwargs: "run-1")
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    bridge.openPeople()
+    _spin(app, 1.0)
+    return app, engine, root, bridge, calls
+
+
+def _faces(prefix, n):
+    return [{"media_id": "m1", "face_id": f"{prefix}{i}"} for i in range(n)]
+
+
+def _ada_board():
+    return [
+        {"cluster_id": "c1", "face_count": 4, "named": True, "person_names": ["Ada"],
+         "members": [dict(m, person_id="p1") for m in _faces("a", 4)]},
+        {"cluster_id": "c2", "face_count": 2, "named": False, "person_names": [], "members": _faces("b", 2)},
+        {"cluster_id": "c3", "face_count": 1, "named": False, "person_names": [], "members": _faces("c", 1)},
+    ]
+
+
+def test_people_cards_carry_a_fan_of_up_to_three_faces_and_plain_labels(tmp_path, monkeypatch):
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge, _calls = _boot_people_with(tmp_path, monkeypatch, _ada_board())
+    try:
+        rows = {r["subject"]: r for r in bridge.people_model._rows}
+        assert rows["c1"]["faceIds"] == ["a0", "a1", "a2"]
+        assert rows["c2"]["faceIds"] == ["b0", "b1"]
+        assert rows["c1"]["label"] == "Ada"
+        assert rows["c2"]["label"] == "Unnamed group"
+        words = " ".join(str(c["label"]) for c in bridge.mergeCandidates).lower()
+        assert "candidate" not in words
+    finally:
+        shutdown_shell(engine)
+
+
+def test_naming_a_group_after_an_existing_person_asks_same_person_or_someone_else(tmp_path, monkeypatch):
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge, calls = _boot_people_with(tmp_path, monkeypatch, _ada_board())
+    try:
+        bridge.selectGroup("c2")
+        bridge.decide("name", "c2", "ada")
+        assert calls == []
+        assert bridge.confirm["open"] and bridge.confirm["yes"] == "Same person" and bridge.confirm["no"] == "Someone else"
+        assert "already" in bridge.confirm["title"].lower()
+        bridge.confirmDismiss()  # Escape must not decide anything
+        assert not bridge.confirm["open"] and calls == []
+        bridge.decide("name", "c2", "ada")
+        bridge.confirmAccept()
+        assert calls == [("merge", ["c1", "c2"])]
+        calls.clear()
+        bridge.decide("name", "c3", "Ada")
+        bridge.confirmDecline()
+        assert [c[0] for c in calls] == ["name"]
+        # a different name never asks
+        calls.clear()
+        bridge.decide("name", "c3", "Grace")
+        assert not bridge.confirm["open"] and [c[0] for c in calls] == ["name"]
+    finally:
+        shutdown_shell(engine)
+
+
+def test_two_named_people_are_never_joined_and_are_flagged_when_names_collide(tmp_path, monkeypatch):
+    from semblon.native_shell.host import shutdown_shell
+
+    board = _ada_board()
+    board[1] = {"cluster_id": "c2", "face_count": 2, "named": True, "person_names": ["Ada"],
+                "members": [dict(m, person_id="p2") for m in _faces("b", 2)]}
+    app, engine, root, bridge, calls = _boot_people_with(tmp_path, monkeypatch, board)
+    try:
+        rows = {r["subject"]: r for r in bridge.people_model._rows}
+        assert rows["c1"]["twin"] and rows["c2"]["twin"] and not rows["c3"]["twin"]
+        bridge.selectGroup("c2")
+        note = bridge.sameAs("c1")
+        assert "Rename one" in note and calls == []
+    finally:
+        shutdown_shell(engine)
+
+
+def test_same_as_picker_is_searchable_and_keyboard_driven(tmp_path, monkeypatch):
+    from PySide6.QtCore import QMetaObject, QObject, Qt
+    from PySide6.QtTest import QTest
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge, calls = _boot_people_with(tmp_path, monkeypatch, _ada_board())
+    try:
+        assert root.findChild(QObject, "mergeTargetFlow") is None
+        grid = root.findChild(QObject, "printGrid")
+        QMetaObject.invokeMethod(grid, "forceActiveFocus")
+        _spin(app, 0.2)
+        picker = root.findChild(QObject, "sameAsPicker")
+        assert picker.property("shown") is False
+        QTest.keyClick(root, Qt.Key.Key_Right)  # second card
+        QTest.keyClick(root, Qt.Key.Key_M)
+        _spin(app, 0.3)
+        assert picker.property("shown") is True
+        for ch in "ad":
+            QTest.keyClick(root, ch)
+        _spin(app, 0.2)
+        QTest.keyClick(root, Qt.Key.Key_Return)
+        _spin(app, 0.4)
+        assert picker.property("shown") is False
+        assert calls == [("merge", ["c1", "c2"])]
+    finally:
+        shutdown_shell(engine)
