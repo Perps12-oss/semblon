@@ -297,9 +297,9 @@ Item {
         Text {
             objectName: "matchHonesty"
             anchors.right: parent.right
-            anchors.rightMargin: Theme.pad
+            anchors.rightMargin: Theme.pad + 170
             y: 8
-            width: parent.width * 0.45
+            width: parent.width * 0.35
             horizontalAlignment: Text.AlignRight
             elide: Text.ElideRight
             text: shell.similarCaution

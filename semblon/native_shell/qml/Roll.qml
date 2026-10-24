@@ -91,7 +91,7 @@ Item {
         readonly property int columns: Math.max(1, Math.floor(width / roll.cellSize))
         cellWidth: width / columns
         cellHeight: cellWidth
-        topMargin: 84
+        topMargin: 108
         bottomMargin: 120
         flickDeceleration: 3200
         maximumFlickVelocity: 9000

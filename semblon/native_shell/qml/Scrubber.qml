@@ -5,8 +5,8 @@ Item {
     id: edge
     property var roll
     property var density: shell.timelineDensity
-    readonly property int total: Math.max(1, archiveModel.count)
-    property real fraction: roll && roll.count > 1 ? roll.view.contentY / Math.max(1, roll.view.contentHeight - roll.view.height) : 0
+    readonly property int total: Math.max(1, (roll ? roll.count : 0))
+    property real fraction: roll && roll.count > 1 ? Math.max(0, Math.min(1, (roll.view.contentY - roll.view.originY + roll.view.topMargin) / Math.max(1, roll.view.contentHeight - roll.view.height + roll.view.topMargin))) : 0
 
     width: Theme.edge
     Accessible.role: Accessible.Slider
@@ -39,7 +39,7 @@ Item {
             model: edge.density
             delegate: Item {
                 width: ticks.width
-                height: Math.max(26, ticks.height * modelData.count / edge.total)
+                height: Math.max(26, ticks.height * (modelData.share || 0))
                 Rectangle { x: 6; y: 0; width: 14; height: 2; color: Theme.amber }
                 Text {
                     x: 6; y: 4

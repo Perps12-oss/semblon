@@ -18,7 +18,7 @@ Window {
     property bool settingsOpen: false
 
     function jumpToDate(prefix) {
-        var lo = 0, hi = archiveModel.count - 1, found = -1
+        var lo = 0, hi = rollView.count - 1, found = -1
         // Newest first: find the first photo on or before the end of the requested period.
         while (lo <= hi) {
             var mid = (lo + hi) >> 1
@@ -26,7 +26,7 @@ Window {
             if (d.substring(0, prefix.length) > prefix) lo = mid + 1
             else { found = mid; hi = mid - 1 }
         }
-        if (found >= 0) roll.jumpToIndex(found)
+        if (found >= 0) rollView.jumpToIndex(found)
     }
     function run(id) {
         if (id === "add") shell.addFolder()
@@ -35,14 +35,14 @@ Window {
         else if (id === "detail") table.focusEntry("detail")
         else if (id === "tidy") { table.mode = "tidy"; shell.scanDuplicates() }
         else if (id === "settings") settingsOpen = true
-        else if (id === "zoomin") roll.zoomBy(1.4)
-        else if (id === "zoomout") roll.zoomBy(0.7)
+        else if (id === "zoomin") rollView.zoomBy(1.4)
+        else if (id === "zoomout") rollView.zoomBy(0.7)
         else if (id === "dark") shell.setAtmosphere("mica_dark")
         else if (id === "light") shell.setAtmosphere("light")
     }
 
     Roll {
-        id: roll
+        id: rollView
         objectName: "roll"
         anchors.fill: parent
         onOpened: function (id) { shell.openFocus(id) }
@@ -50,11 +50,11 @@ Window {
     }
     Scrubber {
         id: scrub
-        roll: roll
+        roll: rollView
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        visible: archiveModel.count > 0
+        visible: rollView.count > 0
     }
     LightTable {
         id: table
@@ -156,8 +156,8 @@ Window {
         }
     }
 
-    Viewer { id: viewer; anchors.fill: parent; onClosed: roll.forceActiveFocus() }
-    People { id: people; anchors.fill: parent; onClosed: roll.forceActiveFocus() }
+    Viewer { id: viewer; anchors.fill: parent; onClosed: rollView.forceActiveFocus() }
+    People { id: people; anchors.fill: parent; onClosed: rollView.forceActiveFocus() }
 
     Sheet {
         id: settings
@@ -166,7 +166,7 @@ Window {
         anchors.centerIn: parent
         width: Math.min(parent.width - 60, 560)
         height: Math.min(parent.height - 60, 680)
-        onDismissed: { win.settingsOpen = false; roll.forceActiveFocus() }
+        onDismissed: { win.settingsOpen = false; rollView.forceActiveFocus() }
         SettingsBody { anchors.fill: parent }
     }
 
@@ -178,7 +178,7 @@ Window {
         anchors.centerIn: parent
         width: Math.min(parent.width - 60, 520)
         height: Math.min(parent.height - 80, 460)
-        onDismissed: { shell.closeActivity(); roll.forceActiveFocus() }
+        onDismissed: { shell.closeActivity(); rollView.forceActiveFocus() }
         ListView {
             anchors.fill: parent
             clip: true
@@ -211,7 +211,7 @@ Window {
     Shortcut { sequence: "Ctrl+K"; onActivated: palette.open = !palette.open }
     Shortcut { sequence: "Ctrl+F"; onActivated: table.focusEntry("moment") }
     Shortcut { sequence: "Ctrl+O"; onActivated: shell.addFolder() }
-    Shortcut { sequence: "Ctrl+="; onActivated: roll.zoomBy(1.25) }
-    Shortcut { sequence: "Ctrl+-"; onActivated: roll.zoomBy(0.8) }
-    Shortcut { sequence: "Ctrl+0"; onActivated: roll.zoomTo(168) }
+    Shortcut { sequence: "Ctrl+="; onActivated: rollView.zoomBy(1.25) }
+    Shortcut { sequence: "Ctrl+-"; onActivated: rollView.zoomBy(0.8) }
+    Shortcut { sequence: "Ctrl+0"; onActivated: rollView.zoomTo(168) }
 }
