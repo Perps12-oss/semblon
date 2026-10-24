@@ -237,6 +237,41 @@ def test_indexing_progress_names_photos_already_added(tmp_path, monkeypatch):
         shutdown_shell(engine)
 
 
+def test_scan_hero_shows_elapsed_and_eta(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, bridge = _shell(tmp_path, monkeypatch)
+    now = {"t": 5000.0}
+    monkeypatch.setattr("semblon.native_shell.bridge.time.monotonic", lambda: now["t"])
+    state = {"value": "running"}
+    monkeypatch.setattr(bridge._session, "job_active", lambda: True)
+    monkeypatch.setattr(bridge._session, "job_state", lambda: state["value"])
+    try:
+        bridge._timer.stop()
+        bridge._poll_job()
+        now["t"] = 5010.0
+        bridge._on_worker_progress(
+            SimpleNamespace(stage="ingest", kind="progress", current=2, total=10)
+        )
+        app.processEvents()
+        assert bridge.jobTiming == "10s elapsed. About 40s left."
+        root = engine.rootObjects()[0]
+        timings = root.findChildren(QObject, "scanTiming")
+        assert len(timings) == 1
+        assert timings[0].property("text") == "10s elapsed. About 40s left."
+        state["value"] = "paused"
+        bridge._poll_job()
+        now["t"] = 5080.0
+        bridge._poll_job()
+        assert bridge.jobTiming == "10s elapsed."
+    finally:
+        monkeypatch.setattr(bridge._session, "job_active", lambda: False)
+        monkeypatch.setattr(bridge._session, "job_state", lambda: "idle")
+        shutdown_shell(engine)
+
+
 def test_coarse_index_is_not_called_ready(tmp_path, monkeypatch):
     from semblon.native_shell.host import shutdown_shell
     from semblon.store import connect

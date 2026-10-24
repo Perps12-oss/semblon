@@ -738,7 +738,7 @@ ApplicationWindow {
             anchors.top: parent.top
             anchors.topMargin: 14
             width: Math.min(460, Math.max(280, parent.width - 48))
-            height: 132
+            height: 156
             radius: 12
             color: tokenBg1
             border.color: tokenAccent
@@ -783,6 +783,16 @@ ApplicationWindow {
                     text: shellReady && shellApi.jobTotal > 0
                           ? (shellApi.jobCurrent + " of " + shellApi.jobTotal + ". Photos already added can be opened.")
                           : "Photos already added can be opened."
+                    color: tokenMuted
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                }
+                Text {
+                    objectName: "scanTiming"
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: text !== ""
+                    text: shellReady ? shellApi.jobTiming : ""
                     color: tokenMuted
                     font.family: "Segoe UI"
                     font.pixelSize: 13
