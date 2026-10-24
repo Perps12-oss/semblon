@@ -44,7 +44,11 @@ Window {
     Roll {
         id: rollView
         objectName: "roll"
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: scrub.left
+        bottomInset: table.visible ? table.implicitHeight + 28 : 28
         onOpened: function (id) { shell.openFocus(id) }
         focus: true
     }
@@ -55,6 +59,7 @@ Window {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         visible: rollView.count > 0
+        width: visible ? Theme.edge : 0
     }
     LightTable {
         id: table
@@ -63,6 +68,7 @@ Window {
         anchors.right: scrub.left
         anchors.bottom: parent.bottom
         visible: !viewer.active && !people.active
+        receded: rollView.scrolling
         onPeopleRequested: shell.openPeople()
         onSettingsRequested: win.settingsOpen = true
         onPaletteRequested: palette.open = true
@@ -79,7 +85,7 @@ Window {
         Tool {
             objectName: "addFolder"
             label: "Add a folder"
-            primary: shell.empty
+            visible: !shell.empty
             onActivated: shell.addFolder()
         }
         Tool { label: "Settings"; onActivated: win.settingsOpen = true }
@@ -193,7 +199,13 @@ Window {
     CommandPalette {
         id: palette
         anchors.fill: parent
-        actions: [
+        // With nothing added yet, only the actions that work right now are offered.
+        actions: shell.empty ? [
+            { id: "add", label: "Add a folder" },
+            { id: "dark", label: "Use Darkroom look" },
+            { id: "light", label: "Use Daylight look" },
+            { id: "settings", label: "Settings" }
+        ] : [
             { id: "add", label: "Add a folder" },
             { id: "moment", label: "Find a moment" },
             { id: "people", label: "Find a person" },
@@ -209,7 +221,7 @@ Window {
     }
 
     Shortcut { sequence: "Ctrl+K"; onActivated: palette.open = !palette.open }
-    Shortcut { sequence: "Ctrl+F"; onActivated: table.focusEntry("moment") }
+    Shortcut { sequence: "Ctrl+F"; enabled: !shell.empty; onActivated: table.focusEntry("moment") }
     Shortcut { sequence: "Ctrl+O"; onActivated: shell.addFolder() }
     Shortcut { sequence: "Ctrl+="; onActivated: rollView.zoomBy(1.25) }
     Shortcut { sequence: "Ctrl+-"; onActivated: rollView.zoomBy(0.8) }

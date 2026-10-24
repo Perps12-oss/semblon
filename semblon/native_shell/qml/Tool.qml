@@ -8,6 +8,8 @@ Item {
     property bool primary: false
     property bool quiet: false
     property bool selected: false
+    property bool dimmed: false           // looks off, stays focusable, says why
+    property string whyDimmed: "Add photos first"
     property int pixel: Theme.small
     property string family: Theme.ui
     signal activated()
@@ -16,19 +18,22 @@ Item {
     implicitHeight: 36
     activeFocusOnTab: true
     opacity: enabled ? 1 : 0.4
+    z: tip.visible ? 20 : 0
+    function fire() { if (!tool.dimmed) tool.activated() }
 
     Accessible.role: Accessible.Button
     Accessible.name: label
-    Accessible.description: hint
-    Accessible.onPressAction: tool.activated()
+    Accessible.description: dimmed ? whyDimmed : hint
+    Accessible.onPressAction: tool.fire()
 
-    Keys.onReturnPressed: tool.activated()
-    Keys.onEnterPressed: tool.activated()
-    Keys.onSpacePressed: tool.activated()
+    Keys.onReturnPressed: tool.fire()
+    Keys.onEnterPressed: tool.fire()
+    Keys.onSpacePressed: tool.fire()
 
     Rectangle {
         id: face
         anchors.fill: parent
+        opacity: tool.dimmed ? 0.45 : 1
         radius: Theme.pill
         color: tool.primary ? Theme.amber
              : tool.selected ? Theme.amberSoft
@@ -52,6 +57,7 @@ Item {
     Text {
         id: caption
         anchors.centerIn: parent
+        opacity: tool.dimmed ? 0.55 : 1
         text: tool.label
         font.family: tool.family
         font.pixelSize: tool.pixel
@@ -63,6 +69,22 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: tool.activated()
+        onClicked: tool.fire()
+    }
+
+    Rectangle {
+        id: tip
+        objectName: "whyTip"
+        visible: tool.dimmed && (area.containsMouse || tool.activeFocus)
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.top
+        anchors.bottomMargin: 8
+        width: tipText.implicitWidth + 18
+        height: tipText.implicitHeight + 10
+        radius: Theme.radius
+        color: Theme.raised
+        border.width: 1
+        border.color: Theme.amber
+        Text { id: tipText; anchors.centerIn: parent; text: tool.whyDimmed; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.text }
     }
 }

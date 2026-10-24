@@ -24,6 +24,8 @@ QtObject {
     readonly property color onAmber: daylight ? "#fffaf0" : "#1a1006"
     readonly property color danger: daylight ? "#a3261a" : "#ff8a7a"
     readonly property color ok: daylight ? "#386b1f" : "#a6d98a"
+    readonly property color bgClear: Qt.rgba(bg.r, bg.g, bg.b, 0)
+    readonly property color amberEdge: Qt.rgba(amber.r, amber.g, amber.b, 0.38)
     readonly property color paper: "#f3ead8"
     readonly property color paperInk: "#2a2118"
     readonly property color paperMuted: "#5a4e3d"
@@ -41,7 +43,7 @@ QtObject {
     readonly property int pad: 16
     readonly property int radius: 10
     readonly property int pill: 999
-    readonly property int edge: 44
+    readonly property int edge: 60
 
     // Motion. Reduced motion turns every duration to zero.
     readonly property int fast: reducedMotion ? 0 : 120
