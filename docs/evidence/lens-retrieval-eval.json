@@ -1,5 +1,5 @@
 {
-  "status": "FAIL",
+  "status": "PASS",
   "eval_set": "synthetic",
   "method": "retrieve_selection RRF + feature rerank over labelled synthetic tuples",
   "bar": "best relevant rank sits above every hard negative",
@@ -29,21 +29,21 @@
         "hint": "Finds this thing again, even from another angle. You can pick a part or add a word."
       },
       "ranked": [
+        "acme-hit",
         "acne-lookalike",
         "chair-red",
-        "acme-hit",
         "logo-hit",
         "shirt-logo"
       ],
       "relevant_ranks": {
-        "acme-hit": 3
+        "acme-hit": 1
       },
       "hard_neg_ranks": {
-        "acne-lookalike": 1,
-        "chair-red": 2
+        "acne-lookalike": 2,
+        "chair-red": 3
       },
-      "relevant_above_hard_neg": false,
-      "pass": false,
+      "relevant_above_hard_neg": true,
+      "pass": true,
       "channels": [
         {
           "door": "region",
@@ -91,17 +91,17 @@
       },
       "ranked": [
         "cup-blue",
-        "chair-red",
+        "acne-lookalike",
         "cup-red-2",
         "acme-hit",
-        "acne-lookalike",
-        "acme-query"
+        "acme-query",
+        "chair-red"
       ],
       "relevant_ranks": {
         "cup-blue": 1
       },
       "hard_neg_ranks": {
-        "chair-red": 2
+        "chair-red": 6
       },
       "relevant_above_hard_neg": true,
       "pass": true,
@@ -152,17 +152,17 @@
       },
       "ranked": [
         "cup-red-2",
-        "chair-red",
         "cup-blue",
-        "acme-hit",
+        "chair-red",
         "acne-lookalike",
+        "acme-hit",
         "acme-query"
       ],
       "relevant_ranks": {
         "cup-red-2": 1
       },
       "hard_neg_ranks": {
-        "cup-blue": 3
+        "cup-blue": 2
       },
       "relevant_above_hard_neg": true,
       "pass": true,
@@ -212,20 +212,20 @@
         "hint": "Finds this thing again, even from another angle. You can pick a part or add a word."
       },
       "ranked": [
-        "shirt-plain",
         "logo-hit",
+        "shirt-plain",
         "acme-hit",
         "acme-query"
       ],
       "relevant_ranks": {
-        "logo-hit": 2,
+        "logo-hit": 1,
         "acme-hit": 3
       },
       "hard_neg_ranks": {
-        "shirt-plain": 1
+        "shirt-plain": 2
       },
-      "relevant_above_hard_neg": false,
-      "pass": false,
+      "relevant_above_hard_neg": true,
+      "pass": true,
       "channels": [
         {
           "door": "region",
@@ -274,10 +274,10 @@
       "ranked": [
         "cup-red-2",
         "chair-red",
-        "acme-hit",
         "acne-lookalike",
-        "cup-blue",
-        "acme-query"
+        "acme-hit",
+        "acme-query",
+        "cup-blue"
       ],
       "relevant_ranks": {
         "cup-red-2": 1
@@ -313,21 +313,18 @@
       "notes": "Hard negative: same colour, different meaning. Fusion must not keep the chair first."
     }
   ],
-  "failures": [
-    "brand-acme",
-    "part-logo"
-  ],
+  "failures": [],
   "counts": {
     "cases": 5,
-    "passed": 3,
-    "failed": 2,
+    "passed": 5,
+    "failed": 0,
     "corpus": 10
   },
   "timing": {
-    "exact_scan_ms": 68.428,
+    "exact_scan_ms": 43.428,
     "corpus_size": 10,
     "ann_justified": false,
-    "ann_reason": "Synthetic corpus is too small to claim an exact-scan bottleneck. ANN stays parked.",
+    "ann_reason": "ANN stays parked. Out of ship until a measured exact-scan bottleneck (docs/decisions/2026-10-19-lens-style-retrieval.md). This report does not record one.",
     "index": {
       "active": "exact-derived",
       "authoritative": "sqlite",

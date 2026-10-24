@@ -83,7 +83,27 @@ def precision_allowed(eval_set: str | None) -> bool:
 def precision_refusal(eval_set: str | None) -> str:
     if not precision_allowed(eval_set):
         return "not confirmatory — precision refused"
-    return "no frozen confirmatory Lens eval set"
+    return (
+        "no frozen confirmatory Lens eval set "
+        "(docs/evidence/lens-confirmatory.json). Precision refused. "
+        "Protocol: docs/LENS-CONFIRMATORY.md"
+    )
+
+
+def default_confirmatory_manifest() -> Path:
+    return Path(__file__).resolve().parents[1] / "docs" / "evidence" / "lens-confirmatory.json"
+
+
+def synthetic_media_ids() -> frozenset[str]:
+    ids: set[str] = set()
+    for case in labelled_cases():
+        ids.add(case.query_media_id)
+        ids.update(case.relevant)
+        ids.update(case.hard_negatives)
+        for item in case.look_items:
+            ids.add(str(item.get("media_id") or ""))
+    ids.discard("")
+    return frozenset(ids)
 
 
 def _look(media_id: str, score: float) -> dict:
@@ -400,20 +420,64 @@ def _precision_block(eval_set: str) -> dict:
     }
 
 
-def score_report(rows: list[dict], *, eval_set: str, elapsed_ms: float, corpus_size: int) -> dict:
+def _mean_precision(rows: list[dict], *, k: int = 5) -> dict:
+    """Macro Precision@k and Recall@k. Empty slots in a short list count as misses."""
+    precision_scores: list[float] = []
+    recall_scores: list[float] = []
+    for row in rows:
+        relevant = [str(mid) for mid in (row.get("relevant_ranks") or {}) if str(mid)]
+        if not relevant:
+            continue
+        ranked = [str(mid) for mid in (row.get("ranked") or [])[:k]]
+        hits = sum(1 for mid in ranked if mid in set(relevant))
+        precision_scores.append(hits / float(k))
+        recall_scores.append(hits / float(len(relevant)))
+    if not precision_scores:
+        return {
+            "precision": None,
+            "precision_at_5": None,
+            "recall_at_5": None,
+            "reason": "confirmatory set has no relevant labels",
+        }
+    precision_at_5 = sum(precision_scores) / len(precision_scores)
+    recall_at_5 = sum(recall_scores) / len(recall_scores)
+    return {
+        "precision": precision_at_5,
+        "precision_at_5": precision_at_5,
+        "recall_at_5": recall_at_5,
+        "reason": "confirmatory frozen set",
+    }
+
+
+def score_report(
+    rows: list[dict],
+    *,
+    eval_set: str,
+    elapsed_ms: float,
+    corpus_size: int,
+    precision_block: dict | None = None,
+) -> dict:
     """Assemble the public report. Precision stays None on synthetic."""
     kind = normalize_eval_set(eval_set)
     failures = [row["case_id"] for row in rows if not row.get("pass")]
     seam = index_seam_status()
-    precision = _precision_block(kind)
-    if kind == EVAL_SET_CONFIRMATORY:
+    if kind == EVAL_SET_CONFIRMATORY and precision_block is None:
+        precision = _precision_block(kind)
         status = "not_confirmatory"
+    elif kind == EVAL_SET_CONFIRMATORY:
+        precision = precision_block or _precision_block(kind)
+        status = "PASS" if rows and not failures else "FAIL"
     else:
+        precision = _precision_block(kind)
         status = "PASS" if not failures else "FAIL"
     return {
         "status": status,
         "eval_set": kind,
-        "method": "retrieve_selection RRF + feature rerank over labelled synthetic tuples",
+        "method": (
+            "retrieve_selection RRF + feature rerank over a frozen confirmatory manifest"
+            if kind == EVAL_SET_CONFIRMATORY
+            else "retrieve_selection RRF + feature rerank over labelled synthetic tuples"
+        ),
         "bar": "best relevant rank sits above every hard negative",
         "precision": precision["precision"],
         "precision_at_5": precision["precision_at_5"],
@@ -432,8 +496,8 @@ def score_report(rows: list[dict], *, eval_set: str, elapsed_ms: float, corpus_s
             "corpus_size": corpus_size,
             "ann_justified": False,
             "ann_reason": (
-                "Synthetic corpus is too small to claim an exact-scan bottleneck. "
-                "ANN stays parked."
+                "ANN stays parked. Out of ship until a measured exact-scan bottleneck "
+                "(docs/decisions/2026-10-19-lens-style-retrieval.md). This report does not record one."
             ),
             "index": seam,
         },
@@ -473,28 +537,220 @@ def identity_clean(store: Path) -> bool:
     return persons == 0 and faces == 0 and face_emb == 0
 
 
+def _require_str_list(value, field: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value or not all(isinstance(item, str) and item.strip() for item in value):
+        raise LensEvalError(f"confirmatory {field} must be a non-empty list of strings")
+    return tuple(str(item).strip() for item in value)
+
+
+def load_confirmatory(path: Path) -> tuple[list[LensCase], list[dict], str]:
+    """Load a frozen owner set. Refusal string is empty when the file is usable.
+
+    The synthetic swatch ids are refused so this set cannot be the harness
+    that already lives in ``labelled_cases``.
+    """
+    manifest = Path(path)
+    if not manifest.is_file():
+        return [], [], precision_refusal(EVAL_SET_CONFIRMATORY)
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [], [], f"confirmatory manifest unreadable: {exc}"
+    if not isinstance(data, dict):
+        return [], [], "confirmatory manifest must be a JSON object"
+    if data.get("frozen") is not True:
+        return [], [], "confirmatory manifest is not frozen"
+    if str(data.get("source") or "") != "owner-photographs":
+        return [], [], "confirmatory source must be owner-photographs"
+    if str(data.get("eval_set") or "") != EVAL_SET_CONFIRMATORY:
+        return [], [], "confirmatory eval_set must be confirmatory"
+    media_rows = data.get("media")
+    case_rows = data.get("cases")
+    if not isinstance(media_rows, list) or not isinstance(case_rows, list):
+        return [], [], "confirmatory manifest needs media and cases lists"
+    blocked = synthetic_media_ids() | {case.case_id for case in labelled_cases()}
+    media_by_id: dict[str, dict] = {}
+    folder = manifest.parent
+    for row in media_rows:
+        if not isinstance(row, dict):
+            return [], [], "confirmatory media row must be an object"
+        media_id = str(row.get("media_id") or "").strip()
+        image_name = str(row.get("image") or "").strip()
+        if not media_id or not image_name:
+            return [], [], "confirmatory media needs media_id and image"
+        if media_id in blocked:
+            return [], [], f"confirmatory media reuses a synthetic id: {media_id}"
+        image = (folder / image_name).resolve()
+        if not image.is_file():
+            return [], [], f"confirmatory image missing: {image_name}"
+        media_by_id[media_id] = {
+            "media_id": media_id,
+            "image": image,
+            "text": row.get("text"),
+            "objects": row.get("objects") or [],
+            "text_box": row.get("text_box"),
+        }
+    cases: list[LensCase] = []
+    families: set[str] = set()
+    try:
+        for row in case_rows:
+            if not isinstance(row, dict):
+                raise LensEvalError("confirmatory case must be an object")
+            case_id = str(row.get("case_id") or "").strip()
+            family = str(row.get("family") or "").strip()
+            if case_id in blocked:
+                raise LensEvalError(f"confirmatory case reuses a synthetic id: {case_id}")
+            if family not in {
+                FAMILY_BRAND_TEXT,
+                FAMILY_SAME_KIND,
+                FAMILY_SAME_LOOK,
+                FAMILY_PART_VS_WHOLE,
+                FAMILY_HARD_NEG_COLOUR,
+            }:
+                raise LensEvalError(f"confirmatory family is unknown: {family}")
+            relevant = _require_str_list(row.get("relevant"), "relevant")
+            hard = _require_str_list(row.get("hard_negatives"), "hard_negatives")
+            query_media_id = str(row.get("query_media_id") or "").strip()
+            named = {query_media_id, *relevant, *hard}
+            if query_media_id not in media_by_id or any(mid not in media_by_id for mid in named):
+                raise LensEvalError(f"confirmatory case {case_id} names media that are not in the manifest")
+            if named & blocked:
+                raise LensEvalError(f"confirmatory case {case_id} reuses a synthetic media id")
+            look_raw = row.get("look_items")
+            if not isinstance(look_raw, list) or not look_raw:
+                raise LensEvalError(f"confirmatory case {case_id} needs recorded look_items")
+            look_items = []
+            for item in look_raw:
+                if not isinstance(item, dict) or not str(item.get("media_id") or "").strip():
+                    raise LensEvalError(f"confirmatory case {case_id} has a bad look item")
+                look_id = str(item["media_id"]).strip()
+                if look_id not in media_by_id:
+                    raise LensEvalError(f"confirmatory case {case_id} look item is not in media")
+                look_items.append(
+                    {
+                        "media_id": look_id,
+                        "score": float(item.get("score") or 0.0),
+                        "match_norm": item.get("match_norm") or [0.0, 0.0, 1.0, 1.0],
+                    }
+                )
+            observations = row.get("observations") or []
+            if not isinstance(observations, list):
+                raise LensEvalError(f"confirmatory case {case_id} observations must be a list")
+            cases.append(
+                LensCase(
+                    case_id=case_id,
+                    family=family,
+                    query_media_id=query_media_id,
+                    relevant=relevant,
+                    hard_negatives=hard,
+                    observations=tuple(dict(item) for item in observations if isinstance(item, dict)),
+                    query_spec=dict(row.get("query_spec") or {}),
+                    look_items=tuple(look_items),
+                    notes=str(row.get("notes") or ""),
+                )
+            )
+            families.add(family)
+    except (LensEvalError, TypeError, ValueError) as exc:
+        return [], [], f"confirmatory manifest refused: {exc}"
+    missing = {
+        FAMILY_BRAND_TEXT,
+        FAMILY_SAME_KIND,
+        FAMILY_SAME_LOOK,
+        FAMILY_PART_VS_WHOLE,
+        FAMILY_HARD_NEG_COLOUR,
+    } - families
+    if missing:
+        return [], [], "confirmatory manifest is missing families: " + ", ".join(sorted(missing))
+    return cases, list(media_by_id.values()), ""
+
+
+def build_manifest_store(root: Path, media_rows: list[dict]) -> Path:
+    """Archive for a frozen confirmatory manifest. No faces."""
+    import cv2
+
+    work = Path(root)
+    work.mkdir(parents=True, exist_ok=True)
+    store = work / "lens-confirmatory.sqlite"
+    if store.exists():
+        store.unlink()
+    conn = connect(store)
+    init_db(conn)
+    _insert_run(conn)
+    for row in media_rows:
+        image = cv2.imread(str(row["image"]), cv2.IMREAD_COLOR)
+        if image is None:
+            conn.close()
+            raise LensEvalError(f"could not read {row['image']}")
+        text = row.get("text")
+        text_value = str(text).strip() if isinstance(text, str) and str(text).strip() else None
+        objects = tuple(str(label) for label in (row.get("objects") or []) if str(label).strip())
+        box = row.get("text_box")
+        text_box = tuple(int(v) for v in box) if isinstance(box, (list, tuple)) and len(box) == 4 else None
+        _add_media(
+            conn,
+            work,
+            str(row["media_id"]),
+            image,
+            text=text_value,
+            objects=objects,
+            text_box=text_box,
+        )
+    conn.commit()
+    conn.close()
+    return store
+
+
 def run_eval(
     root: Path | None = None,
     *,
     eval_set: str = EVAL_SET_SYNTHETIC,
     out: Path | None = None,
+    confirmatory_file: Path | None = None,
 ) -> dict:
-    """Build the synthetic archive, score every labelled case, optionally write JSON."""
+    """Score synthetic ranks, or a frozen confirmatory manifest when one exists."""
     kind = normalize_eval_set(eval_set)
     work = Path(root) if root is not None else Path("docs") / "evidence" / "lens-retrieval-work"
-    store = build_synthetic_store(work)
-    cases = labelled_cases()
-    started = time.perf_counter()
-    rows = [run_case(store, case) for case in cases]
-    elapsed_ms = (time.perf_counter() - started) * 1000.0
-    if not identity_clean(store):
-        raise LensEvalError("eval store wrote identity rows")
-    report = score_report(
-        rows,
-        eval_set=kind,
-        elapsed_ms=elapsed_ms,
-        corpus_size=_corpus_size(store),
-    )
+    if kind == EVAL_SET_CONFIRMATORY:
+        manifest = Path(confirmatory_file) if confirmatory_file is not None else default_confirmatory_manifest()
+        cases, media_rows, reason = load_confirmatory(manifest)
+        if reason:
+            report = score_report([], eval_set=kind, elapsed_ms=0.0, corpus_size=0)
+            report["precision_reason"] = reason
+            report["confirmatory_manifest"] = str(manifest)
+            if out is not None:
+                dest = Path(out)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+                report["out"] = str(dest)
+            return report
+        store = build_manifest_store(work, media_rows)
+        started = time.perf_counter()
+        rows = [run_case(store, case) for case in cases]
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        if not identity_clean(store):
+            raise LensEvalError("eval store wrote identity rows")
+        report = score_report(
+            rows,
+            eval_set=kind,
+            elapsed_ms=elapsed_ms,
+            corpus_size=_corpus_size(store),
+            precision_block=_mean_precision(rows),
+        )
+        report["confirmatory_manifest"] = str(manifest)
+    else:
+        store = build_synthetic_store(work)
+        cases = labelled_cases()
+        started = time.perf_counter()
+        rows = [run_case(store, case) for case in cases]
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        if not identity_clean(store):
+            raise LensEvalError("eval store wrote identity rows")
+        report = score_report(
+            rows,
+            eval_set=kind,
+            elapsed_ms=elapsed_ms,
+            corpus_size=_corpus_size(store),
+        )
     if out is not None:
         dest = Path(out)
         dest.parent.mkdir(parents=True, exist_ok=True)

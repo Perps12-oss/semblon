@@ -1,0 +1,40 @@
+{
+  "status": "not_confirmatory",
+  "eval_set": "confirmatory",
+  "method": "retrieve_selection RRF + feature rerank over a frozen confirmatory manifest",
+  "bar": "best relevant rank sits above every hard negative",
+  "precision": null,
+  "precision_at_5": null,
+  "recall_at_5": null,
+  "precision_reason": "no frozen confirmatory Lens eval set (docs/evidence/lens-confirmatory.json). Precision refused. Protocol: docs/LENS-CONFIRMATORY.md",
+  "cases": [],
+  "failures": [],
+  "counts": {
+    "cases": 0,
+    "passed": 0,
+    "failed": 0,
+    "corpus": 0
+  },
+  "timing": {
+    "exact_scan_ms": 0.0,
+    "corpus_size": 0,
+    "ann_justified": false,
+    "ann_reason": "ANN stays parked. Out of ship until a measured exact-scan bottleneck (docs/decisions/2026-10-19-lens-style-retrieval.md). This report does not record one.",
+    "index": {
+      "active": "exact-derived",
+      "authoritative": "sqlite",
+      "approximate": false,
+      "ann": {
+        "enabled": false,
+        "reason": "ANN is not wired. Add a provider behind active_vector_index only after a measured retrieval bottleneck."
+      }
+    }
+  },
+  "identity": {
+    "wrote_person_id": false,
+    "wrote_face_embedding": false,
+    "note": "Region ranking is not identity."
+  },
+  "note": "Photographic appearance regression stays docs/evidence/photo-region-eval.json. This harness does not retune RRF, floors, or S1.",
+  "confirmatory_manifest": "/workspace/docs/evidence/lens-confirmatory.json"
+}
