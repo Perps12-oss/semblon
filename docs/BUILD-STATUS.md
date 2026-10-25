@@ -7,10 +7,10 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-24. Commit `558cbb212bfacd27dc63ce27637ca0a97124e784` is on `main` via merge `db6d9ad6a2198b930dfbfcfc7672cbf9c1785284` (PR #184, 20:13 Europe/London). That merge is not a release. |
-| Branch | `main` at merge `db6d9ad6a2198b930dfbfcfc7672cbf9c1785284` |
-| Parent HEAD | (see git log on branch) |
-| Working tree at evidence | Permanent Home stage + capability catalogue; shell journey updated |
+| Evidence date | 2026-10-25. PERF-6 harness shipped; tip `2db9af1`. Linux lab agreement is not a performance win. Measured owner photographic A/B **BLOCKED** (no SKY placement from this cloud run) / **PENDING** owner local run. Production `embed_bgr` untouched. |
+| Branch | `cursor/native-face-inference-perf-9497` (PERF-6 harness) · PR [#188](https://github.com/Perps12-oss/semblon/pull/188) |
+| Parent HEAD | `2db9af19e2f20a6c7e401c26542a6dd4356002d8` |
+| Working tree at evidence | Owner ARM64 orchestrator + PowerShell runner; lab evidence retained; `owner-arm64-decision.json` **absent** — no invented native timings |
 
 ## Behaviour landed — Contact Sheet / Light Table
 
@@ -59,7 +59,7 @@ Out of ship by an existing decision or by the schema freeze: **02** encryption, 
 | 01 Win crash / Python matrix | P0 | **GREEN on this commit** for the current `ci / test` job | Windows Python 3.12 `test` succeeded twice on `558cbb212bfacd27dc63ce27637ca0a97124e784` (the two job URLs under Gate B). Not the 3.11–3.14 × Ubuntu matrix. On `main` via PR #184. Not a release. |
 | 02 Encrypted store | P2 | OUT OF SHIP | `docs/decisions/2026-10-16-store-encryption-deferred.md` lines 7–9. Plaintext store. Do not claim SQLCipher or DPAPI. |
 | 03 Signed offline MSI | P1 | IMPLEMENTED (eng) / BLOCKED (cert) | `tools/msi/build-msi.ps1` + `.github/workflows/msi-release.yml` (WiX v4/v5 via `dotnet tool wix`). Signs only when `CODE_SIGNING_PFX_*` secrets set; unsigned upload is engineering-only. |
-| 04 Identity engine / pack | P0 | **IMPLEMENTED** (YuNet+SFace runtime) / **BLOCKED** (L redistribute, Q Semblon eval, P native ARM64) | Production path `opencv/yunet_sface`; `insightface` removed from deps; buffalo_l not loaded. BYO pack + pin. Smoke: ingest→cluster→name→reembed on Lena (x64). Gates: L OPEN, Q OPEN (provisional eps=0.45), I partial (pipeline wired), P partial. `docs/IDENTITY-PACK.md`. PRODUCT.md FaceKit wording unchanged until product-approval decision. |
+| 04 Identity engine / pack | P0 | **IMPLEMENTED** (YuNet+SFace runtime) / **BLOCKED** (L redistribute, Q Semblon eval, P native ARM64) | Production path still OpenCV DNN. Lab ORT adapter (`semblon/experimental/inference`) runs the **same** ONNX files; Linux proxy identity-safety **PASS** (P/R 1.0, mean cosine ≈1.0). Native Windows ARM64 speed not claimed. See `docs/PERF-INFERENCE-BACKENDS.md`. Gates: L OPEN, Q OPEN (provisional eps=0.45), I partial, P partial. PRODUCT.md FaceKit wording unchanged. |
 | 05 Hashed dependency lock | P1 | IMPLEMENTED | `requirements.lock.txt` is present. The green `ci / test` jobs on this commit do not run the lock compile. Not PASS. |
 | 06 FaceKit owner workflow | P1 | IMPLEMENTED / BLOCKED (run) | `tools/facekit_owner_evidence.py` + `.github/workflows/facekit-owner.yml` + `docs/FACEKIT-OWNER.md`. No owner pack on this machine — evidence JSON not PASS. |
 | 07 Retired Tk / review.html / spike | P1 | IMPLEMENTED | Unchanged. |
@@ -77,6 +77,34 @@ Out of ship by an existing decision or by the schema freeze: **02** encryption, 
 4. FaceKit owner evidence helper + workflow_dispatch job (no download).
 5. buffalo_l: explicit BYO / no redistribution decision (keep FaceKit; do not swap engines).
 6. MSI release workflow: optional Authenticode via secrets; unsigned when absent.
+
+## Verification log — PERF-6 harness (2026-10-25)
+
+| Item | Result |
+|---|---|
+| Tip commit | `2db9af19e2f20a6c7e401c26542a6dd4356002d8` |
+| `ci / test` on tip | **GREEN** — push [40184732258](https://github.com/Perps12-oss/semblon/actions/runs/40184732258) and PR [40184734224](https://github.com/Perps12-oss/semblon/actions/runs/40184734224) both `success` |
+| Owner photographic 48-still A/B on SKY | **NOT RUN** — measured verdict **BLOCKED** / **PENDING** |
+| Self-hosted worker SKY | Connected / idle / `approved=true` / `eligibleForSubagent=true` (`workerId` `9ffb6f5f-6d61-5fff-9f2e-4ba1cc8a6ad6`, `cursor.private_worker.os=windows`) |
+| Cloud → SKY placement | **FAILED** twice from this tooling path (`bc-78cc5d10`, `bc-3fa853a6` → `ERROR`, `privateWorkerId=null`). This Linux agent cannot collect owner timings. |
+| Invented native speedup | **None** — no `owner-arm64-*.json` on disk |
+| Exact owner command (repo root on SKY) | `powershell -NoProfile -ExecutionPolicy Bypass -File tools\perf_inference_owner_arm64.ps1 -Corpus "<owner-photographic-48still>"` |
+| After owner run | Commit `docs/evidence/perf-inference/owner-arm64-*.json`; update this file + `docs/PERF-INFERENCE-IMPLEMENTATION-PLAN.md` from `owner-arm64-decision.json`. Do not cut over production. Do not run 1K/5K/10K. |
+
+## Verification log — PERF inference lab (2026-10-25, Linux x64 cloud)
+
+| Command | Result |
+|---|---|
+| `SEMBLON_PERF_FACE_PACK=/tmp/semblon-perf-lab/models` + Zoo SHA-256 check | 2023mar + SFace match `IDENTITY-PACK.md` pins |
+| `tools/perf_inference_build_corpus.py --out docs/evidence/perf-inference-48still` | 48 stills + manifest |
+| `tools/perf_inference_bench.py --corpus …/stills` | `backend-bench.json` — OpenCV DNN faster on native Linux; ORT compatible |
+| `tools/perf_inference_identity_eval.py` | lab agreement **PASS** (P/R 1.0, mean cosine ≈1.0) |
+| `tools/perf_inference_resolution_sweep.py` | Keep `DETECT_LONG_SIDE=1280`; smaller caps lose recall |
+| `pytest tests/test_experimental_inference.py` (+ yunet/production/opencv_probe) | **30 passed, 1 skipped** |
+| `xvfb-run -a .venv/bin/python -m pytest -q` | **993 passed, 7 skipped** |
+| Production `semblon/engine.py` embed path | **not modified** |
+
+Native Windows ARM64 timing was **not** run on this agent. Do not invent speedup vs emulated 5K.
 
 ## Verification log (commands actually run)
 
@@ -151,6 +179,8 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 - Results chrome is one strip; basis labels stay distinct per door.
 - Pack gate unchanged. ARM64 OpenCV load remains BLOCKED historically (`docs/PERF-P1-ARM64.md`).
 - Identity runtime is YuNet + SFace (`opencv/yunet_sface`); buffalo_l retired from deps (BYO historical only).
+- **PERF inference lab (2026-10-25):** experimental `ort_yunet_sface` vs `opencv_dnn` on a 48-still lab corpus. Production path not switched. Linux numerical agreement PASS is **not** a throughput claim. Evidence: `docs/PERF-INFERENCE-BACKENDS.md`, `docs/evidence/perf-inference/`.
+- **PERF-6 owner ARM64 (2026-10-25):** harness **READY**; measured A/B **BLOCKED** / **PENDING**. Tools: `tools/perf_inference_owner_arm64.ps1` + `tools/perf_inference_owner_arm64.py` (A emulated x64 OpenCV vs B native ARM64 ORT; refuses lab stand-in). SKY worker was connected but cloud placement ERROR'd (`bc-78cc5d10`, `bc-3fa853a6`). Owner must run the PowerShell command above on SKY with the photographic 48-still folder. Do not cut over until `owner-arm64-decision.json` exists. Plan: `docs/PERF-INFERENCE-IMPLEMENTATION-PLAN.md`.
 - Object/OCR search never votes on identity. NanoDet/SFace/YuNet MSI bundling remains L OPEN.
 
 ## Outstanding blockers (exact)

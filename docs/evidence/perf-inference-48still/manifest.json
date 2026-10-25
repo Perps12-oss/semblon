@@ -1,0 +1,544 @@
+{
+  "categories": [
+    "difficult_lighting",
+    "distant_face",
+    "group_photograph",
+    "high_resolution_portrait",
+    "multiple_faces_variant",
+    "small_face"
+  ],
+  "count": 48,
+  "name": "perf-inference-48still-lab",
+  "note": "Owner 48-still photographic set is not in the repo. This corpus is a deterministic lab stand-in from OpenCV sample stills + transforms. Re-run identity-safety on the owner set before any production cutover.",
+  "status": "LAB_STAND_IN",
+  "stills": [
+    {
+      "category": "high_resolution_portrait",
+      "file": "01_portrait_hires_0.jpg",
+      "sha256": "aa6d4a3bd1c456bef976fea90e7f1c996fde46eaf2485c9dd75dd2f743373341",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "portrait_hires_0"
+    },
+    {
+      "category": "high_resolution_portrait",
+      "file": "02_portrait_hires_1.jpg",
+      "sha256": "6b89bfdf9445e62d2f67f93d43965f5f2c08fec3ce796748de10335f2278cb78",
+      "shape": [
+        768,
+        768,
+        3
+      ],
+      "tag": "portrait_hires_1"
+    },
+    {
+      "category": "high_resolution_portrait",
+      "file": "03_portrait_hires_2.jpg",
+      "sha256": "e341d186869f04f43e930c4d435ef758de2363186ae4217299481ae46c320212",
+      "shape": [
+        1024,
+        1024,
+        3
+      ],
+      "tag": "portrait_hires_2"
+    },
+    {
+      "category": "high_resolution_portrait",
+      "file": "04_portrait_hires_3.jpg",
+      "sha256": "3860b032b354e7a61cf497c2c4c916e962efb1d5a0b8763d50f14a6e6edcc60c",
+      "shape": [
+        1280,
+        1280,
+        3
+      ],
+      "tag": "portrait_hires_3"
+    },
+    {
+      "category": "small_face",
+      "file": "05_distant_48.jpg",
+      "sha256": "da26b88ab56831f67084a0f3b2425632e7683b37b47d97db4ac51f83dbc6474d",
+      "shape": [
+        1600,
+        2400,
+        3
+      ],
+      "tag": "distant_48"
+    },
+    {
+      "category": "small_face",
+      "file": "06_distant_64.jpg",
+      "sha256": "3eb002b1739d29ff9d16b41e7e22b7832d8061fa7ff539c5b22d52c87e458ae4",
+      "shape": [
+        1600,
+        2400,
+        3
+      ],
+      "tag": "distant_64"
+    },
+    {
+      "category": "distant_face",
+      "file": "07_distant_80.jpg",
+      "sha256": "6a4b4dbb6c0e5d43a6b2dcf0242e8da103b8e51ad65afb43a394043da7f2b5a1",
+      "shape": [
+        1600,
+        2400,
+        3
+      ],
+      "tag": "distant_80"
+    },
+    {
+      "category": "distant_face",
+      "file": "08_distant_96.jpg",
+      "sha256": "6da74ed8c3cb664ea89a660082f413b5111109a97a43e3e3b9819cc638d6a622",
+      "shape": [
+        1600,
+        2400,
+        3
+      ],
+      "tag": "distant_96"
+    },
+    {
+      "category": "distant_face",
+      "file": "09_distant_120.jpg",
+      "sha256": "e49988137766edd69385ccf44337b2a3240ea8bb2afeebd16e9247a98b535982",
+      "shape": [
+        1600,
+        2400,
+        3
+      ],
+      "tag": "distant_120"
+    },
+    {
+      "category": "distant_face",
+      "file": "10_distant_160.jpg",
+      "sha256": "90be3a6f2eebf03e6adb0da633e84420ff0a8a627d874aa0448c0dc084764474",
+      "shape": [
+        1600,
+        2400,
+        3
+      ],
+      "tag": "distant_160"
+    },
+    {
+      "category": "difficult_lighting",
+      "file": "11_lighting_0.jpg",
+      "sha256": "0fd1349d4161c2b51aec4dada78006728ca828a78f3fdd1b7c5eca3ae27b569e",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "lighting_0"
+    },
+    {
+      "category": "difficult_lighting",
+      "file": "12_lighting_1.jpg",
+      "sha256": "76341add01ba599554ef2ca9f100eb272d25c42d2f47b0fbc15b73b4090970d3",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "lighting_1"
+    },
+    {
+      "category": "difficult_lighting",
+      "file": "13_lighting_2.jpg",
+      "sha256": "21ba22e32f73b56c07e7b67184b076f69b9a9f7111be816634c5677c99c2b344",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "lighting_2"
+    },
+    {
+      "category": "difficult_lighting",
+      "file": "14_lighting_3.jpg",
+      "sha256": "c024b85f7a57c27a53f528edefde5e4eab7248b1aac9e95617e57bbf82e902d0",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "lighting_3"
+    },
+    {
+      "category": "difficult_lighting",
+      "file": "15_lighting_4.jpg",
+      "sha256": "9e35e9344cfb25cad768e17019675e3105c30e17bc54a2bd7941b3fe4852fcb6",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "lighting_4"
+    },
+    {
+      "category": "difficult_lighting",
+      "file": "16_lighting_5.jpg",
+      "sha256": "ab72c551019c873c6c466f5c5eedfc2322a69f7ebc7435f3cb2a1173984756bf",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "lighting_5"
+    },
+    {
+      "category": "group_photograph",
+      "file": "17_group_2.jpg",
+      "sha256": "595e1fc601f578961d34a3a16b672dc97d8387b664746ff4c12373c47cb625ba",
+      "shape": [
+        1200,
+        1600,
+        3
+      ],
+      "tag": "group_2"
+    },
+    {
+      "category": "group_photograph",
+      "file": "18_group_3.jpg",
+      "sha256": "62fc88aee7e96f9e1db220b53621decf6f6070458ed9c5d4ecc1bc55db4e5036",
+      "shape": [
+        1200,
+        1600,
+        3
+      ],
+      "tag": "group_3"
+    },
+    {
+      "category": "group_photograph",
+      "file": "19_group_4.jpg",
+      "sha256": "ee371c2baf7fca1439d93d16a2379b65a4b8d97fbfd45a62aa6174bf2718b857",
+      "shape": [
+        1200,
+        1600,
+        3
+      ],
+      "tag": "group_4"
+    },
+    {
+      "category": "group_photograph",
+      "file": "20_group_5.jpg",
+      "sha256": "4baa479156361293c16b549f641143b6458c62865e21c7fbb7a9a60dbd267b8e",
+      "shape": [
+        1200,
+        1600,
+        3
+      ],
+      "tag": "group_5"
+    },
+    {
+      "category": "group_photograph",
+      "file": "21_group_6.jpg",
+      "sha256": "665d587e01f5f411706dc2f707b438ecc40d37b8bdbfea9bf0d9d4a8a1bc2e4f",
+      "shape": [
+        1200,
+        1600,
+        3
+      ],
+      "tag": "group_6"
+    },
+    {
+      "category": "group_photograph",
+      "file": "22_group_8.jpg",
+      "sha256": "ccd3cc68e9be43b976f1135e22580f351084f954ee2789b75b9aa0d3b449fecf",
+      "shape": [
+        1200,
+        1600,
+        3
+      ],
+      "tag": "group_8"
+    },
+    {
+      "category": "multiple_faces_variant",
+      "file": "23_pose_0.jpg",
+      "sha256": "aa6d4a3bd1c456bef976fea90e7f1c996fde46eaf2485c9dd75dd2f743373341",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "pose_0"
+    },
+    {
+      "category": "multiple_faces_variant",
+      "file": "24_pose_8.jpg",
+      "sha256": "862a9e5db4a84081da18cc0723fd4253806b7c2b44a8cd8611f6c43ff960b5e4",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "pose_8"
+    },
+    {
+      "category": "multiple_faces_variant",
+      "file": "25_pose_-8.jpg",
+      "sha256": "9dfb9df9cd23e3994838227a97c5a8c43a7d659a1b2b7e1c39335bdd3c609ac0",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "pose_-8"
+    },
+    {
+      "category": "multiple_faces_variant",
+      "file": "26_pose_15.jpg",
+      "sha256": "37aa57e42bf04211b4bc68b6beed77de5ccbfe5b8fce914212a0e09ac8fc9516",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "pose_15"
+    },
+    {
+      "category": "multiple_faces_variant",
+      "file": "27_pose_-15.jpg",
+      "sha256": "2ed5a810dc81d583079f0c0c3e945ad7941759337e538d9fb17125a8d0548958",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "pose_-15"
+    },
+    {
+      "category": "multiple_faces_variant",
+      "file": "28_pose_180.jpg",
+      "sha256": "62ab663a1643c975d8c2bc7d1737a06588437e3df897ca7b05e1fe56be996ea2",
+      "shape": [
+        512,
+        512,
+        3
+      ],
+      "tag": "pose_180"
+    },
+    {
+      "category": "group_photograph",
+      "file": "29_composite_28.jpg",
+      "sha256": "e7c2ed99195aaaa536ae678896394ff86a2dd08f26e68655d120003205454a9c",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_28"
+    },
+    {
+      "category": "group_photograph",
+      "file": "30_composite_29.jpg",
+      "sha256": "2e282fbed7b5c0cb8ffc54a4b8adcd9d206e891d4227409adf2b3609228d2cc5",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_29"
+    },
+    {
+      "category": "group_photograph",
+      "file": "31_composite_30.jpg",
+      "sha256": "b51b13af2c02b6462526d40857ba75d5b0b769b15bebc8ef2f75a3878aff4be7",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_30"
+    },
+    {
+      "category": "group_photograph",
+      "file": "32_composite_31.jpg",
+      "sha256": "f85cef10bc4c187698de255a9ed9a52245a42e30d6985ab741c4573a73801477",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_31"
+    },
+    {
+      "category": "group_photograph",
+      "file": "33_composite_32.jpg",
+      "sha256": "3211ac65aa9a2acbc521d00cb23818cf8dd5adccc1e1b3a2025c7ed23caf9ec4",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_32"
+    },
+    {
+      "category": "group_photograph",
+      "file": "34_composite_33.jpg",
+      "sha256": "80dfb2651df3bbde4f58470b844ed2e132139d1309ec36a1e05f3827d4178b24",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_33"
+    },
+    {
+      "category": "group_photograph",
+      "file": "35_composite_34.jpg",
+      "sha256": "b3895f2bb2c56d9f9e7ad003838c965fccb30c5213801bed5e95b9d753c97633",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_34"
+    },
+    {
+      "category": "group_photograph",
+      "file": "36_composite_35.jpg",
+      "sha256": "9bc9e9ef13d8cfc7c169876e0a6f98eea6439c8fbec1797a78fe680bf03a0ba1",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_35"
+    },
+    {
+      "category": "group_photograph",
+      "file": "37_composite_36.jpg",
+      "sha256": "aa765b9768f911c16cffd3bf0618a73bd25af47ba9211fef6f145c332a09cd6e",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_36"
+    },
+    {
+      "category": "group_photograph",
+      "file": "38_composite_37.jpg",
+      "sha256": "8d0fbe1be9b1a8579526f81ac51b905b1c41a04b0fd8be9d02c3135aa474018e",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_37"
+    },
+    {
+      "category": "group_photograph",
+      "file": "39_composite_38.jpg",
+      "sha256": "2f5337504799a63cba7300e7a1a0f41ceb773453db5d4de596ebdd12d61ce015",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_38"
+    },
+    {
+      "category": "group_photograph",
+      "file": "40_composite_39.jpg",
+      "sha256": "90933e722df56032925540e7e36d77b669b5149ca7a0268a78d40d44f73ec6b2",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_39"
+    },
+    {
+      "category": "group_photograph",
+      "file": "41_composite_40.jpg",
+      "sha256": "74caa8b37b8db10a57dab94d6d05de43d4e57af7bda4bb6629aea98fa1e300a6",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_40"
+    },
+    {
+      "category": "group_photograph",
+      "file": "42_composite_41.jpg",
+      "sha256": "a437d6dd4073a50ec719da71ebaa7e048ea4565969740e3df346eec6814103ea",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_41"
+    },
+    {
+      "category": "group_photograph",
+      "file": "43_composite_42.jpg",
+      "sha256": "18932e2ddc4cb770ad63513928ae3ee459a14e43f345cfb8dea7d3ba71a90594",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_42"
+    },
+    {
+      "category": "group_photograph",
+      "file": "44_composite_43.jpg",
+      "sha256": "abe57976c8d0fde84c873566f6471fb2993ea7d2b7501eabadfbabeb24390bda",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_43"
+    },
+    {
+      "category": "group_photograph",
+      "file": "45_composite_44.jpg",
+      "sha256": "14bcdaeb02600974278063d4b23d61ddbd0f47101222866c1deb3c8256f94341",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_44"
+    },
+    {
+      "category": "group_photograph",
+      "file": "46_composite_45.jpg",
+      "sha256": "c1da282f87c6327a0da5983ba1d3a71d3f92b7cab5d2cfb5f3acd12c0f4c1e23",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_45"
+    },
+    {
+      "category": "group_photograph",
+      "file": "47_composite_46.jpg",
+      "sha256": "1f0cbd276bd45659f5296db80bc051488c77d6cd1f43970d9034a84aef82d7a7",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_46"
+    },
+    {
+      "category": "group_photograph",
+      "file": "48_composite_47.jpg",
+      "sha256": "7fe5d711be430ff07a38d89fb6d1f3ca948b4df8120feb003f7cf45d9f52b8e6",
+      "shape": [
+        480,
+        512,
+        3
+      ],
+      "tag": "composite_47"
+    }
+  ]
+}

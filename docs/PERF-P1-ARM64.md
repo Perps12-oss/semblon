@@ -109,6 +109,14 @@ Record to a **separate** store (never overwrite S1 golden). Compare wall-clock t
 3. Re-run timed load; keep S1 x64 env untouched.  
 4. Abort any `pip install opencv-python-headless` that falls back to sdist source build unless explicitly authorized as a lab rebuild.
 
+## Related — ORT identity path (2026-10-25 lab)
+
+OpenCV DNN load on ARM64 remains **BLOCKED**. A parallel lab investigates running the **same** YuNet/SFace ONNX files via native ONNX Runtime (decode/align ported to match OpenCV). Production `embed_bgr` is unchanged.
+
+- Compatibility + Linux proxy bench / identity-safety: `docs/PERF-INFERENCE-BACKENDS.md`
+- Cutover plan (gates before production wire): `docs/PERF-INFERENCE-IMPLEMENTATION-PLAN.md`
+- Code: `semblon/experimental/inference/` (not on ingest)
+
 ## Related
 
 - P0 baseline: `docs/PERF-P0-BASELINE.md`  

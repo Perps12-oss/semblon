@@ -1,0 +1,55 @@
+{
+  "DET_SCORE_MIN_unchanged": 0.7,
+  "backend": "ort_yunet_sface",
+  "production_DETECT_LONG_SIDE": 1280,
+  "recommendation": "Keep DETECT_LONG_SIDE=1280 until an owner photographic eval shows equal-or-better small/distant face recall at a smaller cap.",
+  "rule": "No resolution change becomes production default without quality PASS",
+  "sizes": [
+    {
+      "detect_long_side": 320,
+      "detect_s": 0.7489835680004262,
+      "face_count_recall_vs_default": 0.546875,
+      "faces": 35,
+      "is_production_default": false,
+      "production_default_candidate": false,
+      "wall_embed_s": 1.5379434160001892
+    },
+    {
+      "detect_long_side": 640,
+      "detect_s": 1.4458812150002132,
+      "face_count_recall_vs_default": 0.75,
+      "faces": 48,
+      "is_production_default": false,
+      "production_default_candidate": false,
+      "wall_embed_s": 2.424968652000075
+    },
+    {
+      "detect_long_side": 960,
+      "detect_s": 2.2050945320003166,
+      "face_count_recall_vs_default": 0.921875,
+      "faces": 59,
+      "is_production_default": false,
+      "production_default_candidate": false,
+      "wall_embed_s": 3.2783344389998774
+    },
+    {
+      "detect_long_side": 1280,
+      "detect_s": 2.848400866999782,
+      "face_count_recall_vs_default": 1.0,
+      "faces": 64,
+      "is_production_default": true,
+      "production_default_candidate": false,
+      "wall_embed_s": 3.9813817199996038
+    },
+    {
+      "detect_long_side": 1600,
+      "detect_s": 3.6792419670001664,
+      "face_count_recall_vs_default": 1.0,
+      "faces": 65,
+      "is_production_default": false,
+      "production_default_candidate": false,
+      "wall_embed_s": 4.840298518999589
+    }
+  ],
+  "status": "MEASURED"
+}

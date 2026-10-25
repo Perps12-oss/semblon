@@ -1,0 +1,490 @@
+{
+  "candidate_backend": "ort_yunet_sface",
+  "candidate_info": {
+    "available_providers": [
+      "AzureExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "backend": "ort_yunet_sface",
+    "det_fixed_hw": null,
+    "det_input_name": "input",
+    "detect_long_side_override": null,
+    "fixed_shape_note": null,
+    "hashes": {
+      "sface": {
+        "expected_sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+        "matches_identity_pack_pin": true,
+        "name": "face_recognition_sface_2021dec.onnx",
+        "path": "/tmp/semblon-perf-lab/models/face_recognition_sface_2021dec.onnx",
+        "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"
+      },
+      "yunet": {
+        "expected_sha256": null,
+        "matches_identity_pack_pin": true,
+        "name": "face_detection_yunet_2026may.onnx",
+        "note": "2026may preferred by production; IDENTITY-PACK.md pins 2023mar SHA only",
+        "path": "/tmp/semblon-perf-lab/models/face_detection_yunet_2026may.onnx",
+        "sha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0"
+      }
+    },
+    "nms_threshold": 0.3,
+    "ort_version": "1.30.0",
+    "providers": [
+      "CPUExecutionProvider"
+    ],
+    "rec_input_name": "data",
+    "requested_intra_op_threads": null,
+    "score_threshold": 0.7,
+    "sface": "/tmp/semblon-perf-lab/models/face_recognition_sface_2021dec.onnx",
+    "yunet": "/tmp/semblon-perf-lab/models/face_detection_yunet_2026may.onnx"
+  },
+  "detection": {
+    "fn": 0,
+    "fp": 0,
+    "mean_bbox_iou": 0.9999995359396728,
+    "precision": 1.0,
+    "recall": 1.0,
+    "tp": 64
+  },
+  "embedding": {
+    "matched_pairs": 64,
+    "mean_cosine": 0.999999700114131,
+    "min_cosine": 0.9999983310699463,
+    "p50_cosine": 0.9999998807907104
+  },
+  "lab_agreement_gate": {
+    "criteria": "mean_cos>=0.98, min_cos>=0.95, P/R>=0.95, mean_iou>=0.7",
+    "note": "Lab agreement is necessary but not sufficient for production. Owner photographic set + native ARM64 evidence still required.",
+    "pass": true,
+    "production_cutover": false
+  },
+  "per_image": [
+    {
+      "cand_faces": 1,
+      "file": "01_portrait_hires_0.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "02_portrait_hires_1.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "03_portrait_hires_2.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "04_portrait_hires_3.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 0,
+      "file": "05_distant_48.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 0,
+      "ref_faces": 0
+    },
+    {
+      "cand_faces": 0,
+      "file": "06_distant_64.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 0,
+      "ref_faces": 0
+    },
+    {
+      "cand_faces": 0,
+      "file": "07_distant_80.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 0,
+      "ref_faces": 0
+    },
+    {
+      "cand_faces": 0,
+      "file": "08_distant_96.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 0,
+      "ref_faces": 0
+    },
+    {
+      "cand_faces": 0,
+      "file": "09_distant_120.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 0,
+      "ref_faces": 0
+    },
+    {
+      "cand_faces": 0,
+      "file": "10_distant_160.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 0,
+      "ref_faces": 0
+    },
+    {
+      "cand_faces": 1,
+      "file": "11_lighting_0.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "12_lighting_1.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "13_lighting_2.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "14_lighting_3.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "15_lighting_4.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "16_lighting_5.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 2,
+      "file": "17_group_2.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 2,
+      "ref_faces": 2
+    },
+    {
+      "cand_faces": 3,
+      "file": "18_group_3.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 3,
+      "ref_faces": 3
+    },
+    {
+      "cand_faces": 4,
+      "file": "19_group_4.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 4,
+      "ref_faces": 4
+    },
+    {
+      "cand_faces": 5,
+      "file": "20_group_5.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 5,
+      "ref_faces": 5
+    },
+    {
+      "cand_faces": 6,
+      "file": "21_group_6.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 6,
+      "ref_faces": 6
+    },
+    {
+      "cand_faces": 8,
+      "file": "22_group_8.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 8,
+      "ref_faces": 8
+    },
+    {
+      "cand_faces": 1,
+      "file": "23_pose_0.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "24_pose_8.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "25_pose_-8.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "26_pose_15.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "27_pose_-15.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "28_pose_180.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "29_composite_28.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "30_composite_29.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "31_composite_30.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "32_composite_31.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "33_composite_32.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "34_composite_33.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "35_composite_34.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "36_composite_35.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "37_composite_36.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "38_composite_37.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "39_composite_38.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "40_composite_39.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "41_composite_40.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "42_composite_41.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "43_composite_42.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "44_composite_43.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "45_composite_44.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "46_composite_45.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "47_composite_46.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    },
+    {
+      "cand_faces": 1,
+      "file": "48_composite_47.jpg",
+      "fn": 0,
+      "fp": 0,
+      "matches": 1,
+      "ref_faces": 1
+    }
+  ],
+  "reference_backend": "opencv_dnn",
+  "reference_info": {
+    "FaceDetectorYN": true,
+    "FaceRecognizerSF": true,
+    "backend": "opencv_dnn",
+    "detect_long_side_override": null,
+    "dnn_module": true,
+    "hashes": {
+      "sface": {
+        "expected_sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+        "matches_identity_pack_pin": true,
+        "name": "face_recognition_sface_2021dec.onnx",
+        "path": "/tmp/semblon-perf-lab/models/face_recognition_sface_2021dec.onnx",
+        "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"
+      },
+      "yunet": {
+        "expected_sha256": null,
+        "matches_identity_pack_pin": true,
+        "name": "face_detection_yunet_2026may.onnx",
+        "note": "2026may preferred by production; IDENTITY-PACK.md pins 2023mar SHA only",
+        "path": "/tmp/semblon-perf-lab/models/face_detection_yunet_2026may.onnx",
+        "sha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0"
+      }
+    },
+    "nms_threshold": 0.3,
+    "providers": [
+      "OpenCV_DNN_CPU"
+    ],
+    "score_threshold": 0.7,
+    "sface": "/tmp/semblon-perf-lab/models/face_recognition_sface_2021dec.onnx",
+    "yunet": "/tmp/semblon-perf-lab/models/face_detection_yunet_2026may.onnx"
+  },
+  "retrieval": {
+    "queries": 64,
+    "top1_rate": 0.890625,
+    "top1_same_file": 57
+  },
+  "status": "MEASURED",
+  "thresholds_unchanged": {
+    "DEFAULT_THRESHOLD": 0.55,
+    "DET_SCORE_MIN": 0.7,
+    "note": "No eps / min_samples / confidence / min-face edits"
+  }
+}
