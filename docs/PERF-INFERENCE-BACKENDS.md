@@ -96,7 +96,9 @@ Backend: ORT. Long-side caps vs production `DETECT_LONG_SIDE=1280`:
 ## 6. Recommendation (evidence-backed)
 
 1. **Linux lab:** ORT is numerically safe vs OpenCV DNN on the same ONNX files — **not** a throughput win (OpenCV was faster on native Linux x64).  
-2. **PERF-6 (required next):** measure native ARM64 ORT vs emulated x64 OpenCV on the owner photographic 48-still set via `tools/perf_inference_owner_arm64.ps1`. See `docs/PERF-INFERENCE-IMPLEMENTATION-PLAN.md` §PERF-6.  
+2. **PERF-6 (required next; currently BLOCKED/PENDING):** measure native ARM64 ORT vs emulated x64 OpenCV on the owner photographic 48-still set. Harness is shipped; measured JSON is not. Exact owner command on SKY:  
+   `powershell -NoProfile -ExecutionPolicy Bypass -File tools\perf_inference_owner_arm64.ps1 -Corpus "<owner-photographic-48still>"`  
+   See `docs/PERF-INFERENCE-IMPLEMENTATION-PLAN.md` §PERF-6.  
 3. **Do not cut over production** until PERF-6 `owner-arm64-decision.json` recommends controlled experimental integration **and** identity PASS.  
 4. **Keep OpenCV DNN** as the production backend wherever it loads natively.  
 5. **Parallel track:** ARM64 OpenCV DNN load (`PERF-P1`).  

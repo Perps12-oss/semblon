@@ -1,9 +1,9 @@
 # Implementation plan — ORT YuNet/SFace backend (lab → optional → production)
 
-**Status:** Phase 0 **COMPLETE** (Linux lab). Phase 1 / **PERF-6** owner native ARM64 measurement **READY TO RUN** — harness shipped; measured verdict **PENDING** owner photographic execution on SKY.  
+**Status:** Phase 0 **COMPLETE** (Linux lab). Phase 1 / **PERF-6** harness **READY**; measured verdict **BLOCKED** / **PENDING** — SKY worker connected but cloud placement to that worker failed twice (`bc-78cc5d10`, `bc-3fa853a6`); no `owner-arm64-decision.json` yet. Tip `2db9af1` `ci / test` green.  
 **Winning candidate (lab numerical only):** `ort_yunet_sface` for hosts where OpenCV DNN cannot load natively (Windows ARM64).  
-**Evidence:** `docs/PERF-INFERENCE-BACKENDS.md`, `docs/evidence/perf-inference/`.  
-**Do not** treat Linux identity-agreement PASS as a performance win.
+**Evidence:** `docs/PERF-INFERENCE-BACKENDS.md`, `docs/evidence/perf-inference/` (lab only until owner JSON lands).  
+**Do not** treat Linux identity-agreement PASS as a performance win. **Do not** invent native ARM64 timings.
 
 ## Invariants (never reopen in this plan)
 

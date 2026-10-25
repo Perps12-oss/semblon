@@ -7,10 +7,10 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-25. PERF-6 owner ARM64 harness shipped on `cursor/native-face-inference-perf-9497`. Linux lab agreement is not a performance win. Owner photographic run **PENDING** on SKY. Production `embed_bgr` untouched. |
-| Branch | `cursor/native-face-inference-perf-9497` (PERF-6 harness) |
-| Parent HEAD | (see git log on branch) |
-| Working tree at evidence | Owner ARM64 orchestrator + PowerShell runner; lab evidence retained; measured A/B decision JSON not yet on this agent |
+| Evidence date | 2026-10-25. PERF-6 harness shipped; tip `2db9af1`. Linux lab agreement is not a performance win. Measured owner photographic A/B **BLOCKED** (no SKY placement from this cloud run) / **PENDING** owner local run. Production `embed_bgr` untouched. |
+| Branch | `cursor/native-face-inference-perf-9497` (PERF-6 harness) · PR [#188](https://github.com/Perps12-oss/semblon/pull/188) |
+| Parent HEAD | `2db9af19e2f20a6c7e401c26542a6dd4356002d8` |
+| Working tree at evidence | Owner ARM64 orchestrator + PowerShell runner; lab evidence retained; `owner-arm64-decision.json` **absent** — no invented native timings |
 
 ## Behaviour landed — Safelight Desk
 
@@ -78,10 +78,14 @@ Out of ship by an existing decision or by the schema freeze: **02** encryption, 
 
 | Item | Result |
 |---|---|
-| Owner photographic 48-still bench on SKY | **NOT RUN** from this Linux cloud agent |
-| Self-hosted worker SKY | Connected (`cursor.private_worker.os=windows`); harness prepared for owner execution |
-| Invented native speedup | **None** — decision gate waits for measured JSON |
-| Runner | `tools/perf_inference_owner_arm64.ps1 -Corpus <owner-48still>` |
+| Tip commit | `2db9af19e2f20a6c7e401c26542a6dd4356002d8` |
+| `ci / test` on tip | **GREEN** — push [40184732258](https://github.com/Perps12-oss/semblon/actions/runs/40184732258) and PR [40184734224](https://github.com/Perps12-oss/semblon/actions/runs/40184734224) both `success` |
+| Owner photographic 48-still A/B on SKY | **NOT RUN** — measured verdict **BLOCKED** / **PENDING** |
+| Self-hosted worker SKY | Connected / idle / `approved=true` / `eligibleForSubagent=true` (`workerId` `9ffb6f5f-6d61-5fff-9f2e-4ba1cc8a6ad6`, `cursor.private_worker.os=windows`) |
+| Cloud → SKY placement | **FAILED** twice from this tooling path (`bc-78cc5d10`, `bc-3fa853a6` → `ERROR`, `privateWorkerId=null`). This Linux agent cannot collect owner timings. |
+| Invented native speedup | **None** — no `owner-arm64-*.json` on disk |
+| Exact owner command (repo root on SKY) | `powershell -NoProfile -ExecutionPolicy Bypass -File tools\perf_inference_owner_arm64.ps1 -Corpus "<owner-photographic-48still>"` |
+| After owner run | Commit `docs/evidence/perf-inference/owner-arm64-*.json`; update this file + `docs/PERF-INFERENCE-IMPLEMENTATION-PLAN.md` from `owner-arm64-decision.json`. Do not cut over production. Do not run 1K/5K/10K. |
 
 ## Verification log — PERF inference lab (2026-10-25, Linux x64 cloud)
 
@@ -172,7 +176,7 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 - Pack gate unchanged. ARM64 OpenCV load remains BLOCKED historically (`docs/PERF-P1-ARM64.md`).
 - Identity runtime is YuNet + SFace (`opencv/yunet_sface`); buffalo_l retired from deps (BYO historical only).
 - **PERF inference lab (2026-10-25):** experimental `ort_yunet_sface` vs `opencv_dnn` on a 48-still lab corpus. Production path not switched. Linux numerical agreement PASS is **not** a throughput claim. Evidence: `docs/PERF-INFERENCE-BACKENDS.md`, `docs/evidence/perf-inference/`.
-- **PERF-6 owner ARM64 (2026-10-25):** harness ready — `tools/perf_inference_owner_arm64.ps1` + `tools/perf_inference_owner_arm64.py`. Compares emulated x64 OpenCV (A) vs native ARM64 ORT (B) on the **owner photographic** 48-still set; refuses lab stand-in. Measured decision JSON **PENDING** (this cloud agent is Linux x64; SKY worker is connected but placement from this run was not available). Do not cut over until `owner-arm64-decision.json` exists. Plan: `docs/PERF-INFERENCE-IMPLEMENTATION-PLAN.md`.
+- **PERF-6 owner ARM64 (2026-10-25):** harness **READY**; measured A/B **BLOCKED** / **PENDING**. Tools: `tools/perf_inference_owner_arm64.ps1` + `tools/perf_inference_owner_arm64.py` (A emulated x64 OpenCV vs B native ARM64 ORT; refuses lab stand-in). SKY worker was connected but cloud placement ERROR'd (`bc-78cc5d10`, `bc-3fa853a6`). Owner must run the PowerShell command above on SKY with the photographic 48-still folder. Do not cut over until `owner-arm64-decision.json` exists. Plan: `docs/PERF-INFERENCE-IMPLEMENTATION-PLAN.md`.
 - Object/OCR search never votes on identity. NanoDet/SFace/YuNet MSI bundling remains L OPEN.
 
 ## Outstanding blockers (exact)
