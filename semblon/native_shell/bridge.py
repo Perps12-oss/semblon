@@ -4615,7 +4615,11 @@ class ShellBridge(QObject):
                     "size": f"{size / 1_000_000:.1f} MB" if size >= 100_000 else f"{max(size // 1000, 0)} KB",
                 })
             if len(members) >= 2:
-                out.append({"exact": str(g.get("kind") or "") == "exact", "members": members})
+                out.append({
+                    "exact": str(g.get("kind") or "") == "exact",
+                    "sha256": str(g.get("content_hash") or "") if str(g.get("kind") or "") == "exact" else "",
+                    "members": members,
+                })
         return out
 
     @Slot(int, int)
@@ -4644,11 +4648,20 @@ class ShellBridge(QObject):
         from PySide6.QtCore import QFile
 
         members = self._tidy_sets[set_index]["members"]
+        sha = self._tidy_sets[set_index].get("sha256") or ""
+        keep_path = members[member_index]["path"]
         failed = 0
         binned: list[str] = []
         for i, m in enumerate(members):
             if i == member_index:
                 continue
+            if sha:
+                from ..dedupe import verify_against_keeper
+
+                # Exact sets: bin only a copy that still hashes to the group's SHA-256.
+                if not verify_against_keeper(sha, keep_path, m["path"]).ok:
+                    failed += 1
+                    continue
             if QFile.moveToTrash(m["path"]):
                 binned.append(m["path"])
             else:
@@ -4663,8 +4676,10 @@ class ShellBridge(QObject):
             self._refresh_library()
         del self._tidy_sets[set_index]
         self.tidyChanged.emit()
-        if failed:
-            self._apply_result(Result("error", "Some copies could not be moved. They are still where they were."))
+        if failed and not binned:
+            self._apply_result(Result("error", "Nothing was moved. The copies changed or could not be reached, so they stay where they were."))
+        elif failed:
+            self._apply_result(Result("error", f"Moved {len(binned)}. {failed} changed or could not be moved and stayed where they were."))
         else:
             self._apply_result(Result("ready", "Moved the extra copies to the Recycle Bin."))
 

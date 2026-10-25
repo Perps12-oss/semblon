@@ -41,7 +41,7 @@ Linux check on this branch, 2026-10-24: `xvfb-run -a .venv/bin/python -m pytest 
 | Photos with fine detail after the 20 searches | 100% | 32% | 62% / 38% (two runs) |
 | Peak memory (search / prep) | 557 / 538 MB | 691 / 53 MB | 1.07-1.10 GB / 272 MB |
 
-  - Hybrid reaches a usable first answer about 4x sooner than exhaustive and is ready to search 8x (or 3.5x in the slower run) sooner, with the same recall here. Exhaustive had the fastest complete answers; hybrid's completion latency is worse because each search spends about 3 s per promoted photo.
+  - Hybrid reaches a usable first answer about 4x sooner than exhaustive and is ready to search 8x (or 3.5x in the slower run) sooner, with the same recall here. Exhaustive had the fastest complete answers; hybrid's complete answer is slower because each search blocks on promoting up to 8 photos and then repeats the full search; the per-stage split has not been measured yet.
   - On demand alone (B) lost recall (0.6): only the colour door can reach unprepared photos. This is the unmeasured-recall-ceiling risk; it is why whole-picture indexing (C) is the recommended path.
   - Background enrichment (hybrid, run against a library with no detail yet): finished 98% of photos in 174 s (one photo stayed undetailed; not investigated). Searches during it took a median 25 s versus 15 s idle (1.6x slower), so background work yields only partly. Cancel latency was not measured (enrichment finished first). In-process duplicate avoidance counted 0 collisions in the benchmark; it is covered by unit tests, not demonstrated by the benchmark.
   - Run-to-run spread was large on this machine (hybrid prep 32 s versus 71 s). Treat these numbers as indicative.
@@ -408,3 +408,21 @@ Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE 
 - Day and month use the camera's capture date (DateTimeOriginal, with its offset when present) read from the file; the file's saved time is the fallback. Nothing is stored: the schema has no capture-date column, so it is read at browse time and cached in memory. A persisted date would need a new media column plus a one-time backfill at ingest; not built.
 - Binning copies in Tidy up removes them from the library at once (semblon/forget.py). Restoring from the Bin and rescanning the folder adds them back.
 
+
+## Dedupe engine (`semblon/dedupe/`)
+
+Isolated, stdlib-only port of the reusable engine of Perps12-oss/dedup. No schema change, no new runtime dependency, no store/identity/Qt/OpenCV imports (enforced by `tests/test_dedupe_deletion_and_boundary.py`).
+
+- Modules: `discovery` (threaded filtered walk, dir-mtime incremental manifest), `hashing` (size, partial, full), `grouping`, `pipeline` (`scan_exact`: events, cancellation, workers), `path_policy`, `resume` (hash-cache and manifest checkpoint, JSON shape only), `deletion` (keeper plan, re-verify, audit; removal is an injected callback), `models`.
+- SHA-256 is the only authority. dedup's XXHash64/MD5/BLAKE3 strategies were dropped. Size and a partial SHA-256 (head, middle, tail) only decide which files get a full read; `DuplicateGroup` rejects non-SHA-256 digests. Tested: files with identical size and identical partial samples but different bytes are not grouped.
+- `semblon/duplicates.py` exact matching now delegates to `scan_exact` over the unchanged `candidate_files` scope (library paths plus sibling stills). Output is pinned equal to the old path (`tests/test_duplicates_characterization.py`). Set `SEMBLON_DUPLICATES_LEGACY_EXACT=1` to force the old per-file SHA-256 path. The near matcher (aHash/dHash) is unchanged, as are Find Similar and DINOv2 region search.
+- Not ported: UI, DI, theme, ApplicationRuntime, thumbnails (Semblon already has them).
+- Scan history (diagnostics only): `record_scan`/`load_history` in `semblon/dedupe_sidecar.py` keep the last 50 scans (duration, files, hashed, cache hits, bytes read, cancelled, groups) in a `scans` table of the same sidecar. Never used for decisions.
+- Tidy polish: set cards animate out and neighbours slide up when copies are binned, the empty state fades in, all durations follow reduced motion; the result message says whether nothing, or only some copies, moved because they changed.
+- Resumability: the persisted hash cache is the resume mechanism (an interrupted scan keeps its finished digests); `dedupe/resume.py` JSON checkpoints stay unused by production by design.
+- Sidecar cache (P3): `semblon/dedupe_sidecar.py` (outside the engine package, so the import boundary holds) persists the hash cache to `<store stem>.dedupe.sqlite`. Keys include path, size and mtime_ns, so a changed file is rehashed. A missing or corrupt sidecar means an empty cache. No main-store schema change. A second scan of an unchanged library reads no file bytes.
+- Tidy deletion (P4): exact sets carry their SHA-256; `bridge._bin_copies` calls `verify_against_keeper` (re-hashes keeper and copy) before the Recycle Bin and skips any copy that no longer matches. Still gated by Tidy's explicit confirm. Near sets are unchanged.
+- Candidate discovery is cancellable (`candidate_files(want_cancel=)`); API cancel latency is about 1 ms.
+- Benchmark: `python tools/bench_dedupe.py --files 2000` (generated fixture, temp dir). Reference run, 2000 files / 736 MB, warm cache: legacy 11.1 s / 676 MB read; dedupe via duplicates.py 2.7 s; engine alone 1.3 s / 344 MB read; CEREBRO-style serial size to SHA-256 3.4 s / 319 MB read. All four produce the same 227 groups.
+- Warm sidecar (`--files 1000 --repeat 3`, photos): legacy 5.4 s, via duplicates.py cold 1.33 s, warm 1.15 s (remaining time is the folder walk and stat, not hashing), engine 0.61 s, CEREBRO-style 1.29 s; parity held.
+- Profiles (`--profile photos|decoys|small|large`, 800 files, warm cache; legacy / via duplicates.py / engine / CEREBRO-style): decoys 4.0 / 1.4 / 0.67 / 2.5 s (engine reads 224 MB vs 388 MB, so partial hashing pays off with many same-size decoys); small 2.1 / 0.87 / 0.30 / 0.52 s; large 16.5 / 1.8 / 1.2 / 6.4 s. Group parity held in every profile.
