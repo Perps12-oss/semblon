@@ -28,7 +28,24 @@ Linux check on this branch, 2026-10-24: `xvfb-run -a .venv/bin/python -m pytest 
 - Searches report coverage (`scan_tiers.semantic_coverage`, `coverage_note`) so unprepared photos are never silently excluded.
 - `perf_evidence` writes timings only (no names, paths or queries) to `perf-evidence.jsonl`; `SEMBLON_PERF=0` disables it.
 - The 15-piece baseline, identity thresholds and schema are unchanged.
-- **Not done / unverified:** on-demand detail for a search's top candidates; `tools/bench_hybrid.py` (Recall@5, Precision@5, strategies A/B/C); end-to-end timings on a real library (per-photo costs of about 1 s frame and 4.5 s detail on emulated ARM64 are micro-benchmark estimates); native ARM64 runtime (blocked, see `docs/PERF-P1-ARM64.md`).
+- **On-demand detail (`semblon/detail_priority.py`, `region_search.promote_for_search` / `_refine_with_detail`):** a region search first answers from what exists (the first result), then promotes up to 8 promising photos that lack fine detail, from two doors: the best whole-picture matches (shortlist of 64) and the best colour matches among photos not prepared at all. It rescans only if something finished, and emits a `detailed` phase. Work runs on the interactive lane (background encodes yield), is cancellable, is claimed per photo so a search and the background pass never encode the same photo at once, and is stamped in `tier_done_mask` so it survives a restart. Failed encodes are not stamped. Searches over partly prepared libraries still say so (coverage note).
+- **Benchmark (`tools/bench_hybrid.py`, run once, 2026-10, Windows ARM64 machine, x64 Python 3.12 under emulation, ONNX CPU only):** 40 stock photos plus 10 re-encoded copies (50 photos), 10 queries (a quarter-size crop of an original; the answer is its copy; P@5 is capped at 0.2). Each strategy ran in fresh processes; cold = first pass over the queries, warm = repeat.
+
+| | A Exhaustive | B On demand | C Hybrid |
+|---|---|---|---|
+| Preparation before searching | 249 s | 0 s | 32 s (a second run: 71 s) |
+| Recall@5 cold / warm | 1.0 / 1.0 | 0.6 / 0.6 | 1.0 / 1.0 |
+| Precision@5 cold / warm | 0.20 / 0.20 | 0.15 / 0.13 | 0.20-0.22 / 0.20 |
+| Time to first result (median, cold) | 4.4 s | 8.8 s | 1.1-1.2 s |
+| Search completion (median, cold) | 4.4 s | 8.8 s | 17.5-25 s |
+| Photos with fine detail after the 20 searches | 100% | 32% | 62% / 38% (two runs) |
+| Peak memory (search / prep) | 557 / 538 MB | 691 / 53 MB | 1.07-1.10 GB / 272 MB |
+
+  - Hybrid reaches a usable first answer about 4x sooner than exhaustive and is ready to search 8x (or 3.5x in the slower run) sooner, with the same recall here. Exhaustive had the fastest complete answers; hybrid's completion latency is worse because each search spends about 3 s per promoted photo.
+  - On demand alone (B) lost recall (0.6): only the colour door can reach unprepared photos. This is the unmeasured-recall-ceiling risk; it is why whole-picture indexing (C) is the recommended path.
+  - Background enrichment (hybrid, run against a library with no detail yet): finished 98% of photos in 174 s (one photo stayed undetailed; not investigated). Searches during it took a median 25 s versus 15 s idle (1.6x slower), so background work yields only partly. Cancel latency was not measured (enrichment finished first). In-process duplicate avoidance counted 0 collisions in the benchmark; it is covered by unit tests, not demonstrated by the benchmark.
+  - Run-to-run spread was large on this machine (hybrid prep 32 s versus 71 s). Treat these numbers as indicative.
+- **Remaining limitations:** the corpus is 50 stock photos, not a real library, and the run is a single sample. Photos that have no whole-picture pass can only be found via the colour door or the coverage disclosure. Search completion time with hybrid needs reducing (smaller promotion batch, or show first results and let promotion continue). The 15-piece baseline was not reduced; the 15 to 9 piece change has not been benchmarked. **Native ARM64 performance is unverified**: everything above ran as emulated x64 (blocked, see `docs/PERF-P1-ARM64.md`).
 
 ## Status vocabulary
 

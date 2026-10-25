@@ -173,6 +173,7 @@ def reduced_motion() -> bool:
 _PHASE_LABELS = {
     "first": "First look",
     "refined": "Refined",
+    "detailed": "Sharpened",
     "fast": "Fast look",
     "kept": "Kept the first look",
     "checked": "Checked the matches",
@@ -2615,7 +2616,14 @@ class ShellBridge(QObject):
         install_action, install_label = install_choice(state, error_id, result.data or {})
         if interim:
             install_action, install_label = "", ""
-            if phase == "refined":
+            if phase == "detailed":
+                if rows:
+                    state = "ready"
+                    note = f"Similar ({label}): sharpened with fine detail, still checking the top matches."
+                else:
+                    state = "loading"
+                    note = f"Similar ({label}): sharpening with fine detail."
+            elif phase == "refined":
                 if rows:
                     state = "ready"
                     note = f"Similar ({label}): still checking the top matches."

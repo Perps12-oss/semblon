@@ -714,6 +714,8 @@ def index_image_regions(
     run_id: str,
     img,
     depth: str = DEPTH_FULL,
+    interactive: bool = False,
+    cancelled=None,
 ) -> dict:
     """Persist region crops and one whole-frame vector. No-op when the pack is missing.
 
@@ -760,6 +762,8 @@ def index_image_regions(
         try:
             hidden_rows = encode_images(
                 [job[1] for job in jobs],
+                interactive=interactive,
+                cancelled=cancelled,
                 yield_budget=yield_budget,
             )
         except RegionPackError as exc:

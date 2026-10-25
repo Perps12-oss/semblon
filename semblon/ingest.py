@@ -1219,6 +1219,7 @@ def ingest(
             gets the expensive one, so search covers the whole library early.
             """
             nonlocal cancelled, tier2_state, dirty, n_fail
+            from semblon.detail_priority import claim, mask_of, release
             from semblon.region_encoder import index_image_regions
             from semblon.scan_tiers import infer_mask
 
@@ -1233,10 +1234,24 @@ def ingest(
                 and (bit != TIER_DETAIL or (int(rec["mask"]) & TIER_SEMANTIC))
             ]
             total = len(queue)
+            held: str | None = None
             for index, rec in enumerate(queue, start=1):
+                if held is not None:
+                    release(held)
+                    held = None
                 if want_cancel():
                     cancelled = True
                     break
+                if bit == TIER_DETAIL:
+                    # A search may be analysing this photo, or may already have finished it.
+                    if not claim(rec["media_id"]):
+                        tick(rec["path"], outcome, current=index, total=total)
+                        continue
+                    held = rec["media_id"]
+                    if not reprocess and (mask_of(conn, held) & TIER_DETAIL):
+                        rec["mask"] = int(rec["mask"]) | TIER_DETAIL
+                        tick(rec["path"], outcome, current=index, total=total)
+                        continue
                 if bit == TIER_DETAIL and not reprocess:
                     # An older scan may already hold the windows and crops.
                     with writer_lock():
@@ -1291,6 +1306,8 @@ def ingest(
                     _stamp(rec, bit)
                     maybe_commit(force=True)
                 tick(rec["path"], outcome, current=index, total=total)
+            if held is not None:
+                release(held)
             tier_wall[wall_key] += time.perf_counter() - started
             maybe_commit(force=True)
 
