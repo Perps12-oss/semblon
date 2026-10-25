@@ -28,13 +28,17 @@ if "%~1"=="" (
 
 rem Prefer python -m. Never run stale semblon.exe when import fails.
 if exist "%VENV_PY%" (
-  "%VENV_PY%" -c "import semblon" >nul 2>&1
+  "%VENV_PY%" -c "import semblon, PySide6, cv2" >nul 2>&1
   if not errorlevel 1 (
     "%VENV_PY%" -m semblon %*
     exit /b %ERRORLEVEL%
   )
-  echo Semblon package missing in .venv. Reinstalling editable install...
-  "%VENV_PY%" -m pip install -e "%ROOT%[gui]"
+  echo Semblon setup is incomplete in .venv. Finishing the install...
+  if exist "%INSTALL_PS1%" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_PS1%" -Root "%ROOT%"
+  ) else (
+    "%VENV_PY%" -m pip install -e "%ROOT%[gui]"
+  )
   if errorlevel 1 (
     echo Reinstall failed. Run:
     echo   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
@@ -42,7 +46,7 @@ if exist "%VENV_PY%" (
   )
   "%VENV_PY%" -m pip uninstall -y opencv-python opencv-contrib-python
   "%VENV_PY%" -m pip install --force-reinstall --no-deps "opencv-python-headless==5.0.0.93"
-  "%VENV_PY%" -c "import semblon" >nul 2>&1
+  "%VENV_PY%" -c "import semblon, PySide6, cv2" >nul 2>&1
   if errorlevel 1 (
     echo Semblon still not importable after reinstall. Run:
     echo   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
@@ -79,7 +83,7 @@ if exist "%INSTALL_PS1%" (
 set "ALT_ROOT=%ROOT%\semblon"
 set "ALT_PY=%ALT_ROOT%\.venv\Scripts\python.exe"
 if exist "%ALT_PY%" (
-  "%ALT_PY%" -c "import semblon" >nul 2>&1
+  "%ALT_PY%" -c "import semblon, PySide6, cv2" >nul 2>&1
   if not errorlevel 1 (
     "%ALT_PY%" -m semblon %*
     exit /b %ERRORLEVEL%
@@ -92,7 +96,7 @@ if exist "%ALT_PY%" (
   )
   "%ALT_PY%" -m pip uninstall -y opencv-python opencv-contrib-python
   "%ALT_PY%" -m pip install --force-reinstall --no-deps "opencv-python-headless==5.0.0.93"
-  "%ALT_PY%" -c "import semblon" >nul 2>&1
+  "%ALT_PY%" -c "import semblon, PySide6, cv2" >nul 2>&1
   if errorlevel 1 (
     echo Semblon still not importable after reinstall.
     exit /b 1
