@@ -155,11 +155,11 @@ Window {
         property string hidden: ""
         readonly property bool problem: shell.surfaceState === "error" || shell.surfaceState === "unavailable"
         visible: shell.noticeText !== "" && shell.noticeText !== hidden && !viewer.active
-        onVisibleChanged: if (visible && !problem) fade.restart()
-        Timer { id: fade; interval: 8000; onTriggered: note.hidden = shell.noticeText }
+        onVisibleChanged: if (visible) fade.restart()
+        Timer { id: fade; interval: note.problem ? 15000 : 8000; onTriggered: note.hidden = shell.noticeText }
         Connections {
             target: shell
-            function onResultChanged() { note.hidden = ""; if (!note.problem) fade.restart() }
+            function onResultChanged() { note.hidden = ""; fade.restart() }
         }
         Keys.onEscapePressed: note.hidden = shell.noticeText
         anchors.horizontalCenter: parent.horizontalCenter
