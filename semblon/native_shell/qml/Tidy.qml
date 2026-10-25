@@ -59,6 +59,18 @@ Item {
         spacing: Theme.pad * 1.5
         model: shell.tidySets
         activeFocusOnTab: true
+        remove: Transition {
+            ParallelAnimation {
+                NumberAnimation { property: "opacity"; to: 0; duration: Theme.medium; easing.type: Theme.easing }
+                NumberAnimation { property: "scale"; to: 0.96; duration: Theme.medium; easing.type: Theme.easing }
+            }
+        }
+        displaced: Transition {
+            NumberAnimation { properties: "y"; duration: Theme.medium; easing.type: Theme.easing }
+        }
+        add: Transition {
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.medium; easing.type: Theme.easing }
+        }
         delegate: Column {
             id: group
             property int setIndex: index
@@ -107,7 +119,10 @@ Item {
             }
         }
         Text {
-            visible: shell.tidySets.length === 0
+            objectName: "tidyEmpty"
+            opacity: shell.tidySets.length === 0 ? 1 : 0
+            visible: opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: Theme.medium; easing.type: Theme.easing } }
             text: "No copies found."
             font.family: Theme.display
             font.pixelSize: Theme.title

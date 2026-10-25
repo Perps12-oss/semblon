@@ -4471,8 +4471,10 @@ class ShellBridge(QObject):
             self._refresh_library()
         del self._tidy_sets[set_index]
         self.tidyChanged.emit()
-        if failed:
-            self._apply_result(Result("error", "Some copies could not be moved. They are still where they were."))
+        if failed and not binned:
+            self._apply_result(Result("error", "Nothing was moved. The copies changed or could not be reached, so they stay where they were."))
+        elif failed:
+            self._apply_result(Result("error", f"Moved {len(binned)}. {failed} changed or could not be moved and stayed where they were."))
         else:
             self._apply_result(Result("ready", "Moved the extra copies to the Recycle Bin."))
 

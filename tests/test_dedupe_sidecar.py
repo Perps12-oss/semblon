@@ -96,6 +96,24 @@ def test_cancelled_scan_is_not_a_completed_scan_and_next_scan_is_correct(tmp_pat
     assert again["groups"] == expected["groups"]
 
 
+def test_scan_history_is_recorded_and_bounded(tmp_path):
+    from semblon.dedupe_sidecar import HISTORY_LIMIT, load_history, record_scan
+    from semblon.dedupe import ScanStats
+
+    store, _ = build_fixture(tmp_path)
+    dup.find_exact_duplicate_groups(store)
+    dup.find_exact_duplicate_groups(store)
+    hist = load_history(store)
+    assert len(hist) == 2
+    newest, oldest = hist
+    assert not newest["cancelled"] and newest["groups"] == 3
+    assert newest["full_hashed"] == 0 and newest["cache_hits"] > 0 and oldest["full_hashed"] > 0
+    for _ in range(HISTORY_LIMIT + 5):
+        record_scan(store, ScanStats(), started_at=0.0, seconds=0.0, cancelled=True, groups=0)
+    assert len(load_history(store, limit=1000)) == HISTORY_LIMIT
+    assert len(load_cache(store)) > 0  # history writes never clobber the hash cache
+
+
 def test_corrupt_sidecar_is_ignored(tmp_path):
     store, _ = build_fixture(tmp_path)
     sidecar_path(store).write_bytes(b"not a database")

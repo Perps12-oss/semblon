@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
 from semblon.dedupe import CancelToken, scan_exact
-from semblon.dedupe_sidecar import load_cache, save_cache
+from semblon.dedupe_sidecar import load_cache, record_scan, save_cache
 from semblon.engine import _sha256_file
 from semblon.ingest import STILL_EXT
 from semblon.store import connect
@@ -176,11 +177,17 @@ def _exact_via_dedupe(
             pass
 
     cache = load_cache(store) if store is not None else None
+    started = time.time()
+    t0 = time.perf_counter()
     result = scan_exact(
         files, cancel=CancelToken(want_cancel), on_event=on_event, workers=4, cache=cache
     )
     if store is not None and cache is not None:
         save_cache(store, cache)
+        record_scan(
+            store, result.stats, started_at=started, seconds=time.perf_counter() - t0,
+            cancelled=result.cancelled, groups=len(result.groups),
+        )
     if result.cancelled:
         return _empty_exact(
             "CANCELLED", "Duplicate scan cancelled.", scanned=result.stats.full_hashed

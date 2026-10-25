@@ -19,6 +19,59 @@ _DDL = (
 )
 
 
+_HISTORY_DDL = (
+    "CREATE TABLE IF NOT EXISTS scans ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT, started_at REAL NOT NULL, seconds REAL NOT NULL, "
+    "cancelled INTEGER NOT NULL, files INTEGER NOT NULL, size_candidates INTEGER NOT NULL, "
+    "partial_hashed INTEGER NOT NULL, full_hashed INTEGER NOT NULL, cache_hits INTEGER NOT NULL, "
+    "bytes_read INTEGER NOT NULL, unreadable INTEGER NOT NULL, groups INTEGER NOT NULL)"
+)
+HISTORY_LIMIT = 50
+
+
+def record_scan(store: Path, stats, *, started_at: float, seconds: float, cancelled: bool, groups: int) -> bool:
+    """Append a diagnostics row (diagnostics only; never read back to decide anything)."""
+    try:
+        con = sqlite3.connect(sidecar_path(store))
+        try:
+            con.execute(_HISTORY_DDL)
+            con.execute(
+                "INSERT INTO scans (started_at, seconds, cancelled, files, size_candidates, partial_hashed, "
+                "full_hashed, cache_hits, bytes_read, unreadable, groups) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    started_at, seconds, int(cancelled), stats.files_considered, stats.size_candidates,
+                    stats.partial_hashed, stats.full_hashed, stats.cache_hits, stats.bytes_read,
+                    stats.unreadable, groups,
+                ),
+            )
+            con.execute(
+                "DELETE FROM scans WHERE id NOT IN (SELECT id FROM scans ORDER BY id DESC LIMIT ?)",
+                (HISTORY_LIMIT,),
+            )
+            con.commit()
+        finally:
+            con.close()
+        return True
+    except (sqlite3.Error, OSError):
+        return False
+
+
+def load_history(store: Path, limit: int = 10) -> list[dict]:
+    p = sidecar_path(store)
+    if not p.is_file():
+        return []
+    try:
+        con = sqlite3.connect(p)
+        try:
+            con.row_factory = sqlite3.Row
+            rows = con.execute("SELECT * FROM scans ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return []
+    return [dict(r) for r in rows]
+
+
 def sidecar_path(store: Path) -> Path:
     store = Path(store)
     return store.with_name(store.stem + ".dedupe.sqlite")

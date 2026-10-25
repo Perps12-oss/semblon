@@ -160,6 +160,17 @@ def run_legacy(store: Path, cancel=None):
 def run_new(store: Path, cancel=None):
     import os
 
+    from semblon.dedupe_sidecar import sidecar_path
+
+    os.environ.pop(dup.LEGACY_EXACT_ENV, None)
+    sidecar_path(store).unlink(missing_ok=True)  # cold: no cache from an earlier repeat
+    res = dup.find_exact_duplicate_groups(store, want_cancel=cancel)
+    return res, None
+
+
+def run_new_warm(store: Path, cancel=None):
+    import os
+
     os.environ.pop(dup.LEGACY_EXACT_ENV, None)
     res = dup.find_exact_duplicate_groups(store, want_cancel=cancel)
     return res, None
@@ -259,6 +270,7 @@ def main() -> int:
         variants = {
             "legacy (duplicates.py old path)": lambda c=None: run_legacy(store, c),
             "dedupe via duplicates.py": lambda c=None: run_new(store, c),
+            "dedupe via duplicates.py (warm sidecar)": lambda c=None: run_new_warm(store, c),
             "dedupe engine (scan_exact)": lambda c=None: run_engine(files, c),
             "cerebro-style size->sha256": lambda c=None: run_cerebro_style(files, c),
         }
