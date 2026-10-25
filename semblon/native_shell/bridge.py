@@ -283,6 +283,7 @@ class ShellBridge(QObject):
     surfaceChanged = Signal()
     editorialChanged = Signal()
     screenQueryChanged = Signal()
+    _scanProgress = Signal(int)
     preflightChanged = Signal()
     tasksChanged = Signal()
     confirmChanged = Signal()
@@ -375,6 +376,10 @@ class ShellBridge(QObject):
         self._confirm_keep = False
         self._confirm_dismiss_is_no = True
         self._tidy_open = False
+        self._tidy_busy = False
+        self._tidy_pct = 0
+        self._tidy_thread: _TaskThread | None = None
+        self._scanProgress.connect(self._on_scan_progress)
         self._tidy_sets: list[dict] = []
         self._name_apart = False
         self._tasks_open = False
@@ -4346,10 +4351,55 @@ class ShellBridge(QObject):
     @Slot()
     def scanDuplicates(self) -> None:
         self._set_door("duplicate")
-        result = self._safe_call(self._adapter.duplicates)
+        if os.environ.get("SEMBLON_SEARCH_SYNC") == "1":
+            self._finish_scan(self._safe_call(self._adapter.duplicates))
+            return
+        if self._tidy_thread is not None:
+            return
+        self._tidy_busy = True
+        self._tidy_pct = 0
+        self.tidyChanged.emit()
+        thread = _TaskThread(lambda: self._adapter.duplicates(self._scan_tick), self)
+        thread.succeeded.connect(self._on_scan_done)
+        thread.failed.connect(self._on_scan_failed)
+        self._tidy_thread = thread
+        thread.start()
+
+    def _finish_scan(self, result: Result) -> None:
+        self._tidy_busy = False
         self._tidy_sets = self._build_tidy_sets(result.data.get("report") or {})
         self.tidyChanged.emit()
         self._apply_result(result)
+
+    @Slot(object)
+    def _on_scan_done(self, payload) -> None:
+        self._tidy_thread = None
+        self._finish_scan(payload if isinstance(payload, Result) else Result("ready", "Done."))
+
+    @Slot(str)
+    def _on_scan_failed(self, _message: str) -> None:
+        self._tidy_thread = None
+        self._finish_scan(Result("error", "Could not look for copies. Your photos were not changed."))
+
+    def _scan_tick(self, phase: int, i: int, total: int) -> None:
+        # Runs on the worker thread: only emit, and only now and then.
+        if total <= 0 or (i % 25 and i != total):
+            return
+        self._scanProgress.emit(min(99, (phase * 50) + int(50 * i / total)))
+
+    @Slot(int)
+    def _on_scan_progress(self, pct: int) -> None:
+        if self._tidy_busy and pct != self._tidy_pct:
+            self._tidy_pct = pct
+            self.tidyChanged.emit()
+
+    @Property(int, notify=tidyChanged)
+    def tidyPercent(self) -> int:
+        return self._tidy_pct
+
+    @Property(bool, notify=tidyChanged)
+    def tidyBusy(self) -> bool:
+        return self._tidy_busy
 
     @Slot()
     def openTidy(self) -> None:
@@ -4374,6 +4424,8 @@ class ShellBridge(QObject):
 
     @Property(str, notify=tidyChanged)
     def tidySummary(self) -> str:
+        if self._tidy_busy:
+            return f"Looking for copies, {self._tidy_pct}% done. You can keep using Semblon."
         n = len(self._tidy_sets)
         if n == 0:
             return "No copies found. Your archive is already tidy."

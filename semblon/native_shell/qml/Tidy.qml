@@ -48,6 +48,23 @@ Item {
         onActivated: { shell.closeTidy(); tidy.closed() }
     }
 
+    Rectangle {
+        objectName: "tidyProgress"
+        visible: shell.tidyBusy
+        x: Theme.pad * 1.5; y: 118
+        width: parent.width - Theme.pad * 12; height: 6
+        radius: 3
+        color: Theme.line
+        Accessible.role: Accessible.ProgressBar
+        Accessible.name: "Looking for copies, " + shell.tidyPercent + " percent done"
+        Rectangle {
+            width: parent.width * shell.tidyPercent / 100; height: parent.height
+            radius: 3
+            color: Theme.amber
+            Behavior on width { NumberAnimation { duration: 200 } }
+        }
+    }
+
     ListView {
         id: sets
         objectName: "tidySets"
@@ -107,7 +124,7 @@ Item {
             }
         }
         Text {
-            visible: shell.tidySets.length === 0
+            visible: shell.tidySets.length === 0 && !shell.tidyBusy
             text: "No copies found."
             font.family: Theme.display
             font.pixelSize: Theme.title

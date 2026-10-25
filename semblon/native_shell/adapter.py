@@ -422,12 +422,24 @@ class ArchiveAdapter:
             {"report": rec},
         )
 
-    def duplicates(self) -> Result:
+    def duplicates(self, on_progress=None) -> Result:
         from semblon.duplicates import find_integrity_groups
 
         if not self.store.is_file():
             return Result("empty", "Duplicates: no library file yet.", {})
-        rec = find_integrity_groups(self.store)
+        kwargs = {}
+        if on_progress is not None:
+            # The exact pass then the near pass each count from 1, so a drop marks the second pass.
+            state = {"phase": 0, "last": 0}
+
+            def _tick(i: int, total: int) -> None:
+                if i < state["last"]:
+                    state["phase"] = 1
+                state["last"] = i
+                on_progress(state["phase"], i, total)
+
+            kwargs["on_progress"] = _tick
+        rec = find_integrity_groups(self.store, **kwargs)
         exact = int(rec.get("exact_group_count") or 0)
         near = int(rec.get("near_group_count") or 0)
         near_status = str(rec.get("near_status") or "")
