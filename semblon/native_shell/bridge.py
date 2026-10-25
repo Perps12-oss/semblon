@@ -350,6 +350,8 @@ class ShellBridge(QObject):
         self._index_state = ""
         self._index_note = ""
         self._progress_seen: int | None = None
+        self._pass_outcome = ""
+        self._pass_started_mono = 0.0
         self._progress_current = 0
         self._progress_total = 0
         self._job_started_mono = 0.0
@@ -5447,6 +5449,7 @@ class ShellBridge(QObject):
                 "kind": str(getattr(ev, "kind", "") or ""),
                 "current": current,
                 "total": total,
+                "outcome": str(getattr(ev, "outcome", "") or ""),
             },
         )
         QMetaObject.invokeMethod(self, "_flush_progress", Qt.ConnectionType.QueuedConnection)
@@ -5473,9 +5476,24 @@ class ShellBridge(QObject):
         if isinstance(current, int) and isinstance(total, int) and total > 0:
             self._progress_current = current
             self._progress_total = total
-            self._progress_label = (
-                f"Getting your photos ready: {current} of {total}. You can already browse and open them."
-            )
+            outcome = str(payload.get("outcome") or "")
+            if outcome in {"indexed", "detailed"} and outcome != self._pass_outcome:
+                self._pass_outcome = outcome
+                self._pass_started_mono = time.monotonic()
+            if outcome == "indexed":
+                self._progress_label = (
+                    f"Getting your photos ready to search: {current} of {total}. "
+                    "You can already browse, open and search them."
+                )
+            elif outcome == "detailed":
+                self._progress_label = (
+                    f"Sharpening search: {current} of {total}. "
+                    "Everything already works; searches just get more precise."
+                )
+            else:
+                self._progress_label = (
+                    f"Getting your photos ready: {current} of {total}. You can already browse and open them."
+                )
         elif payload.get("stage"):
             self._progress_label = "Processing"
         self.jobChanged.emit()
@@ -5538,6 +5556,8 @@ class ShellBridge(QObject):
                     self.jobChanged.emit()
 
     def _arm_job_clock(self) -> None:
+        self._pass_outcome = ""
+        self._pass_started_mono = 0.0
         self._job_started_mono = time.monotonic()
         self._job_paused_seconds = 0.0
         self._job_pause_started = 0.0
@@ -5567,6 +5587,8 @@ class ShellBridge(QObject):
         current = int(self._progress_current)
         total = int(self._progress_total)
         spent = self._job_elapsed_seconds()
+        if self._pass_outcome and self._pass_started_mono > 0:
+            spent = max(0.0, time.monotonic() - self._pass_started_mono)
         if current <= 0 or total <= current or spent < 1:
             return f"{elapsed} elapsed."
         remaining = (total - current) * spent / current

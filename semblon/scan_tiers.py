@@ -17,10 +17,12 @@ from pathlib import Path
 TIER_LIBRARY = 1
 TIER_OBSERVE = 2
 TIER_SEMANTIC = 4
+TIER_DETAIL = 8
 
 # Face detection always runs in tier 1, whether or not it is listed.
 _OBSERVE_TOKENS = frozenset({"color", "appearance", "object", "text", "ocr", "pose", "clip"})
-_SEMANTIC_TOKENS = frozenset({"region"})
+# ``region`` is the whole job. ``region-lite`` stops after the whole-picture pass.
+_SEMANTIC_TOKENS = frozenset({"region", "region-lite"})
 _SEMANTIC_MODALITIES = ("region", "scene", "patch")
 
 WORK_ITEMS_DDL = """
@@ -43,6 +45,8 @@ def requested_mask(observers: tuple[str, ...]) -> int:
     mask = TIER_LIBRARY | TIER_OBSERVE
     if any(token in _SEMANTIC_TOKENS for token in observers):
         mask |= TIER_SEMANTIC
+    if "region" in observers:
+        mask |= TIER_DETAIL
     return mask
 
 
@@ -147,6 +151,24 @@ def infer_mask(conn, media_id: str) -> int:
     ).fetchone()
     if semantic is not None:
         mask |= TIER_SEMANTIC
+        detail = conn.execute(
+            """SELECT 1 FROM observation_items i
+               JOIN observations o ON o.observation_id=i.observation_id
+               WHERE o.media_id=? AND i.kind='clip'
+                 AND (i.payload_json LIKE '%"role": "region"%'
+                      OR i.payload_json LIKE '%"window"%')
+               LIMIT 1""",
+            (media_id,),
+        ).fetchone()
+        if detail is not None:
+            mask |= TIER_DETAIL
+        else:
+            # Pictures too small for windows or proposals have no detail to add.
+            size = conn.execute(
+                "SELECT width, height FROM media WHERE media_id=?", (media_id,)
+            ).fetchone()
+            if size is not None and min(int(size[0] or 0), int(size[1] or 0)) < 64:
+                mask |= TIER_DETAIL
     return mask
 
 

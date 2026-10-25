@@ -702,16 +702,34 @@ def patch_windows(image: np.ndarray) -> list[tuple[np.ndarray, int, int]]:
     return windows
 
 
-def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
+DEPTH_FULL = "full"
+DEPTH_FRAME = "frame"
+DEPTH_DETAIL = "detail"
+
+
+def index_image_regions(
+    conn,
+    *,
+    observation_id: str,
+    run_id: str,
+    img,
+    depth: str = DEPTH_FULL,
+) -> dict:
     """Persist region crops and one whole-frame vector. No-op when the pack is missing.
 
     Whole-frame uses modality ``scene``. Crops use modality ``region``.
     A region query must not scan scene rows.
+
+    ``depth`` splits the work. ``frame`` encodes the whole picture once, which is
+    enough to browse and search coarsely. ``detail`` adds the overlapping windows
+    and proposed crops on top of an earlier ``frame`` pass. ``full`` does both.
     """
     from semblon.observers import persist_item
 
+    if depth not in {DEPTH_FULL, DEPTH_FRAME, DEPTH_DETAIL}:
+        raise ValueError(f"unknown depth: {depth}")
     ready, note = probe_region_pack()
-    counts = {"region": 0, "scene": 0, "patch": 0, "ready": ready}
+    counts = {"region": 0, "scene": 0, "patch": 0, "ready": ready, "jobs": 0, "depth": depth}
     if not ready:
         return {**counts, "note": note}
     image = np.asarray(img)
@@ -724,15 +742,20 @@ def index_image_regions(conn, *, observation_id: str, run_id: str, img) -> dict:
         yield_budget = [0.0]
         jobs: list[tuple[str, np.ndarray, tuple]] = []
         windows = patch_windows(image)
-        jobs.append(("frame", windows[0][0], (0, 0)))
-        for window, x_off, y_off in windows[1:]:
-            jobs.append(("window", window, (int(x_off), int(y_off))))
-        for box in proposal_boxes(image):
-            try:
-                jobs.append(("proposal", crop_box(image, box), tuple(float(v) for v in box)))
-            except RegionPackError:
-                continue
+        if depth in {DEPTH_FULL, DEPTH_FRAME}:
+            jobs.append(("frame", windows[0][0], (0, 0)))
+        if depth in {DEPTH_FULL, DEPTH_DETAIL}:
+            for window, x_off, y_off in windows[1:]:
+                jobs.append(("window", window, (int(x_off), int(y_off))))
+            for box in proposal_boxes(image):
+                try:
+                    jobs.append(("proposal", crop_box(image, box), tuple(float(v) for v in box)))
+                except RegionPackError:
+                    continue
+        counts["jobs"] = len(jobs)
         if not jobs:
+            if depth == DEPTH_DETAIL:
+                return counts
             return {**counts, "note": "region encoder needs an image"}
         try:
             hidden_rows = encode_images(

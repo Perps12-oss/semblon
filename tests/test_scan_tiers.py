@@ -10,7 +10,13 @@ from unittest.mock import patch
 import numpy as np
 
 from semblon.ingest import ingest
-from semblon.scan_tiers import TIER_LIBRARY, TIER_OBSERVE, TIER_SEMANTIC, header_geometry
+from semblon.scan_tiers import (
+    TIER_DETAIL,
+    TIER_LIBRARY,
+    TIER_OBSERVE,
+    TIER_SEMANTIC,
+    header_geometry,
+)
 from semblon.store import SCHEMA_VERSION, connect, init_db
 
 
@@ -120,9 +126,10 @@ def test_region_waits_until_the_semantic_tier(tmp_path):
         calls["embed"] += 1
         return _face()
 
-    def index(_conn, **_kwargs):
+    def index(_conn, **kwargs):
         calls["region"] += 1
-        return {"region": 1, "scene": 1, "patch": 0, "ready": True}
+        calls.setdefault("depths", []).append(kwargs.get("depth"))
+        return {"region": 1, "scene": 1, "patch": 0, "ready": True, "jobs": 2}
 
     with (
         patch("semblon.region_encoder.probe_region_pack", return_value=(True, "")),
@@ -132,11 +139,11 @@ def test_region_waits_until_the_semantic_tier(tmp_path):
         assert calls["region"] == 0
         _run(folder, store, embed, observers="face,region")
     assert calls["embed"] == 1
-    assert calls["region"] == 1
+    assert calls["depths"] == ["frame", "detail"]
     conn = sqlite3.connect(str(store))
     mask = conn.execute("SELECT tier_done_mask FROM work_items").fetchone()[0]
     conn.close()
-    assert mask & TIER_SEMANTIC
+    assert mask & TIER_SEMANTIC and mask & TIER_DETAIL
     with (
         patch("semblon.region_encoder.probe_region_pack", return_value=(True, "")),
         patch("semblon.region_encoder.index_image_regions", side_effect=index),
@@ -144,7 +151,51 @@ def test_region_waits_until_the_semantic_tier(tmp_path):
         third = _run(folder, store, embed, observers="face,region")
     assert third["skipped_seen"] == 1
     assert calls["embed"] == 1
-    assert calls["region"] == 1
+    assert calls["region"] == 2
+
+
+def _mask(store: Path) -> int:
+    conn = sqlite3.connect(str(store))
+    try:
+        return int(conn.execute("SELECT tier_done_mask FROM work_items").fetchone()[0])
+    finally:
+        conn.close()
+
+
+def test_lite_pass_makes_the_photo_searchable_and_detail_resumes_later(tmp_path):
+    folder, store = _folder(tmp_path)
+    depths: list[str] = []
+
+    def index(_conn, **kwargs):
+        depths.append(kwargs["depth"])
+        return {"region": 0, "scene": 1, "patch": 4, "ready": True, "jobs": 1}
+
+    with (
+        patch("semblon.region_encoder.probe_region_pack", return_value=(True, "")),
+        patch("semblon.region_encoder.index_image_regions", side_effect=index),
+    ):
+        _run(folder, store, lambda *_a: _face(), observers="face,region-lite")
+        assert depths == ["frame"]
+        assert _mask(store) & TIER_SEMANTIC
+        assert not _mask(store) & TIER_DETAIL
+        _run(folder, store, lambda *_a: _face(), observers="face,region")
+    assert depths == ["frame", "detail"]
+    assert _mask(store) & TIER_DETAIL
+
+
+def test_a_failed_encode_leaves_the_semantic_bit_open(tmp_path):
+    folder, store = _folder(tmp_path)
+
+    def index(_conn, **_kwargs):
+        return {"region": 0, "scene": 0, "patch": 0, "ready": True, "jobs": 1, "note": "region encoder timed out"}
+
+    with (
+        patch("semblon.region_encoder.probe_region_pack", return_value=(True, "")),
+        patch("semblon.region_encoder.index_image_regions", side_effect=index),
+    ):
+        _run(folder, store, lambda *_a: _face(), observers="face,region")
+    assert not _mask(store) & TIER_SEMANTIC
+    assert not _mask(store) & TIER_DETAIL
 
 
 def test_library_tier_commits_a_file_before_reading_the_next(tmp_path):
