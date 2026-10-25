@@ -13,7 +13,7 @@ Item {
     focus: active
     Keys.onEscapePressed: { shell.closeTidy(); tidy.closed() }
     Accessible.role: Accessible.Pane
-    Accessible.name: "Tidy up"
+    Accessible.name: "Tidy up copies"
 
     Rectangle { anchors.fill: parent; color: Theme.bg }
     Grain { anchors.fill: parent }
@@ -21,7 +21,7 @@ Item {
     Text {
         id: head
         x: Theme.pad * 1.5; y: Theme.pad
-        text: "Tidy up"
+        text: "Tidy up copies"
         font.family: Theme.display
         font.pixelSize: Theme.hero * 0.8
         font.weight: Font.Light

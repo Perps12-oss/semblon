@@ -68,11 +68,21 @@ Item {
                 color: Theme.bg
                 border.width: entry.activeFocus ? 2 : 1
                 border.color: entry.activeFocus ? Theme.amber : Theme.line
+                Text {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 18
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Qt.platform.os === "osx" ? "\u2318K" : "Ctrl+K"
+                    font.family: Theme.ui
+                    font.pixelSize: Theme.small
+                    color: Theme.faint
+                    Accessible.ignored: true
+                }
                 TextInput {
                     id: entry
                     anchors.fill: parent
                     anchors.leftMargin: 18
-                    anchors.rightMargin: 18
+                    anchors.rightMargin: 90
                     verticalAlignment: TextInput.AlignVCenter
                     font.family: Theme.ui
                     font.pixelSize: Theme.body
@@ -107,7 +117,7 @@ Item {
                 spacing: Theme.gap
                 layoutDirection: Qt.LeftToRight
                 Tool {
-                    label: "Find a moment"
+                    label: "Find by date"
                     dimmed: bar.empty
                     hint: "Jump to a date or search by words"
                     selected: bar.mode === "moment"
@@ -121,14 +131,14 @@ Item {
                     onActivated: bar.peopleRequested()
                 }
                 Tool {
-                    label: "Find a detail"
+                    label: "Find by description"
                     dimmed: bar.empty
                     hint: "Describe it, or open a photo and draw around it"
                     selected: bar.mode === "detail"
                     onActivated: bar.focusEntry(bar.mode === "detail" ? "" : "detail")
                 }
                 Tool {
-                    label: "Tidy up"
+                    label: "Tidy up copies"
                     hint: "Find copies of the same photo. Nothing is deleted without asking"
                     dimmed: bar.empty
                     selected: shell.tidyOpen

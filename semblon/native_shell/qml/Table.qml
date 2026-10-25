@@ -231,7 +231,7 @@ Window {
         anchors.fill: parent
         // With nothing added yet, only the actions that work right now are offered.
         actions: viewer.active ? [
-            { id: "v-detail", label: "Find a detail" },
+            { id: "v-detail", label: "Find this part again" },
             { id: "v-like", label: "Find photos like this one" },
             { id: "v-area", label: "Find the picked area elsewhere" },
             { id: "v-faces", label: "Find faces like these" },
@@ -248,10 +248,10 @@ Window {
             { id: "settings", label: "Settings" }
         ] : [
             { id: "add", label: "Add a folder" },
-            { id: "moment", label: "Find a moment" },
+            { id: "moment", label: "Find by date" },
             { id: "people", label: "Find a person" },
-            { id: "detail", label: "Find a detail" },
-            { id: "tidy", label: "Tidy up" },
+            { id: "detail", label: "Find by description" },
+            { id: "tidy", label: "Tidy up copies" },
             { id: "zoomin", label: "Bigger pictures" },
             { id: "zoomout", label: "Smaller pictures" },
             { id: "dark", label: "Use Darkroom look" },

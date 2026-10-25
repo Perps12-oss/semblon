@@ -373,8 +373,8 @@ Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE 
 - Roll uses exact row geometry; header and scrubber always name the month at the top (one header only).
 - Days use the local time zone (DST-aware) via semblon/clock.py.
 - People: fanned face stacks, one searchable Same as... picker, same-name prompt, no joining two named people.
-- Photo view: Back, Previous, Next, Find a detail, plus a More menu. No debug text.
-- Tidy up is a real review view (Keep this one, plain confirm, Recycle Bin).
+- Photo view: Back, Previous, Next, Find this part again, plus a More menu. No debug text.
+- Tidy up copies is a real review view (Keep this one, plain confirm, Recycle Bin).
 - Plain wording for the preflight confirm; both add-on sheets show their size.
 
 

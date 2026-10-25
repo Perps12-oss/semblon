@@ -249,7 +249,7 @@ Item {
         Tool { label: "Next"; onActivated: shell.focusNext() }
         Tool {
             objectName: "findDetail"
-            label: viewer.loupeOn ? "Loupe on: drag, or use arrow keys and Enter" : "Find a detail"
+            label: viewer.loupeOn ? "Loupe on: drag, or use arrow keys and Enter" : "Find this part again"
             hint: "Draw around anything in the photo to find it in other photos"
             primary: true
             onActivated: { viewer.loupeOn = !viewer.loupeOn; if (!viewer.loupeOn) viewer.reset() }
