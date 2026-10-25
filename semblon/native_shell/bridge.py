@@ -4433,9 +4433,22 @@ class ShellBridge(QObject):
 
         members = self._tidy_sets[set_index]["members"]
         failed = 0
+        binned: list[str] = []
         for i, m in enumerate(members):
-            if i != member_index and not QFile.moveToTrash(m["path"]):
+            if i == member_index:
+                continue
+            if QFile.moveToTrash(m["path"]):
+                binned.append(m["path"])
+            else:
                 failed += 1
+        if binned:
+            from ..forget import forget_files
+
+            try:
+                forget_files(self._adapter.store, binned, keep=[members[member_index]["path"]])
+            except Exception:
+                pass
+            self._refresh_library()
         del self._tidy_sets[set_index]
         self.tidyChanged.emit()
         if failed:

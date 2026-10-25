@@ -734,15 +734,56 @@ def test_preflight_confirm_is_plain_and_add_on_sizes_are_shown():
         assert "MB" in str(b._INSTALL_PROMPTS[key])
 
 
-def test_placeholder_label_font_covers_its_characters():
-    from PySide6.QtGui import QFontMetrics
+def test_bundled_fonts_cover_every_character_the_shell_can_show():
+    """No box glyphs: every non-ASCII character in the shell's text exists in a bundled font."""
+    from PySide6.QtGui import QRawFont
     from PySide6.QtWidgets import QApplication
 
-    from semblon.native_shell.host import load_bundled_fonts
-
-    from PySide6.QtGui import QFont
-
     QApplication.instance() or QApplication([])
-    load_bundled_fonts()
-    metrics = QFontMetrics(QFont("Inter"))
-    assert all(metrics.inFont(ch) for ch in "IMG 0123456789 x abc")
+    root = Path("semblon/native_shell")
+    fonts = [QRawFont(str(root / "fonts" / name), 16) for name in ("Inter-Variable.ttf", "Fraunces-Variable.ttf")]
+    # the size label "1800 x 420" and the placeholder labels use these
+    for ch in "\u00d7\u00b7\u2026\u2014\u2013":
+        assert fonts[0].supportsCharacter(ord(ch)), hex(ord(ch))
+    missing = {}
+    for path in list(root.rglob("*.qml")) + list(root.glob("*.py")):
+        for ch in path.read_text(encoding="utf-8"):
+            if ord(ch) > 126 and not any(f.supportsCharacter(ord(ch)) for f in fonts):
+                missing.setdefault(hex(ord(ch)), set()).add(path.name)
+    assert not missing, missing
+
+def test_binning_a_copy_removes_it_from_the_roll_and_month_count_at_once(tmp_path, monkeypatch):
+    from semblon.native_shell.host import shutdown_shell
+    from semblon.store import connect
+
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        a = tmp_path / "a.png"
+        b = tmp_path / "b.png"
+        b.write_bytes(a.read_bytes())
+        conn = connect(tmp_path / "s.sqlite")
+        conn.execute(
+            "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+            ("m2", "folder", str(b), "h2", 480, 320, 1_503_000_001_000_000_000, 1),
+        )
+        conn.commit()
+        conn.close()
+        bridge._refresh_library()
+        _spin(app, 0.5)
+        before = bridge.rollLayout(4, True, True)
+        assert sum(m["count"] for m in before["months"]) == 2
+
+        from semblon.native_shell.adapter import Result
+
+        members = [{"path": str(a), "mediaId": "m1", "name": "a.png", "folder": "", "thumb": "", "size": ""},
+                   {"path": str(b), "mediaId": "m2", "name": "b.png", "folder": "", "thumb": "", "size": ""}]
+        bridge._tidy_sets = [{"exact": True, "members": members}]
+        monkeypatch.setattr("PySide6.QtCore.QFile.moveToTrash", staticmethod(lambda p: (Path(p).unlink(), True)[1]))
+        bridge._bin_copies(0, 1)  # keep b, bin a
+        _spin(app, 0.5)
+        after = bridge.rollLayout(4, True, True)
+        assert sum(m["count"] for m in after["months"]) == 1
+        assert bridge._session.media("m1") is None
+        assert bridge._session.media("m2") is not None
+    finally:
+        shutdown_shell(engine)

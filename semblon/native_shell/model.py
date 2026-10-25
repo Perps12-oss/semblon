@@ -29,11 +29,11 @@ _SIMILAR_NH = Qt.ItemDataRole.UserRole + 6
 _STRIP_CAP = 48
 
 
-def _when(mtime_ns: int | None) -> str:
+def _when(mtime_ns: int | None, taken=None) -> str:
     """"8 Feb 2025, 14:32" on the same clock the day dividers use."""
     from ..clock import local_datetime
 
-    stamp = local_datetime(mtime_ns)
+    stamp = taken if taken is not None else local_datetime(mtime_ns)
     if stamp is None:
         return ""
     return f"{stamp.day} {stamp.strftime('%b %Y, %H:%M')}"
@@ -92,7 +92,7 @@ class ArchiveModel(QAbstractListModel):
         item = self._at(row)
         if item is None:
             return {"mediaId": "", "day": "", "name": "", "when": ""}
-        return {"mediaId": item.media_id, "day": item.day, "name": item.name, "when": _when(item.mtime_ns)}
+        return {"mediaId": item.media_id, "day": item.day, "name": item.name, "when": _when(item.mtime_ns, item.taken)}
 
     def rowCount(self, parent=QModelIndex()) -> int:  # noqa: N802
         if parent.isValid():

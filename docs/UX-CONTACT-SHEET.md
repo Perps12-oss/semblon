@@ -42,3 +42,9 @@ Screenshots: `docs/evidence/contact-sheet/`.
 - Tidy up is a real review view (Keep this one, plain confirm, Recycle Bin).
 - Plain wording for the preflight confirm; both add-on sheets show their size.
 
+
+## Capture dates and the Recycle Bin
+
+- Day and month use the camera's capture date (DateTimeOriginal, with its offset when present) read from the file; the file's saved time is the fallback. Nothing is stored: the schema has no capture-date column, so it is read at browse time and cached in memory. A persisted date would need a new media column plus a one-time backfill at ingest; not built.
+- Binning copies in Tidy up removes them from the library at once (semblon/forget.py). Restoring from the Bin and rescanning the folder adds them back.
+

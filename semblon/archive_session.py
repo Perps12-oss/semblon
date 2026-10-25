@@ -3,8 +3,8 @@
 Owns lens, history, scroll, selection, focus, and at most one desk.
 Does not open a route table, write identity, or invent search results.
 The Time lens reads media rows already in the store, ordered by stored
-mtime (the same clock as library timeline browse). Capture EXIF is not a
-column; this does not scan every file to invent a finer clock.
+the camera's capture date when the file has one (read from the file, not stored), otherwise the
+file's saved time. Nothing is added to the store.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -62,6 +63,8 @@ class MediaRef:
     mtime_ns: int | None
     width: int | None
     height: int | None
+    taken: datetime | None = None
+    sort_ns: int | None = None
 
     @property
     def name(self) -> str:
@@ -69,6 +72,8 @@ class MediaRef:
 
     @property
     def day(self) -> str:
+        if self.taken is not None:
+            return self.taken.strftime("%Y-%m-%d")
         return day_key(self.mtime_ns)
 
 
@@ -116,6 +121,8 @@ class ArchiveSession:
         self._count_cache: int | None = None
         self._media_cache: dict[str, MediaRef | None] = {}
         self._days_cache: list[str] | None = None
+        self._timeline_cache: list[MediaRef] | None = None
+        self._timeline_index: dict[str, int] | None = None
 
     def invalidate_reads(self) -> None:
         """Drop cached media rows after the archive changes."""
@@ -123,6 +130,8 @@ class ArchiveSession:
             self._count_cache = None
             self._media_cache.clear()
             self._days_cache = None
+            self._timeline_cache = None
+            self._timeline_index = None
             self._read_gen += 1
 
     def _read_conn(self):
@@ -181,6 +190,13 @@ class ArchiveSession:
         """One ordered slice. Never the whole library."""
         if self.lens.kind != "time" or limit <= 0 or offset < 0:
             return []
+        return self._timeline()[offset : offset + limit]
+
+    def _timeline(self) -> list[MediaRef]:
+        """Every picture, newest first by when it was taken. Built once, dropped when the library changes."""
+        with self._cache_lock:
+            if self._timeline_cache is not None:
+                return self._timeline_cache
         if not self.store.is_file():
             return []
         conn = self._read_conn()
@@ -192,39 +208,22 @@ class ArchiveSession:
                 SELECT media_id, path, source_type, mtime_ns, width, height
                 FROM media
                 WHERE source_type='folder'
-                ORDER BY (mtime_ns IS NULL), mtime_ns DESC, media_id
-                LIMIT ? OFFSET ?
-                """,
-                (int(limit), int(offset)),
+                """
             ).fetchall()
         except sqlite3.Error:
             return []
-        return [_media(row) for row in rows]
+        items = [_media(row) for row in rows]
+        items.sort(key=lambda m: (m.sort_ns is None, -(m.sort_ns or 0), m.media_id))
+        with self._cache_lock:
+            self._timeline_cache = items
+            self._timeline_index = {m.media_id: i for i, m in enumerate(items)}
+        return items
 
     def days(self) -> list[str]:
         """Every picture's day key in display order. One cheap column, so sections can be laid out."""
         if self.lens.kind != "time" or not self.store.is_file():
             return []
-        with self._cache_lock:
-            if self._days_cache is not None:
-                return list(self._days_cache)
-        conn = self._read_conn()
-        if conn is None:
-            return []
-        try:
-            rows = conn.execute(
-                """
-                SELECT mtime_ns FROM media
-                WHERE source_type='folder'
-                ORDER BY (mtime_ns IS NULL), mtime_ns DESC, media_id
-                """
-            ).fetchall()
-        except sqlite3.Error:
-            return []
-        out = [day_key(row[0]) for row in rows]
-        with self._cache_lock:
-            self._days_cache = out
-        return list(out)
+        return [m.day for m in self._timeline()]
 
     def media(self, media_id: str) -> MediaRef | None:
         if not media_id or not self.store.is_file():
@@ -254,37 +253,11 @@ class ArchiveSession:
 
     def index_of(self, media_id: str) -> int | None:
         item = self.media(media_id)
-        if item is None or not self.store.is_file():
+        if item is None or item.source_type != "folder":
             return None
-        if item.source_type != "folder":
-            return None
-        conn = self._read_conn()
-        if conn is None:
-            return None
-        try:
-            if item.mtime_ns is None:
-                row = conn.execute(
-                    """
-                    SELECT COUNT(*) FROM media
-                    WHERE source_type='folder' AND (
-                       mtime_ns IS NOT NULL
-                       OR (mtime_ns IS NULL AND media_id < ?)
-                    )
-                    """,
-                    (item.media_id,),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    """
-                    SELECT COUNT(*) FROM media
-                    WHERE source_type='folder' AND mtime_ns IS NOT NULL
-                      AND (mtime_ns > ? OR (mtime_ns = ? AND media_id < ?))
-                    """,
-                    (item.mtime_ns, item.mtime_ns, item.media_id),
-                ).fetchone()
-        except sqlite3.Error:
-            return None
-        return int(row[0] if row else 0)
+        self._timeline()
+        with self._cache_lock:
+            return (self._timeline_index or {}).get(item.media_id)
 
     def open_focus(self, media_id: str) -> None:
         item = self.media(media_id)
@@ -388,6 +361,9 @@ class ArchiveSession:
 
 def _media(row) -> MediaRef:
     mtime = row["mtime_ns"]
+    from .clock import capture_moment
+
+    taken, sort_ns = capture_moment(row["path"], mtime)
     return MediaRef(
         media_id=str(row["media_id"]),
         path=str(row["path"] or ""),
@@ -395,4 +371,6 @@ def _media(row) -> MediaRef:
         mtime_ns=int(mtime) if mtime is not None else None,
         width=int(row["width"]) if row["width"] is not None else None,
         height=int(row["height"]) if row["height"] is not None else None,
+        taken=taken,
+        sort_ns=sort_ns,
     )
