@@ -383,3 +383,13 @@ Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE 
 - Day and month use the camera's capture date (DateTimeOriginal, with its offset when present) read from the file; the file's saved time is the fallback. Nothing is stored: the schema has no capture-date column, so it is read at browse time and cached in memory. A persisted date would need a new media column plus a one-time backfill at ingest; not built.
 - Binning copies in Tidy up removes them from the library at once (semblon/forget.py). Restoring from the Bin and rescanning the folder adds them back.
 
+
+## Dedupe engine (`semblon/dedupe/`)
+
+Isolated, stdlib-only port of the reusable engine of Perps12-oss/dedup. No schema change, no new runtime dependency, no store/identity/Qt/OpenCV imports (enforced by `tests/test_dedupe_deletion_and_boundary.py`).
+
+- Modules: `discovery` (threaded filtered walk, dir-mtime incremental manifest), `hashing` (size, partial, full), `grouping`, `pipeline` (`scan_exact`: events, cancellation, workers), `path_policy`, `resume` (hash-cache and manifest checkpoint, JSON shape only), `deletion` (keeper plan, re-verify, audit; removal is an injected callback), `models`.
+- SHA-256 is the only authority. dedup's XXHash64/MD5/BLAKE3 strategies were dropped. Size and a partial SHA-256 (head, middle, tail) only decide which files get a full read; `DuplicateGroup` rejects non-SHA-256 digests. Tested: files with identical size and identical partial samples but different bytes are not grouped.
+- `semblon/duplicates.py` exact matching now delegates to `scan_exact` over the unchanged `candidate_files` scope (library paths plus sibling stills). Output is pinned equal to the old path (`tests/test_duplicates_characterization.py`). Set `SEMBLON_DUPLICATES_LEGACY_EXACT=1` to force the old per-file SHA-256 path. The near matcher (aHash/dHash) is unchanged, as are Find Similar and DINOv2 region search.
+- Not ported: UI, DI, theme, ApplicationRuntime, thumbnails (Semblon already has them). Sidecar persistence (`<store stem>.dedupe.sqlite`), scan history, and wiring deletion into Tidy up are LATER; Tidy up still uses its own confirm and the Recycle Bin.
+- Benchmark: `python tools/bench_dedupe.py --files 2000` (generated fixture, temp dir). Reference run, 2000 files / 736 MB, warm cache: legacy 11.1 s / 676 MB read; dedupe via duplicates.py 2.7 s; engine alone 1.3 s / 344 MB read; CEREBRO-style serial size to SHA-256 3.4 s / 319 MB read. All four produce the same 227 groups.
