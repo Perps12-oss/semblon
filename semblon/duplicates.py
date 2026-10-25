@@ -105,7 +105,11 @@ def _is_fs_root(directory: Path) -> bool:
     return resolved.parent == resolved
 
 
-def candidate_files(rows: list[dict], dirs: list[Path]) -> list[Path]:
+def candidate_files(
+    rows: list[dict],
+    dirs: list[Path],
+    want_cancel: Callable[[], bool] | None = None,
+) -> list[Path]:
     """Media paths plus stills under those directories (not a filesystem-root walk)."""
     found: set[Path] = set()
     for row in rows:
@@ -113,10 +117,14 @@ def candidate_files(rows: list[dict], dirs: list[Path]) -> list[Path]:
         if p.is_file():
             found.add(p.resolve())
     for directory in dirs:
+        if want_cancel is not None and want_cancel():
+            return []
         try:
             if not directory.is_dir() or _is_fs_root(directory):
                 continue
             for child in directory.rglob("*"):
+                if want_cancel is not None and want_cancel():
+                    return []
                 if not child.is_file():
                     continue
                 if child.suffix.lower() not in STILL_EXT:
@@ -226,7 +234,9 @@ def find_exact_duplicate_groups(
     for extra in folders_from_runs(store):
         if extra not in dirs:
             dirs.append(extra)
-    files = candidate_files(rows, dirs)
+    files = candidate_files(rows, dirs, want_cancel)
+    if want_cancel is not None and want_cancel():
+        return _empty_exact("CANCELLED", "Duplicate scan cancelled.")
     if not files:
         return _empty_exact("EMPTY", "No photos found to scan for duplicates.")
 

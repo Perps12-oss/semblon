@@ -158,3 +158,16 @@ def test_legacy_flag_forces_old_path(tmp_path, monkeypatch):
     monkeypatch.setenv(dup.LEGACY_EXACT_ENV, "1")
     monkeypatch.setattr(dup, "scan_exact", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
     assert dup.find_exact_duplicate_groups(store)["group_count"] == 3
+
+
+def test_candidate_files_cancel_is_cooperative(tmp_path):
+    _, folder = build_fixture(tmp_path)
+    calls = {"n": 0}
+
+    def want():
+        calls["n"] += 1
+        return calls["n"] > 3
+
+    assert candidate_files([], [folder], want) == []
+    assert calls["n"] <= 5  # stopped promptly instead of walking the whole tree
+    assert len(candidate_files([], [folder], lambda: False)) == 9
