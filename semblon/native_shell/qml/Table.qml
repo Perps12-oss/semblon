@@ -152,7 +152,16 @@ Window {
     Rectangle {
         id: note
         objectName: "notice"
-        visible: shell.noticeText !== "" && !viewer.active
+        property string hidden: ""
+        readonly property bool problem: shell.surfaceState === "error" || shell.surfaceState === "unavailable"
+        visible: shell.noticeText !== "" && shell.noticeText !== hidden && !viewer.active
+        onVisibleChanged: if (visible && !problem) fade.restart()
+        Timer { id: fade; interval: 8000; onTriggered: note.hidden = shell.noticeText }
+        Connections {
+            target: shell
+            function onResultChanged() { note.hidden = ""; if (!note.problem) fade.restart() }
+        }
+        Keys.onEscapePressed: note.hidden = shell.noticeText
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: shell.jobActive ? 190 : 70
@@ -164,15 +173,17 @@ Window {
         border.color: Theme.amber
         Accessible.role: Accessible.AlertMessage
         Accessible.name: shell.noticeText
-        Column {
+        Row {
             id: ncol
             anchors.centerIn: parent
             width: parent.width - Theme.pad * 2
+            spacing: Theme.gap
             Text {
-                width: parent.width; wrapMode: Text.WordWrap
-                text: shell.noticeText + " Your original photos were not changed."
+                width: parent.width - closeNote.width - Theme.gap; wrapMode: Text.WordWrap
+                text: shell.noticeText + (note.problem ? " Your original photos were not changed." : "")
                 font.family: Theme.ui; font.pixelSize: Theme.body; color: Theme.text
             }
+            Tool { id: closeNote; objectName: "closeNotice"; label: "Dismiss"; quiet: true; onActivated: note.hidden = shell.noticeText }
         }
     }
 
