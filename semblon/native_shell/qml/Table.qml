@@ -16,6 +16,11 @@ Window {
     Binding { target: Theme; property: "reducedMotion"; value: shell.reducedMotion }
 
     property bool settingsOpen: false
+    property bool jobMini: false
+    Connections {
+        target: shell
+        function onJobChanged() { if (!shell.jobActive) win.jobMini = false }
+    }
 
     function jumpToDate(prefix) {
         var lo = 0, hi = rollView.count - 1, found = -1
@@ -109,7 +114,7 @@ Window {
     Rectangle {
         id: progress
         objectName: "jobBand"
-        visible: shell.jobActive
+        visible: shell.jobActive && !win.jobMini
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: 70
@@ -144,7 +149,55 @@ Window {
                 spacing: Theme.gap
                 Tool { objectName: "pauseJob"; label: shell.jobState === "paused" ? "Keep going" : "Pause"; onActivated: shell.jobState === "paused" ? shell.resumeJob() : shell.pauseJob() }
                 Tool { objectName: "cancelJob"; label: "Stop"; onActivated: shell.cancelJob() }
+                Tool { objectName: "shrinkJob"; label: "Minimise"; quiet: true; onActivated: win.jobMini = true }
             }
+        }
+    }
+
+    // The same progress, shrunk to a small pill in the corner so it never blocks the pictures.
+    Rectangle {
+        id: pill
+        objectName: "jobPill"
+        visible: shell.jobActive && win.jobMini
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.margins: Theme.pad
+        width: pillRow.implicitWidth + Theme.pad * 1.6
+        height: 40
+        radius: Theme.pill
+        color: Theme.surface
+        border.width: pillArea.activeFocus ? 2 : 1
+        border.color: pillArea.activeFocus ? Theme.amber : Theme.line
+        Accessible.role: Accessible.Button
+        Accessible.name: shell.jobLabel + ". Press to show details."
+        Accessible.onPressAction: win.jobMini = false
+        Row {
+            id: pillRow
+            anchors.centerIn: parent
+            spacing: 10
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 64; height: 5; radius: 2.5; color: Theme.line
+                Rectangle {
+                    height: parent.height; radius: 2.5; color: Theme.amber
+                    width: parent.width * (shell.jobTotal > 0 ? shell.jobFraction : 0.08)
+                }
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: shell.jobState === "paused" ? "Paused" : (shell.jobTotal > 0 ? "Getting photos ready " + Math.round(shell.jobFraction * 100) + "%" : "Looking for photos")
+                font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.text
+            }
+            Text { anchors.verticalCenter: parent.verticalCenter; text: "Show"; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.amber }
+        }
+        MouseArea {
+            id: pillArea
+            anchors.fill: parent
+            activeFocusOnTab: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: win.jobMini = false
+            Keys.onReturnPressed: win.jobMini = false
+            Keys.onSpacePressed: win.jobMini = false
         }
     }
 
@@ -164,7 +217,7 @@ Window {
         Keys.onEscapePressed: note.hidden = shell.noticeText
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
-        anchors.topMargin: shell.jobActive ? 190 : 70
+        anchors.topMargin: shell.jobActive && !win.jobMini ? 190 : 70
         width: Math.min(parent.width - 120, 560)
         height: ncol.implicitHeight + Theme.pad * 1.4
         radius: Theme.radius * 1.4

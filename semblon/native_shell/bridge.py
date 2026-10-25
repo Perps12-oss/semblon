@@ -5474,7 +5474,7 @@ class ShellBridge(QObject):
             self._progress_current = current
             self._progress_total = total
             self._progress_label = (
-                f"Processing {current}/{total}. Photos already added can be opened."
+                f"Getting your photos ready: {current} of {total}. You can already browse and open them."
             )
         elif payload.get("stage"):
             self._progress_label = "Processing"
