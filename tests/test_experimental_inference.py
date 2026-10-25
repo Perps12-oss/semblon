@@ -101,19 +101,29 @@ def _lab_pack() -> Path | None:
 
 @pytest.mark.skipif(_lab_pack() is None, reason="lab YuNet/SFace ONNX not present")
 def test_ort_and_opencv_agree_on_lena(monkeypatch):
-    import cv2
+    import tempfile
     import urllib.request
+
+    import cv2
 
     pack = _lab_pack()
     assert pack is not None
     monkeypatch.setenv("SEMBLON_PERF_FACE_PACK", str(pack))
 
-    lena = Path("/tmp/semblon-perf-lab/lena.jpg")
+    lena_dir = Path(tempfile.gettempdir()) / "semblon-perf-lab"
+    lena_dir.mkdir(parents=True, exist_ok=True)
+    lena = lena_dir / "lena.jpg"
+    legacy = Path("/tmp/semblon-perf-lab/lena.jpg")
+    if not lena.is_file() and legacy.is_file():
+        lena.write_bytes(legacy.read_bytes())
     if not lena.is_file():
-        urllib.request.urlretrieve(
-            "https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/lena.jpg",
-            lena,
-        )
+        try:
+            urllib.request.urlretrieve(
+                "https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/lena.jpg",
+                lena,
+            )
+        except OSError as exc:
+            pytest.skip(f"lena.jpg is not cached and could not be fetched: {exc}")
     img = cv2.imread(str(lena))
     assert img is not None
 

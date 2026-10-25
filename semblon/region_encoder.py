@@ -224,6 +224,7 @@ def _lane_enter(
     interactive: bool,
     cancelled=None,
     yield_budget: list[float] | None,
+    lane_wait: list[float] | None = None,
 ) -> None:
     """One ONNX forward at a time. Indexing waits briefly for a Lens search."""
     if interactive:
@@ -240,9 +241,17 @@ def _lane_enter(
             ):
                 start = time.monotonic()
                 _INTERACTIVE.wait(0.05)
-                yield_budget[0] += time.monotonic() - start
+                waited = time.monotonic() - start
+                yield_budget[0] += waited
+                if lane_wait is not None:
+                    lane_wait[0] += waited
                 continue
-            if not _LANE.acquire(timeout=0.05):
+            start = time.monotonic()
+            acquired = _LANE.acquire(timeout=0.05)
+            waited = time.monotonic() - start
+            if lane_wait is not None and waited > 0:
+                lane_wait[0] += waited
+            if not acquired:
                 continue
             if (
                 not interactive
@@ -452,11 +461,13 @@ def encode_images(
     interactive: bool = False,
     cancelled=None,
     yield_budget: list[float] | None = None,
+    phases: dict | None = None,
 ) -> list[np.ndarray]:
     """One forward for every still-window and proposal. Same pixels as separate calls.
 
     The pinned graph takes ``batch_size``. A failed batch falls back to one row
     at a time inside the same call, so indexing does not depend on the batch path.
+    ``phases`` receives ``tensor_ms``, ``onnx_ms`` and ``lane_wait_ms`` when given.
     """
 
     def run() -> list[np.ndarray]:
@@ -465,25 +476,38 @@ def encode_images(
         if not images:
             raise RegionPackError("region encoder needs an image")
         session = _session(root)
+        t_tensor = time.perf_counter()
         tensors = [_tensor(image) for image in images]
         batch = np.concatenate(tensors, axis=0)
+        if phases is not None:
+            phases["tensor_ms"] = phases.get("tensor_ms", 0.0) + (time.perf_counter() - t_tensor) * 1000.0
         if cancelled is not None and cancelled():
             raise RegionPackError("cancelled")
-        _lane_enter(interactive=interactive, cancelled=cancelled, yield_budget=yield_budget)
+        lane_wait = [0.0]
+        _lane_enter(
+            interactive=interactive,
+            cancelled=cancelled,
+            yield_budget=yield_budget,
+            lane_wait=lane_wait,
+        )
         try:
             if cancelled is not None and cancelled():
                 raise RegionPackError("cancelled")
+            t_onnx = time.perf_counter()
             try:
-                return _run_hidden(session, batch, len(images))
+                rows = _run_hidden(session, batch, len(images))
             except RegionPackError as exc:
                 if "cancelled" in str(exc):
                     raise
-                rows: list[np.ndarray] = []
+                rows = []
                 for tensor in tensors:
                     if cancelled is not None and cancelled():
                         raise RegionPackError("cancelled")
                     rows.extend(_run_hidden(session, tensor, 1))
-                return rows
+            if phases is not None:
+                phases["onnx_ms"] = phases.get("onnx_ms", 0.0) + (time.perf_counter() - t_onnx) * 1000.0
+                phases["lane_wait_ms"] = phases.get("lane_wait_ms", 0.0) + lane_wait[0] * 1000.0
+            return rows
         finally:
             _lane_leave(interactive=interactive)
 
@@ -707,71 +731,119 @@ DEPTH_FRAME = "frame"
 DEPTH_DETAIL = "detail"
 
 
-def index_image_regions(
-    conn,
-    *,
-    observation_id: str,
-    run_id: str,
+def _empty_phases() -> dict:
+    return {
+        "windows_ms": 0.0,
+        "proposals_ms": 0.0,
+        "tensor_ms": 0.0,
+        "onnx_ms": 0.0,
+        "lane_wait_ms": 0.0,
+        "embed_ms": 0.0,
+        "persist_ms": 0.0,
+    }
+
+
+def prepare_region_index(
     img,
+    *,
     depth: str = DEPTH_FULL,
     interactive: bool = False,
     cancelled=None,
 ) -> dict:
-    """Persist region crops and one whole-frame vector. No-op when the pack is missing.
+    """Build region records for one photo. No database and no writer lock.
 
-    Whole-frame uses modality ``scene``. Crops use modality ``region``.
-    A region query must not scan scene rows.
-
-    ``depth`` splits the work. ``frame`` encodes the whole picture once, which is
-    enough to browse and search coarsely. ``detail`` adds the overlapping windows
-    and proposed crops on top of an earlier ``frame`` pass. ``full`` does both.
+    The ONNX forward happens here. Callers persist afterwards, under the writer
+    lock, so a search does not wait for a background forward to commit.
     """
-    from semblon.observers import persist_item
-
     if depth not in {DEPTH_FULL, DEPTH_FRAME, DEPTH_DETAIL}:
         raise ValueError(f"unknown depth: {depth}")
+    phases = _empty_phases()
+    counts = {"region": 0, "scene": 0, "patch": 0, "ready": False, "jobs": 0, "depth": depth}
     ready, note = probe_region_pack()
-    counts = {"region": 0, "scene": 0, "patch": 0, "ready": ready, "jobs": 0, "depth": depth}
+    counts["ready"] = ready
     if not ready:
-        return {**counts, "note": note}
+        return {"counts": {**counts, "note": note}, "records": [], "timings_ms": phases, "skip_persist": True}
     image = np.asarray(img)
     if image.ndim != 3 or image.shape[2] < 3:
-        return {**counts, "note": "skipped: not a colour image"}
+        return {
+            "counts": {**counts, "note": "skipped: not a colour image"},
+            "records": [],
+            "timings_ms": phases,
+            "skip_persist": True,
+        }
+    t_windows = time.perf_counter()
+    windows = patch_windows(image)
+    phases["windows_ms"] = (time.perf_counter() - t_windows) * 1000.0
+    jobs: list[tuple[str, np.ndarray, tuple]] = []
+    if depth in {DEPTH_FULL, DEPTH_FRAME}:
+        jobs.append(("frame", windows[0][0], (0, 0)))
+    if depth in {DEPTH_FULL, DEPTH_DETAIL}:
+        for window, x_off, y_off in windows[1:]:
+            jobs.append(("window", window, (int(x_off), int(y_off))))
+        t_boxes = time.perf_counter()
+        boxes = proposal_boxes(image)
+        phases["proposals_ms"] = (time.perf_counter() - t_boxes) * 1000.0
+        for box in boxes:
+            try:
+                jobs.append(("proposal", crop_box(image, box), tuple(float(v) for v in box)))
+            except RegionPackError:
+                continue
+    counts["jobs"] = len(jobs)
+    if not jobs:
+        if depth == DEPTH_DETAIL:
+            return {"counts": counts, "records": [], "timings_ms": phases, "skip_persist": True}
+        return {
+            "counts": {**counts, "note": "region encoder needs an image"},
+            "records": [],
+            "timings_ms": phases,
+            "skip_persist": True,
+        }
+    if cancelled is not None and cancelled():
+        return {
+            "counts": {**counts, "note": "cancelled"},
+            "records": [],
+            "timings_ms": phases,
+            "skip_persist": True,
+        }
     try:
-        digest = KNOWN_SHA256[WEIGHT_NAME]
-        pack = pack_id_for(digest)
-        patch_pack = pack_id_patches(digest)
-        yield_budget = [0.0]
-        jobs: list[tuple[str, np.ndarray, tuple]] = []
-        windows = patch_windows(image)
-        if depth in {DEPTH_FULL, DEPTH_FRAME}:
-            jobs.append(("frame", windows[0][0], (0, 0)))
-        if depth in {DEPTH_FULL, DEPTH_DETAIL}:
-            for window, x_off, y_off in windows[1:]:
-                jobs.append(("window", window, (int(x_off), int(y_off))))
-            for box in proposal_boxes(image):
-                try:
-                    jobs.append(("proposal", crop_box(image, box), tuple(float(v) for v in box)))
-                except RegionPackError:
-                    continue
-        counts["jobs"] = len(jobs)
-        if not jobs:
-            if depth == DEPTH_DETAIL:
-                return counts
-            return {**counts, "note": "region encoder needs an image"}
-        try:
-            hidden_rows = encode_images(
-                [job[1] for job in jobs],
-                interactive=interactive,
-                cancelled=cancelled,
-                yield_budget=yield_budget,
-            )
-        except RegionPackError as exc:
-            return {**counts, "note": str(exc)}
-        except Exception as exc:  # noqa: BLE001 — a bad encoder must not roll back colour ingest
-            return {**counts, "note": f"region encoder failed: {exc.__class__.__name__}"}
-        if len(hidden_rows) != len(jobs):
-            return {**counts, "note": "region encoder returned the wrong batch"}
+        hidden_rows = encode_images(
+            [job[1] for job in jobs],
+            interactive=interactive,
+            cancelled=cancelled,
+            yield_budget=[0.0],
+            phases=phases,
+        )
+    except RegionPackError as exc:
+        return {
+            "counts": {**counts, "note": str(exc)},
+            "records": [],
+            "timings_ms": phases,
+            "skip_persist": True,
+        }
+    except Exception as exc:  # noqa: BLE001 — a bad encoder must not roll back colour ingest
+        return {
+            "counts": {**counts, "note": f"region encoder failed: {exc.__class__.__name__}"},
+            "records": [],
+            "timings_ms": phases,
+            "skip_persist": True,
+        }
+    if len(hidden_rows) != len(jobs):
+        return {
+            "counts": {**counts, "note": "region encoder returned the wrong batch"},
+            "records": [],
+            "timings_ms": phases,
+            "skip_persist": True,
+        }
+    if cancelled is not None and cancelled():
+        return {
+            "counts": {**counts, "note": "cancelled"},
+            "records": [],
+            "timings_ms": phases,
+            "skip_persist": True,
+        }
+    t_embed = time.perf_counter()
+    records: list[dict] = []
+    try:
         for (kind, view, payload), hidden in zip(jobs, hidden_rows):
             if kind in {"frame", "window"}:
                 x_off, y_off = payload
@@ -779,7 +851,50 @@ def index_image_regions(
                     scene, patches = _split_content_patches(view, hidden)
                 except RegionPackError:
                     continue
-                if kind == "frame":
+                records.append(
+                    {
+                        "kind": kind,
+                        "scene": scene if kind == "frame" else None,
+                        "patches": patches,
+                        "x_off": int(x_off),
+                        "y_off": int(y_off),
+                    }
+                )
+                continue
+            blob = _pool(hidden, pool=POOL).astype(np.float32).tobytes()
+            records.append({"kind": "proposal", "blob": blob, "bbox": payload})
+    except RegionPackError as exc:
+        return {
+            "counts": {**counts, "note": str(exc)},
+            "records": [],
+            "timings_ms": phases,
+            "skip_persist": True,
+        }
+    phases["embed_ms"] = (time.perf_counter() - t_embed) * 1000.0
+    return {"counts": counts, "records": records, "timings_ms": phases, "skip_persist": False}
+
+
+def persist_region_index(conn, *, observation_id: str, run_id: str, prepared: dict) -> dict:
+    """Write records from ``prepare_region_index``. Caller holds the writer lock."""
+    from semblon.observers import persist_item
+
+    counts = dict(prepared.get("counts") or {})
+    phases = dict(prepared.get("timings_ms") or _empty_phases())
+    if prepared.get("skip_persist"):
+        counts["timings_ms"] = {"persist_ms": 0.0}
+        return counts
+    digest = KNOWN_SHA256[WEIGHT_NAME]
+    pack = pack_id_for(digest)
+    patch_pack = pack_id_patches(digest)
+    t_persist = time.perf_counter()
+    try:
+        for record in prepared.get("records") or []:
+            kind = record["kind"]
+            if kind in {"frame", "window"}:
+                x_off = int(record.get("x_off") or 0)
+                y_off = int(record.get("y_off") or 0)
+                if kind == "frame" and record.get("scene") is not None:
+                    scene = record["scene"]
                     persist_item(
                         conn,
                         observation_id=observation_id,
@@ -798,9 +913,9 @@ def index_image_regions(
                         pack_id=pack,
                         dim=int(len(scene) // 4),
                     )
-                    counts["scene"] += 1
-                for record in patches:
-                    x1, y1, x2, y2 = record["bbox"]
+                    counts["scene"] = int(counts.get("scene") or 0) + 1
+                for patch in record.get("patches") or []:
+                    x1, y1, x2, y2 = patch["bbox"]
                     extra = {}
                     if x_off or y_off:
                         extra["window"] = [x_off, y_off]
@@ -814,9 +929,9 @@ def index_image_regions(
                             "role": "region_patch",
                             "space": MODEL_FAMILY,
                             "preprocess": "letterbox-224-imagenet-patch-l2",
-                            "grid": record["grid"],
-                            "gx": record["gx"],
-                            "gy": record["gy"],
+                            "grid": patch["grid"],
+                            "gx": patch["gx"],
+                            "gy": patch["gy"],
                             "identity": "not facekit",
                             "display": False,
                             **extra,
@@ -827,14 +942,14 @@ def index_image_regions(
                             float(x2 + x_off),
                             float(y2 + y_off),
                         ),
-                        embedding=record["blob"],
+                        embedding=patch["blob"],
                         modality=MODALITY_PATCH,
                         pack_id=patch_pack,
-                        dim=int(len(record["blob"]) // 4),
+                        dim=int(len(patch["blob"]) // 4),
                     )
-                    counts["patch"] += 1
+                    counts["patch"] = int(counts.get("patch") or 0) + 1
                 continue
-            blob = _pool(hidden, pool=POOL).astype(np.float32).tobytes()
+            blob = record["blob"]
             persist_item(
                 conn,
                 observation_id=observation_id,
@@ -848,16 +963,51 @@ def index_image_regions(
                     "identity": "not facekit",
                     "display": False,
                 },
-                bbox=payload,
+                bbox=record["bbox"],
                 embedding=blob,
                 modality=MODALITY_REGION,
                 pack_id=pack,
                 dim=int(len(blob) // 4),
             )
-            counts["region"] += 1
+            counts["region"] = int(counts.get("region") or 0) + 1
     except RegionPackError as exc:
-        return {**counts, "note": str(exc)}
+        counts["note"] = str(exc)
+    phases["persist_ms"] = (time.perf_counter() - t_persist) * 1000.0
+    counts["timings_ms"] = {"persist_ms": phases["persist_ms"]}
     return counts
+
+
+def index_image_regions(
+    conn,
+    *,
+    observation_id: str,
+    run_id: str,
+    img,
+    depth: str = DEPTH_FULL,
+    interactive: bool = False,
+    cancelled=None,
+) -> dict:
+    """Persist region crops and one whole-frame vector. No-op when the pack is missing.
+
+    Whole-frame uses modality ``scene``. Crops use modality ``region``.
+    A region query must not scan scene rows.
+
+    ``depth`` splits the work. ``frame`` encodes the whole picture once, which is
+    enough to browse and search coarsely. ``detail`` adds the overlapping windows
+    and proposed crops on top of an earlier ``frame`` pass. ``full`` does both.
+
+    Preparation, including the ONNX forward, does not touch ``conn``. Persistence
+    does. Callers that hold the writer lock should call the two steps themselves
+    so the lock does not cover inference.
+    """
+    prepared = prepare_region_index(img, depth=depth, interactive=interactive, cancelled=cancelled)
+    if prepared.get("skip_persist"):
+        counts = dict(prepared["counts"])
+        counts["timings_ms"] = prepared.get("timings_ms") or _empty_phases()
+        return counts
+    return persist_region_index(
+        conn, observation_id=observation_id, run_id=run_id, prepared=prepared
+    )
 
 
 def reset_session_for_tests() -> None:

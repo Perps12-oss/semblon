@@ -173,3 +173,142 @@ def test_promote_for_search_adds_unprepared_colour_candidates(tmp_path, monkeypa
         promote=lambda s, ids, **kw: seen.extend(ids) or {"requested": len(ids), "done": 0},
     )
     assert seen == ["a", "b"]
+
+
+def test_promotion_encodes_outside_the_writer_lock(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    from semblon.store import writer_lock as real_lock
+
+    held = {"n": 0, "during_prepare": None}
+
+    @contextmanager
+    def tracking():
+        held["n"] += 1
+        try:
+            with real_lock():
+                yield
+        finally:
+            held["n"] -= 1
+
+    def prepare(img, **_kw):
+        held["during_prepare"] = held["n"]
+        return {
+            "counts": {
+                "scene": 0,
+                "patch": 4,
+                "region": 0,
+                "jobs": 14,
+                "ready": True,
+                "depth": "detail",
+            },
+            "records": [],
+            "timings_ms": {
+                "onnx_ms": 12.5,
+                "lane_wait_ms": 1.5,
+                "windows_ms": 1.0,
+                "proposals_ms": 2.0,
+                "tensor_ms": 0.2,
+                "embed_ms": 0.1,
+                "persist_ms": 0.0,
+            },
+            "skip_persist": False,
+        }
+
+    def persist(conn, **kw):
+        assert held["n"] == 1
+        counts = dict(kw["prepared"]["counts"])
+        counts["timings_ms"] = {"persist_ms": 3.0}
+        return counts
+
+    monkeypatch.setattr(detail_priority, "writer_lock", tracking)
+    monkeypatch.setattr("semblon.region_encoder.prepare_region_index", prepare)
+    monkeypatch.setattr("semblon.region_encoder.persist_region_index", persist)
+    path = _store(tmp_path, {"a": LITE})
+    out = detail_priority.promote(path, ["a"], decode=lambda _p: object())
+    assert held["during_prepare"] == 0
+    assert out["done"] == 1
+    assert out["phases_ms"]["onnx_ms"] == 12.5
+    assert out["phases_ms"]["lane_wait_ms"] == 1.5
+    assert out["phases_ms"]["persist_ms"] == 3.0
+    assert out["phases_ms"]["decode_ms"] >= 0.0
+
+
+def test_cancel_during_prepare_does_not_stamp_or_persist(tmp_path, monkeypatch):
+    started = {"on": False}
+
+    def prepare(img, **_kw):
+        started["on"] = True
+        return {
+            "counts": {
+                "scene": 0,
+                "patch": 0,
+                "region": 0,
+                "jobs": 14,
+                "ready": True,
+                "note": "cancelled",
+            },
+            "records": [],
+            "timings_ms": {"onnx_ms": 4.0},
+            "skip_persist": True,
+        }
+
+    def persist(conn, **_kw):
+        raise AssertionError("cancelled prepare must not be written")
+
+    monkeypatch.setattr("semblon.region_encoder.prepare_region_index", prepare)
+    monkeypatch.setattr("semblon.region_encoder.persist_region_index", persist)
+    path = _store(tmp_path, {"a": LITE})
+    out = detail_priority.promote(
+        path, ["a"], decode=lambda _p: object(), cancelled=lambda: started["on"]
+    )
+    assert out["cancelled"] is True and out["done"] == 0
+    assert not _mask(path, "a") & TIER_DETAIL
+    assert out["phases_ms"]["onnx_ms"] == 4.0
+
+
+def test_progress_callback_runs_after_the_claim_is_released(tmp_path):
+    path = _store(tmp_path, {"a": LITE})
+    reclaimed = []
+
+    def on_done(media_id):
+        reclaimed.append(detail_priority.claim(media_id))
+        detail_priority.release(media_id)
+
+    out = detail_priority.promote(
+        path, ["a"], decode=lambda _p: object(), indexer=_stub([]), on_done=on_done
+    )
+    assert out["done"] == 1 and reclaimed == [True]
+
+
+def test_refine_rescores_after_each_photo_and_does_not_rescore_again(tmp_path, monkeypatch):
+    from semblon import region_search as rs
+
+    store = _store(tmp_path, {"a": LITE})
+
+    def promote(_store, _ids, **kw):
+        kw["on_done"]("a")
+        kw["on_done"]("b")
+        return {"done": 2, "done_ids": ["a", "b"], "phases_ms": {"onnx_ms": 9.0}}
+
+    monkeypatch.setattr(rs, "promote_for_search", promote)
+    seen = []
+
+    def rerun():
+        return {"items": [{"media_id": "a"}], "n": len(seen) + 1}
+
+    out = rs._refine_with_detail(
+        store,
+        ["a"],
+        crop=object(),
+        media_id="q",
+        quality=_Quality(),
+        cancelled=None,
+        rerun=rerun,
+        on_update=lambda rec: seen.append(rec["n"]),
+    )
+    assert seen == [1, 2]
+    assert out["n"] == 2
+    assert out["progress_published"] is True
+    assert out["detail_promoted"] == 2
+    assert out["detail_phases_ms"]["onnx_ms"] == 9.0

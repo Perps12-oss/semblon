@@ -79,6 +79,46 @@ def _default_decode(path: Path):
     return _decode_bgr(None, path)
 
 
+def _blank_phases() -> dict:
+    return {
+        "decode_ms": 0.0,
+        "windows_ms": 0.0,
+        "proposals_ms": 0.0,
+        "tensor_ms": 0.0,
+        "onnx_ms": 0.0,
+        "lane_wait_ms": 0.0,
+        "embed_ms": 0.0,
+        "persist_ms": 0.0,
+    }
+
+
+def _add_phases(total: dict, extra: dict | None) -> None:
+    if not extra:
+        return
+    for key, value in extra.items():
+        if key in total:
+            total[key] = round(total[key] + float(value), 3)
+
+
+def _store_promoted(conn, indexed: dict | None, media_id: str) -> bool:
+    """Commit the mask when the encode stored something. False rolls back."""
+    stored = (
+        int((indexed or {}).get("scene") or 0)
+        + int((indexed or {}).get("patch") or 0)
+        + int((indexed or {}).get("region") or 0)
+    )
+    failed = indexed is None or (indexed.get("note") and stored == 0 and int(indexed.get("jobs") or 0) > 0)
+    if failed:
+        conn.rollback()
+        return False
+    conn.execute(
+        "UPDATE work_items SET tier_done_mask = tier_done_mask | ? WHERE media_id=?",
+        (TIER_SEMANTIC | TIER_DETAIL, media_id),
+    )
+    conn.commit()
+    return True
+
+
 def promote(
     store: Path,
     media_ids: list[str],
@@ -92,13 +132,20 @@ def promote(
 ) -> dict:
     """Analyse fine detail for ``media_ids`` now, best candidates first.
 
-    Returns counts. Stops early when cancelled or over budget; whatever was
-    finished stays stored. Photos with no whole-picture pass get both passes.
+    Returns counts plus ``phases_ms`` (decode, windows, proposals, tensor,
+    ONNX, lane wait, embed, persist). Stops early when cancelled or over
+    budget. The budget counts analysis, not the caller's progress callback.
+    Whatever finished stays stored. Photos with no whole-picture pass get
+    both passes. Inference runs outside the writer lock.
     """
-    from semblon.region_encoder import DEPTH_DETAIL, DEPTH_FULL, index_image_regions
+    from semblon.region_encoder import (
+        DEPTH_DETAIL,
+        DEPTH_FULL,
+        persist_region_index,
+        prepare_region_index,
+    )
 
     decode = decode or _default_decode
-    indexer = indexer or index_image_regions
     out = {
         "requested": len(media_ids),
         "done": 0,
@@ -108,19 +155,23 @@ def promote(
         "cancelled": False,
         "elapsed_s": 0.0,
         "done_ids": [],
+        "phases_ms": _blank_phases(),
     }
     started = time.perf_counter()
+    work_s = 0.0
     conn = connect(Path(store))
     try:
         for media_id in media_ids:
             if cancelled is not None and cancelled():
                 out["cancelled"] = True
                 break
-            if out["done"] >= max_photos or time.perf_counter() - started > budget_s:
+            if out["done"] >= max_photos or work_s > budget_s:
                 break
             if not claim(media_id):
                 out["busy"] += 1
                 continue
+            finished = False
+            t_work = time.perf_counter()
             try:
                 mask = mask_of(conn, media_id)
                 if mask & TIER_DETAIL:
@@ -140,48 +191,67 @@ def promote(
                 if row is None or obs is None:
                     out["failed"] += 1
                     continue
+                t_decode = time.perf_counter()
                 img = decode(Path(row[0]))
+                _add_phases(out["phases_ms"], {"decode_ms": (time.perf_counter() - t_decode) * 1000.0})
                 if img is None:
                     out["failed"] += 1
                     continue
                 depth = DEPTH_DETAIL if mask & TIER_SEMANTIC else DEPTH_FULL
-                with writer_lock():
-                    try:
-                        indexed = indexer(
-                            conn,
-                            observation_id=str(obs[0]),
-                            run_id=str(obs[1]),
-                            img=img,
-                            depth=depth,
-                            interactive=True,
-                            cancelled=cancelled,
-                        )
-                    except Exception:  # noqa: BLE001
-                        indexed = None
-                    stored = (
-                        int((indexed or {}).get("scene") or 0)
-                        + int((indexed or {}).get("patch") or 0)
-                        + int((indexed or {}).get("region") or 0)
+                if indexer is None:
+                    prepared = prepare_region_index(
+                        img, depth=depth, interactive=True, cancelled=cancelled
                     )
-                    if indexed is None or (indexed.get("note") and stored == 0 and int(indexed.get("jobs") or 0) > 0):
-                        conn.rollback()
-                        out["failed"] += 1
-                        with _LOCK:
-                            _STATS["failed"] += 1
-                        continue
-                    conn.execute(
-                        "UPDATE work_items SET tier_done_mask = tier_done_mask | ? WHERE media_id=?",
-                        (TIER_SEMANTIC | TIER_DETAIL, media_id),
-                    )
-                    conn.commit()
+                    _add_phases(out["phases_ms"], prepared.get("timings_ms"))
+                    if cancelled is not None and cancelled():
+                        out["cancelled"] = True
+                        break
+                    with writer_lock():
+                        try:
+                            indexed = persist_region_index(
+                                conn,
+                                observation_id=str(obs[0]),
+                                run_id=str(obs[1]),
+                                prepared=prepared,
+                            )
+                        except Exception:  # noqa: BLE001
+                            indexed = None
+                        _add_phases(out["phases_ms"], (indexed or {}).get("timings_ms"))
+                        if not _store_promoted(conn, indexed, media_id):
+                            out["failed"] += 1
+                            with _LOCK:
+                                _STATS["failed"] += 1
+                            continue
+                else:
+                    with writer_lock():
+                        try:
+                            indexed = indexer(
+                                conn,
+                                observation_id=str(obs[0]),
+                                run_id=str(obs[1]),
+                                img=img,
+                                depth=depth,
+                                interactive=True,
+                                cancelled=cancelled,
+                            )
+                        except Exception:  # noqa: BLE001
+                            indexed = None
+                        _add_phases(out["phases_ms"], (indexed or {}).get("timings_ms"))
+                        if not _store_promoted(conn, indexed, media_id):
+                            out["failed"] += 1
+                            with _LOCK:
+                                _STATS["failed"] += 1
+                            continue
                 out["done"] += 1
                 out["done_ids"].append(media_id)
                 with _LOCK:
                     _STATS["promoted"] += 1
-                if on_done is not None:
-                    on_done(media_id)
+                finished = True
             finally:
+                work_s += time.perf_counter() - t_work
                 release(media_id)
+            if finished and on_done is not None:
+                on_done(media_id)
     finally:
         conn.close()
         out["elapsed_s"] = round(time.perf_counter() - started, 3)
