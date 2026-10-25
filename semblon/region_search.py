@@ -1531,22 +1531,10 @@ def remember_and_find(
             spec=spec,
             parts=parts,
         ),
-        on_update=(
-            None
-            if on_first is None
-            else lambda refreshed: on_first(_bundle(saved, _with_phase(refreshed, "detailed")))
-            if refreshed.get("items") and not (cancelled is not None and cancelled())
-            else None
-        ),
     )
     if sharper is not None:
         full = sharper
-        if (
-            on_first is not None
-            and not sharper.get("progress_published")
-            and full.get("items")
-            and not (cancelled is not None and cancelled())
-        ):
+        if on_first is not None and full.get("items") and not (cancelled is not None and cancelled()):
             on_first(_bundle(saved, _with_phase(full, "detailed")))
         if cancelled is not None and cancelled():
             return _bundle(saved, _with_phase(full, "detailed"))
@@ -1623,10 +1611,10 @@ def _refine_with_detail(
 ) -> dict | None:
     """Promote detail for the shortlist; rescore only when something finished.
 
-    ``on_update`` receives a rescored result after each photo, so the shell can
-    show new matches before the batch ends. The returned value is that last
-    rescore. Without ``on_update`` there is one rescore at the end, which is
-    what the benchmark measures.
+    ``on_update`` receives a rescored result after each photo. The shell does not
+    pass it. A measured run on 32 Kodak stills showed a rescore per photo cost
+    about six times the ranking time of one rescore at the end, and detail did
+    not add a single top-five hit. The optional hook remains for that measurement.
     """
     if crop is None or not shortlist or (cancelled is not None and cancelled()):
         return None
