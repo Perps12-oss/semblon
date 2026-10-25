@@ -116,8 +116,8 @@ Item {
                             x: (114 - width) / 2 + (faceIds.length > 1 ? (slot - 1) * 14 : 0)
                             y: (114 - height) / 2 + (faceIds.length > 1 ? (slot === 1 ? 0 : 6) : 0)
                             rotation: faceIds.length > 1 ? (slot - 1) * 7 : 0
-                            color: "#ffffff"
-                            border.width: 2; border.color: "#ffffff"
+                            color: Theme.paper
+                            border.width: 2; border.color: Theme.paper
                             Image {
                                 anchors.fill: parent; anchors.margins: 2
                                 source: faceIds.length > 0 ? "image://face/" + faceIds[slot] : (mediaId ? "image://archive/t/" + mediaId : "")

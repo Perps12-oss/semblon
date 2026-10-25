@@ -151,7 +151,7 @@ def test_shell_quality_toggle_updates_the_focus_label(tmp_path, monkeypatch):
         app.processEvents()
         assert root.findChild(QObject, "qualityFast") is not None
         assert root.findChild(QObject, "qualityMax") is not None
-        assert root.findChild(QObject, "searchQualityFocus") is not None
+        assert root.findChild(QObject, "searchQualityFocus") is None  # no debug line in the photo view
         bridge.setSearchQuality("fast")
         app.processEvents()
         assert bridge.searchQuality == "fast"
@@ -169,7 +169,7 @@ def test_focus_quality_controls_are_in_the_shell():
     settings = Path("semblon/native_shell/qml/SettingsBody.qml").read_text(encoding="utf-8")
     assert 'objectName: "qualityFast"' in settings
     assert 'objectName: "qualityMax"' in settings
-    assert 'objectName: "searchQualityFocus"' in qml
+    assert 'objectName: "searchQualityFocus"' not in qml
     assert 'objectName: "searchPhaseBadge"' in qml
     assert "setSearchQuality" in settings
 

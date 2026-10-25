@@ -48,7 +48,7 @@ Item {
 
     Rectangle { anchors.fill: parent; color: Theme.bg; opacity: 0.97 }
 
-    Keys.onEscapePressed: { shell.escape(); viewer.closed() }
+    Keys.onEscapePressed: { if (moreMenu.shown) moreMenu.shown = false; else { shell.escape(); viewer.closed() } }
     // While the loupe is on, arrows steer the circle instead of changing photo.
     Keys.onLeftPressed: function (e) { if (!(loupeOn && keyRegion(e))) shell.focusPrev() }
     Keys.onRightPressed: function (e) { if (!(loupeOn && keyRegion(e))) shell.focusNext() }
@@ -57,7 +57,8 @@ Item {
     Keys.onReturnPressed: function (e) { if (loupeOn) keyRegion(e); else e.accepted = false }
     Keys.onEnterPressed: function (e) { if (loupeOn) keyRegion(e); else e.accepted = false }
     Keys.onPressed: function (e) {
-        if (e.key === Qt.Key_L) { loupeOn = !loupeOn; e.accepted = true }
+        if (e.key === Qt.Key_Period && (e.modifiers & Qt.ControlModifier)) { moreMenu.shown = !moreMenu.shown; e.accepted = true }
+        else if (e.key === Qt.Key_L) { loupeOn = !loupeOn; e.accepted = true }
     }
     // Keyboard-only loupe: arrows move the circle, Shift+arrows resize it, Enter searches.
     function keyRegion(e) {
@@ -192,7 +193,9 @@ Item {
         }
     }
 
+    // Four things stay in view. Everything else lives behind "More…" and Ctrl+K.
     Row {
+        id: topBar
         x: Theme.pad
         y: Theme.pad
         spacing: Theme.gap
@@ -200,60 +203,92 @@ Item {
         Tool { label: "Previous"; onActivated: shell.focusPrev() }
         Tool { label: "Next"; onActivated: shell.focusNext() }
         Tool {
+            objectName: "findDetail"
             label: viewer.loupeOn ? "Loupe on: drag, or use arrow keys and Enter" : "Find a detail"
             hint: "Draw around anything in the photo to find it in other photos"
-            primary: viewer.loupeOn
+            primary: true
             onActivated: { viewer.loupeOn = !viewer.loupeOn; if (!viewer.loupeOn) viewer.reset() }
         }
+        Tool {
+            objectName: "moreButton"
+            label: "More…"
+            hint: "More things to do with this photo"
+            selected: moreMenu.shown
+            onActivated: moreMenu.shown = !moreMenu.shown
+        }
     }
-    Flow {
-        id: actions
+    Tool {
+        objectName: "installSuggestedModel"
         x: Theme.pad
-        y: 56
-        width: parent.width - Theme.pad * 2
-        spacing: Theme.gap
-        Tool { objectName: "similarAction"; label: "Find similar"; primary: true; visible: shell.selectionOnFocus; onActivated: shell.findSimilar() }
-        Tool { objectName: "wholePhoto"; label: "Find more like this photo"; hint: "Shortcut W"; onActivated: shell.findSimilarWhole() }
-        Tool { objectName: "sameFaceDoor"; label: "Find faces like these"; hint: "Shortcut F"; onActivated: shell.findSimilarFaces() }
-        Tool { objectName: "duplicatesDoor"; label: "Find duplicates"; hint: "Ctrl+D"; onActivated: shell.scanDuplicates() }
-        Tool { objectName: "nameThisArea"; label: "Describe this area"; visible: shell.selectionOnFocus && !shell.identifyBusy; onActivated: shell.nameSelection() }
-        Tool { objectName: "askPhoto"; label: "Ask about this photo"; onActivated: shell.askPhoto() }
-        Tool { objectName: "screenQueryAction"; label: "Pick on screen"; hint: "Ctrl+Shift+S"; visible: shell.screenQueryAvailable && !shell.screenQueryInProgress; onActivated: shell.startScreenQuery() }
-        Tool { objectName: "screenQueryModeAction"; label: shell.screenQueryModeLabel; visible: shell.screenQueryAvailable; onActivated: shell.toggleScreenQueryMode() }
-        Tool { objectName: "installSuggestedModel"; label: "Add the helper this search needs"; visible: shell.installSuggestionVisible && !shell.searchBusy; onActivated: shell.installSuggestedModel() }
-        Tool { label: "Who is this?"; visible: shell.selectedObservationId !== ""; onActivated: shell.reviewFaceGroup(shell.selectedObservationId) }
-        Tool { label: "More like this"; visible: shell.similarState === "ready"; onActivated: shell.setSearchQuality("max") }
-        Tool { label: "Fewer, closer"; visible: shell.similarState === "ready"; onActivated: shell.setSearchQuality("fast") }
+        y: Theme.pad + 48
+        label: "Get finding-by-look ready"
+        visible: shell.installSuggestionVisible && !shell.searchBusy
+        onActivated: shell.installSuggestedModel()
     }
-    Row {
-        id: refine
+    Rectangle {
+        id: moreMenu
+        objectName: "moreMenu"
+        property bool shown: false
+        visible: shown
         x: Theme.pad
-        y: actions.y + actions.height + 6
-        spacing: Theme.gap
-        visible: shell.selectionOnFocus
-        Text { text: "Match on"; anchors.verticalCenter: parent.verticalCenter; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted }
-        Tool { objectName: "refineSameLook"; label: "Same look"; primary: shell.refineMode !== "kind"; onActivated: shell.setRefineMode("same") }
-        Tool { objectName: "refineSameKind"; label: "Same kind"; primary: shell.refineMode === "kind"; onActivated: shell.setRefineMode("kind") }
-        Rectangle {
-            width: 190; height: 34; radius: 3
-            color: "transparent"
-            border.width: refineWord.activeFocus ? 2 : 1
-            border.color: refineWord.activeFocus ? Theme.amber : Theme.line
-            TextInput {
-                id: refineWord
-                objectName: "refineWord"
-                anchors.fill: parent
-                anchors.margins: 8
-                verticalAlignment: TextInput.AlignVCenter
-                text: shell.refineModifier
-                font.family: Theme.ui
-                font.pixelSize: Theme.small
-                color: Theme.text
-                selectByMouse: true
-                clip: true
-                Accessible.name: "Add a word to narrow the search"
-                onAccepted: shell.setRefineModifier(text)
-                Text { visible: !parent.text && !parent.activeFocus; text: "Add a word, such as red"; font: parent.font; color: Theme.faint }
+        y: Theme.pad + 48
+        z: 30
+        width: 340
+        height: menuCol.implicitHeight + 16
+        radius: Theme.radius
+        color: Theme.surface
+        border.width: 1
+        border.color: Theme.line
+        Accessible.role: Accessible.PopupMenu
+        Accessible.name: "More things to do with this photo"
+        Keys.onEscapePressed: { shown = false; viewer.forceActiveFocus() }
+        function pick(fn) { shown = false; viewer.forceActiveFocus(); fn() }
+        Column {
+            id: menuCol
+            x: 8; y: 8
+            width: parent.width - 16
+            spacing: 4
+            Tool { objectName: "wholePhoto"; width: menuCol.width; label: "Find photos like this one"; hint: "Shortcut W"; onActivated: moreMenu.pick(shell.findSimilarWhole) }
+            Tool { objectName: "similarAction"; width: menuCol.width; label: "Find the picked area elsewhere"; hint: "Shortcut S"; visible: shell.selectionOnFocus; onActivated: moreMenu.pick(shell.findSimilar) }
+            Tool { objectName: "sameFaceDoor"; width: menuCol.width; label: "Find faces like these"; hint: "Shortcut F"; onActivated: moreMenu.pick(shell.findSimilarFaces) }
+            Tool { objectName: "duplicatesDoor"; width: menuCol.width; label: "Find copies of this photo"; hint: "Ctrl+D"; onActivated: moreMenu.pick(shell.scanDuplicates) }
+            Tool { objectName: "nameThisArea"; width: menuCol.width; label: "Describe this area"; visible: shell.selectionOnFocus && !shell.identifyBusy; onActivated: moreMenu.pick(shell.nameSelection) }
+            Tool { objectName: "askPhoto"; width: menuCol.width; label: "Ask about this photo"; onActivated: moreMenu.pick(shell.askPhoto) }
+            Tool { width: menuCol.width; label: "Who is this?"; visible: shell.selectedObservationId !== ""; onActivated: moreMenu.pick(function () { shell.reviewFaceGroup(shell.selectedObservationId) }) }
+            Tool { objectName: "screenQueryAction"; width: menuCol.width; label: "Pick on screen"; hint: "Ctrl+Shift+S"; visible: shell.screenQueryAvailable && !shell.screenQueryInProgress; onActivated: moreMenu.pick(shell.startScreenQuery) }
+            Tool { objectName: "screenQueryModeAction"; width: menuCol.width; label: shell.screenQueryModeLabel; visible: shell.screenQueryAvailable; onActivated: moreMenu.pick(shell.toggleScreenQueryMode) }
+            Tool { objectName: "moreMatches"; width: menuCol.width; label: "Show more matches"; visible: shell.similarState === "ready"; onActivated: moreMenu.pick(function () { shell.setSearchQuality("max") }) }
+            Tool { objectName: "closerMatches"; width: menuCol.width; label: "Show fewer, closer matches"; visible: shell.similarState === "ready"; onActivated: moreMenu.pick(function () { shell.setSearchQuality("fast") }) }
+            Row {
+                id: refine
+                spacing: Theme.gap
+                visible: shell.selectionOnFocus
+                Text { text: "Match on"; anchors.verticalCenter: parent.verticalCenter; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted }
+                Tool { objectName: "refineSameLook"; label: "Same look"; primary: shell.refineMode !== "kind"; onActivated: shell.setRefineMode("same") }
+                Tool { objectName: "refineSameKind"; label: "Same kind"; primary: shell.refineMode === "kind"; onActivated: shell.setRefineMode("kind") }
+            }
+            Rectangle {
+                width: menuCol.width; height: 34; radius: 3
+                visible: shell.selectionOnFocus
+                color: "transparent"
+                border.width: refineWord.activeFocus ? 2 : 1
+                border.color: refineWord.activeFocus ? Theme.amber : Theme.line
+                TextInput {
+                    id: refineWord
+                    objectName: "refineWord"
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    verticalAlignment: TextInput.AlignVCenter
+                    text: shell.refineModifier
+                    font.family: Theme.ui
+                    font.pixelSize: Theme.small
+                    color: Theme.text
+                    selectByMouse: true
+                    clip: true
+                    Accessible.name: "Add a word to narrow the search"
+                    onAccepted: shell.setRefineModifier(text)
+                    Text { visible: !parent.text && !parent.activeFocus; text: "Add a word, such as red"; font: parent.font; color: Theme.faint }
+                }
             }
         }
     }
@@ -263,9 +298,7 @@ Item {
         anchors.bottomMargin: 48
         spacing: Theme.gap
         Text { objectName: "searchDoorLabel"; text: shell.searchDoorLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; font.weight: Font.DemiBold; color: Theme.amber }
-        Text { objectName: "searchQualityFocus"; text: "Search: " + shell.searchQualityLabel; visible: shell.similarState !== "idle"; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.faint }
         Text { objectName: "searchPhaseBadge"; text: shell.similarPhaseLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted }
-        Text { objectName: "searchTiming"; text: shell.searchTimingLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.faint }
         Text { objectName: "nameConfidence"; text: shell.nameConfidenceLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted }
         Text { objectName: "screenQueryProgress"; text: shell.screenQueryProgressLabel; visible: shell.screenQueryInProgress; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.amber }
     }

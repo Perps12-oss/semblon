@@ -39,6 +39,15 @@ Window {
         else if (id === "zoomout") rollView.zoomBy(0.7)
         else if (id === "dark") shell.setAtmosphere("mica_dark")
         else if (id === "light") shell.setAtmosphere("light")
+        else if (id === "v-detail") { viewer.loupeOn = true }
+        else if (id === "v-like") shell.findSimilarWhole()
+        else if (id === "v-area") shell.findSimilar()
+        else if (id === "v-faces") shell.findSimilarFaces()
+        else if (id === "v-copies") shell.scanDuplicates()
+        else if (id === "v-describe") shell.nameSelection()
+        else if (id === "v-ask") shell.askPhoto()
+        else if (id === "v-more") shell.setSearchQuality("max")
+        else if (id === "v-closer") shell.setSearchQuality("fast")
     }
 
     Roll {
@@ -207,7 +216,18 @@ Window {
         id: palette
         anchors.fill: parent
         // With nothing added yet, only the actions that work right now are offered.
-        actions: shell.empty ? [
+        actions: viewer.active ? [
+            { id: "v-detail", label: "Find a detail" },
+            { id: "v-like", label: "Find photos like this one" },
+            { id: "v-area", label: "Find the picked area elsewhere" },
+            { id: "v-faces", label: "Find faces like these" },
+            { id: "v-copies", label: "Find copies of this photo" },
+            { id: "v-describe", label: "Describe this area" },
+            { id: "v-ask", label: "Ask about this photo" },
+            { id: "v-more", label: "Show more matches" },
+            { id: "v-closer", label: "Show fewer, closer matches" },
+            { id: "settings", label: "Settings" }
+        ] : shell.empty ? [
             { id: "add", label: "Add a folder" },
             { id: "dark", label: "Use Darkroom look" },
             { id: "light", label: "Use Daylight look" },

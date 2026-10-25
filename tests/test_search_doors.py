@@ -23,10 +23,9 @@ def test_focus_shortcuts_name_each_door():
         "wholePhoto",
         "searchPhaseBadge",
         "nameConfidence",
-        "searchTiming",
     ):
         assert f'objectName: "{name}"' in qml
-    assert 'label: "Find similar"' in qml
+    assert 'label: "Find the picked area elsewhere"' in qml
     assert 'label: "Same look"' in qml
     assert 'label: "Same kind"' in qml
     assert "shell.setRefineMode" in qml
@@ -36,8 +35,8 @@ def test_focus_shortcuts_name_each_door():
     assert _PHASE_LABELS["checked"] == "Checked the matches"
     for key in ("S", "W", "F", "Ctrl+D"):
         assert f'sequence: "{key}"' in qml
-    assert "shell.findSimilar()" in qml
-    assert "shell.scanDuplicates()" in qml
+    assert "shell.findSimilar" in qml
+    assert "shell.scanDuplicates" in qml
 
 
 def _store(tmp_path):

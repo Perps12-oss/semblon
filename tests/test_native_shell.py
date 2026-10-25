@@ -489,8 +489,8 @@ def test_viewer_keeps_the_strip_and_a_primary_similar_action():
     viewer = (qml_root / "Viewer.qml").read_text(encoding="utf-8")
     table = (qml_root / "Table.qml").read_text(encoding="utf-8")
     roll = (qml_root / "Roll.qml").read_text(encoding="utf-8")
-    assert "shell.findSimilar()" in viewer
-    assert "shell.findSimilarWhole()" in viewer
+    assert "shell.findSimilar" in viewer
+    assert "shell.findSimilarWhole" in viewer
     assert "shell.resumeJob()" in roll
     assert 'objectName: "emptyResume"' in roll
     for name in (
@@ -498,11 +498,11 @@ def test_viewer_keeps_the_strip_and_a_primary_similar_action():
         "screenQueryAction", "screenQueryModeAction", "screenQueryProgress", "similarStrip",
     ):
         assert f'objectName: "{name}"' in viewer, name
-    assert 'label: "Find similar"' in viewer
+    assert 'label: "Find the picked area elsewhere"' in viewer
     assert "shell.installSuggestedModel()" in viewer
     assert "shell.startScreenQuery()" in viewer
     assert 'sequence: "Ctrl+Shift+S"' in viewer
-    assert "shell.toggleScreenQueryMode()" in viewer
+    assert "shell.toggleScreenQueryMode" in viewer
     assert 'objectName: "findSimilar"' not in viewer
     assert "shell.openFocus(mediaId)" in viewer
     assert 'objectName: "primaryModeButton"' in (qml_root / "SettingsBody.qml").read_text(encoding="utf-8")

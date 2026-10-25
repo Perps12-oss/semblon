@@ -583,3 +583,55 @@ def test_same_as_picker_is_searchable_and_keyboard_driven(tmp_path, monkeypatch)
         assert calls == [("merge", ["c1", "c2"])]
     finally:
         shutdown_shell(engine)
+
+
+def test_photo_view_keeps_four_actions_in_view_and_no_debug_text(tmp_path, monkeypatch):
+    import re
+
+    from PySide6.QtCore import QObject
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        viewer = _open_viewer(app, root, bridge)
+        bar = root.findChild(QObject, "findDetail").parent()
+        shown = [c.property("label") for c in bar.childItems() if c.property("label") and c.isVisible()]
+        assert shown == ["Back to photos", "Previous", "Next", "Find a detail", "More…"]
+        menu = root.findChild(QObject, "moreMenu")
+        assert menu.property("shown") is False
+        # the menu merges the near-duplicates into one plain name each
+        labels = [c.property("label") for c in menu.findChildren(QObject) if c.property("label")]
+        assert len(labels) == len(set(labels))
+        for banned in ("Find similar", "Find more like this photo", "More like this"):
+            assert banned not in labels
+        assert "Find photos like this one" in labels
+        qml = Path("semblon/native_shell/qml/Viewer.qml").read_text(encoding="utf-8")
+        assert "searchTimingLabel" not in qml and "searchQualityLabel" not in qml
+        for path in Path("semblon/native_shell/qml").glob("*.qml"):
+            text = path.read_text(encoding="utf-8")
+            assert not re.search(r"\b\d+ ms\b|First look \d|Refined \d", text), path.name
+    finally:
+        shutdown_shell(engine)
+
+
+def test_more_menu_opens_from_keyboard_and_the_palette_offers_the_same_actions(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject, Qt
+    from PySide6.QtTest import QTest
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        _open_viewer(app, root, bridge)
+        menu = root.findChild(QObject, "moreMenu")
+        QTest.keyClick(root, Qt.Key.Key_Period, Qt.KeyboardModifier.ControlModifier)
+        _spin(app, 0.2)
+        assert menu.property("shown") is True
+        QTest.keyClick(root, Qt.Key.Key_Escape)
+        _spin(app, 0.2)
+        assert menu.property("shown") is False
+        assert bridge.focusId == "m1"  # Escape closed the menu, not the photo
+        palette = [c for c in root.findChildren(QObject) if c.property("actions") is not None and c.property("shown") is not None]
+        labels = [a["label"] for a in palette[0].property("actions").toVariant()]
+        assert "Find photos like this one" in labels and "Find a detail" in labels
+    finally:
+        shutdown_shell(engine)
