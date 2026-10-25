@@ -22,6 +22,14 @@ The production shell is still the only GUI (`semblon shell`). Home is a first-ar
 
 Linux check on this branch, 2026-10-24: `xvfb-run -a .venv/bin/python -m pytest -q` → **988 passed, 7 skipped**.
 
+## Behaviour landed — Hybrid visual discovery (partial)
+
+- Indexing runs the whole-picture pass for every photo first (`frame`), then the fine-detail pass (`detail`, `TIER_DETAIL`). Photos are searchable after the first pass. Both passes resume from `work_items.tier_done_mask`. Legacy full-depth rows count as detailed.
+- Searches report coverage (`scan_tiers.semantic_coverage`, `coverage_note`) so unprepared photos are never silently excluded.
+- `perf_evidence` writes timings only (no names, paths or queries) to `perf-evidence.jsonl`; `SEMBLON_PERF=0` disables it.
+- The 15-piece baseline, identity thresholds and schema are unchanged.
+- **Not done / unverified:** on-demand detail for a search's top candidates; `tools/bench_hybrid.py` (Recall@5, Precision@5, strategies A/B/C); end-to-end timings on a real library (per-photo costs of about 1 s frame and 4.5 s detail on emulated ARM64 are micro-benchmark estimates); native ARM64 runtime (blocked, see `docs/PERF-P1-ARM64.md`).
+
 ## Status vocabulary
 
 | Status | Meaning |
