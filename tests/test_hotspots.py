@@ -45,3 +45,21 @@ def test_hotspot_qml_has_no_technical_words():
     for literal in re.findall(r'"([^"]*)"', text):
         for banned in ("embedding", "model", "pack", "query", "database", "index"):
             assert banned not in literal.lower()
+
+
+def test_neighbouring_writing_becomes_one_dot():
+    boxes = [
+        _box(1, 0.10, 0.10, nw=0.20, nh=0.05, kind="text", tag=""),
+        _box(2, 0.12, 0.17, nw=0.20, nh=0.05, kind="text", tag=""),
+        _box(3, 0.70, 0.70, nw=0.20, nh=0.10, kind="text", tag=""),
+    ]
+    out = rank_hotspots(boxes)
+    assert len(out) == 2
+    joined = [d for d in out if d["joined"]]
+    assert len(joined) == 1
+    assert joined[0]["nw"] > 0.2 and joined[0]["nh"] > 0.1
+
+
+def test_dots_say_what_they_are_for():
+    out = rank_hotspots([_box(1, 0.1, 0.1, kind="face"), _box(2, 0.6, 0.6, kind="text", tag="")])
+    assert {d["word"] for d in out} == {"Look-alikes", "Writing"}

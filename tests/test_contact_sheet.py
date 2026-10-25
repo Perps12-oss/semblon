@@ -875,3 +875,67 @@ def test_search_does_not_freeze_the_window(tmp_path, monkeypatch):
         _spin(app, 0.5)
     finally:
         shutdown_shell(engine)
+
+def _call(obj, name, *args):
+    from PySide6.QtCore import Q_ARG, QMetaObject, Qt
+
+    QMetaObject.invokeMethod(obj, name, Qt.ConnectionType.DirectConnection, *[Q_ARG("QVariant", a) for a in args])
+
+
+def _dots(root):
+    from PySide6.QtCore import QObject
+
+    layer = root.findChild(QObject, "hotspots")
+    return layer, [d for d in layer.childItems() if d.objectName() == "hotspot"]
+
+
+def test_a_second_tap_is_a_zoom_not_a_search(tmp_path, monkeypatch):
+    from PySide6.QtCore import QMetaObject, QObject, Qt
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        _open_viewer(app, root, bridge)
+        spots = root.findChild(QObject, "hotspots")
+        asked = []
+        spots.pickedSpot.connect(lambda nx, ny: asked.append((nx, ny)))
+        # one tap, left alone: the search fires after the wait
+        _call(spots, "tapped", 100.0, 100.0)
+        assert asked == []
+        _spin(app, 0.6)
+        assert len(asked) == 1
+        # a tap followed by a cancel (what the second tap does): no search
+        _call(spots, "tapped", 100.0, 100.0)
+        _call(spots, "cancelPending")
+        _spin(app, 0.6)
+        assert len(asked) == 1
+    finally:
+        shutdown_shell(engine)
+
+
+def test_a_dot_can_be_hidden_and_the_rest_dims_when_one_is_chosen(tmp_path, monkeypatch):
+    from PySide6.QtCore import QMetaObject, Qt
+
+    from semblon.native_shell.host import shutdown_shell
+
+    monkeypatch.setenv("SEMBLON_SEARCH_SYNC", "1")
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        _open_viewer(app, root, bridge)
+        _inject_boxes(bridge)
+        _spin(app, 0.6)
+        layer, dots = _dots(root)
+        assert len(dots) == 2 and all(d.isVisible() for d in dots)
+        assert layer.property("target") is None
+        _call(layer, "hide", "o1")
+        _spin(app, 0.2)
+        assert sum(1 for d in dots if d.isVisible()) == 1
+        _call(layer, "clearTap")
+        _spin(app, 0.2)
+        assert all(d.isVisible() for d in dots)
+        _call(layer, "showTap", "0.1,0.1,0.2,0.2")
+        _spin(app, 0.2)
+        assert layer.property("target") is not None
+    finally:
+        shutdown_shell(engine)

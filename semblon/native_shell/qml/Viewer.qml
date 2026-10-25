@@ -36,7 +36,7 @@ Item {
         if (zoom === 1) { panX = 0; panY = 0 }
     }
     property string shownId: shell.focusId
-    onShownIdChanged: { resetZoom(); spots.clearTap() }
+    onShownIdChanged: { resetZoom(); spots.clearTap(); spots.shimmer() }
     function reset() { lx = 0; ly = 0; lw = 0; lh = 0; loupeOn = false; spots.clearTap(); shell.clearDrawnQuery() }
     function search() {
         if (lw < 8 || lh < 8 || photo.paintedWidth <= 0)
@@ -151,13 +151,22 @@ Item {
                     id: spots
                     picture: canvas
                     allowed: viewer.dotsOn && !viewer.loupeOn
-                    onPickedDot: function (id) { clearTap(); shell.selectObservation(id) }
+                    onPickedDot: function (dot) {
+                        clearTap()
+                        if (dot.joined) {
+                            shell.setRegion(dot.nx, dot.ny, dot.nw, dot.nh)
+                            showTap(dot.nx + "," + dot.ny + "," + dot.nw + "," + dot.nh)
+                            shell.findSimilar()
+                        } else {
+                            shell.selectObservation(dot.id)
+                        }
+                    }
                     onPickedSpot: function (nx, ny) { showTap(shell.pointAt(nx, ny)) }
                 }
                 TapHandler {
                     objectName: "spotTap"
                     enabled: !viewer.loupeOn
-                    onSingleTapped: function (ep) { spots.tapped(ep.position.x, ep.position.y) }
+                    onTapped: function (ep) { if (tapCount > 1) spots.cancelPending(); else spots.tapped(ep.position.x, ep.position.y) }
                 }
                 MouseArea {
                     anchors.fill: parent
@@ -195,7 +204,7 @@ Item {
         }
         TapHandler {
             enabled: !viewer.loupeOn
-            onDoubleTapped: viewer.zoom > 1 ? viewer.resetZoom() : viewer.zoomAt(point.position.x, point.position.y, 2.5)
+            onDoubleTapped: { spots.cancelPending(); if (viewer.zoom > 1) viewer.resetZoom(); else viewer.zoomAt(point.position.x, point.position.y, 2.5) }
         }
         Text {
             anchors.centerIn: parent
