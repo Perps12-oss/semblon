@@ -5570,6 +5570,8 @@ class ShellBridge(QObject):
         if current <= 0 or total <= current or spent < 1:
             return f"{elapsed} elapsed."
         remaining = (total - current) * spent / current
+        if remaining > 6 * 3600:
+            return f"{elapsed} elapsed. This keeps going in the background; carry on using your photos."
         left = _format_span(max(1, int(round(remaining))))
         return f"{elapsed} elapsed. About {left} left."
 
