@@ -787,3 +787,91 @@ def test_binning_a_copy_removes_it_from_the_roll_and_month_count_at_once(tmp_pat
         assert bridge._session.media("m2") is not None
     finally:
         shutdown_shell(engine)
+
+
+def _inject_boxes(bridge):
+    bridge._focus_boxes = [
+        {"id": "o1", "kind": "object", "source": "nanodet", "snap": True, "tag": "Dog", "color": "#fff",
+         "nx": 0.1, "ny": 0.1, "nw": 0.25, "nh": 0.3},
+        {"id": "t1", "kind": "text", "source": "ocr", "snap": True, "tag": "", "color": "#fff",
+         "nx": 0.6, "ny": 0.6, "nw": 0.25, "nh": 0.2},
+    ]
+    bridge.focusChanged.emit()
+
+
+def test_dots_appear_and_a_dot_tap_searches_that_thing(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject, QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    from semblon.native_shell.host import shutdown_shell
+
+    monkeypatch.setenv("SEMBLON_SEARCH_SYNC", "1")
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        viewer = _open_viewer(app, root, bridge)
+        _inject_boxes(bridge)
+        _spin(app, 0.6)
+        layer = root.findChild(QObject, "hotspots")
+        dots = [d for d in layer.childItems() if d.objectName() == "hotspot"]
+        assert len(dots) == 2
+        picked = []
+        monkeypatch.setattr(bridge, "selectObservation", lambda oid: picked.append(oid))
+        dot = dots[0]
+        pt = dot.mapToScene(dot.boundingRect().center())
+        QTest.mouseClick(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(int(pt.x()), int(pt.y())))
+        _spin(app, 0.3)
+        assert len(picked) == 1
+    finally:
+        shutdown_shell(engine)
+
+
+def test_the_dots_key_hides_and_shows_them(tmp_path, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        viewer = _open_viewer(app, root, bridge)
+        assert viewer.property("dotsOn") is True
+        QTest.keyClick(root, Qt.Key.Key_D)
+        _spin(app, 0.2)
+        assert viewer.property("dotsOn") is False
+        QTest.keyClick(root, Qt.Key.Key_D)
+        _spin(app, 0.2)
+        assert viewer.property("dotsOn") is True
+    finally:
+        shutdown_shell(engine)
+
+
+def test_search_does_not_freeze_the_window(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        _open_viewer(app, root, bridge)
+        gate = threading.Event()
+        jobs = bridge._jobs
+        real = jobs.remember_and_find_region
+
+        def slow(*a, **k):
+            gate.wait(2.0)
+            return real(*a, **k)
+
+        monkeypatch.setattr(jobs, "remember_and_find_region", slow)
+        bridge.pointAt(0.5, 0.5)
+        ticks = 0
+        end = time.monotonic() + 0.5
+        while time.monotonic() < end:
+            app.processEvents()
+            ticks += 1
+            time.sleep(0.01)
+        gate.set()
+        assert ticks > 20
+        _spin(app, 0.5)
+    finally:
+        shutdown_shell(engine)
