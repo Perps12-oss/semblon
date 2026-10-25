@@ -399,6 +399,8 @@ def test_name_this_area_leaves_the_matches(tmp_path, monkeypatch):
         root = engine.rootObjects()[0]
         button = root.findChild(QObject, "nameThisArea")
         assert button is not None
+        root.findChild(QObject, "moreMenu").setProperty("shown", True)
+        app.processEvents()
         assert button.property("visible") is True
         bridge.nameSelection()
         assert bridge.identifyBusy is False

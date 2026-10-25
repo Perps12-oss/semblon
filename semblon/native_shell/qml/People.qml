@@ -138,7 +138,7 @@ Item {
                 }
                 Text {
                     x: 8; y: 144; width: 114
-                    text: faceCount + (faceCount === 1 ? " photo" : " photos") + (twin ? " · same name as another" : "")
+                    text: faceCount + (faceCount === 1 ? " photo" : " photos") + (twin ? " · twin name" : "")
                     elide: Text.ElideRight
                     font.family: Theme.ui
                     font.pixelSize: Theme.tiny

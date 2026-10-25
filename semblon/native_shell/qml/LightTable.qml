@@ -93,16 +93,6 @@ Item {
                 }
             }
             Text {
-                visible: bar.mode === "tidy"
-                width: parent.width
-                wrapMode: Text.WordWrap
-                text: shell.resultText !== "" ? shell.resultText
-                      : "Tidy up only reports. It never moves or deletes your photos."
-                font.family: Theme.ui
-                font.pixelSize: Theme.small
-                color: Theme.muted
-            }
-            Text {
                 visible: shell.matchesOnRoll
                 width: parent.width
                 text: shell.similarNote !== "" ? shell.similarNote : "Showing matches on the roll."
@@ -138,8 +128,8 @@ Item {
                 Tool {
                     label: "Tidy up"
                     dimmed: bar.empty
-                    selected: bar.mode === "tidy"
-                    onActivated: { bar.mode = bar.mode === "tidy" ? "" : "tidy"; if (bar.mode === "tidy") shell.scanDuplicates() }
+                    selected: shell.tidyOpen
+                    onActivated: shell.openTidy()
                 }
                 Tool {
                     visible: shell.matchesOnRoll

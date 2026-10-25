@@ -635,3 +635,114 @@ def test_more_menu_opens_from_keyboard_and_the_palette_offers_the_same_actions(t
         assert "Find photos like this one" in labels and "Find a detail" in labels
     finally:
         shutdown_shell(engine)
+
+
+def _boot_tidy(tmp_path, monkeypatch, files):
+    from PySide6.QtCore import QObject  # noqa: F401
+    from semblon.native_shell.adapter import Result
+    """Shell with one set of copies. Returns (app, engine, root, bridge)."""
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    members = [
+        {"path": str(f), "media_id": "m%d" % i, "in_library": True} for i, f in enumerate(files)
+    ]
+    report = {
+        "groups": [{"kind": "exact", "members": members, "count": len(members)}],
+        "exact_group_count": 1, "near_group_count": 0, "near_status": "AVAILABLE",
+    }
+    monkeypatch.setattr(
+        bridge._adapter, "duplicates",
+        lambda: Result("ready", "Duplicates: 1 set of exact copies.", {"report": report}),
+    )
+    return app, engine, root, bridge
+
+
+def test_tidy_up_lists_copies_and_never_removes_without_a_confirm(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject
+    from semblon.native_shell.host import shutdown_shell
+    a, b = tmp_path / "a.jpg", tmp_path / "b.jpg"
+    a.write_bytes(b"x" * 200_000); b.write_bytes(b"x" * 200_000)
+    app, engine, root, bridge = _boot_tidy(tmp_path, monkeypatch, [a, b])
+    try:
+        bridge.openTidy()
+        _spin(app)
+        assert bridge.tidyOpen and len(bridge.tidySets) == 1
+        assert bridge.tidySummary == "1 set of exact copies"
+        desk = root.findChild(QObject, "tidyDesk")
+        assert desk is not None and desk.property("visible") is True
+        bridge.keepCopy(0, 0)
+        assert bridge.confirm["open"] is True and bridge.confirm["danger"] is True
+        assert "Recycle Bin" in bridge.confirm["body"]
+        assert a.exists() and b.exists()
+        bridge.confirmDecline()
+        assert a.exists() and b.exists() and len(bridge.tidySets) == 1
+        bridge.keepCopy(0, 0)
+        monkeypatch.setattr("PySide6.QtCore.QFile.moveToTrash", staticmethod(lambda p: (Path(p).unlink(), True)[1]))
+        bridge.confirmAccept()
+        assert a.exists() and not b.exists()
+        assert bridge.tidySets == []
+        bridge.closeTidy()
+        assert not bridge.tidyOpen
+    finally:
+        shutdown_shell(engine)
+
+
+def test_tidy_up_wording_has_correct_plurals(tmp_path, monkeypatch):
+    import semblon.duplicates as dup
+    from semblon.native_shell.adapter import ArchiveAdapter
+
+    def said(exact, near):
+        monkeypatch.setattr(dup, "find_integrity_groups", lambda store: {"exact_group_count": exact, "near_group_count": near})
+        adapter = ArchiveAdapter.__new__(ArchiveAdapter)
+        monkeypatch.setattr(ArchiveAdapter, "store", property(lambda self: tmp_path / "s.db"))
+        (tmp_path / "s.db").write_bytes(b"")
+        return adapter.duplicates().message
+
+    assert said(6, 1) == "Duplicates: 6 sets of exact copies, 1 set of near copies."
+    assert said(1, 0) == "Duplicates: 1 set of exact copies."
+
+
+def test_scrubber_hides_over_photo_view_and_header_band_is_solid(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, root, bridge = _boot_with_photo(tmp_path, monkeypatch)
+    try:
+        scrub = root.findChild(QObject, "scrubber")
+        assert scrub.property("opacity") == 1
+        _open_viewer(app, root, bridge)
+        _spin(app, 0.5)
+        assert scrub.property("opacity") == 0
+        bridge.escape()
+        _spin(app, 0.5)
+        assert scrub.property("opacity") == 1
+        text = Path("semblon/native_shell/qml/Roll.qml").read_text(encoding="utf-8")
+        assert "color: Theme.bg" in text
+    finally:
+        shutdown_shell(engine)
+
+
+def test_preflight_confirm_is_plain_and_add_on_sizes_are_shown():
+    from semblon.native_shell import bridge as b
+
+    cls = b.ShellBridge
+    plain = cls._plain_confirm({"name": "Text in photos", "detail": "pinned python package environment == 1.2"})
+    low = str(plain).lower()
+    for word in ("environment", "package", "python", "=="):
+        assert word not in low
+    for key in ("object_pack", "region_pack"):
+        assert "MB" in str(b._INSTALL_PROMPTS[key])
+
+
+def test_placeholder_label_font_covers_its_characters():
+    from PySide6.QtGui import QFontMetrics
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import load_bundled_fonts
+
+    from PySide6.QtGui import QFont
+
+    QApplication.instance() or QApplication([])
+    load_bundled_fonts()
+    metrics = QFontMetrics(QFont("Inter"))
+    assert all(metrics.inFont(ch) for ch in "IMG 0123456789 x abc")

@@ -126,7 +126,7 @@ _INSTALL_PROMPTS = {
         "Get finding-by-object ready?",
         "Semblon needs a small add-on on this computer to recognise things in pictures, such as a bicycle or a cake. "
         "When it is ready, this search runs again on its own.",
-        ["A small download, once.", _NOTHING_LEAVES],
+        ["About 4 MB, downloaded once.", _NOTHING_LEAVES],
     ),
     "vlm_local": (
         "Get photo descriptions ready?",
@@ -286,6 +286,7 @@ class ShellBridge(QObject):
     preflightChanged = Signal()
     tasksChanged = Signal()
     confirmChanged = Signal()
+    tidyChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -373,6 +374,8 @@ class ShellBridge(QObject):
         self._confirm_yes = self._confirm_no = None
         self._confirm_keep = False
         self._confirm_dismiss_is_no = True
+        self._tidy_open = False
+        self._tidy_sets: list[dict] = []
         self._name_apart = False
         self._tasks_open = False
         self._mode = self._load_shell_mode()
@@ -4336,7 +4339,109 @@ class ShellBridge(QObject):
     @Slot()
     def scanDuplicates(self) -> None:
         self._set_door("duplicate")
-        self._apply_result(self._safe_call(self._adapter.duplicates))
+        result = self._safe_call(self._adapter.duplicates)
+        self._tidy_sets = self._build_tidy_sets(result.data.get("report") or {})
+        self.tidyChanged.emit()
+        self._apply_result(result)
+
+    @Slot()
+    def openTidy(self) -> None:
+        """Tidy up: look for copies and show them side by side. Nothing is removed here."""
+        self.scanDuplicates()
+        self._tidy_open = True
+        self.tidyChanged.emit()
+
+    @Slot()
+    def closeTidy(self) -> None:
+        if self._tidy_open:
+            self._tidy_open = False
+            self.tidyChanged.emit()
+
+    @Property(bool, notify=tidyChanged)
+    def tidyOpen(self) -> bool:
+        return self._tidy_open
+
+    @Property("QVariantList", notify=tidyChanged)
+    def tidySets(self):
+        return list(self._tidy_sets)
+
+    @Property(str, notify=tidyChanged)
+    def tidySummary(self) -> str:
+        n = len(self._tidy_sets)
+        if n == 0:
+            return "No copies found. Your archive is already tidy."
+        exact = sum(1 for g in self._tidy_sets if g["exact"])
+        near = n - exact
+        parts = []
+        if exact:
+            parts.append(f"{exact} {'set' if exact == 1 else 'sets'} of exact copies")
+        if near:
+            parts.append(f"{near} {'set' if near == 1 else 'sets'} of near copies")
+        return ", ".join(parts)
+
+    @staticmethod
+    def _build_tidy_sets(report: dict) -> list[dict]:
+        out: list[dict] = []
+        for g in report.get("groups") or []:
+            members = []
+            for m in g.get("members") or []:
+                path = str(m.get("path") or "")
+                mid = str(m.get("media_id") or "")
+                if not path:
+                    continue
+                p = Path(path)
+                try:
+                    size = p.stat().st_size
+                except OSError:
+                    size = 0
+                members.append({
+                    "mediaId": mid,
+                    "thumb": f"image://archive/t/{mid}" if mid else "",
+                    "name": p.name,
+                    "folder": p.parent.name,
+                    "path": path,
+                    "size": f"{size / 1_000_000:.1f} MB" if size >= 100_000 else f"{max(size // 1000, 0)} KB",
+                })
+            if len(members) >= 2:
+                out.append({"exact": str(g.get("kind") or "") == "exact", "members": members})
+        return out
+
+    @Slot(int, int)
+    def keepCopy(self, set_index: int, member_index: int) -> None:
+        """Keep one copy. The others go to the Recycle Bin only after a plain confirm."""
+        if not (0 <= set_index < len(self._tidy_sets)):
+            return
+        members = self._tidy_sets[set_index]["members"]
+        if not (0 <= member_index < len(members)):
+            return
+        others = [m for i, m in enumerate(members) if i != member_index]
+        n = len(others)
+        self._ask(
+            f"Keep this one and bin {n} {'copy' if n == 1 else 'copies'}?",
+            f"{members[member_index]['name']} stays where it is. "
+            f"The other {'copy goes' if n == 1 else 'copies go'} to the Recycle Bin, where you can still get "
+            f"{'it' if n == 1 else 'them'} back.",
+            [m["name"] + " (" + m["folder"] + ")" for m in others],
+            yes="Move to the Recycle Bin" if n == 1 else f"Move {n} to the Recycle Bin",
+            no="Keep them all",
+            danger=True,
+            on_yes=lambda: self._bin_copies(set_index, member_index),
+        )
+
+    def _bin_copies(self, set_index: int, member_index: int) -> None:
+        from PySide6.QtCore import QFile
+
+        members = self._tidy_sets[set_index]["members"]
+        failed = 0
+        for i, m in enumerate(members):
+            if i != member_index and not QFile.moveToTrash(m["path"]):
+                failed += 1
+        del self._tidy_sets[set_index]
+        self.tidyChanged.emit()
+        if failed:
+            self._apply_result(Result("error", "Some copies could not be moved. They are still where they were."))
+        else:
+            self._apply_result(Result("ready", "Moved the extra copies to the Recycle Bin."))
 
     @Property(bool, notify=surfaceChanged)
     def activityOpen(self) -> bool:
@@ -4582,7 +4687,7 @@ class ShellBridge(QObject):
             return
         self._ask(
             f"Get {row.get('name') or 'this'} ready?",
-            str(row.get("confirm") or "Add this extra?"),
+            self._plain_confirm(row),
             [_NOTHING_LEAVES] if row.get("downloads") else [],
             yes="Get it ready",
             no="Not now",
@@ -4590,6 +4695,19 @@ class ShellBridge(QObject):
             on_yes=lambda: self._start_preflight_install(item_id, row),
             on_no=lambda: self._apply_result(Result("empty", self._setup_line("Nothing was added."))),
         )
+
+    @staticmethod
+    def _plain_confirm(row: dict) -> str:
+        """The sheet's sentence. Setup wording that talks about software internals becomes plain."""
+        text = str(row.get("confirm") or "").strip()
+        technical = re.search(r"environment|==|package|\bpin\b|python", text, re.IGNORECASE)
+        if not text or technical:
+            name = str(row.get("name") or "this extra")
+            return (
+                f"Semblon will add {name} to its own private space on this computer. "
+                "Your other programs and your photos are not touched."
+            )
+        return text
 
     def _start_preflight_install(self, item_id: str, row: dict) -> None:
         self._confirm_progress("Getting it ready\u2026")

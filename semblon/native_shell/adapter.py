@@ -441,7 +441,13 @@ class ArchiveAdapter:
             return Result("empty", "Duplicates: no duplicate candidates were found.", {"report": rec})
         return Result(
             "ready",
-            f"Duplicates: {exact} exact groups, {near} near groups.",
+            "Duplicates: "
+            + ", ".join(
+                part for part in (
+                    f"{exact} {'set' if exact == 1 else 'sets'} of exact copies" if exact else "",
+                    f"{near} {'set' if near == 1 else 'sets'} of near copies" if near else "",
+                ) if part
+            ) + ".",
             {"report": rec},
         )
 

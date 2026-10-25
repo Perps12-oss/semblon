@@ -33,7 +33,7 @@ Window {
         else if (id === "people") shell.openPeople()
         else if (id === "moment") table.focusEntry("moment")
         else if (id === "detail") table.focusEntry("detail")
-        else if (id === "tidy") { table.mode = "tidy"; shell.scanDuplicates() }
+        else if (id === "tidy") shell.openTidy()
         else if (id === "settings") settingsOpen = true
         else if (id === "zoomin") rollView.zoomBy(1.4)
         else if (id === "zoomout") rollView.zoomBy(0.7)
@@ -71,7 +71,7 @@ Window {
         visible: rollView.count > 0
         width: visible ? Theme.edge : 0
         // Pictures and people use the full width; the edge comes back with the roll.
-        opacity: viewer.active || people.active ? 0 : 1
+        opacity: viewer.active || people.active || tidy.active ? 0 : 1
         enabled: opacity > 0.5
         Behavior on opacity { NumberAnimation { duration: Theme.fast } }
     }
@@ -81,7 +81,7 @@ Window {
         anchors.left: parent.left
         anchors.right: scrub.left
         anchors.bottom: parent.bottom
-        visible: !viewer.active && !people.active
+        visible: !viewer.active && !people.active && !tidy.active
         receded: rollView.scrolling
         onPeopleRequested: shell.openPeople()
         onSettingsRequested: win.settingsOpen = true
@@ -95,7 +95,7 @@ Window {
         anchors.top: parent.top
         anchors.margins: Theme.pad
         spacing: Theme.gap
-        visible: !viewer.active && !people.active
+        visible: !viewer.active && !people.active && !tidy.active
         Tool {
             objectName: "addFolder"
             label: "Add a folder"
@@ -209,6 +209,8 @@ Window {
             delegate: Text { width: ListView.view.width; wrapMode: Text.WordWrap; text: modelData.text; font.family: Theme.ui; font.pixelSize: Theme.body; color: Theme.text }
         }
     }
+
+    Tidy { id: tidy; anchors.fill: parent; onClosed: rollView.forceActiveFocus() }
 
     Confirm { id: confirmSheet; anchors.fill: parent; z: 50 }
 

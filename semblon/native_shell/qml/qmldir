@@ -6,6 +6,7 @@ Scrubber 1.0 Scrubber.qml
 Viewer 1.0 Viewer.qml
 LightTable 1.0 LightTable.qml
 People 1.0 People.qml
+Tidy 1.0 Tidy.qml
 CommandPalette 1.0 CommandPalette.qml
 Sheet 1.0 Sheet.qml
 SettingsBody 1.0 SettingsBody.qml
