@@ -1549,6 +1549,11 @@ def ingest(
             _restore_sig()
             raise CancelledError("ingest cancelled", run_id=run_id, timings=timings)
         _restore_sig()
+        from semblon import perf_evidence
+
+        perf_evidence.record(
+            store, "ingest", strategy="hybrid", **{k: v for k, v in timings.items() if isinstance(v, (int, float))}
+        )
         emit(
             on_event,
             make_event(

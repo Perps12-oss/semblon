@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from collections import OrderedDict
 from pathlib import Path
 
@@ -979,6 +980,26 @@ def _attach_understanding(rec: dict, understanding: str, *, selection_kind: str 
     return rec
 
 
+def _attach_coverage(rec: dict, store: Path) -> None:
+    """Say so when part of the library has not been prepared for search yet."""
+    from semblon.scan_tiers import coverage_note, semantic_coverage
+
+    try:
+        conn = _open_ro(Path(store))
+    except Exception:  # noqa: BLE001 — coverage is advice, never a reason to fail a search
+        return
+    try:
+        coverage = semantic_coverage(conn)
+    finally:
+        conn.close()
+    if coverage is None:
+        return
+    rec["coverage"] = coverage
+    note = coverage_note(coverage)
+    if note:
+        rec["reason"] = f"{rec.get('reason') or ''} {note}".strip()
+
+
 def _find_similar_from_crop(
     store: Path,
     *,
@@ -1058,6 +1079,7 @@ def _find_similar_from_crop(
     if query_pixels is not None:
         dense["query_pixels"] = query_pixels
     if dense.get("status") in {"SUCCESS", "NO_RESULT"}:
+        _attach_coverage(dense, store)
         return _attach_understanding(dense, understanding, selection_kind=selection_kind)
     if dense.get("error_id") == "region.ENCODE":
         colour = _colour_result(
@@ -1253,7 +1275,8 @@ def find_similar_region(
     stored_text = overlapping_text(store, media_id or "", x, y, w, h) if media_id else ""
     if not stored_text and selection_kind in {"text", "text_priority"}:
         stored_text = _ocr_crop_text(crop)
-    return _find_similar_from_crop(
+    started = time.perf_counter()
+    result = _find_similar_from_crop(
         store,
         crop=crop,
         limit=limit,
@@ -1265,6 +1288,21 @@ def find_similar_region(
         query_pixels=pixels,
         search_quality=search_quality,
     )
+    from semblon import perf_evidence
+
+    coverage = result.get("coverage") or {}
+    perf_evidence.record(
+        store,
+        "search",
+        latency_ms=(time.perf_counter() - started) * 1000.0,
+        status=result.get("status"),
+        results=result.get("count"),
+        cancelled=bool(cancelled is not None and cancelled()),
+        searchable=coverage.get("searchable"),
+        detailed=coverage.get("detailed"),
+        total=coverage.get("total"),
+    )
+    return result
 
 
 def find_similar_crop(

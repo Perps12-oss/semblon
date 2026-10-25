@@ -57,6 +57,54 @@ def split_observers(observers: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[
     return observe, semantic
 
 
+def semantic_coverage(conn) -> dict | None:
+    """How much of the library the region search can see. None when unknown.
+
+    ``searchable`` photos have the whole-picture pass. ``detailed`` photos also
+    have the fine windows and crops. A search over a partly prepared library
+    uses this to say so instead of looking complete.
+    """
+    try:
+        row = conn.execute(
+            """SELECT COUNT(*),
+                      COALESCE(SUM((tier_done_mask & ?) != 0), 0),
+                      COALESCE(SUM((tier_done_mask & ?) != 0), 0)
+               FROM work_items WHERE media_id IS NOT NULL""",
+            (TIER_SEMANTIC, TIER_DETAIL),
+        ).fetchone()
+    except Exception:  # noqa: BLE001 — older stores have no work_items
+        return None
+    total = int(row[0] or 0)
+    if total <= 0:
+        return None
+    searchable = int(row[1] or 0)
+    detailed = int(row[2] or 0)
+    return {
+        "total": total,
+        "searchable": searchable,
+        "detailed": detailed,
+        "complete": searchable >= total and detailed >= total,
+    }
+
+
+def coverage_note(coverage: dict | None) -> str:
+    """One plain sentence, or empty when nothing is missing."""
+    if not coverage or coverage.get("complete"):
+        return ""
+    total = int(coverage["total"])
+    missing = total - int(coverage["searchable"])
+    if missing > 0:
+        return (
+            f"{missing:,} of {total:,} photos are still being prepared for search, "
+            "so more matches may appear soon."
+        )
+    sharper = total - int(coverage["detailed"])
+    return (
+        f"Fine-detail search is still being added to {sharper:,} of {total:,} photos, "
+        "so small details in those may not show up yet."
+    )
+
+
 def ensure_work_items(conn) -> None:
     conn.executescript(WORK_ITEMS_DDL)
 

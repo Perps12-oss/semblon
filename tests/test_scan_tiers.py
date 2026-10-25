@@ -260,3 +260,31 @@ def test_header_orientation_and_embedded_thumb():
     assert orientation == 6
     assert (width, height) == (10, 20)
     assert found == thumb
+
+
+def test_coverage_names_what_is_still_being_prepared(tmp_path):
+    from semblon.scan_tiers import coverage_note, semantic_coverage
+
+    conn = connect(tmp_path / "c.sqlite")
+    init_db(conn)
+    assert semantic_coverage(conn) is None
+    rows = [
+        ("a", TIER_LIBRARY | TIER_OBSERVE | TIER_SEMANTIC | TIER_DETAIL),
+        ("b", TIER_LIBRARY | TIER_OBSERVE | TIER_SEMANTIC),
+        ("c", TIER_LIBRARY | TIER_OBSERVE),
+    ]
+    for name, mask in rows:
+        conn.execute(
+            "INSERT INTO work_items(path, mtime_ns, byte_size, media_id, tier_done_mask) VALUES (?,?,?,?,?)",
+            (name, 1, 1, name, mask),
+        )
+    cov = semantic_coverage(conn)
+    assert cov == {"total": 3, "searchable": 2, "detailed": 1, "complete": False}
+    assert "1 of 3 photos are still being prepared" in coverage_note(cov)
+    conn.execute("UPDATE work_items SET tier_done_mask=? WHERE path='c'", (TIER_SEMANTIC,))
+    sharper = coverage_note(semantic_coverage(conn))
+    assert "Fine-detail search" in sharper and "2 of 3" in sharper
+    conn.execute("UPDATE work_items SET tier_done_mask=?", (TIER_SEMANTIC | TIER_DETAIL,))
+    assert semantic_coverage(conn)["complete"] is True
+    assert coverage_note(semantic_coverage(conn)) == ""
+    conn.close()
