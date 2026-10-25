@@ -12,33 +12,31 @@ from semblon.native_shell.presentation import is_primary_safe_message
 def test_focus_shortcuts_name_each_door():
     from pathlib import Path
 
-    qml = Path("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
-    assert 'objectName: "similarAction"' in qml
-    assert 'text: "Find similar"' in qml
-    assert 'objectName: "refineSameLook"' in qml
-    assert 'text: "Same look"' in qml
-    assert 'objectName: "refineSameKind"' in qml
-    assert 'text: "Same kind"' in qml
-    assert 'objectName: "refineWord"' in qml
-    assert "shellApi.setRefineMode" in qml
-    assert "shellApi.setRefineModifier" in qml
-    assert 'objectName: "sameFaceDoor"' in qml
-    assert 'objectName: "duplicatesDoor"' in qml
-    assert 'objectName: "wholePhoto"' in qml
-    assert 'objectName: "searchPhaseBadge"' in qml
+    qml = Path("semblon/native_shell/qml/Viewer.qml").read_text(encoding="utf-8")
+    for name in (
+        "similarAction",
+        "refineSameLook",
+        "refineSameKind",
+        "refineWord",
+        "sameFaceDoor",
+        "duplicatesDoor",
+        "wholePhoto",
+        "searchPhaseBadge",
+        "nameConfidence",
+    ):
+        assert f'objectName: "{name}"' in qml
+    assert 'label: "Find the picked area elsewhere"' in qml
+    assert 'label: "Same look"' in qml
+    assert 'label: "Same kind"' in qml
+    assert "shell.setRefineMode" in qml
+    assert "shell.setRefineModifier" in qml
     from semblon.native_shell.bridge import _PHASE_LABELS
 
     assert _PHASE_LABELS["checked"] == "Checked the matches"
-    assert 'objectName: "nameConfidence"' in qml
-    assert 'objectName: "searchTiming"' in qml
-    assert 'sequence: "S"' in qml
-    assert "shellApi.findSimilar()" in qml
-    assert 'sequence: "W"' in qml
-    assert 'sequence: "F"' in qml
-    assert 'sequence: "Ctrl+D"' in qml
-    assert "shellApi.scanDuplicates()" in qml
-    sidebar = Path("semblon/native_shell/qml/ContextSidebar.qml").read_text(encoding="utf-8")
-    assert "shellApi.findSimilar()" in sidebar
+    for key in ("S", "W", "F", "Ctrl+D"):
+        assert f'sequence: "{key}"' in qml
+    assert "shell.findSimilar" in qml
+    assert "shell.scanDuplicates" in qml
 
 
 def _store(tmp_path):
@@ -62,6 +60,14 @@ def _store(tmp_path):
     conn.commit()
     conn.close()
     return store
+
+
+def _settle(app, frames=20):
+    import time
+
+    for _ in range(frames):
+        app.processEvents()
+        time.sleep(0.03)
 
 
 def test_doors_confidence_badge_and_timing(tmp_path, monkeypatch):
@@ -138,12 +144,13 @@ def test_doors_confidence_badge_and_timing(tmp_path, monkeypatch):
         root.setHeight(720)
         bridge.openFocus("m1")
         bridge.setRegion(0.1, 0.2, 0.3, 0.25)
-        app.processEvents()
+        _settle(app)
         assert root.findChild(QObject, "similarAction") is not None
         assert root.findChild(QObject, "sameFaceDoor") is not None
         assert root.findChild(QObject, "duplicatesDoor") is not None
         assert root.findChild(QObject, "wholePhoto") is not None
         bridge.findSimilar()
+        _settle(app)
         assert bridge.searchDoorLabel == "Similar region"
         assert bridge.similarPhaseLabel == "Refined"
         assert bridge.similarId(0) == "m2"
@@ -156,6 +163,7 @@ def test_doors_confidence_badge_and_timing(tmp_path, monkeypatch):
         assert badge is not None
         assert badge.property("visible") is True
         bridge.nameSelection()
+        _settle(app)
         assert bridge.nameNote == "Looks like a tree."
         assert bridge.nameConfidenceLabel == "Confidence 81%."
         assert is_primary_safe_message(bridge.nameConfidenceLabel)

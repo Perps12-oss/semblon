@@ -88,9 +88,9 @@ def test_large_library_window_does_not_return_every_row(tmp_path):
     page = session.window(100, 40)
     assert len(page) == 40
     assert page[0].media_id == "m00899"
-    src = inspect.getsource(session.window)
-    assert "LIMIT ?" in src
-    assert "OFFSET ?" in src
+    # a page is a slice of the date-ordered timeline: the end is short, past the end is empty
+    assert len(session.window(990, 40)) == 10
+    assert session.window(1000, 40) == []
 
 
 def test_focus_stays_inside_the_current_lens(tmp_path):

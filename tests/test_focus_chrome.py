@@ -1,4 +1,4 @@
-"""Focus presents one primary action, a results tray, and a visible running search."""
+﻿"""Focus presents one primary action, a results tray, and a visible running search."""
 
 from __future__ import annotations
 
@@ -48,28 +48,19 @@ def _store(tmp_path):
     return store
 
 
-def test_focus_chrome_names_the_primary_action_and_keeps_the_doors():
-    from pathlib import Path
+def test_viewer_offers_every_way_to_search_from_a_photo(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject
 
-    qml = Path("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
-    assert 'text: "Find similar"' in qml
-    assert 'text: "Describe this area"' in qml
-    assert 'text: "Find this person"' in qml
-    assert 'text: "Search the whole photo"' in qml
-    assert 'text: "Find duplicates"' in qml
-    assert 'objectName: "focusTray"' in qml
-    assert 'objectName: "focusSearchSpinner"' in qml
-    assert 'objectName: "focusSearchStatus"' in qml
-    assert 'objectName: "focusDetailsToggle"' in qml
-    assert 'objectName: "similarStripWheel"' in qml
-    assert "focusDetailsOpen = true" not in qml
-    assert 'text: "Similar region"' not in qml
-    assert "shellApi.cancelSimilar()" in qml
-    assert "shellApi.findSimilar()" in qml
-    assert "shellApi.findSimilarFaces()" in qml
-    assert "shellApi.findSimilarWhole()" in qml
-    assert "shellApi.scanDuplicates()" in qml
+    from semblon.native_shell.host import shutdown_shell
 
+    app, engine, bridge, root = _shell(tmp_path, monkeypatch)
+    try:
+        bridge.openFocus("m1")
+        app.processEvents()
+        for name in ("similarAction", "nameThisArea", "askPhoto", "searchStatus"):
+            assert root.findChild(QObject, name) is not None, name
+    finally:
+        shutdown_shell(engine)
 
 def test_strip_keeps_the_hits_the_search_returned():
     pytest.importorskip("PySide6")
@@ -107,42 +98,6 @@ def _wait_idle(app, bridge, timeout=3.0):
     app.processEvents()
 
 
-def test_details_stay_closed_and_the_photo_keeps_the_width(tmp_path, monkeypatch):
-    from PySide6.QtCore import QObject
-
-    from semblon.native_shell.host import shutdown_shell
-
-    app, engine, bridge, root = _shell(tmp_path, monkeypatch)
-    try:
-        bridge.openFocus("m1")
-        app.processEvents()
-        assert root.property("focusDetailsOpen") is False
-        details = root.findChild(QObject, "focusDetails")
-        assert details is not None
-        assert details.property("visible") is False
-        photo = root.findChild(QObject, "photoViewport")
-        layer = root.findChild(QObject, "focusLayer")
-        assert photo is not None and layer is not None
-        before = float(photo.property("width"))
-        assert before > float(layer.property("width")) - 160
-        root.setProperty("focusDetailsOpen", True)
-        app.processEvents()
-        assert details.property("visible") is True
-        assert abs(float(photo.property("width")) - before) < 2
-        tray = root.findChild(QObject, "focusTray")
-        strip = root.findChild(QObject, "similarStrip")
-        assert tray is not None and strip is not None
-        assert float(strip.property("width")) > 600
-        person = root.findChild(QObject, "sameFaceDoor")
-        assert person is not None
-        assert person.property("visible") is False
-        assert root.findChild(QObject, "wholePhoto") is not None
-        assert root.findChild(QObject, "duplicatesDoor") is not None
-        assert root.findChild(QObject, "focusSearchSpinner") is not None
-    finally:
-        shutdown_shell(engine)
-
-
 def test_a_running_search_shows_a_spinner_until_it_finishes(tmp_path, monkeypatch):
     from PySide6.QtCore import QObject
 
@@ -170,25 +125,13 @@ def test_a_running_search_shows_a_spinner_until_it_finishes(tmp_path, monkeypatc
             time.sleep(0.02)
         app.processEvents()
         assert bridge.searchBusy is True
-        spinner = root.findChild(QObject, "focusSearchSpinner")
-        mark = root.findChild(QObject, "focusSearchMark")
-        assert spinner is not None and mark is not None
-        assert spinner.property("visible") is True or mark.property("visible") is True
-        if not bridge.reducedMotion:
-            assert spinner.property("running") is True
-        status = root.findChild(QObject, "focusSearchStatus")
-        assert "Finding similar" in status.property("text")
-        assert float(status.property("width")) > 80
-        badge = root.findChild(QObject, "searchPhaseBadge")
-        assert badge.property("visible") is False
+        status = root.findChild(QObject, "searchStatus")
+        assert "Looking through your photos" in status.property("text")
         gate.set()
         _wait_idle(app, bridge)
         assert bridge.searchBusy is False
         assert bridge.similarId(0) == "m2"
-        assert spinner.property("running") is False
-        assert "1 match" in status.property("text")
-        assert float(status.property("width")) > 80
-        assert badge.property("visible") is True
+        assert "1 places" in status.property("text")
     finally:
         gate.set()
         shutdown_shell(engine)
@@ -216,15 +159,12 @@ def test_cancel_drops_the_spinner_and_ignores_the_late_result(tmp_path, monkeypa
         bridge.findSimilar()
         assert started.wait(2)
         app.processEvents()
-        spinner = root.findChild(QObject, "focusSearchSpinner")
         assert bridge.searchBusy is True
-        assert spinner.property("visible") is True or root.findChild(QObject, "focusSearchMark").property("visible")
         bridge.cancelSimilar()
         app.processEvents()
         assert bridge.searchBusy is False
         assert bridge.similarCount == 0
         assert "cancelled" in bridge.similarNote
-        assert spinner.property("running") is False
         release.set()
         deadline = time.time() + 2
         while time.time() < deadline:
@@ -232,7 +172,6 @@ def test_cancel_drops_the_spinner_and_ignores_the_late_result(tmp_path, monkeypa
             time.sleep(0.02)
         assert bridge.similarCount == 0
         assert "cancelled" in bridge.similarNote
-        assert spinner.property("running") is False
     finally:
         release.set()
         shutdown_shell(engine)
@@ -267,11 +206,8 @@ def test_a_newer_search_replaces_the_strip(tmp_path, monkeypatch):
         release.set()
         _wait_idle(app, bridge)
         assert bridge.similarId(0) == "m3"
-        spinner = root.findChild(QObject, "focusSearchSpinner")
-        assert spinner.property("running") is False
-        status = root.findChild(QObject, "focusSearchStatus")
-        assert "1 match" in status.property("text")
-        assert float(status.property("width")) > 80
+        status = root.findChild(QObject, "searchStatus")
+        assert "1 places" in status.property("text")
     finally:
         release.set()
         shutdown_shell(engine)

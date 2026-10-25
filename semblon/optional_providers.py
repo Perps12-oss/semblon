@@ -40,7 +40,7 @@ def optional_model_providers() -> list[dict]:
             else (
                 "Description is turned off."
                 if vlm_state == "DISABLED"
-                else "Description model is not installed."
+                else "Photo descriptions are not set up."
             ),
         },
     ]
@@ -56,7 +56,7 @@ def install_choice(state: str, error_id: str, data: dict | None) -> tuple[str, s
     """
     payload = data if isinstance(data, dict) else {}
     if state == "unavailable" and error_id == "region.NO_PACK":
-        return "region_pack", "Install region model"
+        return "region_pack", "Get finding-by-look ready"
     channels = payload.get("channels") if isinstance(payload.get("channels"), list) else []
     object_blocked = any(
         isinstance(row, dict)
@@ -67,9 +67,9 @@ def install_choice(state: str, error_id: str, data: dict | None) -> tuple[str, s
     providers = payload.get("optional_providers")
     rows = providers if isinstance(providers, list) else None
     if object_blocked or _provider_missing(_provider_row(rows, "object")):
-        return "object_pack", "Install object model"
+        return "object_pack", "Get finding-by-object ready"
     if _provider_missing(_provider_row(rows, "vlm")):
-        return "vlm_local", "Install description model"
+        return "vlm_local", "Get photo descriptions ready"
     return "", ""
 
 

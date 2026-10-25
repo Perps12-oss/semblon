@@ -138,97 +138,6 @@ def _find_visual(item, name: str):
     return None
 
 
-def test_timeline_chrome_object_names(tmp_path, monkeypatch):
-    pytest.importorskip("PySide6")
-    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtCore import QObject
-    from PySide6.QtQuick import QQuickItem
-    from PySide6.QtWidgets import QApplication
-
-    from semblon.native_shell.host import build_shell, shutdown_shell
-
-    store = tmp_path / "s.sqlite"
-    _seed_days(store, tmp_path, [("a", 2024, 5, 1), ("b", 2025, 1, 2)])
-    app = QApplication.instance() or QApplication([])
-    _app, engine = build_shell(store, app=app)
-    root = engine.rootObjects()[0]
-    bridge = engine._semblon_bridge
-    for _ in range(20):
-        app.processEvents()
-    bridge.showLibrary()
-    for _ in range(20):
-        app.processEvents()
-    assert bridge.timelineDensity
-    hero = root.findChild(QQuickItem, "timelineHero")
-    assert hero is not None
-    assert root.findChild(QObject, "timelineRail") is None
-    assert _find_visual(hero, "timelineYear_2024") is not None
-    assert _find_visual(hero, "timelineMonth_2024-05") is not None
-    assert root.findChild(QObject, "stickyHeader") is not None
-    assert root.findChild(QObject, "zeroResultFilter") is not None
-    assert root.findChild(QObject, "archiveSidebar") is not None
-    assert root.findChild(QObject, "contextSidebarSearch") is not None
-    assert root.findChild(QObject, "libraryButton") is not None
-    assert root.findChild(QObject, "homeButton") is not None
-    assert root.findChild(QObject, "sidebarSectionMedia") is not None
-    assert root.findChild(QObject, "sidebarSectionFolders") is not None
-    assert root.findChild(QQuickItem, "memoryCalendar") is not None
-    header = root.findChild(QQuickItem, "archiveHeaderBand")
-    assert header is not None
-    viewport = root.findChild(QQuickItem, "fieldViewport")
-    assert viewport is not None
-    assert viewport.clip() is True
-    grid = root.findChild(QQuickItem, "fieldGrid")
-    assert grid is not None
-    assert grid.clip() is True
-    # The calendar fills the library stage until a day is opened.
-    assert root.width() >= 900
-    assert bridge.libraryWorkspace == "calendar"
-    assert header.isVisible() is True
-    assert viewport.isVisible() is False
-    pane = header.parentItem()
-    assert pane is not None
-    assert header.width() >= pane.width() - 2
-    assert abs(header.x()) <= 2
-    assert abs(header.height() - pane.height()) <= 2
-    split = root.findChild(QObject, "archiveSplit")
-    assert split is not None
-    assert split.property("visible") is False
-    wheel = root.findChild(QObject, "archiveZoomWheel")
-    assert wheel is not None and wheel.property("enabled") is True
-    assert root.findChild(QObject, "timelineDensitySegment") is not None
-    assert root.findChild(QObject, "calendarJump") is not None
-    assert root.findChild(QObject, "yearMatrix") is not None
-    assert bridge.calendarView == "months"
-    assert root.findChild(QObject, "sidebarYear_2024") is None
-    assert root.findChild(QObject, "sidebarDay_2024-05-01") is None
-    bridge.selectMonth("2024-05")
-    assert bridge.scopeKind == "month"
-    assert bridge.calendarMonth == "2024-05"
-    assert bridge.libraryWorkspace == "calendar"
-    assert bridge.fieldSectionsActive is True
-    for _ in range(20):
-        app.processEvents()
-    sections = root.findChild(QQuickItem, "fieldSections")
-    assert sections is not None
-    assert sections.isVisible() is False
-    assert header.isVisible() is True
-    bridge.openDay("2024-05-01")
-    for _ in range(20):
-        app.processEvents()
-    assert bridge.libraryWorkspace == "grid"
-    assert bridge.scopeKind == "day"
-    assert header.isVisible() is False
-    assert viewport.isVisible() is True
-    assert viewport.width() >= pane.width() - 2
-    assert abs(viewport.x()) <= 2
-    assert grid.isVisible() is True
-    assert wheel.property("enabled") is False
-    title = root.findChild(QObject, "gridWorkspaceTitle")
-    assert title is not None and "2024" in str(title.property("text"))
-    shutdown_shell(engine)
-
-
 def test_density_counts_match_year_rows(tmp_path):
     store = tmp_path / "s.sqlite"
     _seed_days(
@@ -417,45 +326,6 @@ def test_bridge_calendar_browse_does_not_change_scope(tmp_path, monkeypatch):
     bridge.shutdown()
 
 
-def test_calendar_chrome_object_names(tmp_path, monkeypatch):
-    pytest.importorskip("PySide6")
-    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtCore import QObject
-    from PySide6.QtQuick import QQuickItem
-    from PySide6.QtWidgets import QApplication
-
-    from semblon.native_shell.host import build_shell, shutdown_shell
-
-    store = tmp_path / "s.sqlite"
-    _seed_days(store, tmp_path, [("a", 2024, 5, 1), ("b", 2024, 5, 1), ("c", 2025, 1, 2)])
-    app = QApplication.instance() or QApplication([])
-    _app, engine = build_shell(store, app=app)
-    root = engine.rootObjects()[0]
-    bridge = engine._semblon_bridge
-    for _ in range(30):
-        app.processEvents()
-    bridge.showLibrary()
-    for _ in range(20):
-        app.processEvents()
-    cal = root.findChild(QQuickItem, "memoryCalendar")
-    assert cal is not None
-    assert root.findChild(QObject, "calendarTitle") is not None
-    assert root.findChild(QObject, "calendarPrev") is not None
-    assert root.findChild(QObject, "calendarNext") is not None
-    assert bridge.calendarMonth == "2025-01"
-    bridge.setCalendarMonth("2024-05")
-    for _ in range(20):
-        app.processEvents()
-    assert bridge.calendarMonth == "2024-05"
-    assert _find_visual(cal, "calendarDay_2024-05-01") is not None
-    bridge.selectDay("2024-05-01")
-    assert bridge.scopeKind == "day"
-    assert bridge._model.rowCount() == 2
-    bridge.clearScope()
-    assert bridge.scopeKind == ""
-    shutdown_shell(engine)
-
-
 def test_calendar_large_day_map_cells_are_bounded():
     day_map = {f"2020-06-{d:02d}": [f"m{d}"] for d in range(1, 31)}
     cells = calendar_month_cells("2020-06", day_map)
@@ -603,59 +473,6 @@ def test_bridge_field_sections_for_month_and_range(tmp_path, monkeypatch):
     bridge.shutdown()
 
 
-def test_field_sections_chrome(tmp_path, monkeypatch):
-    pytest.importorskip("PySide6")
-    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtQuick import QQuickItem
-    from PySide6.QtWidgets import QApplication
-
-    from semblon.native_shell.host import build_shell, shutdown_shell
-
-    store = tmp_path / "s.sqlite"
-    _seed_days(
-        store,
-        tmp_path,
-        [("a", 2024, 5, 1), ("b", 2024, 5, 10), ("c", 2024, 5, 10)],
-    )
-    app = QApplication.instance() or QApplication([])
-    _app, engine = build_shell(store, app=app)
-    root = engine.rootObjects()[0]
-    bridge = engine._semblon_bridge
-    for _ in range(30):
-        app.processEvents()
-    bridge.showLibrary()
-    for _ in range(20):
-        app.processEvents()
-    bridge.selectMonth("2024-05")
-    for _ in range(30):
-        app.processEvents()
-    assert bridge.fieldSectionsActive is True
-    assert bridge.libraryWorkspace == "calendar"
-    header = root.findChild(QQuickItem, "archiveHeaderBand")
-    sections = root.findChild(QQuickItem, "fieldSections")
-    assert header is not None and header.isVisible() is True
-    assert sections is not None
-    assert sections.isVisible() is False
-    grid = root.findChild(QQuickItem, "fieldGrid")
-    assert grid is not None
-    assert grid.isVisible() is False
-    bridge.openDay("2024-05-10")
-    for _ in range(20):
-        app.processEvents()
-    assert bridge.libraryWorkspace == "grid"
-    assert bridge.fieldSectionsActive is False
-    assert header.isVisible() is False
-    assert grid.isVisible() is True
-    bridge.showCalendar()
-    for _ in range(20):
-        app.processEvents()
-    assert bridge.libraryWorkspace == "calendar"
-    assert bridge.revealedDay == "2024-05-10"
-    assert bridge.scopeKind == ""
-    assert grid.isVisible() is False
-    assert header.isVisible() is True
-
-
 def _ctrl_wheel(window, delta_y: int) -> None:
     from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
     from PySide6.QtGui import QWheelEvent
@@ -676,7 +493,9 @@ def _ctrl_wheel(window, delta_y: int) -> None:
     QApplication.sendEvent(window, event)
 
 
-def test_photo_zoom_and_keyboard_navigation(tmp_path, monkeypatch):
+
+def test_roll_keyboard_opens_a_photo_and_zooms(tmp_path, monkeypatch):
+    """The Roll is keyboard-first: arrows move, Enter opens, Escape returns, Ctrl+wheel zooms."""
     pytest.importorskip("PySide6")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtCore import Qt
@@ -696,96 +515,56 @@ def test_photo_zoom_and_keyboard_navigation(tmp_path, monkeypatch):
     _app, engine = build_shell(store, app=app)
     root = engine.rootObjects()[0]
     bridge = engine._semblon_bridge
-    for _ in range(20):
+    try:
+        for _ in range(30):
+            app.processEvents()
+        roll = root.findChild(QQuickItem, "roll")
+        grid = root.findChild(QQuickItem, "rollGrid")
+        assert roll is not None and grid is not None
+        assert int(roll.property("count")) == 4
+        grid.forceActiveFocus()
         app.processEvents()
-    bridge.showLibrary()
-    for _ in range(20):
-        app.processEvents()
-    root.requestActivate()
-    app.processEvents()
-
-    calendar = root.findChild(QQuickItem, "memoryCalendar")
-    timeline = root.findChild(QQuickItem, "timelineHero")
-    grid = root.findChild(QQuickItem, "fieldGrid")
-    photo = root.findChild(QQuickItem, "photoView")
-    assert calendar is not None and timeline is not None and grid is not None and photo is not None
-
-    calendar.forceActiveFocus()
-    app.processEvents()
-    assert calendar.hasActiveFocus()
-    for _ in range(6):
+        assert grid.hasActiveFocus()
+        start = int(roll.property("currentPhoto"))
         QTest.keyClick(root, Qt.Key.Key_Right)
         app.processEvents()
-    assert calendar.property("focusIndex") == 5
-    QTest.keyClick(root, Qt.Key.Key_Left)
-    app.processEvents()
-    assert calendar.property("focusIndex") == 4
-    QTest.keyClick(root, Qt.Key.Key_Right)
-    app.processEvents()
-    QTest.keyClick(root, Qt.Key.Key_Return)
-    app.processEvents()
-    assert bridge.scopeKind == "day"
-    assert bridge.scopeLabel == "2025-01-04"
-    assert bridge.libraryWorkspace == "grid"
-    assert bridge.focusId == ""
-    header = root.findChild(QQuickItem, "archiveHeaderBand")
-    assert header is not None and header.isVisible() is False
-    assert grid.isVisible() is True
+        assert int(roll.property("currentPhoto")) == start + 1
 
-    bridge.showCalendar()
-    for _ in range(10):
+        before = float(roll.property("cellTarget"))
+        for _ in range(3):
+            _ctrl_wheel(root, 240)
+            app.processEvents()
+        assert float(roll.property("cellTarget")) > before
+        QTest.keyClick(root, Qt.Key.Key_Minus)
         app.processEvents()
-    assert bridge.libraryWorkspace == "calendar"
-    assert bridge.scopeKind == ""
-    assert bridge.revealedDay == "2025-01-04"
-    assert header.isVisible() is True
-    timeline.forceActiveFocus()
-    app.processEvents()
-    QTest.keyClick(root, Qt.Key.Key_Right)
-    app.processEvents()
-    assert str(timeline.property("focusYear") or "") == "2024"
-    QTest.keyClick(root, Qt.Key.Key_Left)
-    app.processEvents()
-    assert str(timeline.property("focusYear") or "") == "2025"
-    QTest.keyClick(root, Qt.Key.Key_Return)
-    app.processEvents()
-    assert bridge.scopeKind == "year"
-    assert bridge.scopeLabel == "2025"
-    assert bridge.libraryWorkspace == "calendar"
 
-    bridge.showEverything()
-    for _ in range(10):
-        app.processEvents()
-    assert bridge.libraryWorkspace == "grid"
-    assert bridge.scopeKind == ""
-    grid.forceActiveFocus()
-    app.processEvents()
-    assert grid.hasActiveFocus()
-    start_index = int(grid.property("currentIndex"))
-    QTest.keyClick(root, Qt.Key.Key_Right)
-    app.processEvents()
-    assert int(grid.property("currentIndex")) == start_index + 1
+        QTest.keyClick(root, Qt.Key.Key_Return)
+        for _ in range(10):
+            app.processEvents()
+        assert bridge.focusId != ""
+        QTest.keyClick(root, Qt.Key.Key_Escape)
+        for _ in range(10):
+            app.processEvents()
+        assert bridge.focusId == ""
+    finally:
+        shutdown_shell(engine)
 
-    bridge.openFocus("c")
-    for _ in range(10):
-        app.processEvents()
-    assert bridge.focusId == "c"
-    assert float(photo.property("scale")) == pytest.approx(1)
-    assert bridge.calendarView == "months"
-    for _ in range(4):
-        _ctrl_wheel(root, 240)
-        app.processEvents()
-    assert float(photo.property("scale")) > 1.2
-    assert bridge.calendarView == "months"
-    QTest.keyClick(root, Qt.Key.Key_Right)
-    app.processEvents()
-    assert bridge.focusId == "b"
-    assert float(photo.property("scale")) == pytest.approx(1)
-    QTest.keyClick(root, Qt.Key.Key_Left)
-    app.processEvents()
-    assert bridge.focusId == "c"
-    QTest.keyClick(root, Qt.Key.Key_Escape)
-    app.processEvents()
-    assert bridge.focusId == ""
-    assert bridge.calendarView == "months"
-    shutdown_shell(engine)
+
+def test_roll_shows_a_welcome_when_there_are_no_photos(tmp_path, monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.host import build_shell, shutdown_shell
+
+    app = QApplication.instance() or QApplication([])
+    _app, engine = build_shell(tmp_path / "empty.sqlite", app=app)
+    root = engine.rootObjects()[0]
+    try:
+        for _ in range(10):
+            app.processEvents()
+        assert root.findChild(QObject, "emptyState").property("visible") is True
+        assert root.findChild(QObject, "addFolder") is not None
+    finally:
+        shutdown_shell(engine)

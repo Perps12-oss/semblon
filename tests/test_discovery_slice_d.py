@@ -17,11 +17,11 @@ def test_unified_basis_messages_are_allowlisted():
         "Similar (Similar look): 3 matches.",
         "Similar (Text in the selection): 1 match.",
         "Similar (Unknown region): 1 match.",
-        "Similar (Similar look): looking through photos already indexed.",
+        "Similar (Similar look): looking through photos Semblon has already seen.",
         "Similar (Similar look): cancelled.",
         "Similar (Similar look): search failed.",
         "Similar (Similar look): the region model is not installed.",
-        "Similar (Similar look): these photos are not indexed for region search yet.",
+        "Similar (Similar look): Semblon has not looked closely at these photos yet.",
         "Similar (Similar look): nothing close enough.",
         "Similar (Similar look): first look, still refining.",
         "Similar (Similar look): first look found nothing yet.",
@@ -51,10 +51,10 @@ def test_unified_basis_messages_are_allowlisted():
         "Search looks at photos with the word red.",
         "Showing Whole area.",
         "Showing Mug.",
-        "Still indexing. Photos already added can be opened.",
-        "Still indexing. This photo can already be searched.",
-        "This photo is not indexed yet. Add its folder so search can see inside it.",
-        "This photo has a coarse index only. Matches may miss the area you point at.",
+        "Still looking through your photos. Ones already added can be opened.",
+        "Still looking through your photos. This one can already be searched.",
+        "Semblon has not looked at this photo yet. Add its folder so search can see inside it.",
+        "Semblon has only had a quick look at this photo. Matches may miss the area you point at.",
     ):
         assert is_primary_safe_message(line)
 

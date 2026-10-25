@@ -192,7 +192,7 @@ def test_start_screen_query_reports_unavailable_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(shell_bridge.sys, "platform", "win32")
 
     def _raise_unavailable(parent=None):
-        raise overlay.ScreenSelectionUnavailable("Screen query is only available on Windows.")
+        raise overlay.ScreenSelectionUnavailable("Picking on screen is only available on Windows.")
 
     monkeypatch.setattr(overlay, "select_screen_region", _raise_unavailable)
     store = _store(tmp_path)

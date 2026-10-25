@@ -279,6 +279,9 @@ class Application:
     def archive_window(self, offset: int, limit: int) -> list[MediaRef]:
         return self.archive.window(offset, limit)
 
+    def archive_days(self) -> list[str]:
+        return self.archive.days()
+
     def remember_region(
         self,
         media_id: str,

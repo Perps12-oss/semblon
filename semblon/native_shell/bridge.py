@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -21,7 +22,7 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QFileDialog
 
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
@@ -59,6 +60,7 @@ from semblon.native_shell.editorial import (
     MEDIA_KINDS,
     UNDATED_DAY,
     calendar_month_cells,
+    day_detail,
     day_section_short_label,
     default_calendar_month,
     field_sections,
@@ -103,35 +105,53 @@ SCREEN_QUERY_MODE_TEXT_PRIORITY = "text_priority"
 SCREEN_QUERY_MODES = (SCREEN_QUERY_MODE_VISUAL, SCREEN_QUERY_MODE_TEXT_PRIORITY)
 
 _INSTALL_LABELS = {
-    "region_pack": "Install region model",
-    "object_pack": "Install object model",
-    "vlm_local": "Install description model",
+    "region_pack": "Get finding-by-look ready",
+    "object_pack": "Get finding-by-object ready",
+    "vlm_local": "Get photo descriptions ready",
 }
 _INSTALL_METHODS = {
     "region_pack": "install_region_pack",
     "object_pack": "install_object_pack",
     "vlm_local": "install_vlm",
 }
+_NOTHING_LEAVES = "Nothing leaves your computer except the add-on download."
 _INSTALL_PROMPTS = {
     "region_pack": (
-        "Install region model?",
-        "Semblon will download the region model onto this computer.\n\n"
-        "You stay on this screen. When it finishes, this search runs again.\n\n"
-        "Continue?",
+        "Get finding-by-look ready?",
+        "Semblon needs a small add-on on this computer to find places that look like the detail you pointed at. "
+        "When it is ready, this search runs again on its own.",
+        ["About 85 MB, downloaded once.", _NOTHING_LEAVES],
     ),
     "object_pack": (
-        "Install object model?",
-        "Semblon will download the object model onto this computer.\n\n"
-        "You stay on this screen. When it finishes, this search runs again.\n\n"
-        "Continue?",
+        "Get finding-by-object ready?",
+        "Semblon needs a small add-on on this computer to recognise things in pictures, such as a bicycle or a cake. "
+        "When it is ready, this search runs again on its own.",
+        ["About 4 MB, downloaded once.", _NOTHING_LEAVES],
     ),
     "vlm_local": (
-        "Install description model?",
-        "Semblon will install picture description on this computer.\n\n"
-        "You stay on this screen. When it finishes, this search runs again.\n\n"
-        "Continue?",
+        "Get photo descriptions ready?",
+        "Semblon will set up photo descriptions on this computer. "
+        "When it is ready, this search runs again on its own.",
+        ["Everything stays on this computer."],
     ),
 }
+_SETUP_NAMES = {
+    "region_pack": "finding-by-look",
+    "object_pack": "finding-by-object",
+    "vlm_local": "photo descriptions",
+}
+_JARGON = re.compile(
+    r"\b(models?|packs?|quer(?:y|ies)|embeddings?|index(?:ed|es|ing)?|capabilit(?:y|ies)|schema|api|sha256|onnx)\b",
+    re.IGNORECASE,
+)
+
+
+def _plain(text: object, fallback: str) -> str:
+    """Words a person can read. Engine wording never reaches a dialog or banner."""
+    line = " ".join(str(text or "").split())
+    if not line or _JARGON.search(line):
+        return fallback
+    return line
 
 
 def reduced_motion() -> bool:
@@ -240,6 +260,9 @@ class _TaskThread(QThread):
             self.failed.emit(str(exc) or "task failed")
 
 
+_NO_MATCHES = object()
+
+
 class ShellBridge(QObject):
     lensChanged = Signal()
     focusChanged = Signal()
@@ -262,6 +285,8 @@ class ShellBridge(QObject):
     screenQueryChanged = Signal()
     preflightChanged = Signal()
     tasksChanged = Signal()
+    confirmChanged = Signal()
+    tidyChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -279,6 +304,7 @@ class ShellBridge(QObject):
         self._result_text = ""
         self._region_norm: tuple[float, float, float, float] | None = None
         self._similar = SimilarStripModel()
+        self._matches_prior = _NO_MATCHES
         self._similar_state = "idle"
         self._similar_note = ""
         self._similar_basis = ""
@@ -344,6 +370,13 @@ class ShellBridge(QObject):
         self._selected_observation = ""
         self._activity_rows: list[dict] = []
         self._activity_open = False
+        self._confirm = {"open": False, "busy": False}
+        self._confirm_yes = self._confirm_no = None
+        self._confirm_keep = False
+        self._confirm_dismiss_is_no = True
+        self._tidy_open = False
+        self._tidy_sets: list[dict] = []
+        self._name_apart = False
         self._tasks_open = False
         self._mode = self._load_shell_mode()
         self._atmosphere_id = self._load_atmosphere_id()
@@ -1354,6 +1387,17 @@ class ShellBridge(QObject):
         if heading_changed:
             self.editorialChanged.emit()
 
+    @Slot(int, bool, bool, result="QVariantMap")
+    def rollLayout(self, columns: int, grouped: bool, dayRows: bool):
+        """Months, day dividers and rows of pictures for the Roll. Counts are per section."""
+        from semblon.native_shell.sections import build_sections
+
+        return build_sections(self._model.days(), int(columns), grouped=bool(grouped), day_rows=bool(dayRows))
+
+    @Slot(int, result="QVariantMap")
+    def cellInfo(self, index: int):
+        return self._model.row_info(int(index))
+
     @Slot(int, result=str)
     def dayAt(self, index: int) -> str:
         """Day key for a Field row (sticky header)."""
@@ -1559,9 +1603,9 @@ class ShellBridge(QObject):
     @Property(str, notify=screenQueryChanged)
     def screenQueryProgressLabel(self) -> str:
         if self._screen_query_state == "selecting":
-            return "Screen query in progress: drag a box on your screen."
+            return "Pick on screen in progress: drag a box on your screen."
         if self._screen_query_state == "searching":
-            return "Screen query in progress: searching your library."
+            return "Pick on screen: searching your photos."
         return ""
 
     @Property(str, notify=screenQueryChanged)
@@ -1744,7 +1788,7 @@ class ShellBridge(QObject):
 
     @Property(str, notify=similarChanged)
     def installSuggestionLabel(self) -> str:
-        return self._install_suggestion_label or "Install required model"
+        return self._install_suggestion_label or "Get this ready"
 
     @Property(str, notify=similarChanged)
     def similarPhase(self) -> str:
@@ -2024,7 +2068,7 @@ class ShellBridge(QObject):
         kept = list(self._similar._rows)
         self._publish_similar(
             "loading",
-            f"Similar ({label}): looking through photos already indexed.",
+            f"Similar ({label}): looking through photos Semblon has already seen.",
             kept,
             basis=basis,
             basis_label=label,
@@ -2174,23 +2218,23 @@ class ShellBridge(QObject):
             coarse = int((row[1] if row else 0) or 0)
         except sqlite3.Error:
             if self._job_active:
-                return "indexing", "Still indexing. Photos already added can be opened."
+                return "indexing", "Still looking through your photos. Ones already added can be opened."
             return "unknown", ""
         if patch > 0 and self._job_active:
-            result = ("patch", "Still indexing. This photo can already be searched.")
+            result = ("patch", "Still looking through your photos. This one can already be searched.")
         elif patch > 0:
             result = ("patch", "")
         elif self._job_active:
-            result = ("indexing", "Still indexing. Photos already added can be opened.")
+            result = ("indexing", "Still looking through your photos. Ones already added can be opened.")
         elif coarse > 0:
             result = (
                 "fallback",
-                "This photo has a coarse index only. Matches may miss the area you point at.",
+                "Semblon has only had a quick look at this photo. Matches may miss the area you point at.",
             )
         else:
             result = (
                 "unindexed",
-                "This photo is not indexed yet. Add its folder so search can see inside it.",
+                "Semblon has not looked at this photo yet. Add its folder so search can see inside it.",
             )
         if not self._job_active:
             if len(self._index_cache) > 256:
@@ -2219,6 +2263,59 @@ class ShellBridge(QObject):
     @property
     def similar_model(self) -> SimilarStripModel:
         return self._similar
+
+    @Property(bool, notify=similarChanged)
+    def matchesOnRoll(self) -> bool:
+        return self._matches_prior is not _NO_MATCHES
+
+    @Slot()
+    def showMatchesOnRoll(self) -> None:
+        """Lay the current matches out on the Roll, best first. Nothing is written."""
+        ids = [self._similar.media_id(row) for row in range(self._similar.rowCount())]
+        ids = [item for item in ids if item]
+        if not ids:
+            return
+        if self._matches_prior is _NO_MATCHES:
+            self._matches_prior = self._model.media_ids()
+        self._model.set_media_ids(ids)
+        self.similarChanged.emit()
+
+    @Slot()
+    def clearMatches(self) -> None:
+        if self._matches_prior is _NO_MATCHES:
+            return
+        prior = self._matches_prior
+        self._matches_prior = _NO_MATCHES
+        self._model.set_media_ids(prior)
+        self.similarChanged.emit()
+
+    @Slot(str, result="QVariantMap")
+    def dayDetail(self, day: str):
+        """A day's photos, face count and named people in one read for the Roll."""
+        return day_detail(self._prefs_store(), day)
+
+    @Slot(str)
+    def addFolderPath(self, folder: str) -> None:
+        """Add a folder that was dropped on the window. Files stay where they are."""
+        text = str(folder or "").strip()
+        if text.startswith("file:"):
+            text = QUrl(text).toLocalFile()
+        path = Path(text) if text else None
+        if path is None or not path.is_dir():
+            self._apply_result(
+                Result("unavailable", "That is not a folder. Drop a folder of photos, or use Add a folder.")
+            )
+            return
+        if self._jobs.busy:
+            return
+        self._start_ingest(path)
+
+    @Property(float, notify=jobChanged)
+    def jobFraction(self) -> float:
+        total = int(self._progress_total)
+        if total <= 0:
+            return 0.0
+        return max(0.0, min(1.0, float(self._progress_current) / float(total)))
 
     def _set_result(self, text: str) -> None:
         self._result_text = present_message(self._mode, text, fallback="Nothing was searched.")
@@ -2522,13 +2619,13 @@ class ShellBridge(QObject):
                 else f"Similar ({label}): nothing close enough."
             )
         elif install_action == "region_pack":
-            note = f"Similar ({label}): the region model is not installed."
+            note = f"Similar ({label}): finding by look isn't set up yet."
         elif install_action == "object_pack" and state == "unavailable":
-            note = f"Similar ({label}): the object model is not installed."
+            note = f"Similar ({label}): finding things in pictures isn't set up yet."
         elif install_action == "vlm_local" and state == "unavailable":
-            note = f"Similar ({label}): the description model is not installed."
+            note = f"Similar ({label}): photo descriptions aren't set up yet."
         elif state == "unavailable" and error_id == "region.NO_PATCH_INDEX":
-            note = f"Similar ({label}): these photos are not indexed for region search yet."
+            note = f"Similar ({label}): Semblon has not looked closely at these photos yet."
         elif error_id in {"region.ENCODE", "region.NO_IMAGE", "region.NO_STORE"}:
             state = "error"
             note = f"Similar ({label}): search failed."
@@ -2724,6 +2821,11 @@ class ShellBridge(QObject):
         if not row:
             return ""
         return str(row.get("title") or "")
+
+    @Property(str, notify=peopleChanged)
+    def selectedLabel(self) -> str:
+        row = self._people.row(self._selected_subject)
+        return str(row.get("label") or "") if row else ""
 
     @Property(int, notify=peopleChanged)
     def selectedCount(self) -> int:
@@ -3342,6 +3444,15 @@ class ShellBridge(QObject):
                     "members": list(members),
                 }
             )
+        counts: dict[str, int] = {}
+        for row in rows:
+            row["faceIds"] = [str(m.get("face_id") or "") for m in row["members"] if m.get("face_id")][:3]
+            row["label"] = self._friendly_label(row)
+            if row["named"]:
+                key = row["title"].strip().casefold()
+                counts[key] = counts.get(key, 0) + 1
+        for row in rows:
+            row["twin"] = bool(row["named"]) and counts.get(row["title"].strip().casefold(), 0) > 1
         self._people.set_rows(rows)
         self._review_text = self._adapter.review_counts().message
         self._unresolved_text = self._adapter.unresolved(include_rejected=self._mode == ADVANCED).message
@@ -3354,6 +3465,24 @@ class ShellBridge(QObject):
             self._person_days = []
         else:
             self._reload_person_days()
+
+    @staticmethod
+    def _friendly_label(row: dict) -> str:
+        if row["named"]:
+            return row["title"]
+        kind = str(row.get("kind") or "")
+        if kind == "track":
+            return "Face from a video"
+        if kind == "unassigned":
+            return "Single face"
+        return "Unnamed group"
+
+    def _same_name_row(self, subject: str, name: str) -> dict | None:
+        key = str(name or "").strip().casefold()
+        for row in self._people._rows:
+            if row["subject"] != subject and row.get("named") and row["title"].strip().casefold() == key:
+                return row
+        return None
 
     @Slot()
     def escape(self) -> None:
@@ -3604,7 +3733,7 @@ class ShellBridge(QObject):
         if not self.screenQueryAvailable:
             self._publish_similar(
                 "unavailable",
-                "Screen query: only available on Windows.",
+                "Pick on screen: only available on Windows.",
                 [],
                 basis="region",
                 basis_label="Similar look",
@@ -3618,7 +3747,7 @@ class ShellBridge(QObject):
         self._set_install_suggestion("", "")
         self._publish_similar(
             "loading",
-            "Screen query in progress: drag a box on your screen.",
+            "Pick on screen in progress: drag a box on your screen.",
             [],
             basis="region",
             basis_label=(
@@ -3640,7 +3769,7 @@ class ShellBridge(QObject):
             self._set_install_suggestion("", "")
             self._publish_similar(
                 "unavailable",
-                f"Screen query: {exc}",
+                f"Pick on screen: {exc}",
                 [],
                 basis="region",
                 basis_label="Similar look",
@@ -3651,7 +3780,7 @@ class ShellBridge(QObject):
             self._set_screen_query_state("idle")
             self._publish_similar(
                 "empty",
-                "Screen query cancelled.",
+                "Pick on screen cancelled.",
                 [],
                 basis="region",
                 basis_label="Similar look",
@@ -3978,6 +4107,11 @@ class ShellBridge(QObject):
         item = self._item_for_decision(subject)
         try:
             if kind == "name":
+                twin = None if self._name_apart else self._same_name_row(subject, text)
+                own = self._people.row(subject)
+                if twin and not (own and own.get("named") and own.get("personId") == twin.get("personId")):
+                    self._ask_same_name(subject, text.strip(), twin)
+                    return self._people_note
                 rec = apply_name(self._jobs.store, run_id, item, text)
                 return self._after_decision(decision_success("name", str(rec.get("display_name") or "")))
             if kind == "ignore":
@@ -3988,6 +4122,11 @@ class ShellBridge(QObject):
                 return self._after_decision(decision_success("note"))
             if kind == "merge":
                 other = text.strip()
+                a, b = self._people.row(subject), self._people.row(other)
+                if a and b and a.get("named") and b.get("named") and a.get("personId") != b.get("personId"):
+                    return self._after_decision(
+                        "These are two named people, so Semblon will not join them. Rename one to tell them apart."
+                    )
                 apply_merge(self._jobs.store, run_id, [subject, other])
                 return self._after_decision(decision_success("merge"))
             if kind == "split":
@@ -4007,6 +4146,35 @@ class ShellBridge(QObject):
         except Exception as exc:  # noqa: BLE001 — show the decision failure
             return self._after_decision(str(exc))
         return self._after_decision("That decision is not available.")
+
+    def _ask_same_name(self, subject: str, name: str, twin: dict) -> None:
+        count = int(twin.get("faceCount") or 0)
+        self._ask(
+            f"You already have someone called {name}",
+            f"One group is already named {name}, with {count} {'photo' if count == 1 else 'photos'}. Is this the same person?",
+            ["Same person puts the two groups together.", "Someone else keeps both, so you can tell them apart."],
+            yes="Same person",
+            no="Someone else",
+            on_yes=lambda: self.decide("merge", str(twin["subject"]), subject),
+            on_no=lambda: self._name_as_someone_else(subject, name),
+            dismiss_is_no=False,
+        )
+
+    def _name_as_someone_else(self, subject: str, name: str) -> None:
+        self._name_apart = True
+        try:
+            self.decide("name", subject, name)
+        finally:
+            self._name_apart = False
+
+    @Slot(str, result=str)
+    def sameAs(self, target: str) -> str:
+        """The single 'Same as…' picker: the selected group is the same as `target`."""
+        if not self._selected_subject or not target or target == self._selected_subject:
+            return self._after_decision("Pick a different group to say this is the same.")
+        named_target = bool((self._people.row(target) or {}).get("named"))
+        first, second = (target, self._selected_subject) if named_target else (self._selected_subject, target)
+        return self.decide("merge", first, second)
 
     @Slot(result=str)
     def mergeSelectedGroup(self) -> str:
@@ -4171,7 +4339,122 @@ class ShellBridge(QObject):
     @Slot()
     def scanDuplicates(self) -> None:
         self._set_door("duplicate")
-        self._apply_result(self._safe_call(self._adapter.duplicates))
+        result = self._safe_call(self._adapter.duplicates)
+        self._tidy_sets = self._build_tidy_sets(result.data.get("report") or {})
+        self.tidyChanged.emit()
+        self._apply_result(result)
+
+    @Slot()
+    def openTidy(self) -> None:
+        """Tidy up: look for copies and show them side by side. Nothing is removed here."""
+        self.scanDuplicates()
+        self._tidy_open = True
+        self.tidyChanged.emit()
+
+    @Slot()
+    def closeTidy(self) -> None:
+        if self._tidy_open:
+            self._tidy_open = False
+            self.tidyChanged.emit()
+
+    @Property(bool, notify=tidyChanged)
+    def tidyOpen(self) -> bool:
+        return self._tidy_open
+
+    @Property("QVariantList", notify=tidyChanged)
+    def tidySets(self):
+        return list(self._tidy_sets)
+
+    @Property(str, notify=tidyChanged)
+    def tidySummary(self) -> str:
+        n = len(self._tidy_sets)
+        if n == 0:
+            return "No copies found. Your archive is already tidy."
+        exact = sum(1 for g in self._tidy_sets if g["exact"])
+        near = n - exact
+        parts = []
+        if exact:
+            parts.append(f"{exact} {'set' if exact == 1 else 'sets'} of exact copies")
+        if near:
+            parts.append(f"{near} {'set' if near == 1 else 'sets'} of near copies")
+        return ", ".join(parts)
+
+    @staticmethod
+    def _build_tidy_sets(report: dict) -> list[dict]:
+        out: list[dict] = []
+        for g in report.get("groups") or []:
+            members = []
+            for m in g.get("members") or []:
+                path = str(m.get("path") or "")
+                mid = str(m.get("media_id") or "")
+                if not path:
+                    continue
+                p = Path(path)
+                try:
+                    size = p.stat().st_size
+                except OSError:
+                    size = 0
+                members.append({
+                    "mediaId": mid,
+                    "thumb": f"image://archive/t/{mid}" if mid else "",
+                    "name": p.name,
+                    "folder": p.parent.name,
+                    "path": path,
+                    "size": f"{size / 1_000_000:.1f} MB" if size >= 100_000 else f"{max(size // 1000, 0)} KB",
+                })
+            if len(members) >= 2:
+                out.append({"exact": str(g.get("kind") or "") == "exact", "members": members})
+        return out
+
+    @Slot(int, int)
+    def keepCopy(self, set_index: int, member_index: int) -> None:
+        """Keep one copy. The others go to the Recycle Bin only after a plain confirm."""
+        if not (0 <= set_index < len(self._tidy_sets)):
+            return
+        members = self._tidy_sets[set_index]["members"]
+        if not (0 <= member_index < len(members)):
+            return
+        others = [m for i, m in enumerate(members) if i != member_index]
+        n = len(others)
+        self._ask(
+            f"Keep this one and bin {n} {'copy' if n == 1 else 'copies'}?",
+            f"{members[member_index]['name']} stays where it is. "
+            f"The other {'copy goes' if n == 1 else 'copies go'} to the Recycle Bin, where you can still get "
+            f"{'it' if n == 1 else 'them'} back.",
+            [m["name"] + " (" + m["folder"] + ")" for m in others],
+            yes="Move to the Recycle Bin" if n == 1 else f"Move {n} to the Recycle Bin",
+            no="Keep them all",
+            danger=True,
+            on_yes=lambda: self._bin_copies(set_index, member_index),
+        )
+
+    def _bin_copies(self, set_index: int, member_index: int) -> None:
+        from PySide6.QtCore import QFile
+
+        members = self._tidy_sets[set_index]["members"]
+        failed = 0
+        binned: list[str] = []
+        for i, m in enumerate(members):
+            if i == member_index:
+                continue
+            if QFile.moveToTrash(m["path"]):
+                binned.append(m["path"])
+            else:
+                failed += 1
+        if binned:
+            from ..forget import forget_files
+
+            try:
+                forget_files(self._adapter.store, binned, keep=[members[member_index]["path"]])
+            except Exception:
+                pass
+            self._refresh_library()
+        del self._tidy_sets[set_index]
+        self.tidyChanged.emit()
+        if failed:
+            self._apply_result(Result("error", "Some copies could not be moved. They are still where they were."))
+        else:
+            self._apply_result(Result("ready", "Moved the extra copies to the Recycle Bin."))
 
     @Property(bool, notify=surfaceChanged)
     def activityOpen(self) -> bool:
@@ -4232,23 +4515,78 @@ class ShellBridge(QObject):
         self.lensChanged.emit()
         self.editorialChanged.emit()
 
+    @Property("QVariantMap", notify=confirmChanged)
+    def confirm(self) -> dict:
+        return dict(self._confirm)
+
+    def _ask(self, title, body, facts=(), *, yes="Continue", no="Not now", danger=False,
+             keep_open=False, on_yes=None, on_no=None, dismiss_is_no=True) -> None:
+        self._confirm = {
+            "open": True, "busy": False, "title": title, "body": body, "facts": list(facts),
+            "yes": yes, "no": no, "danger": bool(danger), "progress": "",
+        }
+        self._confirm_yes, self._confirm_no, self._confirm_keep = on_yes, on_no, keep_open
+        self._confirm_dismiss_is_no = dismiss_is_no
+        self.confirmChanged.emit()
+
+    def _confirm_progress(self, text: str) -> None:
+        if self._confirm.get("open"):
+            self._confirm = {**self._confirm, "busy": True, "progress": text}
+            self.confirmChanged.emit()
+
+    def _confirm_close(self) -> None:
+        if self._confirm.get("open"):
+            self._confirm = {"open": False, "busy": False}
+            self.confirmChanged.emit()
+
+    @Slot()
+    def confirmAccept(self) -> None:
+        if not self._confirm.get("open") or self._confirm.get("busy"):
+            return
+        action, keep = self._confirm_yes, self._confirm_keep
+        self._confirm_yes = self._confirm_no = None
+        if not keep:
+            self._confirm_close()
+        if action:
+            action()
+
+    @Slot()
+    def confirmDismiss(self) -> None:
+        """Escape: closes the sheet. Only counts as the second choice when that is harmless."""
+        if self._confirm.get("open") and not self._confirm.get("busy") and not self._confirm_dismiss_is_no:
+            self._confirm_yes = self._confirm_no = None
+            self._confirm_close()
+            return
+        self.confirmDecline()
+
+    @Slot()
+    def confirmDecline(self) -> None:
+        if not self._confirm.get("open") or self._confirm.get("busy"):
+            return
+        action = self._confirm_no
+        self._confirm_yes = self._confirm_no = None
+        self._confirm_close()
+        if action:
+            action()
+
     @Slot()
     def clearLibrary(self) -> None:
         """Drop the folder index and names. Original files stay on disk."""
         if self._jobs.busy:
             self._apply_result(Result("unavailable", "A folder is being added. Wait until that finishes."))
             return
-        answer = QMessageBox.question(
-            None,
-            "Clear library",
-            "Remove the folder index, names, and kept finds from Semblon?\n\n"
-            "Photos on disk stay where they are.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+        self._ask(
+            "Forget what Semblon learned?",
+            "Semblon will forget the folders you added, the names you gave and the finds you kept.",
+            ["Your photo files stay exactly where they are.", "You can add the folder again any time."],
+            yes="Forget it all",
+            no="Keep everything",
+            danger=True,
+            on_yes=self._clear_library_now,
+            on_no=lambda: self._apply_result(Result("empty", "Library clear was cancelled.")),
         )
-        if answer != QMessageBox.StandardButton.Yes:
-            self._apply_result(Result("empty", "Library clear was cancelled."))
-            return
+
+    def _clear_library_now(self) -> None:
         self._stop_search(publish=False)
         try:
             self._jobs.wipe_library()
@@ -4345,14 +4683,14 @@ class ShellBridge(QObject):
             self._refresh_preflight()
             row = next((item for item in self._preflight_rows if item.get("id") == item_id), None)
         if row is None or row.get("status") == "ready":
-            self._apply_result(Result("ready", self._setup_line("That capability is already ready.")))
+            self._apply_result(Result("ready", self._setup_line("That extra is already ready.")))
             return
         if not row.get("installable"):
             self._apply_result(
                 Result(
                     "unavailable",
                     self._setup_line(
-                        str(row.get("detail") or "This capability cannot be installed from here.")
+                        str(row.get("detail") or "This extra can't be added from here.")
                     ),
                 )
             )
@@ -4360,16 +4698,32 @@ class ShellBridge(QObject):
         if self._preflight_thread is not None and self._preflight_thread.isRunning():
             self._apply_result(Result("loading", self._setup_line("An install is already running.")))
             return
-        answer = QMessageBox.question(
-            None,
-            str(row.get("name") or "Install"),
-            str(row.get("confirm") or "Install this capability?"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+        self._ask(
+            f"Get {row.get('name') or 'this'} ready?",
+            self._plain_confirm(row),
+            [_NOTHING_LEAVES] if row.get("downloads") else [],
+            yes="Get it ready",
+            no="Not now",
+            keep_open=True,
+            on_yes=lambda: self._start_preflight_install(item_id, row),
+            on_no=lambda: self._apply_result(Result("empty", self._setup_line("Nothing was added."))),
         )
-        if answer != QMessageBox.StandardButton.Yes:
-            self._apply_result(Result("empty", self._setup_line("Install cancelled.")))
-            return
+
+    @staticmethod
+    def _plain_confirm(row: dict) -> str:
+        """The sheet's sentence. Setup wording that talks about software internals becomes plain."""
+        text = str(row.get("confirm") or "").strip()
+        technical = re.search(r"environment|==|package|\bpin\b|python", text, re.IGNORECASE)
+        if not text or technical:
+            name = str(row.get("name") or "this extra")
+            return (
+                f"Semblon will add {name} to its own private space on this computer. "
+                "Your other programs and your photos are not touched."
+            )
+        return text
+
+    def _start_preflight_install(self, item_id: str, row: dict) -> None:
+        self._confirm_progress("Getting it ready\u2026")
         self._apply_result(
             Result("loading", self._setup_line(f"Installing {row.get('name') or item_id}."))
         )
@@ -4386,6 +4740,7 @@ class ShellBridge(QObject):
         thread.start()
 
     def _on_preflight_installed(self, rec: object) -> None:
+        self._confirm_close()
         self._refresh_preflight()
         result = rec if isinstance(rec, dict) else {}
         if result.get("ready") and result.get("skipped"):
@@ -4404,6 +4759,7 @@ class ShellBridge(QObject):
         )
 
     def _on_preflight_failed(self, message: str) -> None:
+        self._confirm_close()
         self._refresh_preflight()
         self._apply_result(Result("unavailable", self._setup_line(message or "Install failed.")))
 
@@ -4461,22 +4817,22 @@ class ShellBridge(QObject):
     @Slot()
     def chooseKnowledgePack(self) -> None:
         path, _selected = QFileDialog.getOpenFileName(
-            None, "Choose a knowledge pack", "", "JSON (*.json)"
+            None, "Choose the face files you downloaded", "", "JSON (*.json)"
         )
         if not path:
-            self._apply_result(Result("empty", "Pack: choose a local pack file."))
+            self._apply_result(Result("empty", "Face files: choose a file from this computer."))
             return
         self.inspectPack(path)
 
     @Slot()
     def chooseModelInstall(self) -> None:
-        source, _selected = QFileDialog.getOpenFileName(None, "Choose a model file", "", "All files (*.*)")
+        source, _selected = QFileDialog.getOpenFileName(None, "Choose the extra you downloaded", "", "All files (*.*)")
         if not source:
-            self._apply_result(Result("empty", "Model file: choose a local file."))
+            self._apply_result(Result("empty", "Extra: choose a file from this computer."))
             return
-        dest, _selected = QFileDialog.getSaveFileName(None, "Where to install the model file", "", "All files (*.*)")
+        dest, _selected = QFileDialog.getSaveFileName(None, "Where should the extra go?", "", "All files (*.*)")
         if not dest:
-            self._apply_result(Result("empty", "Model file: choose where to install it."))
+            self._apply_result(Result("empty", "Extra: choose where to put it."))
             return
         self.installModelFile(source, dest)
 
@@ -4502,20 +4858,24 @@ class ShellBridge(QObject):
         if prompt is None:
             self._apply_result(Result("empty", "No install action is available right now."))
             return self._notice
-        title, body = prompt
-        answer = QMessageBox.question(
-            None,
+        title, body, facts = prompt
+        if self._install_thread is not None and self._install_thread.isRunning():
+            self._apply_result(Result("loading", "Something is already being added."))
+            return self._notice
+        self._ask(
             title,
             body,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            facts,
+            yes="Get it ready",
+            no="Not now",
+            keep_open=True,
+            on_yes=lambda: self._start_suggested_install(kind),
+            on_no=lambda: self._apply_result(Result("empty", "Nothing was added.")),
         )
-        if answer != QMessageBox.StandardButton.Yes:
-            self._apply_result(Result("empty", "Model install cancelled."))
-            return self._notice
-        if self._install_thread is not None and self._install_thread.isRunning():
-            self._apply_result(Result("loading", "Model install is already running."))
-            return self._notice
+        return self._notice
+
+    def _start_suggested_install(self, kind: str) -> None:
+        self._confirm_progress(f"Getting {_SETUP_NAMES.get(kind, 'it')} ready\u2026 You can keep this window open.")
         self._install_kind = kind
         self._install_retry = self._query_source
         self._install_retry_rect = self._screen_query_rect
@@ -4536,7 +4896,6 @@ class ShellBridge(QObject):
         thread.failed.connect(self._on_install_suggested_failed)
         self._install_thread = thread
         thread.start()
-        return self._notice
 
     def _resume_current_query(self) -> bool:
         """Repeat the search the user was already on. Does not open a new screen drag."""
@@ -4557,14 +4916,15 @@ class ShellBridge(QObject):
     @Slot(object)
     def _on_install_suggested_ready(self, payload) -> None:
         self._install_thread = None
-        result = payload if isinstance(payload, Result) else Result("ready", "Model installed.")
+        self._confirm_close()
+        result = payload if isinstance(payload, Result) else Result("ready", "Ready.")
         self._apply_result(result)
         if self._resume_current_query():
             return
         label = self._similar_basis_label or "Similar look"
         self._publish_similar(
             "empty",
-            f"Similar ({label}): model is ready. Search this area again.",
+            f"Similar ({label}): ready. Search this area again.",
             [],
             basis=self._similar_basis or "region",
             basis_label=label,
@@ -4574,18 +4934,19 @@ class ShellBridge(QObject):
     @Slot(str)
     def _on_install_suggested_failed(self, message: str) -> None:
         self._install_thread = None
+        self._confirm_close()
         label = self._similar_basis_label or "Similar look"
         kind = self._install_kind or "region_pack"
-        self._set_install_suggestion(kind, _INSTALL_LABELS.get(kind, "Install required model"))
+        self._set_install_suggestion(kind, _INSTALL_LABELS.get(kind, "Get this ready"))
         self._publish_similar(
             "unavailable",
-            f"Similar ({label}): model install failed.",
+            f"Similar ({label}): couldn't be set up.",
             [],
             basis=self._similar_basis or "region",
             basis_label=label,
             persist=False,
         )
-        self._apply_result(Result("unavailable", str(message or "Model install failed.")))
+        self._apply_result(Result("unavailable", _plain(message, "That didn't finish. Nothing was changed. Your photos were not touched.")))
 
     @Slot()
     def findSimilarWhole(self) -> None:

@@ -302,9 +302,9 @@ def test_runtime_pins_come_from_requirements_txt():
 
 
 def test_settings_offers_one_install_per_missing_capability():
-    qml = Path("semblon/native_shell/qml/Shell.qml").read_text(encoding="utf-8")
+    qml = Path("semblon/native_shell/qml/SettingsBody.qml").read_text(encoding="utf-8")
     assert 'objectName: "preflightRepeater"' in qml
-    assert "shellApi.installPreflight(model.itemId)" in qml
+    assert "shell.installPreflight(modelData.itemId)" in qml
     assert "Install everything" not in qml
 
 
@@ -389,7 +389,7 @@ def test_settings_install_failure_does_not_mark_the_capability_ready(tmp_path, m
 
     pytest.importorskip("PySide6")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtWidgets import QApplication
 
     from semblon.native_shell.host import build_shell, shutdown_shell
     from semblon.store import connect, init_db
@@ -422,15 +422,11 @@ def test_settings_install_failure_does_not_mark_the_capability_ready(tmp_path, m
     _app, engine = build_shell(store, app=app)
     bridge = engine._semblon_bridge
     try:
-        monkeypatch.setattr(
-            QMessageBox,
-            "question",
-            lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
-        )
         bridge.setMode("advanced")
         bridge.toggleSettings()
         assert bridge.preflightRows[0]["id"] == "region_pack"
         bridge.installPreflight("region_pack")
+        bridge.confirmAccept()
         deadline = __import__("time").time() + 3
         while __import__("time").time() < deadline:
             app.processEvents()

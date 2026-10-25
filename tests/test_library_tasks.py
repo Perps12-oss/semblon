@@ -77,11 +77,11 @@ def test_failed_add_offers_another_look_at_the_folder():
 
 def test_unindexed_photo_is_work_when_nothing_else_is_running():
     work = library_work(
-        _snap(index_state="unindexed", index_note="This photo is not indexed yet.")
+        _snap(index_state="unindexed", index_note="Semblon has not looked at this photo yet.")
     )
     assert work["count"] == 1
-    assert work["rows"][0]["title"] == "This photo is not indexed"
-    assert "not indexed yet" in work["rows"][0]["detail"]
+    assert work["rows"][0]["title"] == "Semblon has not looked at this photo"
+    assert "not looked at" in work["rows"][0]["detail"]
 
 
 def test_an_active_add_covers_the_unindexed_note():

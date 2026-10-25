@@ -29,6 +29,16 @@ _SIMILAR_NH = Qt.ItemDataRole.UserRole + 6
 _STRIP_CAP = 48
 
 
+def _when(mtime_ns: int | None, taken=None) -> str:
+    """"8 Feb 2025, 14:32" on the same clock the day dividers use."""
+    from ..clock import local_datetime
+
+    stamp = taken if taken is not None else local_datetime(mtime_ns)
+    if stamp is None:
+        return ""
+    return f"{stamp.day} {stamp.strftime('%b %Y, %H:%M')}"
+
+
 class ArchiveModel(QAbstractListModel):
     def __init__(self, app: Application):
         super().__init__()
@@ -67,6 +77,22 @@ class ArchiveModel(QAbstractListModel):
         if self._ids is None:
             return None
         return list(self._ids)
+
+    def days(self) -> list[str]:
+        """Day key of every row, in the order the Roll shows them."""
+        if self._ids is None:
+            return self._app.archive_days()
+        out = []
+        for media_id in self._ids:
+            item = self._app.media(media_id)
+            out.append(item.day if item is not None else "")
+        return out
+
+    def row_info(self, row: int) -> dict:
+        item = self._at(row)
+        if item is None:
+            return {"mediaId": "", "day": "", "name": "", "when": ""}
+        return {"mediaId": item.media_id, "day": item.day, "name": item.name, "when": _when(item.mtime_ns, item.taken)}
 
     def rowCount(self, parent=QModelIndex()) -> int:  # noqa: N802
         if parent.isValid():
@@ -184,6 +210,9 @@ _GROUP_FACE = Qt.ItemDataRole.UserRole + 6
 _GROUP_KIND = Qt.ItemDataRole.UserRole + 7
 _GROUP_BAND = Qt.ItemDataRole.UserRole + 8
 _GROUP_BAND_LABEL = Qt.ItemDataRole.UserRole + 9
+_GROUP_LABEL = Qt.ItemDataRole.UserRole + 10
+_GROUP_FACES = Qt.ItemDataRole.UserRole + 11
+_GROUP_TWIN = Qt.ItemDataRole.UserRole + 12
 
 
 class PeopleModel(QAbstractListModel):
@@ -209,6 +238,9 @@ class PeopleModel(QAbstractListModel):
             _GROUP_KIND: b"kind",
             _GROUP_BAND: b"band",
             _GROUP_BAND_LABEL: b"bandLabel",
+            _GROUP_LABEL: b"label",
+            _GROUP_FACES: b"faceIds",
+            _GROUP_TWIN: b"twin",
         }
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
@@ -233,6 +265,12 @@ class PeopleModel(QAbstractListModel):
             return row.get("band") or ""
         if role == _GROUP_BAND_LABEL:
             return row.get("bandLabel") or ""
+        if role == _GROUP_LABEL:
+            return row.get("label") or row["title"]
+        if role == _GROUP_FACES:
+            return list(row.get("faceIds") or [])
+        if role == _GROUP_TWIN:
+            return bool(row.get("twin"))
         return None
 
     def set_rows(self, rows: list[dict]) -> None:

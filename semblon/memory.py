@@ -225,6 +225,8 @@ def read_still_exif(path: Path) -> dict:
             off_td = offsets.get(key)
             if off_td is None and key != "datetime":
                 off_td = offsets.get("datetime")
+            if key == "datetime_original":
+                out["datetime_original_wall"] = dt.isoformat()
             if off_td is None:
                 # Local wall time with no offset is not a UTC instant.
                 out[key] = dt.isoformat()

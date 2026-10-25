@@ -12,6 +12,10 @@
 | Parent HEAD | (see git log on branch) |
 | Working tree at evidence | Permanent Home stage + capability catalogue; shell journey updated |
 
+## Behaviour landed — Contact Sheet / Light Table
+
+The shell is now one Roll with a film-edge time scrubber, a four-verb Light Table, a Ctrl+K palette, a loupe for "find a detail", and a People table. Design: `docs/UX-CONTACT-SHEET.md`. Backend additions are small bridge slots only; engine, schema and identity thresholds are unchanged.
+
 ## Behaviour landed — Safelight Desk
 
 The production shell is still the only GUI (`semblon shell`). Home is a first-arrival desk: one promise, **Add a folder**, three steps, then Library, Visual discovery, and People. Everyday labels no longer name engines, packs, or search internals. A notice banner separates a failure, a missing extra, and work in progress, and says the original files were not changed. Identity thresholds, schema, and face comparison were not edited. Plan: `docs/ux-overhaul-plan.md`.
@@ -330,3 +334,22 @@ Command: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_timeline_view.py 
 ## What this file will not absorb
 
 Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE gates stay in `docs/FACE-GATES.md`. Product vision stays in `docs/PRODUCT.md`.
+
+- Contact Sheet polish pass (PR #187): drop-zone first run, sticky month header, day breaks, clearer scrubber, receding bar, plain-words install dialogs, keyboard loupe and People actions. See docs/UX-CONTACT-SHEET.md.
+- Contact Sheet fix-up pass (PR #187): month grouping and header corrected (per-month sections and counts), real day rows, even scrubber, in-theme confirm sheet replaces native pop-ups, pressed and focus states on the bottom bar. See docs/UX-CONTACT-SHEET.md.
+
+## Fix-up pass 2
+
+- Roll uses exact row geometry; header and scrubber always name the month at the top (one header only).
+- Days use the local time zone (DST-aware) via semblon/clock.py.
+- People: fanned face stacks, one searchable Same as... picker, same-name prompt, no joining two named people.
+- Photo view: Back, Previous, Next, Find a detail, plus a More menu. No debug text.
+- Tidy up is a real review view (Keep this one, plain confirm, Recycle Bin).
+- Plain wording for the preflight confirm; both add-on sheets show their size.
+
+
+## Capture dates and the Recycle Bin
+
+- Day and month use the camera's capture date (DateTimeOriginal, with its offset when present) read from the file; the file's saved time is the fallback. Nothing is stored: the schema has no capture-date column, so it is read at browse time and cached in memory. A persisted date would need a new media column plus a one-time backfill at ingest; not built.
+- Binning copies in Tidy up removes them from the library at once (semblon/forget.py). Restoring from the Bin and rescanning the folder adds them back.
+

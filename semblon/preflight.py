@@ -236,13 +236,13 @@ def _capability_rows(probes: dict) -> list[dict]:
 
     result, error = _invoke(probes["region"])
     if error is not None:
-        rows.append(_failed_probe("region_pack", "Region model", "Semantic look of a selected area", "model", error))
+        rows.append(_failed_probe("region_pack", "Finding by look", "Semantic look of a selected area", "model", error))
     else:
         ready, note = result
         rows.append(
             _row(
                 id="region_pack",
-                name="Region model",
+                name="Finding by look",
                 purpose="Semantic look of a selected area",
                 kind="model",
                 status="ready" if ready else "missing",
@@ -254,8 +254,8 @@ def _capability_rows(probes: dict) -> list[dict]:
                     + " Colour-only search is a separate fallback, not this capability."
                 ),
                 confirm=(
-                    "Download the pinned region model into the Semblon model folder. "
-                    "This does not change face identity."
+                    "Semblon will download a small add-on so it can find places that look like a detail you point at. "
+                    "It does not change who anyone is, and your photos are not touched."
                 ),
                 downloads=not ready,
             )
@@ -263,13 +263,13 @@ def _capability_rows(probes: dict) -> list[dict]:
 
     result, error = _invoke(probes["object"])
     if error is not None:
-        rows.append(_failed_probe("object_pack", "Object model", "Object labels in a photo", "model", error))
+        rows.append(_failed_probe("object_pack", "Finding by object", "Object labels in a photo", "model", error))
     else:
         ready, note = result
         rows.append(
             _row(
                 id="object_pack",
-                name="Object model",
+                name="Finding by object",
                 purpose="Object labels in a photo",
                 kind="model",
                 status="ready" if ready else "missing",
@@ -278,8 +278,8 @@ def _capability_rows(probes: dict) -> list[dict]:
                 if ready
                 else (note or "Object model is missing."),
                 confirm=(
-                    "Download the pinned object model into the Semblon model folder. "
-                    "This does not change face identity."
+                    "Semblon will download a small add-on so it can recognise things in pictures. "
+                    "It does not change who anyone is, and your photos are not touched."
                 ),
                 downloads=not ready,
             )
@@ -315,7 +315,7 @@ def _capability_rows(probes: dict) -> list[dict]:
                 status=vlm_status,
                 installable=vlm_install,
                 detail=vlm_detail,
-                confirm="Write the local description marker. This does not download weights.",
+                confirm="Semblon will set up photo descriptions on this computer. Nothing is downloaded and your photos are not touched.",
                 downloads=False,
             )
         )
@@ -391,7 +391,7 @@ def _capability_rows(probes: dict) -> list[dict]:
             else (
                 (face_note or "Face weights are missing.")
                 + " Semblon does not download identity weights. Place the files locally, then run "
-                "semblon lab pack-accept. Installing a face model does not name anyone."
+                "semblon lab pack-accept. Adding face files does not name anyone."
             ),
         )
         )
