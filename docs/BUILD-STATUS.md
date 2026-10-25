@@ -7,10 +7,10 @@
 
 | Field | Value |
 |---|---|
-| Evidence date | 2026-10-25. Native face-inference backend investigation on `cursor/native-face-inference-perf-9497` (lab only; production `embed_bgr` untouched). Prior `main` merge `db6d9ad` (PR #184) unchanged as release. |
-| Branch | `cursor/native-face-inference-perf-9497` (PERF inference lab) |
+| Evidence date | 2026-10-25. PERF-6 owner ARM64 harness shipped on `cursor/native-face-inference-perf-9497`. Linux lab agreement is not a performance win. Owner photographic run **PENDING** on SKY. Production `embed_bgr` untouched. |
+| Branch | `cursor/native-face-inference-perf-9497` (PERF-6 harness) |
 | Parent HEAD | (see git log on branch) |
-| Working tree at evidence | Experimental ORT + OpenCV DNN adapters; 48-still lab corpus; bench + identity-safety + resolution sweep |
+| Working tree at evidence | Owner ARM64 orchestrator + PowerShell runner; lab evidence retained; measured A/B decision JSON not yet on this agent |
 
 ## Behaviour landed — Safelight Desk
 
@@ -73,6 +73,15 @@ Out of ship by an existing decision or by the schema freeze: **02** encryption, 
 4. FaceKit owner evidence helper + workflow_dispatch job (no download).
 5. buffalo_l: explicit BYO / no redistribution decision (keep FaceKit; do not swap engines).
 6. MSI release workflow: optional Authenticode via secrets; unsigned when absent.
+
+## Verification log — PERF-6 harness (2026-10-25)
+
+| Item | Result |
+|---|---|
+| Owner photographic 48-still bench on SKY | **NOT RUN** from this Linux cloud agent |
+| Self-hosted worker SKY | Connected (`cursor.private_worker.os=windows`); harness prepared for owner execution |
+| Invented native speedup | **None** — decision gate waits for measured JSON |
+| Runner | `tools/perf_inference_owner_arm64.ps1 -Corpus <owner-48still>` |
 
 ## Verification log — PERF inference lab (2026-10-25, Linux x64 cloud)
 
@@ -162,7 +171,8 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 - Results chrome is one strip; basis labels stay distinct per door.
 - Pack gate unchanged. ARM64 OpenCV load remains BLOCKED historically (`docs/PERF-P1-ARM64.md`).
 - Identity runtime is YuNet + SFace (`opencv/yunet_sface`); buffalo_l retired from deps (BYO historical only).
-- **PERF inference lab (2026-10-25):** experimental `ort_yunet_sface` vs `opencv_dnn` on a 48-still lab corpus. Production path not switched. Recommendation: ORT for native ARM64 when OpenCV DNN cannot load; keep OpenCV DNN where it already runs natively; keep `DETECT_LONG_SIDE=1280`. Evidence: `docs/PERF-INFERENCE-BACKENDS.md`, `docs/evidence/perf-inference/`.
+- **PERF inference lab (2026-10-25):** experimental `ort_yunet_sface` vs `opencv_dnn` on a 48-still lab corpus. Production path not switched. Linux numerical agreement PASS is **not** a throughput claim. Evidence: `docs/PERF-INFERENCE-BACKENDS.md`, `docs/evidence/perf-inference/`.
+- **PERF-6 owner ARM64 (2026-10-25):** harness ready — `tools/perf_inference_owner_arm64.ps1` + `tools/perf_inference_owner_arm64.py`. Compares emulated x64 OpenCV (A) vs native ARM64 ORT (B) on the **owner photographic** 48-still set; refuses lab stand-in. Measured decision JSON **PENDING** (this cloud agent is Linux x64; SKY worker is connected but placement from this run was not available). Do not cut over until `owner-arm64-decision.json` exists. Plan: `docs/PERF-INFERENCE-IMPLEMENTATION-PLAN.md`.
 - Object/OCR search never votes on identity. NanoDet/SFace/YuNet MSI bundling remains L OPEN.
 
 ## Outstanding blockers (exact)
