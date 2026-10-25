@@ -645,6 +645,13 @@ class ShellBridge(QObject):
     def focusObservationBoxes(self):
         return list(self._focus_boxes)
 
+    @Property("QVariantList", notify=focusChanged)
+    def hotspots(self):
+        """A few well-spaced tap targets for the open picture. Cheap: no disk, no detector."""
+        from semblon.hotspots import rank_hotspots
+
+        return rank_hotspots(self._focus_boxes)
+
     @Property(str, notify=focusChanged)
     def selectedObservationId(self) -> str:
         return self._selected_observation

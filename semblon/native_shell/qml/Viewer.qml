@@ -6,6 +6,7 @@ Item {
     objectName: "viewer"
     property bool active: shell.focusId !== ""
     property bool loupeOn: false
+    property bool dotsOn: true
     property real lx: 0
     property real ly: 0
     property real lw: 0
@@ -35,8 +36,8 @@ Item {
         if (zoom === 1) { panX = 0; panY = 0 }
     }
     property string shownId: shell.focusId
-    onShownIdChanged: resetZoom()
-    function reset() { lx = 0; ly = 0; lw = 0; lh = 0; loupeOn = false; shell.clearDrawnQuery() }
+    onShownIdChanged: { resetZoom(); spots.clearTap(); spots.shimmer() }
+    function reset() { lx = 0; ly = 0; lw = 0; lh = 0; loupeOn = false; spots.clearTap(); shell.clearDrawnQuery() }
     function search() {
         if (lw < 8 || lh < 8 || photo.paintedWidth <= 0)
             return
@@ -59,6 +60,7 @@ Item {
     Keys.onPressed: function (e) {
         if (e.key === Qt.Key_Period && (e.modifiers & Qt.ControlModifier)) { moreMenu.shown = !moreMenu.shown; e.accepted = true }
         else if (e.key === Qt.Key_L) { loupeOn = !loupeOn; e.accepted = true }
+        else if (e.key === Qt.Key_D && !(e.modifiers & Qt.ControlModifier)) { dotsOn = !dotsOn; e.accepted = true }
     }
     // Keyboard-only loupe: arrows move the circle, Shift+arrows resize it, Enter searches.
     function keyRegion(e) {
@@ -130,7 +132,7 @@ Item {
                         color: "transparent"
                         border.width: shell.selectedObservationId === modelData.id ? 3 : 1
                         border.color: shell.selectedObservationId === modelData.id ? Theme.amber : Theme.muted
-                        visible: !viewer.loupeOn
+                        visible: !viewer.loupeOn && shell.selectedObservationId === modelData.id
                         Accessible.role: Accessible.Button
                         Accessible.name: "Pick " + (modelData.tag || "this area")
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: shell.selectObservation(modelData.id) }
@@ -144,6 +146,27 @@ Item {
                     border.width: 3
                     border.color: Theme.amber
                     Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.amber; opacity: 0.12 }
+                }
+                Hotspots {
+                    id: spots
+                    picture: canvas
+                    allowed: viewer.dotsOn && !viewer.loupeOn
+                    onPickedDot: function (dot) {
+                        clearTap()
+                        if (dot.joined) {
+                            shell.setRegion(dot.nx, dot.ny, dot.nw, dot.nh)
+                            showTap(dot.nx + "," + dot.ny + "," + dot.nw + "," + dot.nh)
+                            shell.findSimilar()
+                        } else {
+                            shell.selectObservation(dot.id)
+                        }
+                    }
+                    onPickedSpot: function (nx, ny) { showTap(shell.pointAt(nx, ny)) }
+                }
+                TapHandler {
+                    objectName: "spotTap"
+                    enabled: !viewer.loupeOn
+                    onTapped: function (ep) { if (tapCount > 1) spots.cancelPending(); else spots.tapped(ep.position.x, ep.position.y) }
                 }
                 MouseArea {
                     anchors.fill: parent
@@ -181,7 +204,7 @@ Item {
         }
         TapHandler {
             enabled: !viewer.loupeOn
-            onDoubleTapped: viewer.zoom > 1 ? viewer.resetZoom() : viewer.zoomAt(point.position.x, point.position.y, 2.5)
+            onDoubleTapped: { spots.cancelPending(); if (viewer.zoom > 1) viewer.resetZoom(); else viewer.zoomAt(point.position.x, point.position.y, 2.5) }
         }
         Text {
             anchors.centerIn: parent
@@ -193,6 +216,28 @@ Item {
         }
     }
 
+    Rectangle {
+        objectName: "dotHint"
+        visible: viewer.dotsOn && !viewer.loupeOn && shell.hotspots.length > 0 && shell.similarState !== "ready" && !shell.searchBusy
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: Theme.pad + 4
+        width: hintText.implicitWidth + Theme.pad * 1.4
+        height: 32
+        radius: 16
+        color: Theme.surface
+        border.width: 1
+        border.color: Theme.line
+        Text {
+            id: hintText
+            anchors.centerIn: parent
+            text: "Tap a dot to find more like it. Tap anywhere to look there."
+            font.family: Theme.ui
+            font.pixelSize: Theme.small
+            color: Theme.muted
+        }
+        Accessible.role: Accessible.StaticText
+        Accessible.name: hintText.text
+    }
     // Four things stay in view. Everything else lives behind "More…" and Ctrl+K.
     Row {
         id: topBar
