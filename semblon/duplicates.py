@@ -16,6 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from semblon.dedupe import CancelToken, scan_exact
+from semblon.dedupe_sidecar import load_cache, save_cache
 from semblon.engine import _sha256_file
 from semblon.ingest import STILL_EXT
 from semblon.store import connect
@@ -161,6 +162,7 @@ def _exact_via_dedupe(
     *,
     want_cancel: Callable[[], bool] | None,
     on_progress: Callable[[int, int], None] | None,
+    store: Path | None = None,
 ) -> dict:
     """Exact groups via ``semblon.dedupe`` (size -> partial -> full SHA-256; SHA-256 confirms)."""
     total = len(files)
@@ -173,7 +175,12 @@ def _exact_via_dedupe(
         except Exception:  # noqa: BLE001
             pass
 
-    result = scan_exact(files, cancel=CancelToken(want_cancel), on_event=on_event, workers=4)
+    cache = load_cache(store) if store is not None else None
+    result = scan_exact(
+        files, cancel=CancelToken(want_cancel), on_event=on_event, workers=4, cache=cache
+    )
+    if store is not None and cache is not None:
+        save_cache(store, cache)
     if result.cancelled:
         return _empty_exact(
             "CANCELLED", "Duplicate scan cancelled.", scanned=result.stats.full_hashed
@@ -242,7 +249,7 @@ def find_exact_duplicate_groups(
 
     if not _legacy_exact_enabled():
         return _exact_via_dedupe(
-            files, by_path, want_cancel=want_cancel, on_progress=on_progress
+            files, by_path, want_cancel=want_cancel, on_progress=on_progress, store=store
         )
 
     buckets: dict[str, list[dict]] = defaultdict(list)

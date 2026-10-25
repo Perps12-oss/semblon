@@ -132,6 +132,22 @@ def _verify_one(
     return TargetVerification(target.path, True)
 
 
+def verify_against_keeper(
+    sha256: str, keep_path: str, target_path: str, cancel: CancelToken | None = None
+) -> TargetVerification:
+    """Re-check at confirm time (no scan-time size/mtime): target still hashes to ``sha256`` and a
+    different keeper file still does too."""
+    keeper = DuplicateMember(keep_path, 0, 0)
+    try:
+        st = os.stat(target_path)
+        kst = os.stat(keep_path)
+    except OSError:
+        return TargetVerification(target_path, False, "file missing")
+    t = DuplicateMember(target_path, st.st_size, st.st_mtime_ns)
+    keeper = DuplicateMember(keep_path, kst.st_size, kst.st_mtime_ns)
+    return _verify_one(sha256, keeper, t, cancel)
+
+
 def verify_plan(
     plan: DeletionPlan, cancel: CancelToken | None = None
 ) -> list[TargetVerification]:

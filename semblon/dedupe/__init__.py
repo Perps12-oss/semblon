@@ -10,6 +10,7 @@ from .deletion import (
     DeletionPlan,
     PlanOutcome,
     execute_plan,
+    verify_against_keeper,
     plan_deletions,
     verify_plan,
 )
@@ -52,5 +53,6 @@ __all__ = [
     "scan_exact",
     "stat_files",
     "to_checkpoint",
+    "verify_against_keeper",
     "verify_plan",
 ]

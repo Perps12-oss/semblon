@@ -4410,7 +4410,11 @@ class ShellBridge(QObject):
                     "size": f"{size / 1_000_000:.1f} MB" if size >= 100_000 else f"{max(size // 1000, 0)} KB",
                 })
             if len(members) >= 2:
-                out.append({"exact": str(g.get("kind") or "") == "exact", "members": members})
+                out.append({
+                    "exact": str(g.get("kind") or "") == "exact",
+                    "sha256": str(g.get("content_hash") or "") if str(g.get("kind") or "") == "exact" else "",
+                    "members": members,
+                })
         return out
 
     @Slot(int, int)
@@ -4439,11 +4443,20 @@ class ShellBridge(QObject):
         from PySide6.QtCore import QFile
 
         members = self._tidy_sets[set_index]["members"]
+        sha = self._tidy_sets[set_index].get("sha256") or ""
+        keep_path = members[member_index]["path"]
         failed = 0
         binned: list[str] = []
         for i, m in enumerate(members):
             if i == member_index:
                 continue
+            if sha:
+                from ..dedupe import verify_against_keeper
+
+                # Exact sets: bin only a copy that still hashes to the group's SHA-256.
+                if not verify_against_keeper(sha, keep_path, m["path"]).ok:
+                    failed += 1
+                    continue
             if QFile.moveToTrash(m["path"]):
                 binned.append(m["path"])
             else:

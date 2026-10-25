@@ -36,8 +36,18 @@ from semblon.store import connect, init_db  # noqa: E402
 SAMPLE = 64 * 1024
 
 
-def make_fixture(root: Path, n_files: int, seed: int) -> dict:
-    """~15% exact duplicates, ~10% same-size decoys, ~5% partial-sample collisions."""
+PROFILES = {
+    # cumulative thresholds: exact dup, same-size decoy, partial-sample collision; then size range
+    "photos": (0.15, 0.25, 0.30, (30_000, 700_000)),
+    "decoys": (0.05, 0.60, 0.70, (200_000, 900_000)),
+    "small": (0.20, 0.30, 0.32, (4_000, 150_000)),
+    "large": (0.10, 0.20, 0.25, (2_000_000, 6_000_000)),
+}
+
+
+def make_fixture(root: Path, n_files: int, seed: int, profile: str = "photos") -> dict:
+    """Synthetic folder; ``profile`` picks the duplicate/decoy mix and file-size range."""
+    p_dup, p_decoy, p_coll, sizes = PROFILES[profile]
     rnd = random.Random(seed)
     root.mkdir(parents=True, exist_ok=True)
     folders = [root / f"album{i:02d}" for i in range(12)]
@@ -60,13 +70,13 @@ def make_fixture(root: Path, n_files: int, seed: int) -> dict:
     originals: list[bytes] = []
     while made < n_files:
         r = rnd.random()
-        size = rnd.randint(30_000, 700_000)
-        if r < 0.15 and originals:
+        size = rnd.randint(*sizes)
+        if r < p_dup and originals:
             put(rnd.choice(originals), rnd.choice([".jpg", ".png"]))
-        elif r < 0.25 and originals:
+        elif r < p_decoy and originals:
             base = rnd.choice(originals)
             put(blob(len(base)))  # same size, different content
-        elif r < 0.30 and originals:
+        elif r < p_coll and originals:
             base = rnd.choice(originals)
             if len(base) > SAMPLE * 4:
                 t = bytearray(base)
@@ -231,6 +241,7 @@ def main() -> int:
     ap.add_argument("--files", type=int, default=2000)
     ap.add_argument("--repeat", type=int, default=3)
     ap.add_argument("--seed", type=int, default=12)
+    ap.add_argument("--profile", choices=sorted(PROFILES), default="photos")
     ap.add_argument("--cancel-after", type=float, default=0.05)
     ap.add_argument("--json", type=Path)
     args = ap.parse_args()
@@ -238,7 +249,7 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="semblon-bench-dedupe-"))
     try:
         folder = tmp / "photos"
-        info = make_fixture(folder, args.files, args.seed)
+        info = make_fixture(folder, args.files, args.seed, args.profile)
         store = tmp / "s.sqlite"
         seed_store(store, folder)
         rows = dup.library_media_rows(store)
