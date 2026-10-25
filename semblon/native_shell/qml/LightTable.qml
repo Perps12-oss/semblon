@@ -45,7 +45,7 @@ Item {
         Behavior on scale { NumberAnimation { duration: Theme.medium; easing.type: Theme.easing } }
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 12
+        anchors.bottomMargin: 20
         width: Math.min(parent.width - 24, 760)
         height: col.implicitHeight + Theme.pad * 1.4
         radius: Theme.radius * 2
@@ -58,7 +58,7 @@ Item {
             id: col
             anchors.centerIn: parent
             width: parent.width - Theme.pad * 2
-            spacing: Theme.gap
+            spacing: Theme.gap * 1.6
 
             Rectangle {
                 visible: bar.mode === "moment" || bar.mode === "detail"
@@ -78,13 +78,15 @@ Item {
                     font.pixelSize: Theme.body
                     color: Theme.text
                     clip: true
+                    enabled: !bar.empty
                     selectByMouse: true
                     Accessible.name: "Describe what you are looking for"
                     onAccepted: bar.submit()
                     Keys.onEscapePressed: { bar.mode = ""; shell.clearMatches(); text = "" }
                     Text {
                         visible: entry.text === ""
-                        text: bar.mode === "detail"
+                        text: bar.empty ? "Add a folder of photos first, then search them here"
+                              : bar.mode === "detail"
                               ? "Describe it: a red bicycle, a birthday cake, a handwritten sign"
                               : "Type a date or a few words: summer 2019, the beach, a dog"
                         font: entry.font
@@ -127,6 +129,7 @@ Item {
                 }
                 Tool {
                     label: "Tidy up"
+                    hint: "Find copies of the same photo. Nothing is deleted without asking"
                     dimmed: bar.empty
                     selected: shell.tidyOpen
                     onActivated: shell.openTidy()

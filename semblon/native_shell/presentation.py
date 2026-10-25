@@ -61,7 +61,7 @@ _SAFE_PRIMARY_EXACT = {
     "A folder is being added. Wait until that finishes.",
     "Library clear was cancelled.",
     "The library could not be cleared.",
-    "Library cleared. Photos on disk were kept. Add a folder to start again.",
+    "Semblon's list of your photos was cleared. Your original photos were not changed. Add a folder to start again.",
     "A match is a similar region, not proof it is the same object.",
     "Still looking through your photos. Ones already added can be opened.",
     "Still looking through your photos. This one can already be searched.",

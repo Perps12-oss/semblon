@@ -4821,7 +4821,7 @@ class ShellBridge(QObject):
         self._apply_result(
             Result(
                 "ready",
-                "Library cleared. Photos on disk were kept. Add a folder to start again.",
+                "Semblon's list of your photos was cleared. Your original photos were not changed. Add a folder to start again.",
             )
         )
 

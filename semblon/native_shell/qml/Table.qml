@@ -168,9 +168,10 @@ Window {
         width: Math.min(parent.width - 120, 560)
         height: ncol.implicitHeight + Theme.pad * 1.4
         radius: Theme.radius * 1.4
-        color: Theme.amberSoft
+        color: Theme.surface
         border.width: 1
-        border.color: Theme.amber
+        border.color: Theme.line
+        Rectangle { width: 4; height: parent.height - 2 * parent.radius; anchors.left: parent.left; anchors.leftMargin: 1; anchors.verticalCenter: parent.verticalCenter; color: Theme.amber; radius: 2 }
         Accessible.role: Accessible.AlertMessage
         Accessible.name: shell.noticeText
         Row {
@@ -180,7 +181,7 @@ Window {
             spacing: Theme.gap
             Text {
                 width: parent.width - closeNote.width - Theme.gap; wrapMode: Text.WordWrap
-                text: shell.noticeText + (note.problem ? " Your original photos were not changed." : "")
+                text: shell.noticeText + (note.problem && shell.noticeText.indexOf("original photos") < 0 ? " Your original photos were not changed." : "")
                 font.family: Theme.ui; font.pixelSize: Theme.body; color: Theme.text
             }
             Tool { id: closeNote; objectName: "closeNotice"; label: "Dismiss"; quiet: true; onActivated: note.hidden = shell.noticeText }
