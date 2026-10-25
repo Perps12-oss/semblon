@@ -691,7 +691,7 @@ def test_tidy_up_wording_has_correct_plurals(tmp_path, monkeypatch):
     from semblon.native_shell.adapter import ArchiveAdapter
 
     def said(exact, near):
-        monkeypatch.setattr(dup, "find_integrity_groups", lambda store: {"exact_group_count": exact, "near_group_count": near})
+        monkeypatch.setattr(dup, "find_integrity_groups", lambda store, **kw: {"exact_group_count": exact, "near_group_count": near})
         adapter = ArchiveAdapter.__new__(ArchiveAdapter)
         monkeypatch.setattr(ArchiveAdapter, "store", property(lambda self: tmp_path / "s.db"))
         (tmp_path / "s.db").write_bytes(b"")

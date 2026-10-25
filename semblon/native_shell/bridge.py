@@ -378,6 +378,10 @@ class ShellBridge(QObject):
         self._tidy_open = False
         self._tidy_busy = False
         self._tidy_pct = 0
+        self._tidy_exact_on = True
+        self._tidy_near_on = False
+        self._tidy_sort = "copies"
+        self._tidy_picks: set[str] = set()
         self._tidy_thread: _TaskThread | None = None
         self._scanProgress.connect(self._on_scan_progress)
         self._tidy_sets: list[dict] = []
@@ -4367,6 +4371,7 @@ class ShellBridge(QObject):
 
     def _finish_scan(self, result: Result) -> None:
         self._tidy_busy = False
+        self._tidy_picks = set()
         self._tidy_sets = self._build_tidy_sets(result.data.get("report") or {})
         self.tidyChanged.emit()
         self._apply_result(result)
@@ -4420,16 +4425,150 @@ class ShellBridge(QObject):
 
     @Property("QVariantList", notify=tidyChanged)
     def tidySets(self):
-        return list(self._tidy_sets)
+        rows = [
+            dict(g, id=i) for i, g in enumerate(self._tidy_sets)
+            if (g["exact"] and self._tidy_exact_on) or (not g["exact"] and self._tidy_near_on)
+        ]
+        key = self._tidy_sort
+        if key == "size":
+            rows.sort(key=lambda g: -max(m.get("bytes", 0) for m in g["members"]))
+        elif key == "name":
+            rows.sort(key=lambda g: min(m["path"].lower() for m in g["members"]))
+        elif key == "time":
+            rows.sort(key=lambda g: -max(m.get("mtime", 0) for m in g["members"]))
+        else:
+            rows.sort(key=lambda g: -len(g["members"]))
+        picked = self._tidy_picks
+        for g in rows:
+            g["members"] = [dict(m, picked=m["path"] in picked) for m in g["members"]]
+        return rows
+
+    @Property(bool, notify=tidyChanged)
+    def tidyExactOn(self) -> bool:
+        return self._tidy_exact_on
+
+    @Property(bool, notify=tidyChanged)
+    def tidyNearOn(self) -> bool:
+        return self._tidy_near_on
+
+    @Property(str, notify=tidyChanged)
+    def tidySort(self) -> str:
+        return self._tidy_sort
+
+    @Property(int, notify=tidyChanged)
+    def tidyPickedCount(self) -> int:
+        return len(self._tidy_picks)
+
+    @Slot()
+    def toggleTidyExact(self) -> None:
+        if self._tidy_exact_on and not self._tidy_near_on:
+            return  # one kind always stays on
+        self._tidy_exact_on = not self._tidy_exact_on
+        self.tidyChanged.emit()
+
+    @Slot()
+    def toggleTidyNear(self) -> None:
+        if self._tidy_near_on and not self._tidy_exact_on:
+            return
+        self._tidy_near_on = not self._tidy_near_on
+        self.tidyChanged.emit()
+
+    @Slot(str)
+    def setTidySort(self, key: str) -> None:
+        if key in ("copies", "size", "name", "time") and key != self._tidy_sort:
+            self._tidy_sort = key
+            self.tidyChanged.emit()
+
+    @Slot(str)
+    def toggleTidyPick(self, path: str) -> None:
+        if path in self._tidy_picks:
+            self._tidy_picks.discard(path)
+        else:
+            self._tidy_picks.add(path)
+        self.tidyChanged.emit()
+
+    @Slot()
+    def clearTidyPicks(self) -> None:
+        if self._tidy_picks:
+            self._tidy_picks = set()
+            self.tidyChanged.emit()
+
+    @Slot()
+    def pickAllButFirst(self) -> None:
+        """Tick every copy except the first of each set that is showing."""
+        picks = set(self._tidy_picks)
+        for g in self.tidySets:
+            for m in g["members"][1:]:
+                picks.add(m["path"])
+        self._tidy_picks = picks
+        self.tidyChanged.emit()
+
+    @Slot()
+    def binPicked(self) -> None:
+        """Move the ticked copies to the Recycle Bin, after a plain confirm. Never all of a set."""
+        picked = set(self._tidy_picks)
+        if not picked:
+            return
+        for g in self._tidy_sets:
+            if g["members"] and all(m["path"] in picked for m in g["members"]):
+                self._apply_result(Result("error", "Keep at least one copy in each set. Untick one and try again."))
+                return
+        names = [m["name"] + " (" + m["folder"] + ")" for g in self._tidy_sets for m in g["members"] if m["path"] in picked]
+        n = len(names)
+        self._ask(
+            f"Bin {n} {'photo' if n == 1 else 'photos'}?",
+            f"{'It goes' if n == 1 else 'They go'} to the Recycle Bin, where you can still get "
+            f"{'it' if n == 1 else 'them'} back. The copies you did not tick stay where they are.",
+            names[:12],
+            yes="Move to the Recycle Bin" if n == 1 else f"Move {n} to the Recycle Bin",
+            no="Keep them all",
+            danger=True,
+            on_yes=lambda: self._bin_picked(picked),
+        )
+
+    def _bin_picked(self, picked: set) -> None:
+        from PySide6.QtCore import QFile
+
+        binned: list[str] = []
+        failed = 0
+        for path in sorted(picked):
+            if QFile.moveToTrash(path):
+                binned.append(path)
+            else:
+                failed += 1
+        if binned:
+            from ..forget import forget_files
+
+            keep = [m["path"] for g in self._tidy_sets for m in g["members"] if m["path"] not in picked]
+            try:
+                forget_files(self._adapter.store, binned, keep=keep)
+            except Exception:
+                pass
+            self._refresh_library()
+        gone = set(binned)
+        for g in self._tidy_sets:
+            g["members"] = [m for m in g["members"] if m["path"] not in gone]
+        self._tidy_sets = [g for g in self._tidy_sets if len(g["members"]) >= 2]
+        self._tidy_picks = {p for p in self._tidy_picks if p not in gone}
+        self.tidyChanged.emit()
+        if failed:
+            self._apply_result(Result("error", "Some photos could not be moved. They are still where they were."))
+        else:
+            self._apply_result(Result("ready", "Moved the ticked photos to the Recycle Bin."))
 
     @Property(str, notify=tidyChanged)
     def tidySummary(self) -> str:
         if self._tidy_busy:
             return f"Looking for copies, {self._tidy_pct}% done. You can keep using Semblon."
-        n = len(self._tidy_sets)
+        sets = self.tidySets
+        n = len(sets)
         if n == 0:
+            hidden = len(self._tidy_sets)
+            if hidden:
+                kind = "near" if self._tidy_exact_on and not self._tidy_near_on else "exact"
+                return f"No {'exact' if kind == 'near' else 'near'} copies. Turn on {kind} copies to see {hidden} more."
             return "No copies found. Your archive is already tidy."
-        exact = sum(1 for g in self._tidy_sets if g["exact"])
+        exact = sum(1 for g in sets if g["exact"])
         near = n - exact
         parts = []
         if exact:
@@ -4450,15 +4589,19 @@ class ShellBridge(QObject):
                     continue
                 p = Path(path)
                 try:
-                    size = p.stat().st_size
+                    st = p.stat()
+                    size, mtime = st.st_size, int(st.st_mtime)
                 except OSError:
-                    size = 0
+                    size, mtime = 0, 0
                 members.append({
                     "mediaId": mid,
                     "thumb": f"image://archive/t/{mid}" if mid else "",
                     "name": p.name,
                     "folder": p.parent.name,
                     "path": path,
+                    "bytes": size,
+                    "mtime": mtime,
+                    "when": time.strftime("%d %b %Y", time.localtime(mtime)) if mtime else "",
                     "size": f"{size / 1_000_000:.1f} MB" if size >= 100_000 else f"{max(size // 1000, 0)} KB",
                 })
             if len(members) >= 2:

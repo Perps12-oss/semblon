@@ -423,11 +423,11 @@ class ArchiveAdapter:
         )
 
     def duplicates(self, on_progress=None) -> Result:
-        from semblon.duplicates import find_integrity_groups
+        from semblon.duplicates import NEAR_APP_THRESHOLD, find_integrity_groups
 
         if not self.store.is_file():
             return Result("empty", "Duplicates: no library file yet.", {})
-        kwargs = {}
+        kwargs: dict = {"near_threshold": NEAR_APP_THRESHOLD}
         if on_progress is not None:
             # The exact pass then the near pass each count from 1, so a drop marks the second pass.
             state = {"phase": 0, "last": 0}

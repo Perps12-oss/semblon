@@ -26,6 +26,12 @@ NEAR_HASH_ALGORITHM = "ahash+dhash"
 # 64-bit hashes; Hamming ≤ threshold groups as near. Tuned for aggressive fixtures
 # (same/recompress/resize/crop/bright ≤ 14; visually-similar-but-different ≈ 21+).
 NEAR_HAMMING_THRESHOLD = 14
+# What Tidy up uses: stricter, so only real copies show up.
+NEAR_APP_THRESHOLD = 8
+# Copies keep their shape; allow a little for crops.
+NEAR_ASPECT_SLACK = 0.12
+# Pictures with almost no detail (blank, black, flat colour) hash alike, so they are left out.
+NEAR_MIN_DETAIL = 8.0
 
 NEAR_STATUS_AVAILABLE = "AVAILABLE"
 NEAR_STATUS_UNAVAILABLE = "UNAVAILABLE"
@@ -293,28 +299,6 @@ def perceptual_distance(gray_a, gray_b) -> int:
     )
 
 
-def _union_find_groups(n: int, edges: list[tuple[int, int]]) -> list[list[int]]:
-    parent = list(range(n))
-
-    def find(i: int) -> int:
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
-
-    def union(a: int, b: int) -> None:
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[rb] = ra
-
-    for a, b in edges:
-        union(a, b)
-    buckets: dict[int, list[int]] = defaultdict(list)
-    for i in range(n):
-        buckets[find(i)].append(i)
-    return [sorted(v) for v in buckets.values() if len(v) >= 2]
-
-
 def find_near_duplicate_groups(
     store: Path,
     *,
@@ -359,6 +343,7 @@ def find_near_duplicate_groups(
     ]
     entries: list[dict] = []
     hashes: list[tuple[int, int]] = []
+    aspects: list[float] = []
     total = len(rows)
     for i, row in enumerate(rows):
         if want_cancel is not None and want_cancel():
@@ -381,10 +366,13 @@ def find_near_duplicate_groups(
         if gray is None:
             continue
         try:
+            if float(gray.std()) < NEAR_MIN_DETAIL:
+                continue
             ah = ahash64(gray)
             dh = dhash64(gray)
         except Exception:  # noqa: BLE001
             continue
+        aspects.append(max(gray.shape[1], 1) / max(gray.shape[0], 1))
         entries.append(
             {
                 "path": str(path.resolve()) if path.is_file() else str(path),
@@ -406,16 +394,29 @@ def find_near_duplicate_groups(
             "scanned_files": total,
         }
 
-    edges: list[tuple[int, int]] = []
-    for i in range(n):
-        ai, di = hashes[i]
-        for j in range(i + 1, n):
-            aj, dj = hashes[j]
-            dist = max(hamming64(ai, aj), hamming64(di, dj))
-            if dist <= int(threshold):
-                edges.append((i, j))
+    # Hub linkage: the photo with the most look-alikes anchors a set and only photos close to
+    # the anchor join it, so one in-between picture cannot chain unrelated photos together.
+    def _close(a: int, b: int) -> bool:
+        if abs(aspects[a] / aspects[b] - 1.0) > NEAR_ASPECT_SLACK:
+            return False
+        return max(hamming64(hashes[a][0], hashes[b][0]), hamming64(hashes[a][1], hashes[b][1])) <= int(threshold)
 
-    clusters = _union_find_groups(n, edges)
+    near_of: list[list[int]] = [[] for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            if _close(i, j):
+                near_of[i].append(j)
+                near_of[j].append(i)
+
+    taken: set[int] = set()
+    clusters: list[list[int]] = []
+    for hub in sorted(range(n), key=lambda k: (-len(near_of[k]), k)):
+        if hub in taken or not near_of[hub]:
+            continue
+        cl = [hub] + [j for j in near_of[hub] if j not in taken]
+        if len(cl) >= 2:
+            taken.update(cl)
+            clusters.append(sorted(cl))
     groups = []
     for idxs in clusters:
         mem = [entries[k] for k in idxs]
@@ -458,10 +459,10 @@ def find_near_duplicate_groups(
     }
 
 
-def find_integrity_groups(store: Path, **kwargs) -> dict:
+def find_integrity_groups(store: Path, *, near_threshold: int = NEAR_HAMMING_THRESHOLD, **kwargs) -> dict:
     """Combined Exact + Near integrity scan for Home Duplicates surface."""
     exact = find_exact_duplicate_groups(store, **kwargs)
-    near = find_near_duplicate_groups(store, **kwargs)
+    near = find_near_duplicate_groups(store, threshold=near_threshold, **kwargs)
     return {
         "status": exact.get("status") if exact.get("groups") else near.get("status") or exact.get("status"),
         "exact": exact,
