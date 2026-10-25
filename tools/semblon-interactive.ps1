@@ -18,7 +18,8 @@ trap {
 
 function Test-SemblonImport {
     param([string]$PythonExe)
-    & $PythonExe -c "import semblon" 2>$null
+    # A half-finished install can import semblon from the folder but still lack the window toolkit.
+    & $PythonExe -c "import semblon, PySide6, cv2" 2>$null
     return ($LASTEXITCODE -eq 0)
 }
 
@@ -28,7 +29,12 @@ function Repair-SemblonInstall {
     if (-not (Test-Path -LiteralPath $pyproject)) {
         return $false
     }
-    Write-Host "Semblon package missing in this venv. Reinstalling editable install..." -ForegroundColor Yellow
+    Write-Host "Semblon setup is incomplete in this venv. Finishing the install..." -ForegroundColor Yellow
+    $installer = Join-Path $RepoRoot "tools\install-windows.ps1"
+    if (Test-Path -LiteralPath $installer) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $installer -Root $RepoRoot
+        return (Test-SemblonImport -PythonExe $PythonExe)
+    }
     & $PythonExe -m pip install -e "${RepoRoot}[gui]"
     if ($LASTEXITCODE -ne 0) {
         return $false
