@@ -8,7 +8,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Normalize Root, but keep drive roots ("C:\") intact - TrimEnd would turn "C:\" into "C:".
 $Root = $Root.TrimEnd('\', '/')
+if ($Root -match '^[A-Za-z]:$') { $Root = "$Root\" }
 
 trap {
     Write-Host ""
@@ -39,8 +42,12 @@ function Repair-SemblonInstall {
     if ($LASTEXITCODE -ne 0) {
         return $false
     }
-    & $PythonExe -m pip uninstall -y opencv-python opencv-contrib-python
+    & $PythonExe -m pip uninstall -y opencv-python opencv-contrib-python | Out-Null
     & $PythonExe -m pip install --force-reinstall --no-deps "opencv-python-headless==5.0.0.93"
+    if ($LASTEXITCODE -ne 0) {
+        # Pinned build may not exist for this Python; fall back to the normal headless wheel.
+        & $PythonExe -m pip install --force-reinstall opencv-python-headless
+    }
     return (Test-SemblonImport -PythonExe $PythonExe)
 }
 
@@ -69,7 +76,7 @@ function Get-SemblonLaunch {
             "  powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1"
             "Then double-click semblon.cmd again."
         ) -join [Environment]::NewLine
-        Write-Error $msg
+        Write-Host $msg -ForegroundColor Red
         exit 1
     }
     $msiMarker = Join-Path $Root ".semblon-msi-install"
@@ -79,21 +86,21 @@ function Get-SemblonLaunch {
         Write-Host "MSI code install: bootstrapping .venv (no buffalo_l weights)..." -ForegroundColor Yellow
         & powershell -NoProfile -ExecutionPolicy Bypass -File $bootstrap -Root $Root
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "MSI bootstrap failed. Install Python 3.12 (py launcher), then re-run Semblon."
+            Write-Host "MSI bootstrap failed. Install Python 3.12 (py launcher), then re-run Semblon." -ForegroundColor Red
             exit 1
         }
         $py = Join-Path $Root ".venv\Scripts\python.exe"
         if ((Test-Path -LiteralPath $py) -and (Test-SemblonImport -PythonExe $py)) {
             return @{ Kind = "py"; Path = $py }
         }
-        Write-Error "MSI bootstrap finished but semblon import failed under $Root"
+        Write-Host "MSI bootstrap finished but semblon import failed under $Root" -ForegroundColor Red
         exit 1
     }
     if (Test-Path -LiteralPath $install) {
         Write-Host "Semblon: .venv missing - running install-windows.ps1 once..." -ForegroundColor Yellow
         & powershell -NoProfile -ExecutionPolicy Bypass -File $install -Root $Root
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "install-windows.ps1 failed under $Root"
+            Write-Host "install-windows.ps1 failed under $Root" -ForegroundColor Red
             exit 1
         }
         $py = Join-Path $Root ".venv\Scripts\python.exe"
@@ -107,7 +114,7 @@ function Get-SemblonLaunch {
         "  powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1"
         "Then double-click semblon.cmd."
     ) -join [Environment]::NewLine
-    Write-Error $msg
+    Write-Host $msg -ForegroundColor Red
     exit 1
 }
 
@@ -122,13 +129,37 @@ function Invoke-SemblonProcess {
 
 function Invoke-SemblonShell {
     $launch = Get-SemblonLaunch
-    & $launch.Path -m semblon shell
-    exit $LASTEXITCODE
+    $pyw = $launch.Path -replace 'python\.exe$', 'pythonw.exe'
+    $exe = if (Test-Path -LiteralPath $pyw) { $pyw } else { $launch.Path }
+
+    # pythonw has no console; capture stderr so an early crash is reported
+    # instead of the app silently never appearing.
+    $log = Join-Path $env:TEMP "semblon-shell.err.log"
+    if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue }
+
+    $proc = Start-Process -FilePath $exe `
+        -ArgumentList "-m semblon shell" `
+        -RedirectStandardError $log `
+        -PassThru
+
+    Start-Sleep -Seconds 2
+    if ($proc.HasExited -and $proc.ExitCode -ne 0) {
+        Write-Host "Semblon shell exited with code $($proc.ExitCode)." -ForegroundColor Red
+        if ((Test-Path -LiteralPath $log) -and ((Get-Item -LiteralPath $log).Length -gt 0)) {
+            Write-Host "--- $log ---" -ForegroundColor Yellow
+            Get-Content -LiteralPath $log | Write-Host
+        } else {
+            Write-Host "No stderr captured. Run this for the full traceback:" -ForegroundColor Yellow
+            Write-Host "  `"$($launch.Path)`" -m semblon shell" -ForegroundColor Yellow
+        }
+        exit 1
+    }
+    exit 0
 }
 
 if ($Folder) {
     if (-not (Test-Path -LiteralPath $Folder -PathType Container)) {
-        Write-Error "Folder not found: $Folder"
+        Write-Host "Folder not found: $Folder" -ForegroundColor Red
         exit 2
     }
     Invoke-SemblonProcess -PhotoFolder $Folder

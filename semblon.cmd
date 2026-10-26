@@ -1,8 +1,10 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
+
 rem Repo-root / MSI-install launcher: double-click = PySide6 archive (semblon shell).
 set "ROOT=%~dp0"
-if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+if "%ROOT:~-1%"=="\" if not "%ROOT:~-2%"==":\" set "ROOT=%ROOT:~0,-1%"
+
 set "VENV_PY=%ROOT%\.venv\Scripts\python.exe"
 set "INTERACTIVE=%ROOT%\tools\semblon-interactive.ps1"
 set "MSI_MARKER=%ROOT%\.semblon-msi-install"
@@ -11,15 +13,16 @@ set "INSTALL_PS1=%ROOT%\tools\install-windows.ps1"
 
 if "%~1"=="" (
   if not exist "%INTERACTIVE%" (
-    echo Semblon: missing %INTERACTIVE%
+    echo Semblon: missing "%INTERACTIVE%"
     echo.
     pause
     exit /b 1
   )
-  powershell -NoProfile -ExecutionPolicy Bypass -Sta -File "%INTERACTIVE%" -Root "%ROOT%"
-  if errorlevel 1 (
+
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Sta -File "%INTERACTIVE%" -Root "%ROOT%"
+  if !ERRORLEVEL! neq 0 (
     echo.
-    echo Semblon launcher failed. See messages above.
+    echo Semblon launcher failed with exit code !ERRORLEVEL!.
     pause
     exit /b 1
   )
@@ -29,54 +32,60 @@ if "%~1"=="" (
 rem Prefer python -m. Never run stale semblon.exe when import fails.
 if exist "%VENV_PY%" (
   "%VENV_PY%" -c "import semblon, PySide6, cv2" >nul 2>&1
-  if not errorlevel 1 (
+  if !ERRORLEVEL! equ 0 (
     "%VENV_PY%" -m semblon %*
-    exit /b %ERRORLEVEL%
+    exit /b !ERRORLEVEL!
   )
   echo Semblon setup is incomplete in .venv. Finishing the install...
   if exist "%INSTALL_PS1%" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_PS1%" -Root "%ROOT%"
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_PS1%" -Root "%ROOT%"
   ) else (
     "%VENV_PY%" -m pip install -e "%ROOT%[gui]"
   )
-  if errorlevel 1 (
+  if !ERRORLEVEL! neq 0 (
     echo Reinstall failed. Run:
     echo   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
+    pause
     exit /b 1
   )
   "%VENV_PY%" -m pip uninstall -y opencv-python opencv-contrib-python
   "%VENV_PY%" -m pip install --force-reinstall --no-deps "opencv-python-headless==5.0.0.93"
   "%VENV_PY%" -c "import semblon, PySide6, cv2" >nul 2>&1
-  if errorlevel 1 (
+  if !ERRORLEVEL! neq 0 (
     echo Semblon still not importable after reinstall. Run:
     echo   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
+    pause
     exit /b 1
   )
   "%VENV_PY%" -m semblon %*
-  exit /b %ERRORLEVEL%
+  exit /b !ERRORLEVEL!
 )
 
 rem MSI / first-run: create .venv before CLI args.
 if exist "%MSI_MARKER%" if exist "%MSI_BOOTSTRAP%" (
-  echo Semblon MSI: bootstrapping .venv (code only; no buffalo_l^)...
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%MSI_BOOTSTRAP%" -Root "%ROOT%"
-  if errorlevel 1 (
-    echo MSI bootstrap failed. Install Python 3.12 ^(py launcher^), then retry.
+  echo Semblon MSI: bootstrapping .venv...
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%MSI_BOOTSTRAP%" -Root "%ROOT%"
+  if !ERRORLEVEL! neq 0 (
+    echo MSI bootstrap failed. Install Python 3.12, then retry.
+    pause
     exit /b 1
   )
   if exist "%VENV_PY%" (
     "%VENV_PY%" -m semblon %*
-    exit /b %ERRORLEVEL%
+    exit /b !ERRORLEVEL!
   )
 )
 
 if exist "%INSTALL_PS1%" (
-  echo Semblon: .venv missing — running install-windows.ps1...
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_PS1%" -Root "%ROOT%"
-  if errorlevel 1 exit /b 1
+  echo Semblon: .venv missing - running install-windows.ps1...
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_PS1%" -Root "%ROOT%"
+  if !ERRORLEVEL! neq 0 (
+    pause
+    exit /b 1
+  )
   if exist "%VENV_PY%" (
     "%VENV_PY%" -m semblon %*
-    exit /b %ERRORLEVEL%
+    exit /b !ERRORLEVEL!
   )
 )
 
@@ -84,29 +93,32 @@ set "ALT_ROOT=%ROOT%\semblon"
 set "ALT_PY=%ALT_ROOT%\.venv\Scripts\python.exe"
 if exist "%ALT_PY%" (
   "%ALT_PY%" -c "import semblon, PySide6, cv2" >nul 2>&1
-  if not errorlevel 1 (
+  if !ERRORLEVEL! equ 0 (
     "%ALT_PY%" -m semblon %*
-    exit /b %ERRORLEVEL%
+    exit /b !ERRORLEVEL!
   )
   echo Semblon package missing in nested .venv. Reinstalling editable install...
   "%ALT_PY%" -m pip install -e "%ALT_ROOT%[gui]"
-  if errorlevel 1 (
+  if !ERRORLEVEL! neq 0 (
     echo Reinstall failed. Run tools\install-windows.ps1 from the checkout root.
+    pause
     exit /b 1
   )
   "%ALT_PY%" -m pip uninstall -y opencv-python opencv-contrib-python
   "%ALT_PY%" -m pip install --force-reinstall --no-deps "opencv-python-headless==5.0.0.93"
   "%ALT_PY%" -c "import semblon, PySide6, cv2" >nul 2>&1
-  if errorlevel 1 (
+  if !ERRORLEVEL! neq 0 (
     echo Semblon still not importable after reinstall.
+    pause
     exit /b 1
   )
   "%ALT_PY%" -m semblon %*
-  exit /b %ERRORLEVEL%
+  exit /b !ERRORLEVEL!
 )
 
 echo Semblon: repo .venv not found.
 echo From this folder, once:
 echo   powershell -NoProfile -ExecutionPolicy Bypass -File tools\install-windows.ps1
 echo Then double-click semblon.cmd, or run:  semblon.cmd process "D:\photos\dump"
+pause
 exit /b 1
