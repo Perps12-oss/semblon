@@ -64,6 +64,7 @@ from semblon.scan_tiers import (
     TIER_LIBRARY,
     TIER_OBSERVE,
     TIER_SEMANTIC,
+    TIER_DETAIL,
     header_geometry,
     load_still,
     requested_mask,
@@ -790,10 +791,12 @@ def ingest(
             "contours_ms": 0.0,
             "hist_ms": 0.0,
             "dino_ms": 0.0,
+            "dino_frame_ms": 0.0,
+            "dino_detail_ms": 0.0,
             "commit_ms": 0.0,
             "wait_ms": 0.0,
         }
-        tier_wall = {"library": 0.0, "faces": 0.0, "indexed": 0.0}
+        tier_wall = {"library": 0.0, "faces": 0.0, "indexed": 0.0, "detailed": 0.0}
         tier2_state = "not_requested"
 
         def _on_sigint(_signum, _frame):
@@ -828,14 +831,16 @@ def ingest(
             *,
             force: bool = False,
             current: int | None = None,
+            total: int | None = None,
         ) -> None:
             nonlocal completed, last_emit
             completed += 1
             shown = completed if current is None else current
+            span = n_files if total is None else total
             now = time.perf_counter()
             if (
                 force
-                or shown >= n_files
+                or shown >= span
                 or last_emit == 0.0
                 or (now - last_emit) >= PROGRESS_THROTTLE_S
             ):
@@ -846,9 +851,9 @@ def ingest(
                         STAGE_INGEST,
                         KIND_PROGRESS,
                         current=shown,
-                        total=n_files,
+                        total=span,
                         files_processed=shown,
-                        files_total=n_files,
+                        files_total=span,
                         faces_found=n_faces,
                         path=str(path),
                         run_id=run_id,
@@ -1207,17 +1212,17 @@ def ingest(
             tier_wall["faces"] += time.perf_counter() - started
             maybe_commit(force=True)
 
-        def _run_tier2() -> None:
-            nonlocal cancelled, tier2_state, dirty
-            if not (semantic_obs and (need & TIER_SEMANTIC)):
-                return
-            from semblon.region_encoder import index_image_regions, probe_region_pack
+        def _semantic_pass(*, depth: str, bit: int, outcome: str, wall_key: str) -> None:
+            """One pass of the region encoder. ``frame`` first, ``detail`` second.
 
-            ready, _note = probe_region_pack()
-            if not ready:
-                tier2_state = "pack_missing"
-                return
-            tier2_state = "ran"
+            Every picture gets the cheap whole-picture pass before any picture
+            gets the expensive one, so search covers the whole library early.
+            """
+            nonlocal cancelled, tier2_state, dirty, n_fail
+            from semblon.detail_priority import claim, mask_of, release
+            from semblon.region_encoder import index_image_regions
+            from semblon.scan_tiers import infer_mask
+
             started = time.perf_counter()
             queue = [
                 rec
@@ -1225,12 +1230,38 @@ def ingest(
                 if not rec.get("failed")
                 and not rec.get("duplicate")
                 and rec.get("media_id")
-                and (reprocess or not (int(rec["mask"]) & TIER_SEMANTIC))
+                and (reprocess or not (int(rec["mask"]) & bit))
+                and (bit != TIER_DETAIL or (int(rec["mask"]) & TIER_SEMANTIC))
             ]
+            total = len(queue)
+            held: str | None = None
             for index, rec in enumerate(queue, start=1):
+                if held is not None:
+                    release(held)
+                    held = None
                 if want_cancel():
                     cancelled = True
                     break
+                if bit == TIER_DETAIL:
+                    # A search may be analysing this photo, or may already have finished it.
+                    if not claim(rec["media_id"]):
+                        tick(rec["path"], outcome, current=index, total=total)
+                        continue
+                    held = rec["media_id"]
+                    if not reprocess and (mask_of(conn, held) & TIER_DETAIL):
+                        rec["mask"] = int(rec["mask"]) | TIER_DETAIL
+                        tick(rec["path"], outcome, current=index, total=total)
+                        continue
+                if bit == TIER_DETAIL and not reprocess:
+                    # An older scan may already hold the windows and crops.
+                    with writer_lock():
+                        have_detail = bool(infer_mask(conn, rec["media_id"]) & TIER_DETAIL)
+                        if have_detail:
+                            _stamp(rec, TIER_DETAIL)
+                            maybe_commit(force=True)
+                    if have_detail:
+                        tick(rec["path"], outcome, current=index, total=total)
+                        continue
                 t_decode = time.perf_counter()
                 img0 = _decode_bgr(None, rec["path"])
                 phase_ms["decode_ms"] += (time.perf_counter() - t_decode) * 1000.0
@@ -1252,19 +1283,49 @@ def ingest(
                             observation_id=obs_id,
                             run_id=run_id,
                             img=img0,
+                            depth=depth,
                         )
                     except Exception:
                         indexed = None
-                    phase_ms["dino_ms"] += (time.perf_counter() - t_dino) * 1000.0
+                    elapsed_ms = (time.perf_counter() - t_dino) * 1000.0
+                    phase_ms["dino_ms"] += elapsed_ms
+                    phase_ms[f"dino_{depth}_ms"] += elapsed_ms
                     if indexed is None or indexed.get("ready") is False:
                         maybe_commit(force=True)
                         continue
+                    stored = (
+                        int(indexed.get("scene") or 0)
+                        + int(indexed.get("patch") or 0)
+                        + int(indexed.get("region") or 0)
+                    )
+                    if indexed.get("note") and stored == 0 and int(indexed.get("jobs") or 0) > 0:
+                        # A failed encode is not "done". Leave the bit open for the next run.
+                        maybe_commit(force=True)
+                        continue
                     dirty += 1
-                    _stamp(rec, TIER_SEMANTIC)
+                    _stamp(rec, bit)
                     maybe_commit(force=True)
-                tick(rec["path"], "indexed", current=index)
-            tier_wall["indexed"] += time.perf_counter() - started
+                tick(rec["path"], outcome, current=index, total=total)
+            if held is not None:
+                release(held)
+            tier_wall[wall_key] += time.perf_counter() - started
             maybe_commit(force=True)
+
+        def _run_tier2() -> None:
+            nonlocal tier2_state
+            if not (semantic_obs and (need & TIER_SEMANTIC)):
+                return
+            from semblon.region_encoder import probe_region_pack
+
+            ready, _note = probe_region_pack()
+            if not ready:
+                tier2_state = "pack_missing"
+                return
+            tier2_state = "ran"
+            _semantic_pass(depth="frame", bit=TIER_SEMANTIC, outcome="indexed", wall_key="indexed")
+            if cancelled or not (need & TIER_DETAIL):
+                return
+            _semantic_pass(depth="detail", bit=TIER_DETAIL, outcome="detailed", wall_key="detailed")
 
         if not cancelled:
             _run_tier0()
@@ -1442,6 +1503,7 @@ def ingest(
             "tier0_s": round(tier_wall["library"], 3),
             "tier1_s": round(tier_wall["faces"], 3),
             "tier2_s": round(tier_wall["indexed"], 3),
+            "tier3_s": round(tier_wall["detailed"], 3),
             "tier2": tier2_state,
         }
         for key, value in phase_ms.items():
@@ -1504,6 +1566,11 @@ def ingest(
             _restore_sig()
             raise CancelledError("ingest cancelled", run_id=run_id, timings=timings)
         _restore_sig()
+        from semblon import perf_evidence
+
+        perf_evidence.record(
+            store, "ingest", strategy="hybrid", **{k: v for k, v in timings.items() if isinstance(v, (int, float))}
+        )
         emit(
             on_event,
             make_event(

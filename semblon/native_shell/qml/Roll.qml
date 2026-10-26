@@ -680,6 +680,7 @@ Item {
             id: dashedEdge
             objectName: "dropEdge"
             anchors.fill: parent
+            visible: roll.lit
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
                 strokeColor: roll.lit ? Theme.amber : Theme.amberEdge
@@ -713,10 +714,11 @@ Item {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                text: "Drop a folder anywhere on this window, or choose one. Semblon only looks. Nothing is moved, changed or sent anywhere."
+                text:                 "Drag a folder of photos onto this window, or press Choose a folder. Semblon only reads them. Nothing is moved, changed or sent anywhere."
                 font.family: Theme.ui
                 font.pixelSize: Theme.lead
-                color: Theme.muted
+                                color: Theme.text
+                                opacity: 0.88
             }
             Text {
                 objectName: "emptyStatus"

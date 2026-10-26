@@ -281,7 +281,7 @@ def test_clear_library_drops_the_index_and_keeps_originals(shell, tmp_path, monk
     assert bridge.keptCount == 1
     bridge.clearLibrary()
     bridge.confirmAccept()
-    assert bridge.resultText == "Library cleared. Photos on disk were kept. Add a folder to start again."
+    assert bridge.resultText == "Semblon's list of your photos was cleared. Your original photos were not changed. Add a folder to start again."
     assert bridge._jobs.archive_count() == 0
     assert bridge._model.rowCount() == 0
     assert bridge.focusId == ""

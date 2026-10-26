@@ -95,7 +95,7 @@ Item {
                 x: 8; y: 8
                 color: Theme.paper
                 rotation: ((index * 37) % 7) - 3
-                border.width: plate.chosen || print.GridView.isCurrentItem && prints.activeFocus ? 3 : 0
+                border.width: plate.chosen || plate.GridView.isCurrentItem && prints.activeFocus ? 3 : 0
                 border.color: Theme.amber
                 Drag.active: drag.active
                 Drag.keys: ["print"]

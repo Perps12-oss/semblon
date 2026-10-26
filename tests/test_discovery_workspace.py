@@ -215,8 +215,8 @@ def test_indexing_progress_names_photos_already_added(tmp_path, monkeypatch):
             SimpleNamespace(stage="ingest", kind="progress", current=2, total=9)
         )
         app.processEvents()
-        assert "2/9" in bridge.jobLabel
-        assert "already added" in bridge.jobLabel
+        assert "2 of 9" in bridge.jobLabel
+        assert "browse" in bridge.jobLabel
         assert bridge.jobCurrent == 2
         assert bridge.jobTotal == 9
         assert bridge.taskCount == 1
@@ -230,6 +230,14 @@ def test_indexing_progress_names_photos_already_added(tmp_path, monkeypatch):
         assert bool(band.property("visible")) is True
         assert root.findChild(QObject, "pauseJob") is not None
         assert root.findChild(QObject, "cancelJob") is not None
+        root.findChild(QObject, "shrinkJob").activated.emit()
+        _wait(app)
+        assert bool(band.property("visible")) is False
+        pill = root.findChild(QObject, "jobPill")
+        assert pill is not None and bool(pill.property("visible")) is True
+        root.setProperty("jobMini", False)
+        _wait(app)
+        assert bool(band.property("visible")) is True
     finally:
         shutdown_shell(engine)
 

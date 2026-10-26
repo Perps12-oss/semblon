@@ -43,7 +43,7 @@ def test_unified_basis_messages_are_allowlisted():
         "A folder is being added. Wait until that finishes.",
         "Library clear was cancelled.",
         "The library could not be cleared.",
-        "Library cleared. Photos on disk were kept. Add a folder to start again.",
+        "Semblon's list of your photos was cleared. Your original photos were not changed. Add a folder to start again.",
         "A match is a similar region, not proof it is the same object.",
         "Search looks at the same thing.",
         "Search looks at the same kind of thing.",
