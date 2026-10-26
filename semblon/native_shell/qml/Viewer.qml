@@ -216,7 +216,7 @@ Item {
             onActiveScaleChanged: if (active) viewer.zoomAt(centroid.position.x, centroid.position.y, start * activeScale / viewer.zoom)
         }
         TapHandler {
-            enabled: !viewer.loupeOn
+            enabled: viewer.previewId === "" && !viewer.loupeOn
             onDoubleTapped: { spots.cancelPending(); if (viewer.zoom > 1) viewer.resetZoom(); else viewer.zoomAt(point.position.x, point.position.y, 2.5) }
         }
         Text {
