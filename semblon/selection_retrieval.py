@@ -351,6 +351,12 @@ def _object_labels(observations: list[dict], crop, spec: QuerySpec) -> list[str]
         if str(item.get("kind") or "") != "object":
             continue
         payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+        provider = str(item.get("provider") or "")
+        # A saved name is a human-authored query hint only when it came from
+        # the user-region workflow. Do not treat arbitrary payload "named"
+        # fields as trusted labels or identity.
+        if provider == "user_box":
+            _add(str(payload.get("named") or ""))
         _add(str(payload.get("label") or payload.get("class") or ""))
     if not labels and crop is not None:
         try:
