@@ -1696,6 +1696,7 @@ def _fuse_region(
         store,
         crop=crop,
         observations=_stored_observations(store, media_id),
+        selected_region_bbox=visual.get("query_pixels"),
         limit=limit,
         selection_kind=selection_kind,
         cancelled=cancelled,
@@ -1736,7 +1737,8 @@ def _stored_observations(store: Path, media_id: str) -> list[dict]:
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
-            """SELECT i.kind, i.provider, i.payload_json
+            """SELECT i.kind, i.provider, i.payload_json, i.item_id,
+                      i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2
                FROM observation_items i
                JOIN observations o ON o.observation_id = i.observation_id
                WHERE o.media_id=? AND i.kind IN ('object', 'text')""",
@@ -1752,5 +1754,9 @@ def _stored_observations(store: Path, media_id: str) -> list[dict]:
             payload = {}
         if not isinstance(payload, dict):
             payload = {}
-        found.append({"kind": row["kind"], "provider": row["provider"], "payload": payload})
+        found.append({
+            "kind": row["kind"], "provider": row["provider"], "payload": payload,
+            "item_id": row["item_id"],
+            "bbox": [row["bbox_x1"], row["bbox_y1"], row["bbox_x2"], row["bbox_y2"]],
+        })
     return found

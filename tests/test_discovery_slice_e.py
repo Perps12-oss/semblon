@@ -267,3 +267,43 @@ def test_search_object_preserves_detector_label_search_when_ready(tmp_path):
     assert rec["status"] == "SUCCESS"
     assert rec["items"][0]["label"] == "dog"
     assert rec["items"][0]["match_basis"] == "COCO object detection (NanoDet)"
+
+
+def test_object_query_uses_only_selected_named_region():
+    from semblon.query_spec import parse_query_spec
+    from semblon.selection_retrieval import _object_labels
+
+    observations = [
+        {
+            "kind": "object", "provider": "user_box",
+            "payload": {"class": "user_region", "named": "red toolbox"},
+            "bbox": [10, 20, 110, 120],
+        },
+        {
+            "kind": "object", "provider": "user_box",
+            "payload": {"class": "user_region", "named": "blue bicycle"},
+            "bbox": [220, 30, 320, 130],
+        },
+    ]
+    labels = _object_labels(
+        observations, crop=None, spec=parse_query_spec(None),
+        selected_region_bbox={"x": 10, "y": 20, "w": 100, "h": 100},
+    )
+    assert "red toolbox" in labels
+    assert "blue bicycle" not in labels
+
+
+def test_object_query_does_not_use_named_region_without_exact_box():
+    from semblon.query_spec import parse_query_spec
+    from semblon.selection_retrieval import _object_labels
+
+    observations = [{
+        "kind": "object", "provider": "user_box",
+        "payload": {"class": "user_region", "named": "red toolbox"},
+        "bbox": [10, 20, 110, 120],
+    }]
+    labels = _object_labels(
+        observations, crop=None, spec=parse_query_spec(None),
+        selected_region_bbox={"x": 11, "y": 20, "w": 100, "h": 100},
+    )
+    assert "red toolbox" not in labels
