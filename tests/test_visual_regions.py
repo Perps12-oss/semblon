@@ -313,6 +313,23 @@ def test_unnamed_chip_stays_blank():
     assert "not a person identity" in text
 
 
+def test_saved_human_region_name_is_reused_by_surface():
+    # user_region.name_user_region persists this field. The surface must not
+    # discard that memory and fall back to a generic label.
+    named_region = {
+        "provider": "user_box",
+        "kind": "object",
+        "payload": {"class": "user_region", "named": "my red toolbox"},
+    }
+    assert soft_object_label(named_region) == "my red toolbox"
+
+    named_visual = {
+        "provider": "visual.region",
+        "payload": {"class": "visual_region", "selected_label": None, "named": "garden gate"},
+    }
+    assert soft_object_label(named_visual) == "garden gate"
+
+
 def test_visual_job_finishes_without_a_person(tmp_path):
     rgb, _person, _hood, _hand = _scene()
     store = tmp_path / "s.sqlite"
