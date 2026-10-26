@@ -24,7 +24,7 @@ Item {
     Behavior on opacity { NumberAnimation { duration: Theme.medium; easing.type: Theme.easing } }
     focus: active
     Accessible.role: Accessible.Pane
-    Accessible.name: "Photo " + shell.focusName
+    Accessible.name: viewer.previewId !== "" ? "Previewing a similar result" : "Photo " + shell.focusName
 
     function resetZoom() { zoom = 1; panX = 0; panY = 0 }
     function returnFromPreview() { previewId = ""; viewer.forceActiveFocus() }
@@ -265,8 +265,8 @@ Item {
         Tool { label: "Next"; visible: viewer.previewId === ""; onActivated: shell.focusNext() }
         Tool {
             objectName: "findDetail"
-            visible: viewer.previewId === ""
-        label: viewer.loupeOn ? "Loupe on: drag, or use arrow keys and Enter" : "Find this part again"
+                visible: viewer.previewId === ""
+            label: viewer.loupeOn ? "Loupe on: drag, or use arrow keys and Enter" : "Find this part again"
             hint: "Draw around anything in the photo to find it in other photos"
             primary: true
             onActivated: { viewer.loupeOn = !viewer.loupeOn; if (!viewer.loupeOn) viewer.reset() }
@@ -404,7 +404,6 @@ Item {
         color: Theme.muted
         elide: Text.ElideMiddle
         width: Math.min(360, parent.width / 3)
-        visible: viewer.previewId === ""
         horizontalAlignment: Text.AlignRight
     }
 
