@@ -317,9 +317,9 @@ def test_saved_human_region_name_is_reused_by_surface():
     # user_region.name_user_region persists this field. The surface must not
     # discard that memory and fall back to a generic label.
     named_region = {
-        "provider": "user_region",
+        "provider": "user_box",
         "kind": "object",
-        "payload": {"class": "user_region", "label": "region", "named": "my red toolbox"},
+        "payload": {"class": "user_region", "named": "my red toolbox"},
     }
     assert soft_object_label(named_region) == "my red toolbox"
 
