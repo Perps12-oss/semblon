@@ -48,6 +48,7 @@ def retrieve_selection(
     region_rec: dict | None = None,
     media_id: str | None = None,
     parts: list[dict] | None = None,
+    selected_region_bbox: dict | None = None,
 ) -> dict:
     """Run region, text, object, and optional language retrieval, then fuse."""
     spec = parse_query_spec(query_spec)
@@ -93,6 +94,7 @@ def retrieve_selection(
         store,
         crop=crop,
         observations=obs,
+        selected_region_bbox=selected_region_bbox,
         limit=cap,
         channels=channels,
         grouped=grouped,
@@ -335,7 +337,13 @@ def _take_text(store, *, crop, observations, kind, limit, channels, grouped, ran
     )
 
 
-def _object_labels(observations: list[dict], crop, spec: QuerySpec) -> list[str]:
+def _object_labels(
+    observations: list[dict],
+    crop,
+    spec: QuerySpec,
+    *,
+    selected_region_bbox: dict | None = None,
+) -> list[str]:
     labels: list[str] = []
     seen: set[str] = set()
 
@@ -347,16 +355,35 @@ def _object_labels(observations: list[dict], crop, spec: QuerySpec) -> list[str]
         seen.add(key)
         labels.append(text)
 
+    selected_box = None
+    if isinstance(selected_region_bbox, dict):
+        try:
+            x = float(selected_region_bbox["x"])
+            y = float(selected_region_bbox["y"])
+            w = float(selected_region_bbox["w"])
+            h = float(selected_region_bbox["h"])
+            if w > 0 and h > 0:
+                selected_box = (x, y, x + w, y + h)
+        except (KeyError, TypeError, ValueError):
+            selected_box = None
+
     for item in observations:
         if str(item.get("kind") or "") != "object":
             continue
         payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
         provider = str(item.get("provider") or "")
-        # A saved name is a human-authored query hint only when it came from
-        # the user-region workflow. Do not treat arbitrary payload "named"
-        # fields as trusted labels or identity.
-        if provider == "user_box":
-            _add(str(payload.get("named") or ""))
+        # Only the user box matching this exact selection may contribute a
+        # saved human name. Other object labels remain class hints, not names.
+        if provider == "user_box" and selected_box is not None:
+            bbox = item.get("bbox")
+            try:
+                candidate_box = tuple(float(v) for v in bbox)
+            except (TypeError, ValueError):
+                candidate_box = ()
+            if len(candidate_box) == 4 and all(
+                abs(a - b) <= 1.0 for a, b in zip(candidate_box, selected_box)
+            ):
+                _add(str(payload.get("named") or ""))
         _add(str(payload.get("label") or payload.get("class") or ""))
     if not labels and crop is not None:
         try:
@@ -379,10 +406,15 @@ def _object_labels(observations: list[dict], crop, spec: QuerySpec) -> list[str]
     return labels
 
 
-def _take_objects(store, *, crop, observations, limit, channels, grouped, ranked, spec, exclude_media_id) -> None:
+def _take_objects(
+    store, *, crop, observations, selected_region_bbox=None, limit, channels,
+    grouped, ranked, spec, exclude_media_id
+) -> None:
     from semblon.search import SearchError, search_object
 
-    labels = _object_labels(observations, crop, spec)
+    labels = _object_labels(
+        observations, crop, spec, selected_region_bbox=selected_region_bbox
+    )
     if not labels:
         channels.append(
             {
