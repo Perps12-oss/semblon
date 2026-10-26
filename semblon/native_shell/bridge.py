@@ -24,6 +24,10 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import QApplication, QFileDialog
 
+from semblon.native_shell.signal_guard import install_signal_emit_guard
+
+install_signal_emit_guard()
+
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
 from semblon.library_tasks import library_work

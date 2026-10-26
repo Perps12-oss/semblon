@@ -1220,7 +1220,7 @@ def ingest(
             """
             nonlocal cancelled, tier2_state, dirty, n_fail
             from semblon.detail_priority import claim, mask_of, release
-            from semblon.region_encoder import index_image_regions
+            from semblon.region_encoder import persist_region_index, prepare_region_index
             from semblon.scan_tiers import infer_mask
 
             started = time.perf_counter()
@@ -1269,6 +1269,13 @@ def ingest(
                     n_fail += 1
                     tick(rec["path"], "failed", force=True)
                     continue
+                # Inference stays outside the writer lock. The lock only covers the commit.
+                t_dino = time.perf_counter()
+                prepared = prepare_region_index(
+                    img0, depth=depth, interactive=False, cancelled=want_cancel
+                )
+                for key, value in (prepared.get("timings_ms") or {}).items():
+                    phase_ms[f"dino_{key}"] = phase_ms.get(f"dino_{key}", 0.0) + float(value)
                 with writer_lock():
                     maybe_commit()
                     obs_id = _ensure_observation(rec)
@@ -1276,20 +1283,21 @@ def ingest(
                         n_fail += 1
                         continue
                     maybe_commit(force=True)
-                    t_dino = time.perf_counter()
                     try:
-                        indexed = index_image_regions(
+                        indexed = persist_region_index(
                             conn,
                             observation_id=obs_id,
                             run_id=run_id,
-                            img=img0,
-                            depth=depth,
+                            prepared=prepared,
                         )
                     except Exception:
                         indexed = None
                     elapsed_ms = (time.perf_counter() - t_dino) * 1000.0
                     phase_ms["dino_ms"] += elapsed_ms
                     phase_ms[f"dino_{depth}_ms"] += elapsed_ms
+                    phase_ms["dino_persist_ms"] = phase_ms.get("dino_persist_ms", 0.0) + float(
+                        (indexed or {}).get("timings_ms", {}).get("persist_ms") or 0.0
+                    )
                     if indexed is None or indexed.get("ready") is False:
                         maybe_commit(force=True)
                         continue

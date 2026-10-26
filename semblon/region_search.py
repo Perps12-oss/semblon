@@ -1551,6 +1551,7 @@ def promote_for_search(
     quality,
     cancelled=None,
     promote=None,
+    on_done=None,
 ) -> dict:
     """Give fine detail to the photos this search most needs, then report what ran.
 
@@ -1593,6 +1594,7 @@ def promote_for_search(
         cancelled=cancelled,
         budget_s=DETAIL_BUDGET_S,
         max_photos=DETAIL_PROMOTE_MAX,
+        on_done=on_done,
     )
 
 
@@ -1605,17 +1607,46 @@ def _refine_with_detail(
     quality,
     cancelled,
     rerun,
+    on_update=None,
 ) -> dict | None:
-    """Promote detail for the shortlist; rescore only when something finished."""
+    """Promote detail for the shortlist; rescore only when something finished.
+
+    ``on_update`` receives a rescored result after each photo. The shell does not
+    pass it. A measured run on 32 Kodak stills showed a rescore per photo cost
+    about six times the ranking time of one rescore at the end, and detail did
+    not add a single top-five hit. The optional hook remains for that measurement.
+    """
     if crop is None or not shortlist or (cancelled is not None and cancelled()):
         return None
+    published: dict = {}
+
+    def _after(_media_id: str) -> None:
+        if on_update is None or (cancelled is not None and cancelled()):
+            return
+        refreshed = rerun()
+        if not isinstance(refreshed, dict):
+            return
+        published["value"] = refreshed
+        on_update(refreshed)
+
     summary = promote_for_search(
-        store, shortlist, crop=crop, media_id=media_id, quality=quality, cancelled=cancelled
+        store,
+        shortlist,
+        crop=crop,
+        media_id=media_id,
+        quality=quality,
+        cancelled=cancelled,
+        on_done=_after if on_update is not None else None,
     )
     if not summary.get("done") or (cancelled is not None and cancelled()):
         return None
-    refreshed = rerun()
+    if published.get("value") is not None:
+        refreshed = published["value"]
+    else:
+        refreshed = rerun()
     refreshed["detail_promoted"] = int(summary["done"])
+    refreshed["detail_phases_ms"] = dict(summary.get("phases_ms") or {})
+    refreshed["progress_published"] = on_update is not None
     return refreshed
 
 

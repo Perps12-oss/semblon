@@ -205,6 +205,8 @@ def _search(strategy: str, store: Path, lib: Path, query: dict, cancelled=None) 
     started = time.perf_counter()
     promoted = 0
     shortlist: list[str] = []
+    hit_first = None
+    phases: dict = {}
     if strategy == "A":
         result = rs.find_similar_region(store, **kwargs)
         first = time.perf_counter() - started
@@ -214,11 +216,14 @@ def _search(strategy: str, store: Path, lib: Path, query: dict, cancelled=None) 
             store, [], crop=crop, media_id=query["source_id"], quality=quality, cancelled=cancelled
         )
         promoted = int(summary.get("done") or 0)
+        phases = dict(summary.get("phases_ms") or {})
         result = rs.find_similar_region(store, **kwargs)
         first = time.perf_counter() - started
     else:
         result = rs.find_similar_region(store, shortlist_out=shortlist, **kwargs)
         first = time.perf_counter() - started
+        first_ids = [str(item.get("media_id")) for item in (result.get("items") or [])][:5]
+        hit_first = query["copy_id"] in first_ids
         crop = rs.crop_bgr(lib / query["source"], x, y, w, h)
         sharper = rs._refine_with_detail(
             store,
@@ -232,17 +237,22 @@ def _search(strategy: str, store: Path, lib: Path, query: dict, cancelled=None) 
         if sharper is not None:
             result = sharper
             promoted = int(sharper.get("detail_promoted") or 0)
+            phases = dict(sharper.get("detail_phases_ms") or {})
     final = time.perf_counter() - started
     ids = [str(item.get("media_id")) for item in (result.get("items") or [])][:5]
     hit = query["copy_id"] in ids
+    if hit_first is None:
+        hit_first = hit
     coverage_info = result.get("coverage") or {}
     return {
         "first_ms": round(first * 1000, 1),
         "final_ms": round(final * 1000, 1),
         "hit": hit,
+        "hit_before_detail": bool(hit_first),
         "rank": ids.index(query["copy_id"]) + 1 if hit else None,
         "returned": len(ids),
         "promoted": promoted,
+        "phases_ms": {key: round(float(value), 1) for key, value in phases.items()},
         "incomplete": coverage_info.get("complete") is False,
         "disclosed": coverage_info.get("complete") is False and "still" in str(result.get("reason") or ""),
     }
@@ -256,16 +266,23 @@ def _med(values: list[float]):
 def _summary(rows: list[dict]) -> dict:
     n = len(rows)
     hits = sum(1 for r in rows if r["hit"])
+    hits_first = sum(1 for r in rows if r.get("hit_before_detail"))
     returned = sum(r["returned"] for r in rows)
+    phases: dict[str, float] = {}
+    for row in rows:
+        for key, value in (row.get("phases_ms") or {}).items():
+            phases[key] = round(phases.get(key, 0.0) + float(value), 1)
     return {
         "queries": n,
         "recall_at_5": round(hits / n, 3) if n else None,
+        "recall_at_5_before_detail": round(hits_first / n, 3) if n else None,
         "precision_at_5": round(hits / returned, 3) if returned else 0.0,
         "first_result_ms_median": _med([r["first_ms"] for r in rows]),
         "first_result_ms_max": max((r["first_ms"] for r in rows), default=None),
         "complete_ms_median": _med([r["final_ms"] for r in rows]),
         "complete_ms_max": max((r["final_ms"] for r in rows), default=None),
         "promoted_photos": sum(r["promoted"] for r in rows),
+        "phases_ms_sum": phases,
         "searches_with_incomplete_coverage": sum(1 for r in rows if r["incomplete"]),
         "of_which_disclosed": sum(1 for r in rows if r["disclosed"]),
     }
