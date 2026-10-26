@@ -653,3 +653,48 @@ def test_windows_journey_launch_ingest_browse_search_theme_restart_recover(tmp_p
         assert not again.empty
     finally:
         shutdown_shell(engine)
+
+
+def test_discovery_result_preview_does_not_mutate_bridge_focus_or_search(qml_shell):
+    from PySide6.QtCore import QObject
+
+    app, _engine, root, bridge = qml_shell
+    viewer = root.findChild(QObject, "viewer")
+    strip = root.findChild(QObject, "similarStrip")
+    return_tool = root.findChild(QObject, "returnFromPreview")
+    open_tool = root.findChild(QObject, "previewThisPhoto")
+    assert viewer is not None and strip is not None
+    assert return_tool is not None and open_tool is not None
+
+    original_focus = bridge.focusId
+    original_state = bridge.similarState
+    original_count = bridge.similarCount
+
+    viewer.setProperty("previewId", "match-preview")
+    viewer.setProperty("loupeOn", True)
+    app.processEvents()
+
+    assert viewer.property("previewId") == "match-preview"
+    assert bridge.focusId == original_focus
+    assert bridge.similarState == original_state
+    assert bridge.similarCount == original_count
+    assert strip.property("visible") is True
+    assert return_tool.property("visible") is True
+    assert open_tool.property("visible") is True
+
+    viewer.setProperty("previewId", "")
+    app.processEvents()
+    assert bridge.focusId == original_focus
+    assert bridge.similarState == original_state
+    assert bridge.similarCount == original_count
+
+
+def test_discovery_preview_has_explicit_navigation_and_escape_return():
+    from pathlib import Path
+
+    qml = Path("semblon/native_shell/qml/Viewer.qml").read_text(encoding="utf-8")
+    assert "function returnFromPreview()" in qml
+    assert "function openPreviewAsFocus()" in qml
+    assert "shell.openDiscoveryHit(target)" in qml
+    assert 'Keys.onEscapePressed: {\n        if (previewId !== "") returnFromPreview()' in qml
+    assert 'onClicked: { viewer.previewId = mediaId; viewer.forceActiveFocus() }' in qml

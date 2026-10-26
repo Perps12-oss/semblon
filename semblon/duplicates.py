@@ -10,10 +10,14 @@ Find Similar (C) and search_similar (B) are separate stacks — never reused her
 from __future__ import annotations
 
 import json
+import os
+import time
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
+from semblon.dedupe import CancelToken, scan_exact
+from semblon.dedupe_sidecar import load_cache, record_scan, save_cache
 from semblon.engine import _sha256_file
 from semblon.ingest import STILL_EXT
 from semblon.store import connect
@@ -32,6 +36,9 @@ NEAR_APP_THRESHOLD = 8
 NEAR_ASPECT_SLACK = 0.12
 # Pictures with almost no detail (blank, black, flat colour) hash alike, so they are left out.
 NEAR_MIN_DETAIL = 8.0
+
+# Set to 1/true to force the pre-dedupe exact path (SHA-256 of every candidate file).
+LEGACY_EXACT_ENV = "SEMBLON_DUPLICATES_LEGACY_EXACT"
 
 NEAR_STATUS_AVAILABLE = "AVAILABLE"
 NEAR_STATUS_UNAVAILABLE = "UNAVAILABLE"
@@ -106,7 +113,11 @@ def _is_fs_root(directory: Path) -> bool:
     return resolved.parent == resolved
 
 
-def candidate_files(rows: list[dict], dirs: list[Path]) -> list[Path]:
+def candidate_files(
+    rows: list[dict],
+    dirs: list[Path],
+    want_cancel: Callable[[], bool] | None = None,
+) -> list[Path]:
     """Media paths plus stills under those directories (not a filesystem-root walk)."""
     found: set[Path] = set()
     for row in rows:
@@ -114,10 +125,14 @@ def candidate_files(rows: list[dict], dirs: list[Path]) -> list[Path]:
         if p.is_file():
             found.add(p.resolve())
     for directory in dirs:
+        if want_cancel is not None and want_cancel():
+            return []
         try:
             if not directory.is_dir() or _is_fs_root(directory):
                 continue
             for child in directory.rglob("*"):
+                if want_cancel is not None and want_cancel():
+                    return []
                 if not child.is_file():
                     continue
                 if child.suffix.lower() not in STILL_EXT:
@@ -144,6 +159,84 @@ def _empty_exact(status: str, reason: str, *, scanned: int = 0) -> dict:
     }
 
 
+def _legacy_exact_enabled() -> bool:
+    return os.environ.get(LEGACY_EXACT_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _exact_via_dedupe(
+    files: list[Path],
+    by_path: dict[str, dict],
+    *,
+    want_cancel: Callable[[], bool] | None,
+    on_progress: Callable[[int, int], None] | None,
+    store: Path | None = None,
+) -> dict:
+    """Exact groups via ``semblon.dedupe`` (size -> partial -> full SHA-256; SHA-256 confirms)."""
+    total = len(files)
+
+    def on_event(ev) -> None:
+        if on_progress is None or ev.stage not in {"partial", "full"} or not ev.total:
+            return
+        try:
+            on_progress(min(total, total - ev.total + ev.done), total)
+        except Exception:  # noqa: BLE001
+            pass
+
+    cache = load_cache(store) if store is not None else None
+    started = time.time()
+    t0 = time.perf_counter()
+    result = scan_exact(
+        files, cancel=CancelToken(want_cancel), on_event=on_event, workers=4, cache=cache
+    )
+    if store is not None and cache is not None:
+        save_cache(store, cache)
+        record_scan(
+            store, result.stats, started_at=started, seconds=time.perf_counter() - t0,
+            cancelled=result.cancelled, groups=len(result.groups),
+        )
+    if result.cancelled:
+        return _empty_exact(
+            "CANCELLED", "Duplicate scan cancelled.", scanned=result.stats.full_hashed
+        )
+    groups = []
+    for g in result.groups:
+        mem = []
+        for m in g.members:
+            media = by_path.get(m.path)
+            mem.append(
+                {
+                    "path": m.path,
+                    "media_id": media.get("media_id") if media else None,
+                    "sha256": g.sha256,
+                    "in_library": bool(media),
+                }
+            )
+        mem.sort(key=lambda m: (not m.get("in_library"), m["path"].lower()))
+        groups.append(
+            {
+                "kind": EXACT_KIND,
+                "hash_algorithm": HASH_ALGORITHM,
+                "content_hash": g.sha256,
+                "count": len(mem),
+                "members": mem,
+                "media_ids": [m["media_id"] for m in mem if m.get("media_id")],
+            }
+        )
+    groups.sort(key=lambda g: (-int(g["count"]), g["content_hash"]))
+    if not groups:
+        return _empty_exact("EMPTY", "No exact duplicate candidates were found.", scanned=total)
+    return {
+        "status": "SUCCESS",
+        "kind": EXACT_KIND,
+        "hash_algorithm": HASH_ALGORITHM,
+        "groups": groups,
+        "scanned_files": total,
+        "group_count": len(groups),
+        "near_status": NEAR_STATUS_AVAILABLE,
+        "near_reason": NEAR_REASON,
+    }
+
+
 def find_exact_duplicate_groups(
     store: Path,
     *,
@@ -161,9 +254,16 @@ def find_exact_duplicate_groups(
     for extra in folders_from_runs(store):
         if extra not in dirs:
             dirs.append(extra)
-    files = candidate_files(rows, dirs)
+    files = candidate_files(rows, dirs, want_cancel)
+    if want_cancel is not None and want_cancel():
+        return _empty_exact("CANCELLED", "Duplicate scan cancelled.")
     if not files:
         return _empty_exact("EMPTY", "No photos found to scan for duplicates.")
+
+    if not _legacy_exact_enabled():
+        return _exact_via_dedupe(
+            files, by_path, want_cancel=want_cancel, on_progress=on_progress, store=store
+        )
 
     buckets: dict[str, list[dict]] = defaultdict(list)
     total = len(files)

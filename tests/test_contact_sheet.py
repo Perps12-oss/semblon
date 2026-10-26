@@ -363,7 +363,7 @@ def test_first_run_has_one_primary_action_and_dimmed_verbs(tmp_path, monkeypatch
     try:
         assert root.findChild(QObject, "addFolder").property("visible") is False
         assert root.findChild(QObject, "chooseFolder").property("visible") is True
-        for label in ("Find a person", "Find a detail"):
+        for label in ("Find a person", "Find by description"):
             verb = _by_label(root, label)
             assert verb.property("dimmed") is True
             assert verb.property("whyDimmed") == "Add photos first"
@@ -440,7 +440,7 @@ def test_bottom_bar_verbs_show_pressed_state_and_focus_ring(tmp_path, monkeypatc
     try:
         for _ in range(5):
             app.processEvents()
-        labels = ["Find a moment", "Find a person", "Find a detail", "Tidy up"]
+        labels = ["Find by date", "Find a person", "Find by description", "Tidy up copies"]
         for label in labels:
             tool = _by_label(root, label)
             assert tool is not None and tool.property("dimmed") is False
@@ -448,7 +448,7 @@ def test_bottom_bar_verbs_show_pressed_state_and_focus_ring(tmp_path, monkeypatc
             app.processEvents()
             rings = [c for c in tool.findChildren(QObject) if c.objectName() == "focusRing"]
             assert rings and rings[0].property("visible") is True, label
-        moment = _by_label(root, "Find a moment")
+        moment = _by_label(root, "Find by date")
         assert moment.property("selected") is False
         moment.activated.emit()
         app.processEvents()
@@ -596,7 +596,7 @@ def test_photo_view_keeps_four_actions_in_view_and_no_debug_text(tmp_path, monke
         viewer = _open_viewer(app, root, bridge)
         bar = root.findChild(QObject, "findDetail").parent()
         shown = [c.property("label") for c in bar.childItems() if c.property("label") and c.isVisible()]
-        assert shown == ["Back to photos", "Previous", "Next", "Find a detail", "More…"]
+        assert shown == ["Back to photos", "Previous", "Next", "Find this part again", "More…"]
         menu = root.findChild(QObject, "moreMenu")
         assert menu.property("shown") is False
         # the menu merges the near-duplicates into one plain name each
@@ -632,7 +632,7 @@ def test_more_menu_opens_from_keyboard_and_the_palette_offers_the_same_actions(t
         assert bridge.focusId == "m1"  # Escape closed the menu, not the photo
         palette = [c for c in root.findChildren(QObject) if c.property("actions") is not None and c.property("shown") is not None]
         labels = [a["label"] for a in palette[0].property("actions").toVariant()]
-        assert "Find photos like this one" in labels and "Find a detail" in labels
+        assert "Find photos like this one" in labels and "Find this part again" in labels
     finally:
         shutdown_shell(engine)
 

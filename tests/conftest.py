@@ -10,6 +10,11 @@ import sys
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from semblon.native_shell.signal_guard import install_signal_emit_guard
+
+# PySide 6.12 SignalInstance.emit drops a True ref. Install before any test emits.
+install_signal_emit_guard()
+
 
 def pytest_sessionstart(session):  # noqa: ARG001
     """Report required pin gaps. Does not install and does not probe model packs."""

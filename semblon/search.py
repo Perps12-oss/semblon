@@ -877,42 +877,28 @@ def search_object(
     limit: int = 50,
     within_media_ids: list[str] | set[str] | None = None,
 ) -> dict:
-    """Substring / class match over NanoDet object observations. Not identity.
+    """Search saved human region names and, when installed, NanoDet labels.
 
-    Contour ``class=region`` rows are ignored. Missing detector pack → UNAVAILABLE.
-    Does not write the store or touch faces.person_id.
+    Human-authored region names are an independent memory source: they remain
+    searchable without the optional detector pack. They are explicitly
+    provenance-labelled and never become person/face identity.
     """
     from semblon.object_pack import probe_nanodet_status
 
     q = (query or "").strip()
-    basis = _OBJECT_SEARCH_BASIS
     scope = {str(m).strip() for m in (within_media_ids or []) if str(m).strip()} or None
+    base = _OBJECT_SEARCH_BASIS
     if scope is not None:
-        basis = f"{basis} · current Field"
+        base = f"{base} · current Field"
     empty = {
-        "kind": "object",
-        "query": query,
-        "count": 0,
-        "items": [],
-        "media_ids": [],
-        "similarity_basis": basis,
-        "note": _OBJECT_SEARCH_NOTE,
+        "kind": "object", "query": query, "count": 0, "items": [],
+        "media_ids": [], "similarity_basis": base, "note": _OBJECT_SEARCH_NOTE,
     }
     if not q:
         raise SearchError("object query is empty")
+
     ready, pack_note = probe_nanodet_status()
-    if not ready:
-        return {
-            **empty,
-            "query": q,
-            "status": "UNAVAILABLE",
-            "model_state": "MISSING",
-            "provider_state": "FAILED",
-            "reason": pack_note
-            or "Object detection needs a NanoDet pack. Contours are not object search.",
-            "error_id": "object.PACK_MISSING",
-        }
-    q_lower = q.lower()
+    q_lower = q.casefold()
     conn = _open_ro(store)
     try:
         rows = conn.execute(
@@ -920,85 +906,101 @@ def search_object(
                       i.payload_json, o.media_id
                FROM observation_items i
                JOIN observations o ON o.observation_id = i.observation_id
-               WHERE i.kind='object' AND i.provider=?
+               WHERE i.kind='object' AND i.provider IN (?, ?)
                ORDER BY i.item_id""",
-            (_NANODET_PROVIDER,),
+            (_NANODET_PROVIDER, "user_box"),
         ).fetchall()
     finally:
         conn.close()
-    items = []
+
+    items: list[dict] = []
     media_ids: list[str] = []
     seen_media: set[str] = set()
-    saw_label = False
-    for r in rows:
+    saw_detector_label = False
+    saw_named_region = False
+    for row in rows:
         try:
-            payload = json.loads(r["payload_json"] or "{}")
-        except json.JSONDecodeError:
+            payload = json.loads(row["payload_json"] or "{}")
+        except (json.JSONDecodeError, TypeError):
             payload = {}
         if not isinstance(payload, dict):
             continue
         if str(payload.get("contract_status") or "").upper() == "UNAVAILABLE":
             continue
-        mid = str(r["media_id"] or "").strip()
+        provider = str(row["provider"] or "")
+        mid = str(row["media_id"] or "").strip()
         if scope is not None and mid not in scope:
             continue
-        label = str(payload.get("label") or payload.get("class") or "").strip()
-        if not label or label.lower() == "region":
-            continue
-        saw_label = True
-        if q_lower not in label.lower() and q_lower != str(payload.get("class_id") or ""):
-            continue
-        items.append(
-            {
-                "item_id": r["item_id"],
-                "observation_id": r["observation_id"],
-                "media_id": mid,
-                "run_id": r["run_id"],
-                "provider": r["provider"],
-                "score": r["score"],
-                "label": label,
-                "why": "NanoDet COCO label; not a person",
-            }
-        )
+
+        if provider == "user_box":
+            # Only user-authored names count here; detector labels and generic
+            # contour names are not promoted to human-confirmed memory.
+            label = str(payload.get("named") or "").strip()
+            if not label or label.casefold() in {"region", "user_region", "unknown", "unlabelled region", "unlabeled region"}:
+                continue
+            saw_named_region = True
+            if q_lower not in label.casefold():
+                continue
+            why = "User-named region; human-supplied label, not a person"
+            basis = "Saved human region name"
+        else:
+            if not ready:
+                continue
+            label = str(payload.get("label") or payload.get("class") or "").strip()
+            if not label or label.casefold() == "region":
+                continue
+            saw_detector_label = True
+            if q_lower not in label.casefold() and q_lower != str(payload.get("class_id") or ""):
+                continue
+            why = "NanoDet COCO label; not a person"
+            basis = _OBJECT_SEARCH_BASIS
+
+        items.append({
+            "item_id": row["item_id"],
+            "observation_id": row["observation_id"],
+            "media_id": mid,
+            "run_id": row["run_id"],
+            "provider": provider,
+            "score": row["score"],
+            "label": label,
+            "why": why,
+            "match_basis": basis,
+        })
         if mid and mid not in seen_media:
             seen_media.add(mid)
             media_ids.append(mid)
-        if len(items) >= limit:
+        if len(items) >= max(1, int(limit)):
             break
+
     if items:
+        bases = list(dict.fromkeys(str(item["match_basis"]) for item in items))
         return {
-            "kind": "object",
-            "query": q,
-            "count": len(items),
-            "items": items,
-            "media_ids": media_ids,
-            "status": "SUCCESS",
-            "model_state": "AVAILABLE",
-            "provider_state": "READY",
-            "reason": f"Found {len(items)} photos with matching object labels.",
+            **empty, "query": q, "count": len(items), "items": items,
+            "media_ids": media_ids, "status": "SUCCESS",
+            "model_state": "AVAILABLE" if ready else "NOT_REQUIRED",
+            "provider_state": "READY" if ready else "PARTIAL",
+            "reason": f"Found {len(items)} photos by saved names or detector labels.",
             "error_id": None,
-            "similarity_basis": basis,
-            "note": _OBJECT_SEARCH_NOTE,
+            "similarity_basis": " · ".join(bases) + (" · current Field" if scope is not None else ""),
         }
-    if saw_label:
+
+    if not ready:
         return {
-            **empty,
-            "query": q,
-            "status": "NO_RESULT",
-            "model_state": "AVAILABLE",
-            "provider_state": "READY",
-            "reason": "No stored object labels matched.",
+            **empty, "query": q, "status": "UNAVAILABLE",
+            "model_state": "MISSING", "provider_state": "FAILED",
+            "reason": pack_note or "NanoDet is unavailable and no saved human region name matched.",
+            "error_id": "object.PACK_MISSING",
+        }
+    if saw_detector_label or saw_named_region:
+        return {
+            **empty, "query": q, "status": "NO_RESULT",
+            "model_state": "AVAILABLE", "provider_state": "READY",
+            "reason": "No stored human region names or detector labels matched.",
             "error_id": None,
         }
     return {
-        **empty,
-        "query": q,
-        "status": "UNAVAILABLE",
-        "model_state": "MISSING",
-        "provider_state": "FAILED",
-        "reason": (
-            "No NanoDet object labels are stored yet. "
-            "Add the pack and re-scan photos, or search by appearance."
-        ),
+        **empty, "query": q, "status": "UNAVAILABLE",
+        "model_state": "MISSING", "provider_state": "FAILED",
+        "reason": "No searchable region names or NanoDet object labels are stored yet. Name a region or add the pack and re-scan photos.",
         "error_id": "object.NO_STORED_LABELS",
     }

@@ -1,8 +1,10 @@
 """Experimental native ONNX Runtime YuNet + SFace backend.
 
-Runs the **same** Zoo ONNX files as production. Decode / align / L2 match
-OpenCV's FaceDetectorYN + FaceRecognizerSF so identity compare stays on the
-same embedding space. Not wired into ingest.
+Runs the same Zoo ONNX files as production. Alignment and the SFace embedding
+match OpenCV FaceRecognizerSF on a shared crop. Detection matches
+FaceDetectorYN when the YuNet input is dynamic. The 2023mar graph is fixed
+640×640 under standalone ORT, while OpenCV runs that file at the view size,
+so those two detections are not the same geometry. Not wired into ingest.
 """
 
 from __future__ import annotations

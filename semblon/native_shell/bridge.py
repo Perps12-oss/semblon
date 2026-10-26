@@ -24,6 +24,10 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import QApplication, QFileDialog
 
+from semblon.native_shell.signal_guard import install_signal_emit_guard
+
+install_signal_emit_guard()
+
 from semblon.atmosphere import ATMOSPHERE_LABELS, ATMOSPHERE_IDS
 from semblon.application import Application, JobBusy
 from semblon.library_tasks import library_work
@@ -173,6 +177,7 @@ def reduced_motion() -> bool:
 _PHASE_LABELS = {
     "first": "First look",
     "refined": "Refined",
+    "detailed": "Sharpened",
     "fast": "Fast look",
     "kept": "Kept the first look",
     "checked": "Checked the matches",
@@ -350,6 +355,8 @@ class ShellBridge(QObject):
         self._index_state = ""
         self._index_note = ""
         self._progress_seen: int | None = None
+        self._pass_outcome = ""
+        self._pass_started_mono = 0.0
         self._progress_current = 0
         self._progress_total = 0
         self._job_started_mono = 0.0
@@ -2613,7 +2620,14 @@ class ShellBridge(QObject):
         install_action, install_label = install_choice(state, error_id, result.data or {})
         if interim:
             install_action, install_label = "", ""
-            if phase == "refined":
+            if phase == "detailed":
+                if rows:
+                    state = "ready"
+                    note = f"Similar ({label}): sharpened with fine detail, still checking the top matches."
+                else:
+                    state = "loading"
+                    note = f"Similar ({label}): sharpening with fine detail."
+            elif phase == "refined":
                 if rows:
                     state = "ready"
                     note = f"Similar ({label}): still checking the top matches."
@@ -4605,7 +4619,11 @@ class ShellBridge(QObject):
                     "size": f"{size / 1_000_000:.1f} MB" if size >= 100_000 else f"{max(size // 1000, 0)} KB",
                 })
             if len(members) >= 2:
-                out.append({"exact": str(g.get("kind") or "") == "exact", "members": members})
+                out.append({
+                    "exact": str(g.get("kind") or "") == "exact",
+                    "sha256": str(g.get("content_hash") or "") if str(g.get("kind") or "") == "exact" else "",
+                    "members": members,
+                })
         return out
 
     @Slot(int, int)
@@ -4634,11 +4652,20 @@ class ShellBridge(QObject):
         from PySide6.QtCore import QFile
 
         members = self._tidy_sets[set_index]["members"]
+        sha = self._tidy_sets[set_index].get("sha256") or ""
+        keep_path = members[member_index]["path"]
         failed = 0
         binned: list[str] = []
         for i, m in enumerate(members):
             if i == member_index:
                 continue
+            if sha:
+                from ..dedupe import verify_against_keeper
+
+                # Exact sets: bin only a copy that still hashes to the group's SHA-256.
+                if not verify_against_keeper(sha, keep_path, m["path"]).ok:
+                    failed += 1
+                    continue
             if QFile.moveToTrash(m["path"]):
                 binned.append(m["path"])
             else:
@@ -4653,8 +4680,10 @@ class ShellBridge(QObject):
             self._refresh_library()
         del self._tidy_sets[set_index]
         self.tidyChanged.emit()
-        if failed:
-            self._apply_result(Result("error", "Some copies could not be moved. They are still where they were."))
+        if failed and not binned:
+            self._apply_result(Result("error", "Nothing was moved. The copies changed or could not be reached, so they stay where they were."))
+        elif failed:
+            self._apply_result(Result("error", f"Moved {len(binned)}. {failed} changed or could not be moved and stayed where they were."))
         else:
             self._apply_result(Result("ready", "Moved the extra copies to the Recycle Bin."))
 
@@ -5447,6 +5476,7 @@ class ShellBridge(QObject):
                 "kind": str(getattr(ev, "kind", "") or ""),
                 "current": current,
                 "total": total,
+                "outcome": str(getattr(ev, "outcome", "") or ""),
             },
         )
         QMetaObject.invokeMethod(self, "_flush_progress", Qt.ConnectionType.QueuedConnection)
@@ -5473,9 +5503,24 @@ class ShellBridge(QObject):
         if isinstance(current, int) and isinstance(total, int) and total > 0:
             self._progress_current = current
             self._progress_total = total
-            self._progress_label = (
-                f"Processing {current}/{total}. Photos already added can be opened."
-            )
+            outcome = str(payload.get("outcome") or "")
+            if outcome in {"indexed", "detailed"} and outcome != self._pass_outcome:
+                self._pass_outcome = outcome
+                self._pass_started_mono = time.monotonic()
+            if outcome == "indexed":
+                self._progress_label = (
+                    f"Getting your photos ready to search: {current} of {total}. "
+                    "You can already browse, open and search them."
+                )
+            elif outcome == "detailed":
+                self._progress_label = (
+                    f"Sharpening search: {current} of {total}. "
+                    "Everything already works; searches just get more precise."
+                )
+            else:
+                self._progress_label = (
+                    f"Getting your photos ready: {current} of {total}. You can already browse and open them."
+                )
         elif payload.get("stage"):
             self._progress_label = "Processing"
         self.jobChanged.emit()
@@ -5538,6 +5583,8 @@ class ShellBridge(QObject):
                     self.jobChanged.emit()
 
     def _arm_job_clock(self) -> None:
+        self._pass_outcome = ""
+        self._pass_started_mono = 0.0
         self._job_started_mono = time.monotonic()
         self._job_paused_seconds = 0.0
         self._job_pause_started = 0.0
@@ -5567,9 +5614,13 @@ class ShellBridge(QObject):
         current = int(self._progress_current)
         total = int(self._progress_total)
         spent = self._job_elapsed_seconds()
+        if self._pass_outcome and self._pass_started_mono > 0:
+            spent = max(0.0, time.monotonic() - self._pass_started_mono)
         if current <= 0 or total <= current or spent < 1:
             return f"{elapsed} elapsed."
         remaining = (total - current) * spent / current
+        if remaining > 6 * 3600:
+            return f"{elapsed} elapsed. This keeps going in the background; carry on using your photos."
         left = _format_span(max(1, int(round(remaining))))
         return f"{elapsed} elapsed. About {left} left."
 

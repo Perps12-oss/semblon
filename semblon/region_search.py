@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from collections import OrderedDict
 from pathlib import Path
 
@@ -61,6 +62,9 @@ _GALLERY: dict[tuple, tuple[list[dict], bool]] = {}
 _GALLERY_LOADS = 0
 _GALLERY_CAP_BYTES = 96 * 1024 * 1024
 _PATCH_CHUNK = 8192
+SHORTLIST_SIZE = 64
+DETAIL_PROMOTE_MAX = 8
+DETAIL_BUDGET_S = 12.0
 _EXIF_ORIENTATION = 0x0112
 
 
@@ -836,6 +840,7 @@ def search_patches(
     score_floor: float = 0.28,
     coverage_floor: float = 0.28,
     query_box: tuple[int, int, int, int] | None = None,
+    shortlist_out: list | None = None,
 ) -> dict:
     """Late interaction of the query crop against stored content patches.
 
@@ -924,6 +929,20 @@ def search_patches(
         )
         empty["error_id"] = "region.NO_PATCH_INDEX"
         return empty
+    if shortlist_out is not None:
+        # A wider, unfiltered ranking decides which photos deserve fine detail first.
+        wide = score_patch_groups(
+            query,
+            groups,
+            exclude_media_id=exclude_media_id,
+            cancelled=cancelled,
+            keep_weak=True,
+            token_floor=token_floor,
+            score_floor=score_floor,
+            coverage_floor=coverage_floor,
+            limit=SHORTLIST_SIZE,
+        )
+        shortlist_out.extend(str(item["media_id"]) for item in wide if item.get("media_id"))
     items = score_patch_groups(
         query,
         groups,
@@ -979,6 +998,26 @@ def _attach_understanding(rec: dict, understanding: str, *, selection_kind: str 
     return rec
 
 
+def _attach_coverage(rec: dict, store: Path) -> None:
+    """Say so when part of the library has not been prepared for search yet."""
+    from semblon.scan_tiers import coverage_note, semantic_coverage
+
+    try:
+        conn = _open_ro(Path(store))
+    except Exception:  # noqa: BLE001 — coverage is advice, never a reason to fail a search
+        return
+    try:
+        coverage = semantic_coverage(conn)
+    finally:
+        conn.close()
+    if coverage is None:
+        return
+    rec["coverage"] = coverage
+    note = coverage_note(coverage)
+    if note:
+        rec["reason"] = f"{rec.get('reason') or ''} {note}".strip()
+
+
 def _find_similar_from_crop(
     store: Path,
     *,
@@ -991,6 +1030,7 @@ def _find_similar_from_crop(
     stored_text: str,
     query_pixels: dict[str, int] | None,
     search_quality: str = "balanced",
+    shortlist_out: list | None = None,
 ) -> dict:
     quality = resolve_search_quality(search_quality)
     capped_limit = max(1, min(int(limit or 1), quality.max_results))
@@ -1052,12 +1092,14 @@ def _find_similar_from_crop(
         score_floor=quality.patch_score_floor,
         coverage_floor=quality.patch_coverage_floor,
         query_box=box,
+        shortlist_out=shortlist_out,
     )
     dense["search_profile"] = quality.key
     dense["search_profile_label"] = quality.label
     if query_pixels is not None:
         dense["query_pixels"] = query_pixels
     if dense.get("status") in {"SUCCESS", "NO_RESULT"}:
+        _attach_coverage(dense, store)
         return _attach_understanding(dense, understanding, selection_kind=selection_kind)
     if dense.get("error_id") == "region.ENCODE":
         colour = _colour_result(
@@ -1244,6 +1286,7 @@ def find_similar_region(
     selection_kind: str | None = None,
     search_quality: str = "balanced",
     cancelled=None,
+    shortlist_out: list | None = None,
 ) -> dict:
     crop = crop_bgr(Path(image_path), x, y, w, h)
     pixels = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
@@ -1253,7 +1296,8 @@ def find_similar_region(
     stored_text = overlapping_text(store, media_id or "", x, y, w, h) if media_id else ""
     if not stored_text and selection_kind in {"text", "text_priority"}:
         stored_text = _ocr_crop_text(crop)
-    return _find_similar_from_crop(
+    started = time.perf_counter()
+    result = _find_similar_from_crop(
         store,
         crop=crop,
         limit=limit,
@@ -1264,7 +1308,23 @@ def find_similar_region(
         stored_text=stored_text,
         query_pixels=pixels,
         search_quality=search_quality,
+        shortlist_out=shortlist_out,
     )
+    from semblon import perf_evidence
+
+    coverage = result.get("coverage") or {}
+    perf_evidence.record(
+        store,
+        "search",
+        latency_ms=(time.perf_counter() - started) * 1000.0,
+        status=result.get("status"),
+        results=result.get("count"),
+        cancelled=bool(cancelled is not None and cancelled()),
+        searchable=coverage.get("searchable"),
+        detailed=coverage.get("detailed"),
+        total=coverage.get("total"),
+    )
+    return result
 
 
 def find_similar_crop(
@@ -1382,8 +1442,26 @@ def remember_and_find(
         except Exception:
             pass
 
+    shortlist: list[str] = []
     if quality.key == "fast" or on_first is None:
-        similar = find_similar_region(store, search_quality=quality.key, **find_kwargs)
+        similar = find_similar_region(
+            store,
+            search_quality=quality.key,
+            shortlist_out=None if quality.key == "fast" else shortlist,
+            **find_kwargs,
+        )
+        if quality.key != "fast":
+            sharper = _refine_with_detail(
+                store,
+                shortlist,
+                crop=crop,
+                media_id=media_id,
+                quality=quality,
+                cancelled=cancelled,
+                rerun=lambda: find_similar_region(store, search_quality=quality.key, **find_kwargs),
+            )
+            if sharper is not None:
+                similar = sharper
         if quality.key != "fast" and crop is not None:
             similar = _fuse_region(
                 store,
@@ -1414,7 +1492,7 @@ def remember_and_find(
     if cancelled is not None and cancelled():
         return _bundle(saved, _with_phase(fast, "kept"))
 
-    full = find_similar_region(store, search_quality=quality.key, **find_kwargs)
+    full = find_similar_region(store, search_quality=quality.key, shortlist_out=shortlist, **find_kwargs)
     if crop is not None:
         full = _fuse_region(
             store,
@@ -1435,8 +1513,141 @@ def remember_and_find(
         on_first(_bundle(saved, _with_phase(full, "refined")))
     if cancelled is not None and cancelled():
         return _bundle(saved, _with_phase(full, "refined"))
+    sharper = _refine_with_detail(
+        store,
+        shortlist,
+        crop=crop,
+        media_id=media_id,
+        quality=quality,
+        cancelled=cancelled,
+        rerun=lambda: _fuse_region(
+            store,
+            find_similar_region(store, search_quality=quality.key, **find_kwargs),
+            crop=crop,
+            media_id=media_id,
+            selection_kind=selection_kind,
+            limit=limit,
+            cancelled=cancelled,
+            spec=spec,
+            parts=parts,
+        ),
+    )
+    if sharper is not None:
+        full = sharper
+        if on_first is not None and full.get("items") and not (cancelled is not None and cancelled()):
+            on_first(_bundle(saved, _with_phase(full, "detailed")))
+        if cancelled is not None and cancelled():
+            return _bundle(saved, _with_phase(full, "detailed"))
     checked = _check_matches(store, full, crop=crop, cancelled=cancelled)
     return _bundle(saved, checked)
+
+
+def promote_for_search(
+    store: Path,
+    shortlist: list[str],
+    *,
+    crop,
+    media_id: str | None,
+    quality,
+    cancelled=None,
+    promote=None,
+    on_done=None,
+) -> dict:
+    """Give fine detail to the photos this search most needs, then report what ran.
+
+    Candidates come from two doors so an unprepared photo is never invisible:
+    the best whole-picture matches that lack fine detail, and the best colour
+    matches among photos not prepared at all.
+    """
+    from semblon import detail_priority
+
+    ranked = detail_priority.lacking_detail(store, list(shortlist))
+    chosen = ranked[: DETAIL_PROMOTE_MAX - 2]
+    try:
+        colour = _colour_result(
+            store,
+            crop,
+            limit=DETAIL_PROMOTE_MAX,
+            exclude_media_id=media_id,
+            cancelled=cancelled,
+            reason="",
+            min_score=quality.whole_colour_floor,
+            quality=quality,
+        )
+        ids = [str(i["media_id"]) for i in (colour.get("items") or []) if i.get("media_id")]
+        for mid in detail_priority.lacking_detail(store, ids):
+            if mid not in chosen and len(chosen) < DETAIL_PROMOTE_MAX:
+                chosen.append(mid)
+    except Exception:  # noqa: BLE001 — the colour door only adds candidates
+        pass
+    for mid in ranked[DETAIL_PROMOTE_MAX - 2 :]:
+        if len(chosen) >= DETAIL_PROMOTE_MAX:
+            break
+        if mid not in chosen:
+            chosen.append(mid)
+    if not chosen:
+        return {"requested": 0, "done": 0, "done_ids": []}
+    run = promote or detail_priority.promote
+    return run(
+        store,
+        chosen,
+        cancelled=cancelled,
+        budget_s=DETAIL_BUDGET_S,
+        max_photos=DETAIL_PROMOTE_MAX,
+        on_done=on_done,
+    )
+
+
+def _refine_with_detail(
+    store: Path,
+    shortlist: list[str],
+    *,
+    crop,
+    media_id: str,
+    quality,
+    cancelled,
+    rerun,
+    on_update=None,
+) -> dict | None:
+    """Promote detail for the shortlist; rescore only when something finished.
+
+    ``on_update`` receives a rescored result after each photo. The shell does not
+    pass it. A measured run on 32 Kodak stills showed a rescore per photo cost
+    about six times the ranking time of one rescore at the end, and detail did
+    not add a single top-five hit. The optional hook remains for that measurement.
+    """
+    if crop is None or not shortlist or (cancelled is not None and cancelled()):
+        return None
+    published: dict = {}
+
+    def _after(_media_id: str) -> None:
+        if on_update is None or (cancelled is not None and cancelled()):
+            return
+        refreshed = rerun()
+        if not isinstance(refreshed, dict):
+            return
+        published["value"] = refreshed
+        on_update(refreshed)
+
+    summary = promote_for_search(
+        store,
+        shortlist,
+        crop=crop,
+        media_id=media_id,
+        quality=quality,
+        cancelled=cancelled,
+        on_done=_after if on_update is not None else None,
+    )
+    if not summary.get("done") or (cancelled is not None and cancelled()):
+        return None
+    if published.get("value") is not None:
+        refreshed = published["value"]
+    else:
+        refreshed = rerun()
+    refreshed["detail_promoted"] = int(summary["done"])
+    refreshed["detail_phases_ms"] = dict(summary.get("phases_ms") or {})
+    refreshed["progress_published"] = on_update is not None
+    return refreshed
 
 
 def _check_matches(store: Path, similar: dict, *, crop, cancelled) -> dict:

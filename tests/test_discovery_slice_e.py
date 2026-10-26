@@ -201,3 +201,69 @@ def test_observe_keeps_contours_separate_from_nanodet(tmp_path, monkeypatch):
     for r in rows:
         payload = json.loads(r["payload_json"])
         assert payload.get("class") == "region"
+
+
+
+def test_search_object_finds_saved_human_name_without_nanodet(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO observation_items
+           (item_id, observation_id, run_id, kind, provider, score, payload_json,
+            bbox_x1, bbox_y1, bbox_x2, bbox_y2)
+           VALUES ('i-named-toolbox','o1','r1','object','user_box',1.0,?,0,0,1,1)""",
+        (json.dumps({"class": "user_region", "named": "my red toolbox", "identity": "not facekit"}),),
+    )
+    conn.commit()
+    conn.close()
+    with patch("semblon.object_pack.probe_nanodet_status", return_value=(False, "NanoDet pack missing")):
+        rec = search_object(store, "toolbox")
+    assert rec["status"] == "SUCCESS"
+    assert rec["media_ids"] == ["m1"]
+    assert rec["items"][0]["label"] == "my red toolbox"
+    assert rec["items"][0]["match_basis"] == "Saved human region name"
+    assert "human-supplied" in rec["items"][0]["why"]
+    assert "not a person" in rec["items"][0]["why"]
+
+
+def test_search_object_does_not_promote_generic_user_region_names(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO observation_items
+           (item_id, observation_id, run_id, kind, provider, score, payload_json,
+            bbox_x1, bbox_y1, bbox_x2, bbox_y2)
+           VALUES ('i-generic-region','o1','r1','object','user_box',1.0,?,0,0,1,1)""",
+        (json.dumps({"class": "user_region", "named": "region"}),),
+    )
+    conn.commit()
+    conn.close()
+    with patch("semblon.object_pack.probe_nanodet_status", return_value=(False, "NanoDet pack missing")):
+        rec = search_object(store, "region")
+    assert rec["status"] == "UNAVAILABLE"
+    assert rec["count"] == 0
+
+
+def test_search_object_preserves_detector_label_search_when_ready(tmp_path):
+    store = tmp_path / "s.sqlite"
+    _seed(store).close()
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO observation_items
+           (item_id, observation_id, run_id, kind, provider, score, payload_json,
+            bbox_x1, bbox_y1, bbox_x2, bbox_y2)
+           VALUES ('i-dog','o1','r1','object',?,?,?,0,0,1,1)""",
+        (NANODET_PROVIDER, 0.8, json.dumps({"class": "dog", "label": "dog", "class_id": 16})),
+    )
+    conn.commit()
+    conn.close()
+    with patch("semblon.object_pack.probe_nanodet_status", return_value=(True, None)):
+        rec = search_object(store, "dog")
+    assert rec["status"] == "SUCCESS"
+    assert rec["items"][0]["label"] == "dog"
+    assert rec["items"][0]["match_basis"] == "COCO object detection (NanoDet)"

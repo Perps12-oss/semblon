@@ -426,9 +426,12 @@ def soft_object_label(item: dict) -> str:
     if not isinstance(payload, dict):
         payload = {}
     if item.get("provider") == "visual.region" or payload.get("class") == "visual_region":
-        label = payload.get("selected_label")
-        return label if label else ""
-    label = payload.get("label") or payload.get("visual_label")
+        # A saved human name is reusable knowledge, even when the automatic
+        # selection label is absent. Keep unnamed visual chips blank.
+        label = payload.get("selected_label") or payload.get("named")
+        return label.strip() if isinstance(label, str) and label.strip() else ""
+    # Human-confirmed region names outrank generic/model labels in the UI.
+    label = payload.get("named") or payload.get("label") or payload.get("visual_label")
     if isinstance(label, str) and label.strip():
         return label.strip()
     kind = (item.get("kind") or "object").replace("_", " ")

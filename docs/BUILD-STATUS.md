@@ -22,6 +22,51 @@ The production shell is still the only GUI (`semblon shell`). Home is a first-ar
 
 Linux check on this branch, 2026-10-24: `xvfb-run -a .venv/bin/python -m pytest -q` → **988 passed, 7 skipped**.
 
+## Behaviour landed — Hybrid visual discovery (partial)
+
+- Indexing runs the whole-picture pass for every photo first (`frame`), then the fine-detail pass (`detail`, `TIER_DETAIL`). Photos are searchable after the first pass. Both passes resume from `work_items.tier_done_mask`. Legacy full-depth rows count as detailed.
+- Searches report coverage (`scan_tiers.semantic_coverage`, `coverage_note`) so unprepared photos are never silently excluded.
+- `perf_evidence` writes timings only (no names, paths or queries) to `perf-evidence.jsonl`; `SEMBLON_PERF=0` disables it.
+- The 15-piece baseline, identity thresholds and schema are unchanged.
+- **On-demand detail (`semblon/detail_priority.py`, `region_search.promote_for_search` / `_refine_with_detail`):** a region search first answers from what exists (the first result), then promotes up to 8 promising photos that lack fine detail, from two doors: the best whole-picture matches (shortlist of 64) and the best colour matches among photos not prepared at all. It rescans only if something finished, and emits a `detailed` phase. Work runs on the interactive lane (background encodes yield), is cancellable, is claimed per photo so a search and the background pass never encode the same photo at once, and is stamped in `tier_done_mask` so it survives a restart. Failed encodes are not stamped. Searches over partly prepared libraries still say so (coverage note).
+- **Benchmark (`tools/bench_hybrid.py`, run once, 2026-10, Windows ARM64 machine, x64 Python 3.12 under emulation, ONNX CPU only):** 40 stock photos plus 10 re-encoded copies (50 photos), 10 queries (a quarter-size crop of an original; the answer is its copy; P@5 is capped at 0.2). Each strategy ran in fresh processes; cold = first pass over the queries, warm = repeat.
+
+| | A Exhaustive | B On demand | C Hybrid |
+|---|---|---|---|
+| Preparation before searching | 249 s | 0 s | 32 s (a second run: 71 s) |
+| Recall@5 cold / warm | 1.0 / 1.0 | 0.6 / 0.6 | 1.0 / 1.0 |
+| Precision@5 cold / warm | 0.20 / 0.20 | 0.15 / 0.13 | 0.20-0.22 / 0.20 |
+| Time to first result (median, cold) | 4.4 s | 8.8 s | 1.1-1.2 s |
+| Search completion (median, cold) | 4.4 s | 8.8 s | 17.5-25 s |
+| Photos with fine detail after the 20 searches | 100% | 32% | 62% / 38% (two runs) |
+| Peak memory (search / prep) | 557 / 538 MB | 691 / 53 MB | 1.07-1.10 GB / 272 MB |
+
+  - Hybrid reaches a usable first answer about 4x sooner than exhaustive and is ready to search 8x (or 3.5x in the slower run) sooner, with the same recall here. Exhaustive had the fastest complete answers. Hybrid's complete answer is slower because each search blocks on promoting up to 8 photos and then repeats the full search. That cost was not a measured per-photo figure on the ARM64 machine.
+  - **Linux x64 check, 2026-10-25, not the ARM64 machine** (Python 3.11, ONNX Runtime 1.30 CPU, 2 cores). Corpus: Kodak PhotoCD, 24 originals plus 8 recompressed smaller brighter copies (32 stills), 8 quarter-size crops, seed 7. Not the earlier 50-stock run and not an owner archive. `tools/bench_hybrid.py` on `a1fbe16`:
+
+    | | A Exhaustive | B On demand | C Hybrid |
+    |---|---|---|---|
+    | Preparation | 36.0 s | 0 s | 3.8 s |
+    | Recall@5 cold / warm | 1.0 / 1.0 | 0.5 / 0.5 | 1.0 / 1.0 |
+    | Recall@5 before any extra detail | 1.0 | 0.5 | 1.0 |
+    | Precision@5 cold | 0.20 | 0.15 | 0.20 |
+    | First result, median, cold | 81 ms | 1344 ms | 98 ms |
+    | Complete, median, cold | 81 ms | 1344 ms | 7592 ms |
+    | Complete, median, warm | 70 ms | 168 ms | 120 ms |
+
+    Hybrid cold phase sums for the 32 promotions: ONNX 27890 ms, persist 1278 ms, tensor 649 ms, decode 279 ms, embed 237 ms, proposals 46 ms, windows 1 ms, lane wait 0.1 ms. The time is the forward, not the queue and not the commit. About 870 ms of ONNX per promoted photo on this machine. The old "~3 s per photo" sentence does not describe this run.
+  - On this corpus every hybrid hit was already in the first five before promotion (`hit_before_detail` 1.0). Detail added no top-five hit. Batch size 0 / 1 / 4 / 8 all kept Recall@5 at 1.0, with cold complete medians 32 ms / 1189 ms / 4205 ms / 7285 ms. That does **not** justify changing the batch of 8: these crops are large, and a small object is not in the set. The 15-piece grid stays.
+  - Rescoring after every promoted photo, versus one rescore at the end: same Recall@5 (1.0) and the same ONNX time (~28 s). Ranking time was 8329 ms across 32 rescans versus 1260 ms across 4. The shell therefore keeps one rescore at the end. The first result is still published before that rescore. The per-photo hook remains for measurement and is not on the shell path.
+  - Writer lock: during a 1189 ms detail forward, another thread took `writer_lock` in 0.02 ms. A second promotion of the same photo while the first was running was refused (`busy` 1, `duplicates_avoided` 1). After the commit, a repeat was `already_done` and the detail bit was set. Inference is outside the lock. The commit stays inside it.
+  - Cancellation is not under 200 ms once a forward has started. Cancelling during one detail encode returned 550 ms after the flag, with nothing stamped. Cancelling before the forward, while a background detail pass was in progress, returned in 30 ms, also with nothing stamped. `session.run` is not interrupted. The bench's own background section did not measure contention: its idle searches had already detailed the library, so the following enrichment had nothing left to do.
+  - On demand alone (B) lost recall (0.5 here, 0.6 on the earlier stock run): only the colour door can reach unprepared photos. Whole-picture indexing remains the path that kept recall.
+  - Background enrichment (hybrid, run against a library with no detail yet): finished 98% of photos in 174 s (one photo stayed undetailed; not investigated). Searches during it took a median 25 s versus 15 s idle (1.6x slower), so background work yields only partly. Cancel latency was not measured (enrichment finished first). In-process duplicate avoidance counted 0 collisions in the benchmark; it is covered by unit tests, not demonstrated by the benchmark.
+  - Run-to-run spread was large on this machine (hybrid prep 32 s versus 71 s). Treat these numbers as indicative.
+- **Small-object recall, Linux x64, 2026-10-25, not Windows and not ARM64** (`tools/bench_small_object.py`, `docs/SMALL-OBJECT-RECALL.md`, raw `docs/evidence/small-object-recall.json`). Synthetic corpus only: 26 generated pictures, 20 labelled queries, seed `20261025`, checksum `9d904972…6307b`. No owner photographs. Same A/B/C calls as `bench_hybrid.py`. Grid and batch 8 were not changed. Three reps; recall did not move. Set Recall@5 (hits among every other picture of the same sprite, not "the one copy is in the top 5"): exhaustive 0.271, hybrid cold 0.229 before this query's promotion and 0.243 after, hybrid warm 0.271 once the cold pass had detailed all 26 photos, on demand 0.000. Very small (under 0.1% of the frame, three queries) is Recall@5 0 on every strategy, including after a 24 s full detail ingest, because the patch shortlist is empty and promotion never starts. One small clean medallion (`q-p02`, 37×37) is empty on hybrid and 0.429 on exhaustive: detail can rank it, and hybrid will not promote it. Promotion added a top-5 hit on 2 of 20 queries, both already had a hit, at about 8 s each; ONNX was ~21 s for 26 promotions (~817–848 ms each). The median hybrid complete time (~100 ms) is the median of queries that did not promote. Dev-only batches 0 and 1 added no recall; batch 4 knocked a true picture out of one top 5. Batch 8 stays. The 15-piece grid stays and is not adequate for the very-small band. This set is too small, and too synthetic, to say what a real library would do.
+- **Remaining limitations:** the ARM64 numbers above are still one run on 50 stock photos, emulated x64. The Linux Kodak numbers are a different corpus (32 stills, quarter crops) and are not a replacement for that run or for an owner archive. Photos with no whole-picture pass can only be found via the colour door or the coverage disclosure; on the synthetic small-object set that door returned nothing. The promotion batch is still 8. Shrinking it kept recall on the Kodak crops and lost recall on the small-object dev pass, so it stays. An in-flight ONNX call still runs to completion. The 15-piece baseline was not reduced; the small-object run shows it still misses objects under about 0.1% of the frame. **Native ARM64 performance is unverified** (see `docs/PERF-P1-ARM64.md`). Windows cancellation and UI responsiveness on the owner machine have not been measured here. The small-object cancel probe ran after the library was already detailed, so it did not measure an in-flight forward.
+- **Lena agreement (do not lower 0.98):** with the pinned 2023mar YuNet and SFace, the same aligned crop embedded by OpenCV `FaceRecognizerSF` and by the experimental ORT path is cosine 1.0 (raw max abs about 3e-6). The same landmarks through `alignCrop` and `align_crop` are cosine 1.0. The same 640 blob through YuNet agrees between ORT and OpenCV DNN to about 1e-5. End to end is about 0.918. Swapping only the ORT landmarks into the OpenCV aligner and recogniser reproduces that number: OpenCV runs the fixed 2023 graph at the view size (Lena 512, 4096 anchors) while standalone ORT is locked to the exported 640 input and letterboxes. Boxes still overlap (IoU about 0.96). The dynamic 2026may graph is end-to-end cosine 1.0. The test keeps 0.98 on a shared crop, and end to end only when `det_fixed_hw` is None. A fixed 640 graph must still be the same face (IoU ≥ 0.90) and the cosine gap must be the landmarks alone. Not wired into ingest.
+- **Shutdown abort:** the full Linux suite was printing its pass count and then aborting (`bool_dealloc: deallocating True or False`, exit 134) during GC in `Py_FinalizeEx`. Half the files, and each quarter of the aborting half, exited 0. It is not the Lena assertion. Cause: PySide 6.12 `SignalInstance.emit` drops one reference to `True` on every Python emit (no-arg, int, str, and bool; `False` is not the value being dropped; QML signals do not do it). The suite holds enough other references that the count hits zero only while the interpreter is finalising. `semblon.native_shell.signal_guard` puts the reference back, and only while a probe still sees the drop. After that guard, two full-suite processes exited 0: 1147 passed, 3 skipped (PowerShell installer, Windows peak RSS, `SEMBLON_VISIBLE_SHELL`). The emit repro exits 0 three times under `tests/test_signal_emit_guard.py`.
+
 ## Status vocabulary
 
 | Status | Meaning |
@@ -373,8 +418,8 @@ Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE 
 - Roll uses exact row geometry; header and scrubber always name the month at the top (one header only).
 - Days use the local time zone (DST-aware) via semblon/clock.py.
 - People: fanned face stacks, one searchable Same as... picker, same-name prompt, no joining two named people.
-- Photo view: Back, Previous, Next, Find a detail, plus a More menu. No debug text.
-- Tidy up is a real review view (Keep this one, plain confirm, Recycle Bin).
+- Photo view: Back, Previous, Next, Find this part again, plus a More menu. No debug text.
+- Tidy up copies is a real review view (Keep this one, plain confirm, Recycle Bin).
 - Plain wording for the preflight confirm; both add-on sheets show their size.
 
 
@@ -383,3 +428,21 @@ Architecture migration status stays in `docs/COMPLETION-MATRIX.md`. Closed FACE 
 - Day and month use the camera's capture date (DateTimeOriginal, with its offset when present) read from the file; the file's saved time is the fallback. Nothing is stored: the schema has no capture-date column, so it is read at browse time and cached in memory. A persisted date would need a new media column plus a one-time backfill at ingest; not built.
 - Binning copies in Tidy up removes them from the library at once (semblon/forget.py). Restoring from the Bin and rescanning the folder adds them back.
 
+
+## Dedupe engine (`semblon/dedupe/`)
+
+Isolated, stdlib-only port of the reusable engine of Perps12-oss/dedup. No schema change, no new runtime dependency, no store/identity/Qt/OpenCV imports (enforced by `tests/test_dedupe_deletion_and_boundary.py`).
+
+- Modules: `discovery` (threaded filtered walk, dir-mtime incremental manifest), `hashing` (size, partial, full), `grouping`, `pipeline` (`scan_exact`: events, cancellation, workers), `path_policy`, `resume` (hash-cache and manifest checkpoint, JSON shape only), `deletion` (keeper plan, re-verify, audit; removal is an injected callback), `models`.
+- SHA-256 is the only authority. dedup's XXHash64/MD5/BLAKE3 strategies were dropped. Size and a partial SHA-256 (head, middle, tail) only decide which files get a full read; `DuplicateGroup` rejects non-SHA-256 digests. Tested: files with identical size and identical partial samples but different bytes are not grouped.
+- `semblon/duplicates.py` exact matching now delegates to `scan_exact` over the unchanged `candidate_files` scope (library paths plus sibling stills). Output is pinned equal to the old path (`tests/test_duplicates_characterization.py`). Set `SEMBLON_DUPLICATES_LEGACY_EXACT=1` to force the old per-file SHA-256 path. The near matcher (aHash/dHash) is unchanged, as are Find Similar and DINOv2 region search.
+- Not ported: UI, DI, theme, ApplicationRuntime, thumbnails (Semblon already has them).
+- Scan history (diagnostics only): `record_scan`/`load_history` in `semblon/dedupe_sidecar.py` keep the last 50 scans (duration, files, hashed, cache hits, bytes read, cancelled, groups) in a `scans` table of the same sidecar. Never used for decisions.
+- Tidy polish: set cards animate out and neighbours slide up when copies are binned, the empty state fades in, all durations follow reduced motion; the result message says whether nothing, or only some copies, moved because they changed.
+- Resumability: the persisted hash cache is the resume mechanism (an interrupted scan keeps its finished digests); `dedupe/resume.py` JSON checkpoints stay unused by production by design.
+- Sidecar cache (P3): `semblon/dedupe_sidecar.py` (outside the engine package, so the import boundary holds) persists the hash cache to `<store stem>.dedupe.sqlite`. Keys include path, size and mtime_ns, so a changed file is rehashed. A missing or corrupt sidecar means an empty cache. No main-store schema change. A second scan of an unchanged library reads no file bytes.
+- Tidy deletion (P4): exact sets carry their SHA-256; `bridge._bin_copies` calls `verify_against_keeper` (re-hashes keeper and copy) before the Recycle Bin and skips any copy that no longer matches. Still gated by Tidy's explicit confirm. Near sets are unchanged.
+- Candidate discovery is cancellable (`candidate_files(want_cancel=)`); API cancel latency is about 1 ms.
+- Benchmark: `python tools/bench_dedupe.py --files 2000` (generated fixture, temp dir). Reference run, 2000 files / 736 MB, warm cache: legacy 11.1 s / 676 MB read; dedupe via duplicates.py 2.7 s; engine alone 1.3 s / 344 MB read; CEREBRO-style serial size to SHA-256 3.4 s / 319 MB read. All four produce the same 227 groups.
+- Warm sidecar (`--files 1000 --repeat 3`, photos): legacy 5.4 s, via duplicates.py cold 1.33 s, warm 1.15 s (remaining time is the folder walk and stat, not hashing), engine 0.61 s, CEREBRO-style 1.29 s; parity held.
+- Profiles (`--profile photos|decoys|small|large`, 800 files, warm cache; legacy / via duplicates.py / engine / CEREBRO-style): decoys 4.0 / 1.4 / 0.67 / 2.5 s (engine reads 224 MB vs 388 MB, so partial hashing pays off with many same-size decoys); small 2.1 / 0.87 / 0.30 / 0.52 s; large 16.5 / 1.8 / 1.2 / 6.4 s. Group parity held in every profile.
