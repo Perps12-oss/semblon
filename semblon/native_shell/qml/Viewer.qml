@@ -12,6 +12,8 @@ Item {
     property real lw: 0
     property real lh: 0
     property bool drawing: false
+    // A result preview is presentation-only: it never changes the bridge focus or search state.
+    property string previewId: ""
     property real zoom: 1
     property real panX: 0
     property real panY: 0
@@ -25,6 +27,13 @@ Item {
     Accessible.name: "Photo " + shell.focusName
 
     function resetZoom() { zoom = 1; panX = 0; panY = 0 }
+    function returnFromPreview() { previewId = ""; viewer.forceActiveFocus() }
+    function openPreviewAsFocus() {
+        if (previewId === "") return
+        var target = previewId
+        previewId = ""
+        shell.openDiscoveryHit(target)
+    }
     // Zoom toward a point in the stage so the detail under the cursor stays put.
     function zoomAt(px, py, factor) {
         var z = Math.max(1, Math.min(8, zoom * factor))
@@ -49,7 +58,11 @@ Item {
 
     Rectangle { anchors.fill: parent; color: Theme.bg; opacity: 0.97 }
 
-    Keys.onEscapePressed: { if (moreMenu.shown) moreMenu.shown = false; else { shell.escape(); viewer.closed() } }
+    Keys.onEscapePressed: {
+        if (previewId !== "") returnFromPreview()
+        else if (moreMenu.shown) moreMenu.shown = false
+        else { shell.escape(); viewer.closed() }
+    }
     // While the loupe is on, arrows steer the circle instead of changing photo.
     Keys.onLeftPressed: function (e) { if (!(loupeOn && keyRegion(e))) shell.focusPrev() }
     Keys.onRightPressed: function (e) { if (!(loupeOn && keyRegion(e))) shell.focusNext() }
@@ -109,7 +122,7 @@ Item {
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             cache: false
-            source: shell.focusId === "" ? "" : "image://archive/f/" + shell.focusId
+            source: (viewer.previewId !== "" ? "image://archive/f/" + viewer.previewId : (shell.focusId === "" ? "" : "image://archive/f/" + shell.focusId))
             sourceSize.width: Math.max(1, Math.round(stage.width * Screen.devicePixelRatio))
             sourceSize.height: Math.max(1, Math.round(stage.height * Screen.devicePixelRatio))
             Accessible.ignored: true
@@ -132,14 +145,14 @@ Item {
                         color: "transparent"
                         border.width: shell.selectedObservationId === modelData.id ? 3 : 1
                         border.color: shell.selectedObservationId === modelData.id ? Theme.amber : Theme.muted
-                        visible: !viewer.loupeOn && shell.selectedObservationId === modelData.id
+                        visible: viewer.previewId === "" && !viewer.loupeOn && shell.selectedObservationId === modelData.id
                         Accessible.role: Accessible.Button
                         Accessible.name: "Pick " + (modelData.tag || "this area")
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: shell.selectObservation(modelData.id) }
                     }
                 }
                 Rectangle {
-                    visible: viewer.lw > 0
+                    visible: viewer.previewId === "" && viewer.lw > 0
                     x: viewer.lx; y: viewer.ly; width: viewer.lw; height: viewer.lh
                     radius: Math.min(width, height) / 2
                     color: "transparent"
@@ -150,7 +163,7 @@ Item {
                 Hotspots {
                     id: spots
                     picture: canvas
-                    allowed: viewer.dotsOn && !viewer.loupeOn
+                    allowed: viewer.previewId === "" && viewer.dotsOn && !viewer.loupeOn
                     onPickedDot: function (dot) {
                         clearTap()
                         if (dot.joined) {
@@ -165,12 +178,12 @@ Item {
                 }
                 TapHandler {
                     objectName: "spotTap"
-                    enabled: !viewer.loupeOn
+                    enabled: viewer.previewId === "" && !viewer.loupeOn
                     onTapped: function (ep) { if (tapCount > 1) spots.cancelPending(); else spots.tapped(ep.position.x, ep.position.y) }
                 }
                 MouseArea {
                     anchors.fill: parent
-                    enabled: viewer.loupeOn
+                    enabled: viewer.previewId === "" && viewer.loupeOn
                     cursorShape: viewer.loupeOn ? Qt.CrossCursor : Qt.ArrowCursor
                     property real sx: 0
                     property real sy: 0
@@ -244,12 +257,15 @@ Item {
         x: Theme.pad
         y: Theme.pad
         spacing: Theme.gap
-        Tool { label: "Back to photos"; onActivated: { shell.escape(); viewer.closed() } }
-        Tool { label: "Previous"; onActivated: shell.focusPrev() }
-        Tool { label: "Next"; onActivated: shell.focusNext() }
+        Tool { label: "Back to photos"; visible: viewer.previewId === ""; onActivated: { shell.escape(); viewer.closed() } }
+        Tool { objectName: "returnFromPreview"; label: "Return to original"; visible: viewer.previewId !== ""; onActivated: viewer.returnFromPreview() }
+        Tool { objectName: "previewThisPhoto"; label: "Open this photo"; visible: viewer.previewId !== ""; primary: true; onActivated: viewer.openPreviewAsFocus() }
+        Tool { label: "Previous"; visible: viewer.previewId === ""; onActivated: shell.focusPrev() }
+        Tool { label: "Next"; visible: viewer.previewId === ""; onActivated: shell.focusNext() }
         Tool {
             objectName: "findDetail"
-            label: viewer.loupeOn ? "Loupe on: drag, or use arrow keys and Enter" : "Find this part again"
+            visible: viewer.previewId === ""
+        label: viewer.loupeOn ? "Loupe on: drag, or use arrow keys and Enter" : "Find this part again"
             hint: "Draw around anything in the photo to find it in other photos"
             primary: true
             onActivated: { viewer.loupeOn = !viewer.loupeOn; if (!viewer.loupeOn) viewer.reset() }
@@ -381,12 +397,13 @@ Item {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: Theme.pad + 8
-        text: shell.focusName
+        text: viewer.previewId !== "" ? "Previewing a match" : shell.focusName
         font.family: Theme.display
         font.pixelSize: Theme.lead
         color: Theme.muted
         elide: Text.ElideMiddle
         width: Math.min(360, parent.width / 3)
+        visible: viewer.previewId === ""
         horizontalAlignment: Text.AlignRight
     }
 
@@ -436,11 +453,12 @@ Item {
                 width: 84; height: 84
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
-                Accessible.name: "Open match " + (index + 1)
-                Keys.onReturnPressed: shell.openFocus(mediaId)
+                Accessible.name: "Preview match " + (index + 1)
+                Keys.onReturnPressed: viewer.previewId = mediaId
                 Image { anchors.fill: parent; source: "image://archive/t/" + mediaId; fillMode: Image.PreserveAspectCrop; asynchronous: true }
                 Rectangle { anchors.fill: parent; color: "transparent"; border.width: parent.activeFocus ? 3 : 0; border.color: Theme.amber }
-                MouseArea { anchors.fill: parent; onClicked: shell.openFocus(mediaId) }
+                Rectangle { anchors.fill: parent; color: viewer.previewId === mediaId ? Theme.amber : "transparent"; opacity: viewer.previewId === mediaId ? 0.14 : 0; border.width: viewer.previewId === mediaId ? 2 : 0; border.color: Theme.amber }
+                MouseArea { anchors.fill: parent; onClicked: { viewer.previewId = mediaId; viewer.forceActiveFocus() } }
             }
         }
         Row {
