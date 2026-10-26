@@ -46,6 +46,7 @@ Item {
     }
     property string shownId: shell.focusId
     onShownIdChanged: { resetZoom(); spots.clearTap(); spots.shimmer() }
+    onPreviewIdChanged: { resetZoom(); spots.clearTap() }
     function reset() { lx = 0; ly = 0; lw = 0; lh = 0; loupeOn = false; spots.clearTap(); shell.clearDrawnQuery() }
     function search() {
         if (lw < 8 || lh < 8 || photo.paintedWidth <= 0)
@@ -454,7 +455,7 @@ Item {
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
                 Accessible.name: "Preview match " + (index + 1)
-                Keys.onReturnPressed: viewer.previewId = mediaId
+                Keys.onReturnPressed: { viewer.previewId = mediaId; viewer.forceActiveFocus() }
                 Image { anchors.fill: parent; source: "image://archive/t/" + mediaId; fillMode: Image.PreserveAspectCrop; asynchronous: true }
                 Rectangle { anchors.fill: parent; color: "transparent"; border.width: parent.activeFocus ? 3 : 0; border.color: Theme.amber }
                 Rectangle { anchors.fill: parent; color: viewer.previewId === mediaId ? Theme.amber : "transparent"; opacity: viewer.previewId === mediaId ? 0.14 : 0; border.width: viewer.previewId === mediaId ? 2 : 0; border.color: Theme.amber }
