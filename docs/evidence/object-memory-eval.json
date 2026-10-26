@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "evaluation": "object-memory",
+  "purpose": "Focused companion to Lens retrieval evaluation; never overwrites Lens evidence.",
+  "dataset_status": "NOT_YET_POPULATED_WITH_REAL_PHOTOS",
+  "cases": []
+}
