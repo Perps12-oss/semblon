@@ -634,6 +634,67 @@ def coverage_detail(report: dict, *, category: str) -> str | None:
     return ". ".join(part[0].upper() + part[1:] for part in parts) + "."
 
 
+def coverage_snapshot(store: Path, category: str) -> dict | None:
+    """Read-only coverage counts. None when this library has no coverage table."""
+    from semblon.store import connect_readonly
+
+    try:
+        conn = connect_readonly(store)
+    except Exception:
+        return None
+    try:
+        found = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='category_coverage'"
+        ).fetchone()
+        if found is None:
+            return None
+        return _numbers(conn, category)
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+
+def search_state_note(report: dict | None, *, pack_ready: bool | None = None) -> str:
+    """Sentences that keep unavailable, unreadable, failed and not-yet-checked apart.
+
+    An empty completed read is not described here. The search result says that itself.
+    """
+    parts: list[str] = []
+    tracked = int((report or {}).get("tracked") or 0)
+    eligible = int((report or {}).get("eligible") or 0)
+    completed = int((report or {}).get("completed") or 0)
+    failed = int((report or {}).get("failed") or 0)
+    missing = int((report or {}).get("missing_original") or 0)
+    read_failed = int((report or {}).get("read_failed") or 0)
+    execution_failed = int((report or {}).get("execution_failed") or 0)
+    if tracked <= 0:
+        if pack_ready is False:
+            return "Photos have not been checked."
+        return ""
+    if pack_ready is False and completed > 0:
+        parts.append("Some photos were checked before the checker became unavailable.")
+    if read_failed:
+        parts.append("1 photo could not be read." if read_failed == 1 else f"{read_failed} photos could not be read.")
+    if execution_failed:
+        parts.append(
+            "1 check failed. That is not an empty result."
+            if execution_failed == 1
+            else f"{execution_failed} checks failed. That is not an empty result."
+        )
+    other = failed - read_failed - execution_failed
+    if other > 0:
+        parts.append(f"{other} need another try.")
+    if missing:
+        parts.append("1 original is missing." if missing == 1 else f"{missing} originals are missing.")
+    unchecked = eligible - completed - failed - missing
+    if unchecked > 0:
+        parts.append(
+            "1 photo has not been checked." if unchecked == 1 else f"{unchecked} photos have not been checked."
+        )
+    return " ".join(parts)
+
+
 def partial_coverage_clause(store: Path, category: str) -> str | None:
     """Plain 'N of M photos checked' when this category has been tracked and is incomplete.
 

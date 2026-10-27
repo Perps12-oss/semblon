@@ -703,31 +703,54 @@ def _text_evidence(payload: dict) -> str:
     return "ignore"
 
 
-def _with_category_coverage(store: Path, category: str, rec: dict) -> dict:
-    """Add an honest remainder when a category scan has not covered the library.
+def _with_category_coverage(
+    store: Path,
+    category: str,
+    rec: dict,
+    *,
+    pack_ready: bool | None = None,
+    empty_read: bool = False,
+) -> dict:
+    """Add an honest remainder. Ranking is unchanged.
 
-    Does nothing when that category has never been tracked. Ranking is unchanged.
+    An empty read stays NO_RESULT. A failed check is not called an empty read.
+    A missing checker is not called a finished scan.
     """
-    from semblon.category_backfill import partial_coverage_clause
+    from semblon.category_backfill import coverage_snapshot, search_state_note
 
-    clause = partial_coverage_clause(store, category)
-    if not clause:
+    report = coverage_snapshot(store, category)
+    note = search_state_note(report, pack_ready=pack_ready)
+    tracked = int((report or {}).get("tracked") or 0)
+    failed = int((report or {}).get("failed") or 0)
+    if not note and not (tracked and empty_read and rec.get("status") == "NO_RESULT"):
         return rec
     out = dict(rec)
-    out["coverage_clause"] = clause
+    if note:
+        out["coverage_clause"] = note
     status = str(out.get("status") or "")
-    if status == "NO_RESULT":
-        lead = clause[0].lower() + clause[1:]
-        if category == "words":
-            out["reason"] = f"No text matched in the {lead}"
-        else:
-            out["reason"] = f"No object label matched in the {lead}"
-    elif status == "SUCCESS":
-        reason = str(out.get("reason") or "").rstrip(".")
-        out["reason"] = f"{reason}. {clause.rstrip('.')}."
+    if status == "NO_RESULT" and empty_read and category == "words":
+        base = "No text matched in the photos that were read. An empty read is not a failed check."
+    elif status == "NO_RESULT" and category == "objects" and tracked:
+        base = "No object label matched in the photos that were checked. That is not an unavailable detector."
+    elif status == "UNAVAILABLE" and category == "words" and failed:
+        base = "Text reading failed. That is not an empty read."
+    elif status == "UNAVAILABLE" and category == "objects" and pack_ready and tracked:
+        base = "Checked photos had no matching object label. That is not an unavailable detector."
     else:
-        reason = str(out.get("reason") or "").rstrip()
-        out["reason"] = f"{reason} {clause}".strip()
+        base = str(out.get("reason") or "").rstrip()
+    out["reason"] = f"{base} {note}".strip() if note else base
+    eligible = int((report or {}).get("eligible") or 0)
+    completed = int((report or {}).get("completed") or 0)
+    missing = int((report or {}).get("missing_original") or 0)
+    out["search_states"] = {
+        "pack_ready": pack_ready,
+        "empty_read": bool(empty_read),
+        "checked": completed,
+        "unreadable": int((report or {}).get("read_failed") or 0),
+        "failed": int((report or {}).get("execution_failed") or 0),
+        "missing_original": missing,
+        "not_checked": max(0, eligible - completed - failed - missing) if tracked else (eligible if pack_ready is False else 0),
+    }
     return out
 
 
@@ -873,20 +896,25 @@ def search_text(
             if scope is not None
             else "No text matched in your photos."
         )
-        return _with_category_coverage(store, "words", {
-            "kind": "text",
-            "query": q,
-            "count": 0,
-            "items": [],
-            "media_ids": [],
-            "status": "NO_RESULT",
-            "model_state": "AVAILABLE",
-            "provider_state": "READY",
-            "reason": reason,
-            "error_id": None,
-            "similarity_basis": basis,
-            "note": note,
-        })
+        return _with_category_coverage(
+            store,
+            "words",
+            {
+                "kind": "text",
+                "query": q,
+                "count": 0,
+                "items": [],
+                "media_ids": [],
+                "status": "NO_RESULT",
+                "model_state": "AVAILABLE",
+                "provider_state": "READY",
+                "reason": reason,
+                "error_id": None,
+                "similarity_basis": basis,
+                "note": note,
+            },
+            empty_read=True,
+        )
     from semblon.runtime_contract import invoke
 
     if saw_failed:
@@ -908,20 +936,28 @@ def search_text(
         model_state = "MISSING"
         provider_state = "FAILED"
         status = "UNAVAILABLE"
-    return _with_category_coverage(store, "words", {
-        "kind": "text",
-        "query": q,
-        "count": 0,
-        "items": [],
-        "media_ids": [],
-        "status": status,
-        "model_state": model_state,
-        "provider_state": provider_state,
-        "reason": reason,
-        "error_id": error_id,
-        "similarity_basis": basis,
-        "note": note,
-    })
+    from semblon.observers import probe_ocr_status
+
+    reader_ready, _reader_note = probe_ocr_status()
+    return _with_category_coverage(
+        store,
+        "words",
+        {
+            "kind": "text",
+            "query": q,
+            "count": 0,
+            "items": [],
+            "media_ids": [],
+            "status": status,
+            "model_state": model_state,
+            "provider_state": provider_state,
+            "reason": reason,
+            "error_id": error_id,
+            "similarity_basis": basis,
+            "note": note,
+        },
+        pack_ready=bool(reader_ready),
+    )
 
 
 _OBJECT_SEARCH_BASIS = "COCO object detection (NanoDet)"
@@ -1041,7 +1077,7 @@ def search_object(
             "reason": f"Found {len(items)} photos by saved names or detector labels.",
             "error_id": None,
             "similarity_basis": " · ".join(bases) + (" · current Field" if scope is not None else ""),
-        })
+        }, pack_ready=bool(ready))
 
     if not ready:
         return _with_category_coverage(store, "objects", {
@@ -1049,17 +1085,17 @@ def search_object(
             "model_state": "MISSING", "provider_state": "FAILED",
             "reason": pack_note or "NanoDet is unavailable and no saved human region name matched.",
             "error_id": "object.PACK_MISSING",
-        })
+        }, pack_ready=False)
     if saw_detector_label or saw_named_region:
         return _with_category_coverage(store, "objects", {
             **empty, "query": q, "status": "NO_RESULT",
             "model_state": "AVAILABLE", "provider_state": "READY",
             "reason": "No stored human region names or detector labels matched.",
             "error_id": None,
-        })
+        }, pack_ready=True)
     return _with_category_coverage(store, "objects", {
         **empty, "query": q, "status": "UNAVAILABLE",
         "model_state": "MISSING", "provider_state": "FAILED",
         "reason": "No searchable region names or NanoDet object labels are stored yet. Name a region or add the pack and re-scan photos.",
         "error_id": "object.NO_STORED_LABELS",
-    })
+    }, pack_ready=True)

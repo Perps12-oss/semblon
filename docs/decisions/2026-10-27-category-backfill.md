@@ -69,6 +69,6 @@ Targeted tests after that slice:
 
 `python3 -m pytest -q --noconftest tests/test_category_backfill.py tests/test_schema.py tests/test_scan_tiers.py tests/test_discover_categories.py tests/test_observers.py tests/test_production.py`
 
-Result: **66 passed**.
+Result: **69 passed** after the search-state and review-board slice. Object and word search distinguish an unavailable checker, an unreadable original, a failed check, and a photo not yet checked. An empty OCR read stays a miss. Unnamed faces from the people check are on the review board and are not given a person.
 
 The full suite, a real archive with the face, NanoDet, DINOv2 and OCR packs, and a PySide6 shell run were not executed here. Do not treat this branch as release evidence.

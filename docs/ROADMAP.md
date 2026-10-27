@@ -18,7 +18,17 @@ This file lists the product-completion sequence. It does not redefine the vision
 | 6 | Face → archive discovery | Slices A–E **landed**. Q/L/I/P **not PASS** | A–E are in the build. Those four gates are not marked passed. `docs/SHIP-GATES.md`. |
 | 7 | Multi-leg local retrieval | Synthetic rank bar **CLOSED / PASS 5/5**. Precision **not PASS** | `docs/evidence/lens-retrieval-eval.json` lines 2, 6, 65, 319, 326. Kind door SKIPPED. `ann_justified` false. ANN is out of ship. |
 
-## Next engineering slice — category check lifecycle (landed, suite incomplete)
+## Next engineering slice — search states and the people desk (landed, suite incomplete)
+
+Object and word search now keep four states apart: the checker is unavailable, a photo could not be read, a check failed, and a photo has not been checked. An empty word read stays a miss, not a failure and not an unavailable reader.
+
+An unnamed face written by the people check appears on the existing review board. A later words check does not hide it. The check still does not create a person, write `faces.person_id`, or cluster.
+
+A second category cannot start while one is running. After that one stops, the next category can. Neither calls folder ingest.
+
+Targeted tests: `python3 -m pytest -q --noconftest tests/test_category_backfill.py tests/test_schema.py tests/test_scan_tiers.py tests/test_discover_categories.py tests/test_observers.py tests/test_production.py` → **69 passed**. The full suite, a real four-pack archive, and the PySide6 shell were not run.
+
+## Earlier slice — category check lifecycle (landed, suite incomplete)
 
 The category job now stays on its own door through pause, cancel and resume:
 

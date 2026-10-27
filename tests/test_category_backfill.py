@@ -460,9 +460,10 @@ def test_search_names_a_partial_check_and_leaves_an_untracked_library_alone(tmp_
     hit = search_text(store, "hello")
     miss = search_text(store, "nope-xyz")
     assert hit["status"] == "SUCCESS"
-    assert "1 of 2 photos checked" in hit["reason"]
+    assert "1 photo has not been checked" in hit["reason"]
     assert miss["status"] == "NO_RESULT"
-    assert "No text matched in the 1 of 2 photos checked" in miss["reason"]
+    assert "empty read is not a failed check" in miss["reason"]
+    assert "1 photo has not been checked" in miss["reason"]
     conn.execute("DELETE FROM category_coverage")
     conn.commit()
     conn.close()
@@ -472,7 +473,8 @@ def test_search_names_a_partial_check_and_leaves_an_untracked_library_alone(tmp_
     assert legacy["reason"] == "No text matched in your photos."
     empty = search_object(store, "dog")
     assert empty["status"] == "UNAVAILABLE"
-    assert "coverage_clause" not in empty
+    assert "have not been checked" in empty["reason"]
+    assert "empty read" not in empty["reason"]
 
 
 def test_region_coverage_is_visible_without_the_shared_tier_bit(tmp_path):
@@ -662,4 +664,159 @@ def test_pause_then_cancel_does_not_check_the_next_photo(tmp_path, monkeypatch):
     assert by_id.get("b.jpg") != "completed"
     assert calls["ingest"] == 0
     assert calls["people"] == calls["objects"] == calls["regions"] == 0
+
+
+def _coverage(conn, media_id, category, state, outcome):
+    conn.execute(
+        """INSERT INTO category_coverage(
+             media_id, category, sha256, provider_id, provider_version, state, outcome,
+             attempt_count, last_error, frame_done, detail_done, started_at, finished_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,1,NULL,0,0,'t','t','t')""",
+        (media_id, category, "sha-" + media_id, category, "v1", state, outcome),
+    )
+
+
+def test_object_and_word_search_keep_unavailable_apart_from_empty(tmp_path, monkeypatch):
+    from semblon.search import search_object, search_text
+
+    store = _store(tmp_path, ("a.jpg", "b.jpg", "c.jpg", "d.jpg"))
+    conn = connect(store)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id, embedding_dim, embedding_norm,
+           config_json, runtime_json, arch, execution)
+           VALUES ('r1','t','1','pack',1,'l2','{}','{}','x64','native')"""
+    )
+    conn.execute(
+        "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES ('o1','a.jpg',NULL,NULL,'r1')"
+    )
+    conn.execute(
+        """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider, score, payload_json)
+           VALUES ('t1','o1','r1','text','tesseract',1,?)""",
+        ('{"text":"","contract_status":"NO_RESULT"}',),
+    )
+    _coverage(conn, "a.jpg", "words", "completed", "empty")
+    _coverage(conn, "b.jpg", "words", "failed", "read_failure")
+    _coverage(conn, "c.jpg", "words", "failed", "execution_failure")
+    _coverage(conn, "a.jpg", "objects", "completed", "no_objects")
+    _coverage(conn, "b.jpg", "objects", "failed", "read_failure")
+    _coverage(conn, "c.jpg", "objects", "failed", "execution_failure")
+    conn.commit()
+    conn.close()
+
+    words = search_text(store, "missing-word")
+    assert words["status"] == "NO_RESULT"
+    assert words["search_states"]["empty_read"] is True
+    assert "empty read is not a failed check" in words["reason"]
+    assert "could not be read" in words["reason"]
+    assert "check failed" in words["reason"]
+    assert "has not been checked" in words["reason"]
+    assert "not available" not in words["reason"].lower()
+
+    monkeypatch.setattr("semblon.object_pack.probe_nanodet_status", lambda: (False, "NanoDet pack is missing."))
+    unavailable = search_object(store, "dog")
+    assert unavailable["status"] == "UNAVAILABLE"
+    assert unavailable["error_id"] == "object.PACK_MISSING"
+    assert unavailable["search_states"]["pack_ready"] is False
+    assert "could not be read" in unavailable["reason"]
+    assert "check failed" in unavailable["reason"]
+    assert "has not been checked" in unavailable["reason"]
+    assert "empty read" not in unavailable["reason"]
+
+    monkeypatch.setattr("semblon.object_pack.probe_nanodet_status", lambda: (True, None))
+    ready = search_object(store, "dog")
+    assert ready["status"] == "UNAVAILABLE"
+    assert ready["error_id"] == "object.NO_STORED_LABELS"
+    assert ready["search_states"]["pack_ready"] is True
+    assert "not an unavailable detector" in ready["reason"]
+    assert "could not be read" in ready["reason"]
+    assert "has not been checked" in ready["reason"]
+
+    bare_dir = tmp_path / "bare"
+    bare_dir.mkdir()
+    bare = _store(bare_dir)
+    monkeypatch.setattr("semblon.observers.probe_ocr_status", lambda: (False, "tesseract missing"))
+    unread = search_text(bare, "hello")
+    assert unread["status"] == "UNAVAILABLE"
+    assert "have not been checked" in unread["reason"]
+    assert "empty read" not in unread["reason"]
+    assert unread["search_states"]["empty_read"] is False
+
+
+def test_people_backfill_faces_stay_on_the_review_board_unnamed(tmp_path, monkeypatch):
+    from semblon.application import board
+
+    store = _store(tmp_path, ("a.jpg",))
+
+    def detect(_img):
+        return [{
+            "bbox": (0, 0, 80, 80),
+            "det_score": 0.95,
+            "face_w": 80,
+            "face_h": 80,
+            "embedding": np.ones(8, dtype=np.float32),
+        }]
+
+    calls = _install(monkeypatch, detect=detect)
+    rec = run_category_backfill(store, "people")
+    assert rec["status"] == "completed"
+    conn = connect(store)
+    face = conn.execute("SELECT status, person_id, cluster_id FROM faces").fetchone()
+    persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    conn.close()
+    assert face["status"] == "ok"
+    assert face["person_id"] is None
+    assert face["cluster_id"] is None
+    assert persons == 0
+    desk = board(store)
+    kinds = [item["kind"] for item in desk["items"]]
+    assert "unassigned" in kinds
+    assert desk["persons"] == []
+    run_category_backfill(store, "words")
+    again = board(store)
+    assert any(item["kind"] == "unassigned" for item in again["items"])
+    conn = connect(store)
+    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM faces WHERE person_id IS NOT NULL").fetchone()[0] == 0
+    conn.close()
+    assert calls["cluster"] == 0
+    assert calls["ingest"] == 0
+
+
+def test_a_running_category_blocks_the_next_one(tmp_path, monkeypatch):
+    import threading
+
+    from semblon.application import Application
+    from semblon.jobs import JobBusy
+
+    store = _store(tmp_path)
+    hold = threading.Event()
+    entered = threading.Event()
+
+    def words(_img):
+        if not entered.is_set():
+            entered.set()
+            assert hold.wait(3)
+        return {"text": "", "score": 0.0, "words": []}
+
+    calls = _install(monkeypatch, words=words)
+    app = Application(store)
+    app.submit_category("words")
+    assert entered.wait(3)
+    try:
+        app.submit_category("objects")
+        raise AssertionError("a second category must wait")
+    except JobBusy:
+        pass
+    hold.set()
+    app.cancel_job()
+    app.engine._thread.join(3)
+    assert not app.busy
+    assert calls["objects"] == 0
+    app.submit_category("objects")
+    app.engine._thread.join(3)
+    assert not app.busy
+    assert calls["objects"] == 2
+    assert calls["people"] == calls["ingest"] == 0
+    assert calls["words"] == 1
+
 
