@@ -4,12 +4,16 @@
 
 **Product contract:** `docs/PRODUCT.md`. **Programme completion tracker (12 issues, Gates A/B/C):** `docs/BUILD-STATUS.md`. This file remains the architecture ledger only. Do not treat `docs/ROADMAP.md` as a status SoT. Rows that say Find is out of V1, or that name Tk Home as the product door, are historical against the 2026-10-16 shell.
 
-**Date:** 2026-10-05 (architecture baseline). Earlier rows retain their original dates.  
+**Date:** 2026-10-05 (architecture baseline); current-source addendum 2026-10-27. Earlier rows retain their original dates.  
 **Authority:** `docs/ARCHITECTURE.md` (production shell) · `docs/SEM-ARCH-V1.4.md` (engineering planned work) · this matrix (architecture closed vs open).  
 **UI exposure classes:** `docs/UI-EXPOSURE-MAP.md` is a historical inventory plus a 2026-10-05 banner. Do not treat its September shell rule as current.  
 **Do not** treat older freeze audits as current blockers without checking this file.
 
 Look here first. Architecture migration is closed. Product construction is open.
+
+**Current shell correction (2026-10-27):** the production QML root is `semblon/native_shell/qml/Table.qml`, loaded by `native_shell/host.py`. The current visible surfaces are Roll, Light Table, People, and Focus; the current category chooser is `DiscoverSheet.qml` on branch `feat/discover-category-entry` / PR #200. `docs/UI-EXPOSURE-MAP.md` is the current navigation map. The older shell details later in this ledger are historical.
+
+**Category scan status:** broad `rescanFolder()` is not a category backfill. Targeted scans live in `semblon/category_backfill.py` and start from Discover via `ShellBridge.startCategoryScan`. Pause and Stop use the existing job controls. Continue check calls `resume_action` and stays on that category. A second category waits until the first stops. Opening Discover calls `refreshCategoryCoverage` and only reads coverage. Text and object search distinguish an unavailable checker, an unreadable photo, a failed check, a not-yet-checked photo, and an empty word read. People faces from a check show on the review board without a person id. Region search discloses partial coverage without stamping `tier_done_mask`. Design notes: `docs/decisions/2026-10-27-category-backfill.md`.
 
 ## CLOSED — architecture migration (2026-10-05)
 

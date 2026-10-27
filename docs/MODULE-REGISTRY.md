@@ -1,8 +1,10 @@
 # Module / Capability Registry
 
-**Superseded 2026-10-05 by the completed PySide6 production migration.**
+**Historical inventory baseline:** 2026-09-28 at `35eeb72`. Do not use the old per-entry paths or exposure claims as current production facts without checking the source.
 
-**Current (2026-10-05):** `Application` owns the only `JobEngine` and the archive session. Production UI is PySide6. `lens_home.py` and `review_chrome/` are deleted. Entries below that still say Tk Home is the production GUI are historical as of the 2026-09-28 commit they cite.
+**Current-source addendum — 2026-10-27:** `Application` owns the only `JobEngine` and archive session. Production UI is PySide6 `semblon shell`; the QML root is `semblon/native_shell/qml/Table.qml` (not `Shell.qml`). `native_shell/host.py` exposes the existing `ArchiveModel`, `PeopleModel`, and Similar model to that one shell. Current surfaces are Roll, Light Table, People, Focus (`Viewer.qml`), and the branch's Discover chooser (`DiscoverSheet.qml`). See `docs/UI-EXPOSURE-MAP.md` for current navigation and `docs/BUILD-STATUS.md` for evidence/readiness.
+
+**Category scanning caveat:** existing `rescanFolder()` calls `_start_ingest(..., reprocess=True)`; it is a broad ingest/cluster rerun, not a targeted People/Objects/Regions/Words backfill. Do not expose it as a category scan. The separate category-backfill design is in `docs/decisions/2026-10-27-category-backfill.md`.
 
 **Date:** 2026-09-28  
 **Commit:** `35eeb72` (`35eeb72ede013ca8d61a78661e9fa9ba1a15c1f4`, `origin/main`, merge of PR #115)  
@@ -47,7 +49,7 @@ Fields are the same for every entry. “State at `35eeb72`” means what the sou
 #### `qt-shell`
 
 - **Label:** Semblon.
-- **What it is:** The production window. PySide6 loads `native_shell/qml/Shell.qml`.
+- **What it is:** The production window. PySide6 loads `native_shell/qml/Table.qml`.
 - **Where implemented:** `cli.py` command `shell`; `native_shell/run.py`; `native_shell/host.py`.
 - **Owner:** Archive shell.
 - **What it exposes:** CLI `semblon shell`. `semblon.cmd` with no arguments opens it. People, Focus, library filter, Activity (Advanced), and Settings live here.

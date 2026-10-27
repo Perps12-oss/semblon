@@ -61,24 +61,42 @@ def semantic_coverage(conn) -> dict | None:
     """How much of the library the region search can see. None when unknown.
 
     ``searchable`` photos have the whole-picture pass. ``detailed`` photos also
-    have the fine windows and crops. A search over a partly prepared library
-    uses this to say so instead of looking complete.
+    have the fine windows and crops. Category backfill does not stamp
+    ``tier_done_mask``; a regions row with frame or detail done counts here too.
     """
+    flags: dict[str, dict[str, bool]] = {}
     try:
-        row = conn.execute(
-            """SELECT COUNT(*),
-                      COALESCE(SUM((tier_done_mask & ?) != 0), 0),
-                      COALESCE(SUM((tier_done_mask & ?) != 0), 0)
-               FROM work_items WHERE media_id IS NOT NULL""",
-            (TIER_SEMANTIC, TIER_DETAIL),
-        ).fetchone()
+        rows = conn.execute(
+            "SELECT media_id, tier_done_mask FROM work_items WHERE media_id IS NOT NULL"
+        ).fetchall()
     except Exception:  # noqa: BLE001 — older stores have no work_items
         return None
-    total = int(row[0] or 0)
-    if total <= 0:
+    for row in rows:
+        mask = int(row[1] or 0)
+        flags[str(row[0])] = {
+            "searchable": bool(mask & TIER_SEMANTIC),
+            "detailed": bool(mask & TIER_DETAIL),
+        }
+    try:
+        extra = conn.execute(
+            """SELECT media_id, frame_done, detail_done, state
+               FROM category_coverage WHERE category='regions'"""
+        ).fetchall()
+    except Exception:  # noqa: BLE001 — stores that predate category coverage
+        extra = []
+    for row in extra:
+        if str(row[3] or "") == "skipped":
+            continue
+        slot = flags.setdefault(str(row[0]), {"searchable": False, "detailed": False})
+        if int(row[1] or 0):
+            slot["searchable"] = True
+        if int(row[2] or 0):
+            slot["detailed"] = True
+    if not flags:
         return None
-    searchable = int(row[1] or 0)
-    detailed = int(row[2] or 0)
+    total = len(flags)
+    searchable = sum(1 for item in flags.values() if item["searchable"])
+    detailed = sum(1 for item in flags.values() if item["detailed"])
     return {
         "total": total,
         "searchable": searchable,

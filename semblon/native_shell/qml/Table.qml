@@ -16,6 +16,7 @@ Window {
     Binding { target: Theme; property: "reducedMotion"; value: shell.reducedMotion }
 
     property bool settingsOpen: false
+    property bool discoverOpen: false
     property bool jobMini: false
     Connections {
         target: shell
@@ -36,6 +37,7 @@ Window {
     function run(id) {
         if (id === "add") shell.addFolder()
         else if (id === "people") shell.openPeople()
+        else if (id === "discover") discoverOpen = true
         else if (id === "moment") table.focusEntry("moment")
         else if (id === "detail") table.focusEntry("detail")
         else if (id === "tidy") shell.openTidy()
@@ -94,6 +96,20 @@ Window {
         onDateRequested: function (p) { win.jumpToDate(p) }
     }
 
+    DiscoverSheet {
+        id: discoverSheet
+        anchors.fill: parent
+        open: win.discoverOpen
+        onDismissed: win.discoverOpen = false
+        onChosen: function (category) {
+            win.discoverOpen = false
+            if (category === "people") shell.openPeople()
+            else if (category === "regions") shell.openVisualDiscovery()
+            else if (category === "objects") table.focusEntry("detail", "object")
+            else if (category === "words") table.focusEntry("detail", "text")
+        }
+    }
+
     // Top-right: the two things you do before anything else.
     Row {
         anchors.right: scrub.left
@@ -101,6 +117,13 @@ Window {
         anchors.margins: Theme.pad
         spacing: Theme.gap
         visible: !viewer.active && !people.active && !tidy.active
+        Tool {
+            objectName: "discoverButton"
+            label: "Discover"
+            visible: !shell.empty
+            primary: true
+            onActivated: win.discoverOpen = true
+        }
         Tool {
             objectName: "addFolder"
             label: "Add a folder"
