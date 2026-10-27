@@ -1,13 +1,23 @@
 # Semblon UI exposure map
 
-**Superseded 2026-10-05 by the completed PySide6 production migration.** Product contract: `docs/PRODUCT.md`. Capability status: `docs/BUILD-STATUS.md`. Sections A–I below are the September 2026 inventory plus later notes. They are historical where they name Tk Home as the product door.
+**Current-source addendum — 2026-10-27.** This opening section describes the production shell at the branch tip. The September inventory below is retained as historical audit material; do not use its Tk Home, `Shell.qml`, HomeLaunchpad, or persistent-left-navigation descriptions as current implementation facts.
 
-**Current production exposure (2026-10-16), source-read at `079d88ba`:** one production UI, PySide6 `semblon shell` → `Application`. Tk Home, review-ui, and canvas are retired. `review.html` is retired.
+**Production entry:** `semblon shell` → `native_shell/run.py` → `native_shell/host.py` → `Application` / `ShellBridge` → `native_shell/qml/Table.qml`. The production QML root is **Table.qml**, not Shell.qml. The host exposes one `ArchiveModel`, one `PeopleModel`, and the existing Similar model from the same Application/session.
 
-The left nav in `semblon/native_shell/qml/Shell.qml` is Home, Library, People, Add folder, and Settings. Home is a permanent launchpad (`HomeLaunchpad.qml`) with Library, Visual discovery, and People cards plus an All capabilities catalogue. Archive browse (media kind, folders, moments, similar) lives in that left column when Library is open; see `docs/TIMELINE-VIEW.md`. The 2026-10-15 sentence that called a right-hand archive sidebar the only library filter is out of date.
+**Current primary surfaces:**
+- **Roll / archive:** `Roll.qml` is the photo roll; the time scrubber is the adjacent navigation edge.
+- **Light Table:** `LightTable.qml` provides date, People, description search, Tidy, and More actions.
+- **People:** `People.qml` is the face-group review desk. A group is not a person; explicit review/name decisions remain the only person-creation path.
+- **Focus:** `Viewer.qml` opens a still, supports region selection and similar-region search, and shows matches in the bottom strip. Whole-photo, face, duplicate, naming and Ask actions remain contextual/overflow actions.
+- **Discover (branch PR #200):** `DiscoverSheet.qml` offers People, Objects, Regions and Words in photos as category entry points. It routes into existing People, Focus, and text/object search paths; it does not create four galleries or separate archives.
 
-People shows face crops. Focus opens stills (`source_type=folder`), shows observation boxes, and offers whole-image Similar, a drawn region, and Ask photo. Advanced Activity lists history. Video tiles are labeled and do not open. Playback is not implemented. Saved albums are an honest deferred empty state.
+**Scanning status must not be inferred from a menu item.** People review and region retrieval have existing workflows. Object labels and OCR text are searchable only where those observations have actually been stored and their providers are available. The existing `rescanFolder()` path calls ingest with `reprocess=True`; it is not a safe category-specific backfill because it re-enters the full ingest/cluster pipeline. Category-specific full-library scan/backfill is a separate, not-yet-implemented engineering slice. See `docs/decisions/2026-10-27-category-backfill.md`.
 
+Product contract: `docs/PRODUCT.md`. Verified implementation status: `docs/BUILD-STATUS.md`. Architecture: `docs/ARCHITECTURE.md`.
+
+---
+
+**Historical inventory — 2026-09-25 onward.** The sections below record prior shells and audits. They are retained for traceability, not as current UI instructions.
 **Date:** 2026-09-25  
 **Rule:** Backend capability does not dictate navigation. Product intent dictates navigation.  
 **Historical shell rule (2026-09-25):** One production GUI (`semblon home`, tk) → multiple workspaces/routes. Not separate apps or GUI stacks.
