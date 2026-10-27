@@ -96,6 +96,10 @@ Item {
                     Text {
                         visible: entry.text === ""
                         text: bar.empty ? "Add a folder of photos first, then search them here"
+                              : bar.mode === "detail" && shell.searchModeShort === "Objects"
+                              ? "Name an object: bicycle, cake, dog"
+                              : bar.mode === "detail" && shell.searchModeShort === "Text in photos"
+                              ? "Find words in photos: menu, sign, label"
                               : bar.mode === "detail"
                               ? "Describe it: a red bicycle, a birthday cake, a handwritten sign"
                               : "Type a date or a few words: summer 2019, the beach, a dog"
