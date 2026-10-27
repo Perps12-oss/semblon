@@ -521,60 +521,144 @@ def _still(row) -> bool:
     return suffix in _STILL_EXT and str(row["source_type"] or "") == "folder"
 
 
+def _numbers(conn, category: str) -> dict:
+    rows = conn.execute(
+        """SELECT c.state, c.outcome, c.frame_done, c.detail_done, c.sha256, c.provider_version,
+                  m.sha256 AS media_sha
+           FROM category_coverage c
+           LEFT JOIN media m ON m.media_id = c.media_id
+           WHERE c.category=?""",
+        (category,),
+    ).fetchall()
+    eligible = conn.execute("SELECT path, source_type FROM media").fetchall()
+    n_eligible = sum(1 for row in eligible if _still(row))
+    completed = 0
+    failed = 0
+    skipped = 0
+    frame = 0
+    detail = 0
+    tracked = 0
+    for row in rows:
+        tracked += 1
+        state = str(row["state"])
+        same = str(row["sha256"] or "") == str(row["media_sha"] or "")
+        if state == STATE_COMPLETED and same:
+            if category == CATEGORY_REGIONS and not (int(row["frame_done"] or 0) and int(row["detail_done"] or 0)):
+                pass
+            else:
+                completed += 1
+        elif state == STATE_FAILED:
+            failed += 1
+        elif state == STATE_SKIPPED:
+            skipped += 1
+        if int(row["frame_done"] or 0):
+            frame += 1
+        if int(row["detail_done"] or 0):
+            detail += 1
+    return {
+        "category": category,
+        "label": _label(category),
+        "eligible": n_eligible,
+        "completed": completed,
+        "failed": failed,
+        "skipped": skipped,
+        "frame_indexed": frame,
+        "detail_indexed": detail,
+        "tracked": tracked,
+    }
+
+
 def coverage_report(store: Path, category: str | None = None) -> dict:
     """Durable per-category coverage. Failed and unavailable rows are not complete."""
     conn = connect(store)
     try:
         init_db(conn)
         categories = (category,) if category else CATEGORIES
-        out = {}
-        for name in categories:
-            rows = conn.execute(
-                """SELECT c.state, c.outcome, c.frame_done, c.detail_done, c.sha256, c.provider_version,
-                          m.sha256 AS media_sha
-                   FROM category_coverage c
-                   LEFT JOIN media m ON m.media_id = c.media_id
-                   WHERE c.category=?""",
-                (name,),
-            ).fetchall()
-            eligible = conn.execute(
-                """SELECT path, source_type FROM media"""
-            ).fetchall()
-            n_eligible = sum(1 for row in eligible if _still(row))
-            completed = 0
-            failed = 0
-            skipped = 0
-            frame = 0
-            detail = 0
-            for row in rows:
-                state = str(row["state"])
-                same = str(row["sha256"] or "") == str(row["media_sha"] or "")
-                if state == STATE_COMPLETED and same:
-                    if name == CATEGORY_REGIONS and not (int(row["frame_done"] or 0) and int(row["detail_done"] or 0)):
-                        pass
-                    else:
-                        completed += 1
-                elif state == STATE_FAILED:
-                    failed += 1
-                elif state == STATE_SKIPPED:
-                    skipped += 1
-                if int(row["frame_done"] or 0):
-                    frame += 1
-                if int(row["detail_done"] or 0):
-                    detail += 1
-            out[name] = {
-                "category": name,
-                "label": _label(name),
-                "eligible": n_eligible,
-                "completed": completed,
-                "failed": failed,
-                "skipped": skipped,
-                "frame_indexed": frame,
-                "detail_indexed": detail,
-            }
+        out = {name: _numbers(conn, name) for name in categories}
         return out if category is None else out[category]
     finally:
         conn.close()
+
+
+def partial_coverage_clause(store: Path, category: str) -> str | None:
+    """Plain 'N of M photos checked' when this category has been tracked and is incomplete.
+
+    Libraries with no category_coverage rows are left alone so older searches
+    keep their existing wording.
+    """
+    from semblon.store import connect_readonly
+
+    try:
+        conn = connect_readonly(store)
+    except Exception:
+        return None
+    try:
+        found = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='category_coverage'"
+        ).fetchone()
+        if found is None:
+            return None
+        numbers = _numbers(conn, category)
+    except Exception:
+        return None
+    finally:
+        conn.close()
+    if numbers["tracked"] <= 0 or numbers["eligible"] <= 0:
+        return None
+    if numbers["completed"] >= numbers["eligible"]:
+        return None
+    return f"{numbers['completed']} of {numbers['eligible']} photos checked"
+
+
+def discover_coverage_text(store: Path) -> str:
+    """What Discover can say before anyone starts a scan. Does not scan."""
+    lines = []
+    try:
+        reports = coverage_report(store)
+    except Exception:
+        reports = {}
+    for category in CATEGORIES:
+        report = reports.get(category) or {
+            "eligible": 0,
+            "completed": 0,
+            "frame_indexed": 0,
+            "detail_indexed": 0,
+        }
+        try:
+            probe = probe_category(category)
+        except Exception as exc:  # noqa: BLE001 — the sheet must still open
+            probe = ProviderProbe(False, category, "", f"{_label(category)} is not available on this computer.")
+        lines.append(_discover_line(category, report, probe))
+    return "\n".join(lines)
+
+
+def _discover_line(category: str, report: dict, probe: ProviderProbe) -> str:
+    label = _label(category)
+    eligible = int(report.get("eligible") or 0)
+    completed = int(report.get("completed") or 0)
+    if not probe.available and completed <= 0:
+        reason = (probe.reason or f"{label} is not available on this computer.").strip()
+        if "downloaded" not in reason.lower():
+            reason = reason.rstrip(".") + ". Nothing was downloaded."
+        return f"{label}: {reason}"
+    if eligible <= 0:
+        return f"{label}: no photos to check yet."
+    if category == CATEGORY_REGIONS:
+        frame = int(report.get("frame_indexed") or 0)
+        detail = int(report.get("detail_indexed") or 0)
+        if completed >= eligible:
+            return f"{label}: all {eligible} photos checked."
+        if frame <= 0 and detail <= 0:
+            return f"{label}: not checked yet. {eligible} photos are in the library."
+        return (
+            f"{label}: {frame} of {eligible} photos have a whole-picture look. "
+            f"{detail} of {eligible} have fine detail."
+        )
+    if completed >= eligible:
+        return f"{label}: all {eligible} photos checked."
+    if completed <= 0:
+        return f"{label}: not checked yet. {eligible} photos are in the library."
+    return f"{label}: {completed} of {eligible} photos checked. The rest have not been checked."
 
 
 def _message(category: str, *, status: str, completed: int, total: int, skipped_done: int, failed: int, reason: str) -> str:

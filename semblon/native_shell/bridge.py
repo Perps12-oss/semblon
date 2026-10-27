@@ -302,6 +302,8 @@ class ShellBridge(QObject):
         self._job_active = False
         self._job_state = "idle"
         self._category_note = ""
+        self._category_coverage_text = ""
+        self._refresh_coverage_when_idle = False
         self._last_folder: Path | None = None
         self._resume_ready = False
         self._cancel_requested = False
@@ -777,6 +779,21 @@ class ShellBridge(QObject):
     @Property(str, notify=jobChanged)
     def categoryScanNote(self) -> str:
         return self._category_note
+
+    @Property(str, notify=jobChanged)
+    def categoryCoverageText(self) -> str:
+        return self._category_coverage_text
+
+    @Slot()
+    def refreshCategoryCoverage(self) -> None:
+        """Read what has been checked. Does not start a scan."""
+        from semblon.category_backfill import discover_coverage_text
+
+        try:
+            self._category_coverage_text = discover_coverage_text(self._jobs.store)
+        except Exception:
+            self._category_coverage_text = ""
+        self.jobChanged.emit()
 
     @Property(int, notify=jobChanged)
     def jobCurrent(self) -> int:
@@ -5070,6 +5087,7 @@ class ShellBridge(QObject):
         self._terminal_status = status or "completed"
         # A category stop is not a folder ingest to resume.
         self._cancel_requested = False
+        self._refresh_coverage_when_idle = True
         self._events.record(
             {
                 "completed": JOB_COMPLETED,
@@ -5603,6 +5621,9 @@ class ShellBridge(QObject):
 
     @Slot()
     def _emit_ingest_finished(self) -> None:
+        if self._refresh_coverage_when_idle:
+            self._refresh_coverage_when_idle = False
+            self.refreshCategoryCoverage()
         self.ingestFinished.emit()
 
     def _after_ingest(self) -> None:

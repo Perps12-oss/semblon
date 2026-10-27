@@ -13,7 +13,7 @@ Look here first. Architecture migration is closed. Product construction is open.
 
 **Current shell correction (2026-10-27):** the production QML root is `semblon/native_shell/qml/Table.qml`, loaded by `native_shell/host.py`. The current visible surfaces are Roll, Light Table, People, and Focus; the current category chooser is `DiscoverSheet.qml` on branch `feat/discover-category-entry` / PR #200. `docs/UI-EXPOSURE-MAP.md` is the current navigation map. The older shell details later in this ledger are historical.
 
-**Category scan status:** broad `rescanFolder()` is not a category backfill. Targeted scans live in `semblon/category_backfill.py` (`run_category_backfill`) and are started from Discover via `ShellBridge.startCategoryScan`. Coverage is the `category_coverage` table (schema 6). Targeted tests passed; the full suite was not run here. Design notes: `docs/decisions/2026-10-27-category-backfill.md`.
+**Category scan status:** broad `rescanFolder()` is not a category backfill. Targeted scans live in `semblon/category_backfill.py` and start from Discover via `ShellBridge.startCategoryScan`. Opening Discover calls `refreshCategoryCoverage` and only reads coverage. Text, object, and region search disclose a partial category check without stamping `tier_done_mask`. Design notes: `docs/decisions/2026-10-27-category-backfill.md`.
 
 ## CLOSED — architecture migration (2026-10-05)
 

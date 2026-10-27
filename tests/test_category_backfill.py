@@ -410,6 +410,94 @@ def test_running_row_is_not_left_complete_after_interrupt(tmp_path, monkeypatch)
     assert "running" not in states
 
 
+def test_discover_says_what_is_checked_without_scanning(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    calls = _install(monkeypatch, probe=_probe(objects=False))
+    from semblon.category_backfill import discover_coverage_text
+
+    conn = connect(store)
+    conn.execute(
+        """INSERT INTO category_coverage(
+             media_id, category, sha256, provider_id, provider_version, state, outcome,
+             attempt_count, last_error, frame_done, detail_done, started_at, finished_at, updated_at)
+           VALUES ('a.jpg','people','sha-a.jpg','people','v1','completed','faces',1,NULL,0,0,'t','t','t')"""
+    )
+    conn.commit()
+    conn.close()
+    text = discover_coverage_text(store)
+    assert "People: 1 of 2 photos checked" in text
+    assert "Objects:" in text and "Nothing was downloaded" in text
+    assert "Regions: not checked yet" in text
+    assert "Words in photos: not checked yet" in text
+    assert calls["people"] == calls["objects"] == calls["regions"] == calls["words"] == calls["ingest"] == 0
+
+
+def test_search_names_a_partial_check_and_leaves_an_untracked_library_alone(tmp_path):
+    from semblon.search import search_object, search_text
+
+    store = _store(tmp_path)
+    conn = connect(store)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id, embedding_dim, embedding_norm,
+           config_json, runtime_json, arch, execution)
+           VALUES ('r1','t','1','pack',1,'l2','{}','{}','x64','native')"""
+    )
+    conn.execute(
+        "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES ('o1','a.jpg',NULL,NULL,'r1')"
+    )
+    conn.execute(
+        """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider, score, payload_json)
+           VALUES ('t1','o1','r1','text','tesseract',1,?)""",
+        ('{"text":"hello","contract_status":"SUCCESS"}',),
+    )
+    conn.execute(
+        """INSERT INTO category_coverage(
+             media_id, category, sha256, provider_id, provider_version, state, outcome,
+             attempt_count, last_error, frame_done, detail_done, started_at, finished_at, updated_at)
+           VALUES ('a.jpg','words','sha-a.jpg','words','v1','completed','text',1,NULL,0,0,'t','t','t')"""
+    )
+    conn.commit()
+    hit = search_text(store, "hello")
+    miss = search_text(store, "nope-xyz")
+    assert hit["status"] == "SUCCESS"
+    assert "1 of 2 photos checked" in hit["reason"]
+    assert miss["status"] == "NO_RESULT"
+    assert "No text matched in the 1 of 2 photos checked" in miss["reason"]
+    conn.execute("DELETE FROM category_coverage")
+    conn.commit()
+    conn.close()
+    legacy = search_text(store, "nope-xyz")
+    assert legacy["status"] == "NO_RESULT"
+    assert "coverage_clause" not in legacy
+    assert legacy["reason"] == "No text matched in your photos."
+    empty = search_object(store, "dog")
+    assert empty["status"] == "UNAVAILABLE"
+    assert "coverage_clause" not in empty
+
+
+def test_region_coverage_is_visible_without_the_shared_tier_bit(tmp_path):
+    from semblon.scan_tiers import coverage_note, semantic_coverage
+
+    store = _store(tmp_path, ("a.jpg",))
+    conn = connect(store)
+    conn.execute(
+        """INSERT INTO category_coverage(
+             media_id, category, sha256, provider_id, provider_version, state, outcome,
+             attempt_count, last_error, frame_done, detail_done, started_at, finished_at, updated_at)
+           VALUES ('a.jpg','regions','sha-a.jpg','dinov2','v1','pending','frame_only',1,NULL,1,0,'t',NULL,'t')"""
+    )
+    conn.commit()
+    cov = semantic_coverage(conn)
+    assert cov["total"] == 1
+    assert cov["searchable"] == 1
+    assert cov["detailed"] == 0
+    assert cov["complete"] is False
+    assert "Fine-detail" in coverage_note(cov)
+    masks = conn.execute("SELECT COUNT(*) FROM work_items").fetchone()[0]
+    conn.close()
+    assert masks == 0
+
+
 def test_job_engine_uses_category_runner_not_ingest(tmp_path, monkeypatch):
     store = _store(tmp_path, ("a.jpg",))
     calls = _install(monkeypatch)

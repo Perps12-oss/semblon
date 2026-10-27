@@ -10,6 +10,7 @@ Item {
     visible: opacity > 0.01
     opacity: open ? 1 : 0
     z: 100
+    onOpenChanged: if (open) shell.refreshCategoryCoverage()
     Behavior on opacity { NumberAnimation { duration: Theme.fast } }
 
     Rectangle {
@@ -28,7 +29,7 @@ Item {
         open: chooser.open
         anchors.centerIn: parent
         width: Math.min(parent.width - 40, 620)
-        height: Math.min(parent.height - 40, 560)
+        height: Math.min(parent.height - 40, 680)
         onDismissed: chooser.dismissed()
 
         Column {
@@ -83,6 +84,16 @@ Item {
                 font.family: Theme.ui
                 font.pixelSize: Theme.small
                 color: Theme.faint
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: shell.categoryCoverageText
+                visible: shell.categoryCoverageText.length > 0
+                font.family: Theme.ui
+                font.pixelSize: Theme.small
+                color: Theme.muted
             }
 
             Text {

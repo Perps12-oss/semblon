@@ -672,6 +672,34 @@ def _text_evidence(payload: dict) -> str:
     return "ignore"
 
 
+def _with_category_coverage(store: Path, category: str, rec: dict) -> dict:
+    """Add an honest remainder when a category scan has not covered the library.
+
+    Does nothing when that category has never been tracked. Ranking is unchanged.
+    """
+    from semblon.category_backfill import partial_coverage_clause
+
+    clause = partial_coverage_clause(store, category)
+    if not clause:
+        return rec
+    out = dict(rec)
+    out["coverage_clause"] = clause
+    status = str(out.get("status") or "")
+    if status == "NO_RESULT":
+        if category == "words":
+            out["reason"] = f"No text matched in the {clause}. The rest have not been checked."
+        else:
+            out["reason"] = f"No object label matched in the {clause}. The rest have not been checked."
+    elif status == "SUCCESS":
+        reason = str(out.get("reason") or "").rstrip(".")
+        out["reason"] = f"{reason}. {clause[0].upper()}{clause[1:]}."
+    else:
+        reason = str(out.get("reason") or "").rstrip()
+        extra = f"{clause[0].upper()}{clause[1:]}."
+        out["reason"] = f"{reason} {extra}".strip()
+    return out
+
+
 def search_text(
     store: Path,
     query: str,
@@ -794,7 +822,7 @@ def search_text(
     if scope is not None:
         basis = f"{basis} · current Field"
     if items:
-        return {
+        return _with_category_coverage(store, "words", {
             "kind": "text",
             "query": q,
             "count": len(items),
@@ -807,14 +835,14 @@ def search_text(
             "error_id": None,
             "similarity_basis": basis,
             "note": note,
-        }
+        })
     if saw_evidence or saw_ran:
         reason = (
             "No text matched in the current Field."
             if scope is not None
             else "No text matched in your photos."
         )
-        return {
+        return _with_category_coverage(store, "words", {
             "kind": "text",
             "query": q,
             "count": 0,
@@ -827,7 +855,7 @@ def search_text(
             "error_id": None,
             "similarity_basis": basis,
             "note": note,
-        }
+        })
     from semblon.runtime_contract import invoke
 
     if saw_failed:
@@ -849,7 +877,7 @@ def search_text(
         model_state = "MISSING"
         provider_state = "FAILED"
         status = "UNAVAILABLE"
-    return {
+    return _with_category_coverage(store, "words", {
         "kind": "text",
         "query": q,
         "count": 0,
@@ -862,7 +890,7 @@ def search_text(
         "error_id": error_id,
         "similarity_basis": basis,
         "note": note,
-    }
+    })
 
 
 _OBJECT_SEARCH_BASIS = "COCO object detection (NanoDet)"
@@ -974,7 +1002,7 @@ def search_object(
 
     if items:
         bases = list(dict.fromkeys(str(item["match_basis"]) for item in items))
-        return {
+        return _with_category_coverage(store, "objects", {
             **empty, "query": q, "count": len(items), "items": items,
             "media_ids": media_ids, "status": "SUCCESS",
             "model_state": "AVAILABLE" if ready else "NOT_REQUIRED",
@@ -982,25 +1010,25 @@ def search_object(
             "reason": f"Found {len(items)} photos by saved names or detector labels.",
             "error_id": None,
             "similarity_basis": " · ".join(bases) + (" · current Field" if scope is not None else ""),
-        }
+        })
 
     if not ready:
-        return {
+        return _with_category_coverage(store, "objects", {
             **empty, "query": q, "status": "UNAVAILABLE",
             "model_state": "MISSING", "provider_state": "FAILED",
             "reason": pack_note or "NanoDet is unavailable and no saved human region name matched.",
             "error_id": "object.PACK_MISSING",
-        }
+        })
     if saw_detector_label or saw_named_region:
-        return {
+        return _with_category_coverage(store, "objects", {
             **empty, "query": q, "status": "NO_RESULT",
             "model_state": "AVAILABLE", "provider_state": "READY",
             "reason": "No stored human region names or detector labels matched.",
             "error_id": None,
-        }
-    return {
+        })
+    return _with_category_coverage(store, "objects", {
         **empty, "query": q, "status": "UNAVAILABLE",
         "model_state": "MISSING", "provider_state": "FAILED",
         "reason": "No searchable region names or NanoDet object labels are stored yet. Name a region or add the pack and re-scan photos.",
         "error_id": "object.NO_STORED_LABELS",
-    }
+    })

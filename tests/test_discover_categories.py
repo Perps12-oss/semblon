@@ -40,3 +40,5 @@ def test_discovery_copy_does_not_claim_object_detection_is_always_ready():
     assert "already stored" in sheet
     assert "optional object extra" in sheet
     assert "Nothing is silently downloaded" in sheet
+    assert "shell.categoryCoverageText" in sheet
+    assert "shell.refreshCategoryCoverage()" in sheet

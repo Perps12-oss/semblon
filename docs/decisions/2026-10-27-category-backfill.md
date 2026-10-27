@@ -63,6 +63,6 @@ Targeted tests, run in this environment without PySide6 or onnxruntime:
 
 `python3 -m pytest -q --noconftest tests/test_category_backfill.py tests/test_schema.py tests/test_scan_tiers.py tests/test_discover_categories.py`
 
-Result: **34 passed**.
+Result: **34 passed** on the backfill commit. The follow-on coverage disclosure (Discover text, partial text/object search wording, region coverage without `tier_done_mask`) was checked with the same command plus `tests/test_observers.py`: **53 passed**. `tests/test_discovery_slice_e.py::test_object_query_does_not_use_named_region_without_exact_box` failed in this environment; that test does not call category search.
 
 `python3 -m pytest -q --noconftest tests/test_ship_audit.py` then failed one pre-existing ingest test with `ModuleNotFoundError: onnxruntime`. The full suite was not run. Do not treat this slice as release evidence.

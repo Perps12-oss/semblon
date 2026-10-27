@@ -18,7 +18,17 @@ This file lists the product-completion sequence. It does not redefine the vision
 | 6 | Face → archive discovery | Slices A–E **landed**. Q/L/I/P **not PASS** | A–E are in the build. Those four gates are not marked passed. `docs/SHIP-GATES.md`. |
 | 7 | Multi-leg local retrieval | Synthetic rank bar **CLOSED / PASS 5/5**. Precision **not PASS** | `docs/evidence/lens-retrieval-eval.json` lines 2, 6, 65, 319, 326. Kind door SKIPPED. `ann_justified` false. ANN is out of ship. |
 
-## Next engineering slice — category-specific scan/backfill (landed, suite incomplete)
+## Next engineering slice — say what has been checked (landed, suite incomplete)
+
+Category backfill can finish without the shared observe tier, so search and Discover now read `category_coverage` directly:
+
+- Opening Discover shows a line for People, Objects, Regions and Words. It does not start a scan. A missing object pack says so and says nothing was downloaded.
+- Text and object search keep their previous wording when a library has never been tracked. After a partial category check, a miss says how many photos were checked and that the rest were not.
+- Region search treats a regions frame/detail row as coverage. It still does not stamp `tier_done_mask`.
+
+Targeted tests for this slice are in `tests/test_category_backfill.py` and `tests/test_discover_categories.py`. The full suite has not been run here.
+
+## Earlier slice — category-specific scan/backfill (landed, suite incomplete)
 
 The Discover category chooser is a presentation/routing change. Targeted full-library backfill now has its own job, separate from broad `reprocess=True` ingest:
 
