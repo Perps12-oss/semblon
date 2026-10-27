@@ -209,6 +209,131 @@ def test_run_live_overlay_headless_does_not_assign_person(tmp_path, monkeypatch)
     assert n_live_person == 0
 
 
+def test_zero_faces_emit_empty_overlay_and_create_no_person(tmp_path):
+    store = tmp_path / "s.sqlite"
+    det = _MultiDetModel([])
+    frames: list[list] = []
+
+    def embed_none(app, _frame):  # noqa: ARG001
+        return []
+
+    with _live_model_env(det, embed_side_effect=embed_none):
+        rec = live_capture(
+            store,
+            source=0,
+            seconds=0.05,
+            sample_hz=250.0,
+            reembed_s=0.0,
+            capture_factory=lambda _src: _FakeCapture(max_reads=12),
+            on_frame=lambda _fr, anns: frames.append(list(anns)),
+        )
+
+    assert frames, "zero-face frames must still reach the overlay"
+    assert all(anns == [] for anns in frames)
+    conn = sqlite3.connect(str(store))
+    n_faces = conn.execute(
+        "SELECT COUNT(*) FROM faces WHERE run_id=?", (rec["run_id"],)
+    ).fetchone()[0]
+    n_persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    conn.close()
+    assert n_faces == 0
+    assert n_persons == 0
+
+
+def test_three_faces_keep_independent_boxes_and_do_not_leak_identity(tmp_path):
+    store = tmp_path / "s.sqlite"
+    import cv2
+
+    live_pack = pack_id(f"opencv-{cv2.__version__}", {})
+    vec_alice = _seed_named_alice(store, target_pack=live_pack)
+    boxes = [
+        (10.0, 10.0, 90.0, 90.0, 0.95),
+        (140.0, 10.0, 220.0, 90.0, 0.93),
+        (270.0, 12.0, 350.0, 92.0, 0.91),
+    ]
+    det = _MultiDetModel(boxes)
+    far_b = (-vec_alice).astype(np.float32, copy=True)
+    far_c = np.roll(far_b, 1).astype(np.float32, copy=True)
+
+    def embed_three(app, _frame):  # noqa: ARG001
+        faces = []
+        vecs = (vec_alice, far_b, far_c)
+        for bbox, vec in zip(boxes, vecs):
+            x1, y1, x2, y2, score = bbox
+            faces.append(
+                {
+                    "bbox": (x1, y1, x2, y2),
+                    "det_score": score,
+                    "face_w": int(x2 - x1),
+                    "face_h": int(y2 - y1),
+                    "dim": int(vec.shape[0]),
+                    "embedding": vec,
+                }
+            )
+        return faces
+
+    seen: list[list] = []
+    with _live_model_env(det, embed_side_effect=embed_three):
+        rec = live_capture(
+            store,
+            source=0,
+            seconds=0.08,
+            sample_hz=250.0,
+            reembed_s=0.0,
+            capture_factory=lambda _src: _FakeCapture(max_reads=20),
+            on_frame=lambda _fr, anns: seen.append(list(anns)),
+        )
+
+    multi = [anns for anns in seen if len(anns) == 3]
+    assert multi, "three simultaneous faces must reach the overlay"
+    sample = multi[-1]
+    assert len({tuple(a["bbox"]) for a in sample}) == 3
+    assert len({a["track_id"] for a in sample}) == 3
+    by_x = sorted(sample, key=lambda a: a["bbox"][0])
+    assert by_x[0]["decision"] == "ACCEPT"
+    assert by_x[0]["display_name"] == "Alice"
+    assert by_x[1]["decision"] == "UNKNOWN"
+    assert by_x[2]["decision"] == "UNKNOWN"
+    assert by_x[1]["display_name"] != "Alice"
+    assert by_x[2]["display_name"] != "Alice"
+
+    conn = sqlite3.connect(str(store))
+    n_live_person = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM faces f
+        JOIN observations o ON o.observation_id = f.observation_id
+        JOIN media m ON m.media_id = o.media_id
+        WHERE f.run_id=? AND m.source_type='live' AND f.person_id IS NOT NULL
+        """,
+        (rec["run_id"],),
+    ).fetchone()[0]
+    n_persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    conn.close()
+    assert n_live_person == 0
+    assert n_persons == 1
+
+
+def test_draw_empty_and_three_boxes_do_not_share_ink():
+    from semblon.live_overlay import draw_overlay_bgr
+
+    frame = np.zeros((160, 480, 3), dtype=np.uint8)
+    blank = draw_overlay_bgr(frame, [])
+    assert blank is not frame
+    assert int(blank.sum()) == 0
+    anns = [
+        {"bbox": (8, 20, 70, 100), "track_id": "t1", "decision": "ACCEPT", "display_name": "A"},
+        {"bbox": (180, 20, 250, 100), "track_id": "t2", "decision": "UNKNOWN", "display_name": None},
+        {"bbox": (360, 20, 430, 100), "track_id": "t3", "decision": "UNKNOWN", "display_name": None},
+    ]
+    out = draw_overlay_bgr(frame, anns)
+    assert int(out[60, 8].sum()) > 0
+    assert int(out[60, 180].sum()) > 0
+    assert int(out[60, 360].sum()) > 0
+    assert int(out[60, 120].sum()) == 0
+    assert int(out[60, 300].sum()) == 0
+
+
 def test_run_live_overlay_refuses_home_when_opted_out(tmp_path, monkeypatch):
     from semblon.live_overlay import LiveOverlayError, run_live_overlay
 

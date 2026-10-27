@@ -1,0 +1,434 @@
+{
+  "tool": "measure_track_fragmentation",
+  "tracker_replaced": false,
+  "constants": {
+    "iou_min": 0.3,
+    "max_t_ms_gap": 2500
+  },
+  "opencv_note": "Pinned opencv 5.0 has FaceDetectorYN. It does not expose CascadeClassifier or HOGDescriptor. Those were not used.",
+  "synthetic": {
+    "zero": {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 0,
+      "frames_with_detections": 0,
+      "frames_sampled": null,
+      "peak_simultaneous": 0,
+      "tracks": 0,
+      "singletons": 0,
+      "observations_per_track": {
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "duration_ms": {
+        "min": null,
+        "p50": null,
+        "p90": null,
+        "max": null
+      },
+      "short_lived_tracks": 0,
+      "tracks_per_peak_simultaneous": null,
+      "below_iou_within_gap": 0,
+      "observed_crossings": 0,
+      "label_order_reversals": null,
+      "labels_present": false,
+      "impure_tracks": null,
+      "fragments_per_label": null,
+      "false_associations": null,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null."
+    },
+    "one_detection_not_a_track": {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 1,
+      "frames_with_detections": 1,
+      "frames_sampled": null,
+      "peak_simultaneous": 1,
+      "tracks": 0,
+      "singletons": 1,
+      "observations_per_track": {
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "duration_ms": {
+        "min": null,
+        "p50": null,
+        "p90": null,
+        "max": null
+      },
+      "short_lived_tracks": 0,
+      "tracks_per_peak_simultaneous": 0.0,
+      "below_iou_within_gap": 0,
+      "observed_crossings": 0,
+      "label_order_reversals": 0,
+      "labels_present": true,
+      "impure_tracks": 0,
+      "fragments_per_label": {
+        "a": 1
+      },
+      "false_associations": 0,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null."
+    },
+    "continuation": {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 8,
+      "frames_with_detections": 8,
+      "frames_sampled": null,
+      "peak_simultaneous": 1,
+      "tracks": 1,
+      "singletons": 0,
+      "observations_per_track": {
+        "min": 8,
+        "max": 8,
+        "mean": 8.0
+      },
+      "duration_ms": {
+        "min": 7000,
+        "p50": 7000,
+        "p90": 7000,
+        "max": 7000
+      },
+      "short_lived_tracks": 0,
+      "tracks_per_peak_simultaneous": 1.0,
+      "below_iou_within_gap": 0,
+      "observed_crossings": 0,
+      "label_order_reversals": 0,
+      "labels_present": true,
+      "impure_tracks": 0,
+      "fragments_per_label": {
+        "a": 1
+      },
+      "false_associations": 0,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null."
+    },
+    "three_separated": {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 18,
+      "frames_with_detections": 6,
+      "frames_sampled": null,
+      "peak_simultaneous": 3,
+      "tracks": 3,
+      "singletons": 0,
+      "observations_per_track": {
+        "min": 6,
+        "max": 6,
+        "mean": 6.0
+      },
+      "duration_ms": {
+        "min": 5000,
+        "p50": 5000,
+        "p90": 5000,
+        "max": 5000
+      },
+      "short_lived_tracks": 0,
+      "tracks_per_peak_simultaneous": 1.0,
+      "below_iou_within_gap": 0,
+      "observed_crossings": 0,
+      "label_order_reversals": 0,
+      "labels_present": true,
+      "impure_tracks": 0,
+      "fragments_per_label": {
+        "a": 1,
+        "b": 1,
+        "c": 1
+      },
+      "false_associations": 0,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null."
+    },
+    "temporal_gap": {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 6,
+      "frames_with_detections": 6,
+      "frames_sampled": null,
+      "peak_simultaneous": 1,
+      "tracks": 2,
+      "singletons": 0,
+      "observations_per_track": {
+        "min": 3,
+        "max": 3,
+        "mean": 3.0
+      },
+      "duration_ms": {
+        "min": 2000,
+        "p50": 2000,
+        "p90": 2000,
+        "max": 2000
+      },
+      "short_lived_tracks": 0,
+      "tracks_per_peak_simultaneous": 2.0,
+      "below_iou_within_gap": 0,
+      "observed_crossings": 0,
+      "label_order_reversals": 0,
+      "labels_present": true,
+      "impure_tracks": 0,
+      "fragments_per_label": {
+        "a": 2
+      },
+      "false_associations": 0,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null."
+    },
+    "missed_sample_within_window": {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 4,
+      "frames_with_detections": 4,
+      "frames_sampled": null,
+      "peak_simultaneous": 1,
+      "tracks": 1,
+      "singletons": 0,
+      "observations_per_track": {
+        "min": 4,
+        "max": 4,
+        "mean": 4.0
+      },
+      "duration_ms": {
+        "min": 4000,
+        "p50": 4000,
+        "p90": 4000,
+        "max": 4000
+      },
+      "short_lived_tracks": 0,
+      "tracks_per_peak_simultaneous": 1.0,
+      "below_iou_within_gap": 0,
+      "observed_crossings": 0,
+      "label_order_reversals": 0,
+      "labels_present": true,
+      "impure_tracks": 0,
+      "fragments_per_label": {
+        "a": 1
+      },
+      "false_associations": 0,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null."
+    },
+    "fast_motion_split": {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 4,
+      "frames_with_detections": 4,
+      "frames_sampled": null,
+      "peak_simultaneous": 1,
+      "tracks": 2,
+      "singletons": 0,
+      "observations_per_track": {
+        "min": 2,
+        "max": 2,
+        "mean": 2.0
+      },
+      "duration_ms": {
+        "min": 1000,
+        "p50": 1000,
+        "p90": 1000,
+        "max": 1000
+      },
+      "short_lived_tracks": 2,
+      "tracks_per_peak_simultaneous": 2.0,
+      "below_iou_within_gap": 1,
+      "observed_crossings": 0,
+      "label_order_reversals": 0,
+      "labels_present": true,
+      "impure_tracks": 0,
+      "fragments_per_label": {
+        "a": 2
+      },
+      "false_associations": 0,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null."
+    },
+    "fast_position_swap": {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 4,
+      "frames_with_detections": 2,
+      "frames_sampled": null,
+      "peak_simultaneous": 2,
+      "tracks": 2,
+      "singletons": 0,
+      "observations_per_track": {
+        "min": 2,
+        "max": 2,
+        "mean": 2.0
+      },
+      "duration_ms": {
+        "min": 1000,
+        "p50": 1000,
+        "p90": 1000,
+        "max": 1000
+      },
+      "short_lived_tracks": 2,
+      "tracks_per_peak_simultaneous": 1.0,
+      "below_iou_within_gap": 0,
+      "observed_crossings": 0,
+      "label_order_reversals": 1,
+      "labels_present": true,
+      "impure_tracks": 2,
+      "fragments_per_label": {
+        "a": 2,
+        "b": 2
+      },
+      "false_associations": 2,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null."
+    },
+    "slow_cross": {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 24,
+      "frames_with_detections": 12,
+      "frames_sampled": null,
+      "peak_simultaneous": 2,
+      "tracks": 2,
+      "singletons": 0,
+      "observations_per_track": {
+        "min": 12,
+        "max": 12,
+        "mean": 12.0
+      },
+      "duration_ms": {
+        "min": 11000,
+        "p50": 11000,
+        "p90": 11000,
+        "max": 11000
+      },
+      "short_lived_tracks": 0,
+      "tracks_per_peak_simultaneous": 1.0,
+      "below_iou_within_gap": 0,
+      "observed_crossings": 0,
+      "label_order_reversals": 1,
+      "labels_present": true,
+      "impure_tracks": 2,
+      "fragments_per_label": {
+        "a": 2,
+        "b": 2
+      },
+      "false_associations": 2,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null."
+    }
+  },
+  "videos": [
+    {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 146,
+      "frames_with_detections": 125,
+      "frames_sampled": 398,
+      "peak_simultaneous": 3,
+      "tracks": 10,
+      "singletons": 119,
+      "observations_per_track": {
+        "min": 2,
+        "max": 5,
+        "mean": 2.7
+      },
+      "duration_ms": {
+        "min": 200,
+        "p50": 200,
+        "p90": 620,
+        "max": 800
+      },
+      "short_lived_tracks": 10,
+      "tracks_per_peak_simultaneous": 3.333,
+      "below_iou_within_gap": 122,
+      "observed_crossings": 0,
+      "label_order_reversals": null,
+      "labels_present": false,
+      "impure_tracks": null,
+      "fragments_per_label": null,
+      "false_associations": null,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null.",
+      "source": "vtest.avi",
+      "detector": "yunet",
+      "detector_score_min": 0.7,
+      "detector_nms": 0.3,
+      "detector_is_identity_engine": false,
+      "embeddings_computed": false,
+      "sample_hz": 5.0,
+      "native_fps": 10.0,
+      "sample_step_frames": 2,
+      "frames_decoded": 795,
+      "timing_s": {
+        "decode": 0.6397,
+        "detect": 5.8338,
+        "associate": 0.0058,
+        "embed": null,
+        "ui": null,
+        "storage": null
+      },
+      "effective_sample_hz": 5.006
+    },
+    {
+      "associator": "greedy-iou",
+      "iou_min": 0.3,
+      "max_t_ms_gap": 2500,
+      "embeddings_vote": false,
+      "detections": 234,
+      "frames_with_detections": 146,
+      "frames_sampled": 366,
+      "peak_simultaneous": 3,
+      "tracks": 16,
+      "singletons": 19,
+      "observations_per_track": {
+        "min": 2,
+        "max": 32,
+        "mean": 13.438
+      },
+      "duration_ms": {
+        "min": 166,
+        "p50": 1500,
+        "p90": 5084,
+        "max": 5333
+      },
+      "short_lived_tracks": 7,
+      "tracks_per_peak_simultaneous": 5.333,
+      "below_iou_within_gap": 31,
+      "observed_crossings": 0,
+      "label_order_reversals": null,
+      "labels_present": false,
+      "impure_tracks": null,
+      "fragments_per_label": null,
+      "false_associations": null,
+      "note": "Track is not a person. impure_tracks counts chains whose ground-truth labels disagree. Without labels that field is null.",
+      "source": "faces.mp4",
+      "detector": "yunet",
+      "detector_score_min": 0.7,
+      "detector_nms": 0.3,
+      "detector_is_identity_engine": false,
+      "embeddings_computed": false,
+      "sample_hz": 5.0,
+      "native_fps": 12.0,
+      "sample_step_frames": 2,
+      "frames_decoded": 732,
+      "timing_s": {
+        "decode": 0.501,
+        "detect": 4.2219,
+        "associate": 0.0059,
+        "embed": null,
+        "ui": null,
+        "storage": null
+      },
+      "effective_sample_hz": 6.0
+    }
+  ]
+}

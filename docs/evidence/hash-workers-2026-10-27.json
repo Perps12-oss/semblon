@@ -1,0 +1,157 @@
+{
+  "repeats": 3,
+  "files": 32,
+  "bytes_each": 1048576,
+  "runs": [
+    {
+      "tool": "measure_hash_workers",
+      "phase": "hash-only",
+      "inference_parallel": false,
+      "product_default_workers": 1,
+      "default_changed": false,
+      "cpu_count": 2,
+      "semantic_equivalent": true,
+      "best_workers": 4,
+      "speedup_best_vs_w1": 3.637,
+      "runs": [
+        {
+          "workers": 1,
+          "files": 32,
+          "bytes": 33554304,
+          "wall_s": 0.1589,
+          "files_per_s": 201.438,
+          "mib_per_s": 201.437,
+          "rss_mb_before": 49.36,
+          "rss_mb_after": 81.23,
+          "cpu_pct_machine": 71.9,
+          "inference": false
+        },
+        {
+          "workers": 2,
+          "files": 32,
+          "bytes": 33554304,
+          "wall_s": 0.0458,
+          "files_per_s": 699.188,
+          "mib_per_s": 699.185,
+          "rss_mb_before": 81.23,
+          "rss_mb_after": 81.54,
+          "cpu_pct_machine": 100.0,
+          "inference": false
+        },
+        {
+          "workers": 4,
+          "files": 32,
+          "bytes": 33554304,
+          "wall_s": 0.0437,
+          "files_per_s": 732.651,
+          "mib_per_s": 732.648,
+          "rss_mb_before": 81.54,
+          "rss_mb_after": 113.54,
+          "cpu_pct_machine": 80.0,
+          "inference": false
+        }
+      ],
+      "note": "Wall time is the current _iter_hash_results pool only. It is not end-to-end ingest and not FaceKit/YuNet throughput."
+    },
+    {
+      "tool": "measure_hash_workers",
+      "phase": "hash-only",
+      "inference_parallel": false,
+      "product_default_workers": 1,
+      "default_changed": false,
+      "cpu_count": 2,
+      "semantic_equivalent": true,
+      "best_workers": 2,
+      "speedup_best_vs_w1": 1.342,
+      "runs": [
+        {
+          "workers": 1,
+          "files": 32,
+          "bytes": 33554304,
+          "wall_s": 0.0443,
+          "files_per_s": 723.092,
+          "mib_per_s": 723.089,
+          "rss_mb_before": 53.09,
+          "rss_mb_after": 84.96,
+          "cpu_pct_machine": 50.0,
+          "inference": false
+        },
+        {
+          "workers": 2,
+          "files": 32,
+          "bytes": 33554304,
+          "wall_s": 0.033,
+          "files_per_s": 970.39,
+          "mib_per_s": 970.387,
+          "rss_mb_before": 84.96,
+          "rss_mb_after": 82.83,
+          "cpu_pct_machine": 100.0,
+          "inference": false
+        },
+        {
+          "workers": 4,
+          "files": 32,
+          "bytes": 33554304,
+          "wall_s": 0.0398,
+          "files_per_s": 803.019,
+          "mib_per_s": 803.016,
+          "rss_mb_before": 82.83,
+          "rss_mb_after": 113.58,
+          "cpu_pct_machine": 85.7,
+          "inference": false
+        }
+      ],
+      "note": "Wall time is the current _iter_hash_results pool only. It is not end-to-end ingest and not FaceKit/YuNet throughput."
+    },
+    {
+      "tool": "measure_hash_workers",
+      "phase": "hash-only",
+      "inference_parallel": false,
+      "product_default_workers": 1,
+      "default_changed": false,
+      "cpu_count": 2,
+      "semantic_equivalent": true,
+      "best_workers": 4,
+      "speedup_best_vs_w1": 1.106,
+      "runs": [
+        {
+          "workers": 1,
+          "files": 32,
+          "bytes": 33554304,
+          "wall_s": 0.0425,
+          "files_per_s": 752.217,
+          "mib_per_s": 752.214,
+          "rss_mb_before": 52.06,
+          "rss_mb_after": 83.93,
+          "cpu_pct_machine": 50.0,
+          "inference": false
+        },
+        {
+          "workers": 2,
+          "files": 32,
+          "bytes": 33554304,
+          "wall_s": 0.0385,
+          "files_per_s": 831.713,
+          "mib_per_s": 831.71,
+          "rss_mb_before": 83.93,
+          "rss_mb_after": 82.82,
+          "cpu_pct_machine": 88.9,
+          "inference": false
+        },
+        {
+          "workers": 4,
+          "files": 32,
+          "bytes": 33554304,
+          "wall_s": 0.0385,
+          "files_per_s": 832.227,
+          "mib_per_s": 832.224,
+          "rss_mb_before": 82.82,
+          "rss_mb_after": 113.57,
+          "cpu_pct_machine": 100.0,
+          "inference": false
+        }
+      ],
+      "note": "Wall time is the current _iter_hash_results pool only. It is not end-to-end ingest and not FaceKit/YuNet throughput."
+    }
+  ]
+}
