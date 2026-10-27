@@ -8,7 +8,7 @@
 
 Discover now offers People, Objects, Regions and Words in photos. Those entry points currently route into existing views/search modes; they do not guarantee that every existing archive item has the corresponding observation or embedding. Search can only find stored evidence.
 
-The existing `ShellBridge.rescanFolder()` is not a safe substitute. It calls `_start_ingest(..., reprocess=True)`, which re-enters the broad `process_folder` ingest/cluster path. A category choice must not silently rerun every pipeline or FaceKit when the user asked for OCR, objects or region indexing.
+The existing `ShellBridge.rescanFolder()` is not a safe substitute. It calls `_start_ingest(..., reprocess=True)`, which re-enters the broad `process_folder` ingest/cluster path. `ingest.ingest()` currently loads the FaceKit provider unconditionally; `process_folder()` then runs clustering. In addition, `scan_tiers.requested_mask()` always includes the shared `TIER_OBSERVE` bit, so passing only `object` or `text` observers through the existing ingest API would still couple their completion to the shared observer tier. A category choice must not silently rerun FaceKit or mark unrelated observer work complete when the user asked for OCR, objects or region indexing.
 
 ## Decision
 
