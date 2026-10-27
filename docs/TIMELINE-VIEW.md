@@ -1,27 +1,15 @@
-# Visual Memory Calendar — locked contract
+# Visual Memory Calendar — historical design contract
 
-**Status:** locked on `grok/visual-timeline`; one library workspace updated 2026-10-23  
-**Shell:** `semblon shell` → `Application` → `ShellBridge` / `Shell.qml`  
-**Theme:** `semblon/native_shell/tokens.py` (no Quiet Studio hard-coded hex, no vault/padlock/blur)
+**Status:** Historical design specification; not the current production navigation or shell layout.
+**Current shell:** `semblon shell` → `Application` → `ShellBridge` → `native_shell/qml/Table.qml`.
+**Current implementation source:** `Table.qml`, `Roll.qml`, `LightTable.qml`, `Viewer.qml`, and `People.qml`.
+**Current exposure map:** `docs/UI-EXPOSURE-MAP.md`.
 
-## Product shape
+> The Home / Library / People persistent left-nav, HomeLaunchpad, calendar workspace, `archiveHeaderBand`, `fieldViewport`, and `focusDetails` descriptions below are a prior design contract. They are not a reliable description of the current production QML. The current shell is a Roll with a time scrubber and Light Table; People and Focus replace the main stage. Discover is a category chooser in the current branch.
 
-```text
-+-- LEFT NAV: Home · Library · People · Add folder · Settings · Browse (when Library) --+
-+-- HOME launchpad (permanent) OR one library workspace: -------------------------------+
-|  1. CALENDAR fills the pane     Years · Months · Days · timeline · year or month grid |
-|  2. GRID fills the pane         one day, or a folder / moment / everything selection  |
-|  3. FOCUS fills the pane        the photo, a slim Back, file details on the rail      |
-+---------------------------------------------------------------------------------------+
-```
+The current Focus result strip is at the bottom of the photo view. The right-hand details drawer and calendar workspace described in this historical specification should not be restored as part of the category-discovery work.
 
-Home is a permanent editorial launchpad (`HomeLaunchpad.qml`); Library is this timeline contract. One density timeline only. The bottom year scrubber was removed (product design). Archive browse (media type, folders, Moments, Similar) lives in the left navigation column when Library is open — there is no right-hand “Explore your archive” panel. Primary / Advanced and Atmosphere live in Settings.
-
-The library has one workspace and three depths. `libraryWorkspace` is `calendar` or `grid`. While it is `calendar`, `archiveHeaderBand` fills the pane (density segment, timeline, year matrix or `MemoryCalendar`). A date click, the no-date chip, a folder, a moment, Everything, or a search that replaces the field sets `grid`: the calendar hides and `fieldViewport` fills the same pane. Focus is the third depth. The photo fills that pane, with a slim Back control. Home, People, and Settings still replace the whole stage. File details (`focusDetails`) stay closed until Details is opened, and Close hides that drawer. Matches sit in a tray along the bottom of Focus (`focusTray`). `archiveSplit` stays in appearance prefs. The divider is not shown.
-
-Calendar day cells size to the pane. Month cells show at most six cropped thumbs. The overflow count is a `+N` mark. Days view keeps the same month grid with numbers only. Years view is twelve month cards of activity dots from real day buckets.
-
-Elevation (Phase 1–2): cool-slate `bg0` canvas → `bg1` nav chrome → `bg2` content wells. Calendar empty days use ghost gradients + dashed borders; media days use bottom readability gradient, dark count pills, and soft under-shadows. Timeline month bars are accent-on-recessed with Jan–Dec ticks. Browse media kinds use a segmented control. Duotone icons + hover/selected accent bars stay on left nav. No right Explore panel.
+---
 
 ## Two independent states
 
