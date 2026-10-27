@@ -1,3 +1,13 @@
+## Current branch addendum — 2026-10-27 (Discover categories)
+
+**Branch:** `feat/discover-category-entry` · **Draft PR:** [#200](https://github.com/Perps12-oss/semblon/pull/200). This addendum is branch work, not merged-main or release evidence.
+
+- The production QML root is `native_shell/qml/Table.qml`, loaded by `native_shell/host.py`; `Shell.qml` / HomeLaunchpad navigation references in older inventories are stale. See `docs/UI-EXPOSURE-MAP.md`.
+- Discover exposes People, Objects, Regions and Words in photos. It reuses the existing People desk, Focus, and text/object search modes over the one archive. It does not create separate galleries or trigger a full-library scan.
+- Object search depends on saved object labels and the optional NanoDet BYO pack. Words-in-photos search depends on stored OCR observations and provider availability. A menu entry is not evidence of coverage.
+- `ShellBridge.rescanFolder()` exists, but it reruns broad ingest with `reprocess=True`; it is not a category-specific scan and must not be reused as one. That route can re-enter face analysis and clustering.
+- **Category-specific full-library backfill: OPEN / NOT IMPLEMENTED.** See `docs/decisions/2026-10-27-category-backfill.md` for scope and acceptance. No scan-completion claim is made in this branch addendum.
+
 # Semblon build status — completion programme tracker
 
 **Authority:** this file is the single completion tracker for the 12-issue programme.  
