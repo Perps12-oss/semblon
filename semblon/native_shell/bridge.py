@@ -304,6 +304,8 @@ class ShellBridge(QObject):
         self._category_note = ""
         self._category_coverage_text = ""
         self._refresh_coverage_when_idle = False
+        self._category_job = ""
+        self._category_resume = ""
         self._last_folder: Path | None = None
         self._resume_ready = False
         self._cancel_requested = False
@@ -762,7 +764,9 @@ class ShellBridge(QObject):
 
     @Property(bool, notify=jobChanged)
     def canResume(self) -> bool:
-        return self._resume_ready and self._last_folder is not None and not self._jobs.busy
+        if self._jobs.busy:
+            return False
+        return bool(self._category_resume) or (self._resume_ready and self._last_folder is not None)
 
     @Property(str, notify=jobChanged)
     def jobLabel(self) -> str:
@@ -5056,8 +5060,14 @@ class ShellBridge(QObject):
             self._category_note = "Something is already running."
             self.jobChanged.emit()
             return
-        self._category_note = ""
+        from semblon.category_backfill import _label
+
+        self._category_note = f"Checking {_label(name).lower()}."
+        self._category_job = name
+        self._category_resume = ""
+        self._resume_ready = False
         self._cancel_requested = False
+        self.jobChanged.emit()
         try:
             self._jobs.submit_category(
                 name,
@@ -5490,12 +5500,23 @@ class ShellBridge(QObject):
 
     @Slot()
     def resumeJob(self) -> None:
-        """Same job door. Paused work unpauses. A cancelled folder resubmits with resume."""
-        if self._jobs.paused:
+        """Paused work continues. A stopped category check restarts that category, not folder ingest."""
+        from semblon.jobs import resume_action
+
+        action = resume_action(
+            paused=bool(self._jobs.paused),
+            busy=bool(self._jobs.busy),
+            category=self._category_resume or None,
+            folder_ready=self._resume_ready and self._last_folder is not None,
+        )
+        if action == "unpause":
             self._jobs.unpause_job()
             self._poll_job()
             return
-        if self._jobs.busy or self._last_folder is None or not self._resume_ready:
+        if action == "category":
+            self.startCategoryScan(self._category_resume)
+            return
+        if action != "ingest" or self._last_folder is None:
             return
         self._start_ingest(self._last_folder, resume=True)
 
@@ -5647,7 +5668,16 @@ class ShellBridge(QObject):
             if was and not active:
                 self._progress_current = 0
                 self._progress_total = 0
-                self._resume_ready = self._resume_ready or bool(self._cancel_requested and self._last_folder is not None)
+                if self._category_job:
+                    if self._terminal_status in {"cancelled", "failed"}:
+                        self._category_resume = self._category_job
+                    else:
+                        self._category_resume = ""
+                    self._category_job = ""
+                else:
+                    self._resume_ready = self._resume_ready or bool(
+                        self._cancel_requested and self._last_folder is not None
+                    )
                 self._cancel_requested = False
                 self._last_job_failed = self._terminal_status == "failed"
                 if self._surface_state == "loading":

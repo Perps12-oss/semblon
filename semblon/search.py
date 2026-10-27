@@ -283,7 +283,38 @@ def search_people(store: Path) -> dict:
         }
         for r in rows
     ]
-    return {"kind": "people", "count": len(items), "items": items}
+    rec = {"kind": "people", "count": len(items), "items": items}
+    from semblon.category_backfill import partial_coverage_clause
+
+    clause = partial_coverage_clause(store, "people")
+    unnamed = 0
+    try:
+        conn = _open_ro(store)
+        try:
+            unnamed = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM faces WHERE person_id IS NULL AND status='ok'"
+                ).fetchone()[0]
+                or 0
+            )
+        finally:
+            conn.close()
+    except Exception:
+        unnamed = 0
+    notes: list[str] = []
+    if clause:
+        notes.append(clause.rstrip("."))
+    if unnamed:
+        notes.append(
+            f"{unnamed} faces are waiting for a name you choose"
+            if unnamed != 1
+            else "1 face is waiting for a name you choose"
+        )
+    if notes:
+        rec["note"] = ". ".join(notes) + "."
+        if clause:
+            rec["coverage_clause"] = clause
+    return rec
 
 
 def _failed_item(conn, item_id: str) -> dict | None:
@@ -686,17 +717,17 @@ def _with_category_coverage(store: Path, category: str, rec: dict) -> dict:
     out["coverage_clause"] = clause
     status = str(out.get("status") or "")
     if status == "NO_RESULT":
+        lead = clause[0].lower() + clause[1:]
         if category == "words":
-            out["reason"] = f"No text matched in the {clause}. The rest have not been checked."
+            out["reason"] = f"No text matched in the {lead}"
         else:
-            out["reason"] = f"No object label matched in the {clause}. The rest have not been checked."
+            out["reason"] = f"No object label matched in the {lead}"
     elif status == "SUCCESS":
         reason = str(out.get("reason") or "").rstrip(".")
-        out["reason"] = f"{reason}. {clause[0].upper()}{clause[1:]}."
+        out["reason"] = f"{reason}. {clause.rstrip('.')}."
     else:
         reason = str(out.get("reason") or "").rstrip()
-        extra = f"{clause[0].upper()}{clause[1:]}."
-        out["reason"] = f"{reason} {extra}".strip()
+        out["reason"] = f"{reason} {clause}".strip()
     return out
 
 

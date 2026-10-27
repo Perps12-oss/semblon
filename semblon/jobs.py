@@ -93,6 +93,19 @@ def _process_rss_kb() -> int | None:
         return None
 
 
+def resume_action(*, paused: bool, busy: bool, category: str | None, folder_ready: bool) -> str:
+    """What Resume should do. A category check never falls through to folder ingest."""
+    if paused:
+        return "unpause"
+    if busy:
+        return "none"
+    if category:
+        return "category"
+    if folder_ready:
+        return "ingest"
+    return "none"
+
+
 class JobEngine:
     """Single door for ingest + visual analysis. UIs submit; they do not own workers."""
 

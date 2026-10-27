@@ -42,3 +42,6 @@ def test_discovery_copy_does_not_claim_object_detection_is_always_ready():
     assert "Nothing is silently downloaded" in sheet
     assert "shell.categoryCoverageText" in sheet
     assert "shell.refreshCategoryCoverage()" in sheet
+    assert 'label: "Pause"' in sheet or "Pause" in sheet
+    assert "shell.resumeJob()" in sheet
+    assert "Continue check" in sheet

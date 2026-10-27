@@ -126,9 +126,19 @@ Item {
                     onActivated: shell.startCategoryScan("words")
                 }
                 Tool {
+                    label: shell.jobState === "paused" ? "Keep going" : "Pause"
+                    visible: shell.jobActive
+                    onActivated: shell.jobState === "paused" ? shell.resumeJob() : shell.pauseJob()
+                }
+                Tool {
                     label: "Stop"
                     visible: shell.jobActive
                     onActivated: shell.cancelJob()
+                }
+                Tool {
+                    label: "Continue check"
+                    visible: !shell.jobActive && shell.canResume
+                    onActivated: shell.resumeJob()
                 }
             }
         }

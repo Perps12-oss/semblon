@@ -63,6 +63,12 @@ Targeted tests, run in this environment without PySide6 or onnxruntime:
 
 `python3 -m pytest -q --noconftest tests/test_category_backfill.py tests/test_schema.py tests/test_scan_tiers.py tests/test_discover_categories.py`
 
-Result: **34 passed** on the backfill commit. The follow-on coverage disclosure (Discover text, partial text/object search wording, region coverage without `tier_done_mask`) was checked with the same command plus `tests/test_observers.py`: **53 passed**. `tests/test_discovery_slice_e.py::test_object_query_does_not_use_named_region_without_exact_box` failed in this environment; that test does not call category search.
+The follow-on lifecycle slice keeps those safeguards. Continue check uses `resume_action`, which returns to the same category and does not call folder ingest. Discover copy separates an unavailable provider, a photo that could not be read, an execution failure, and a missing original. People search can mention partial coverage and unnamed faces; it still does not write `persons` or `faces.person_id`.
 
-`python3 -m pytest -q --noconftest tests/test_ship_audit.py` then failed one pre-existing ingest test with `ModuleNotFoundError: onnxruntime`. The full suite was not run. Do not treat this slice as release evidence.
+Targeted tests after that slice:
+
+`python3 -m pytest -q --noconftest tests/test_category_backfill.py tests/test_schema.py tests/test_scan_tiers.py tests/test_discover_categories.py tests/test_observers.py tests/test_production.py`
+
+Result: **66 passed**.
+
+The full suite, a real archive with the face, NanoDet, DINOv2 and OCR packs, and a PySide6 shell run were not executed here. Do not treat this branch as release evidence.

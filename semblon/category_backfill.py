@@ -535,6 +535,9 @@ def _numbers(conn, category: str) -> dict:
     completed = 0
     failed = 0
     skipped = 0
+    missing = 0
+    read_failed = 0
+    execution_failed = 0
     frame = 0
     detail = 0
     tracked = 0
@@ -555,6 +558,12 @@ def _numbers(conn, category: str) -> dict:
             frame += 1
         if int(row["detail_done"] or 0):
             detail += 1
+        if state == STATE_FAILED and str(row["outcome"] or "") == "read_failure":
+            read_failed += 1
+        elif state == STATE_FAILED and str(row["outcome"] or "") == "execution_failure":
+            execution_failed += 1
+        if state == STATE_SKIPPED and str(row["outcome"] or "") == "missing_original":
+            missing += 1
     return {
         "category": category,
         "label": _label(category),
@@ -562,6 +571,9 @@ def _numbers(conn, category: str) -> dict:
         "completed": completed,
         "failed": failed,
         "skipped": skipped,
+        "missing_original": missing,
+        "read_failed": read_failed,
+        "execution_failed": execution_failed,
         "frame_indexed": frame,
         "detail_indexed": detail,
         "tracked": tracked,
@@ -578,6 +590,48 @@ def coverage_report(store: Path, category: str | None = None) -> dict:
         return out if category is None else out[category]
     finally:
         conn.close()
+
+
+def coverage_detail(report: dict, *, category: str) -> str | None:
+    """One sentence about an incomplete tracked category. None when there is nothing to add."""
+    if int(report.get("tracked") or 0) <= 0:
+        return None
+    eligible = int(report.get("eligible") or 0)
+    if eligible <= 0:
+        return None
+    completed = int(report.get("completed") or 0)
+    failed = int(report.get("failed") or 0)
+    missing = int(report.get("missing_original") or 0)
+    read_failed = int(report.get("read_failed") or 0)
+    execution_failed = int(report.get("execution_failed") or 0)
+    if category == CATEGORY_REGIONS:
+        frame = int(report.get("frame_indexed") or 0)
+        detail = int(report.get("detail_indexed") or 0)
+        if completed >= eligible and failed == 0 and missing == 0 and detail >= eligible:
+            return None
+        parts = [
+            f"{frame} of {eligible} photos have a whole-picture look",
+            f"{detail} of {eligible} have fine detail",
+        ]
+    else:
+        if completed >= eligible and failed == 0 and missing == 0:
+            return None
+        parts = [f"{completed} of {eligible} photos checked"]
+        unchecked = eligible - completed - failed - missing
+        if unchecked > 0:
+            parts.append("the rest have not been checked")
+    if read_failed:
+        parts.append(f"{read_failed} could not be read" if read_failed != 1 else "1 could not be read")
+    if execution_failed:
+        parts.append(
+            f"{execution_failed} failed while checking" if execution_failed != 1 else "1 failed while checking"
+        )
+    other = failed - read_failed - execution_failed
+    if other > 0:
+        parts.append(f"{other} need another try")
+    if missing:
+        parts.append("1 original is missing" if missing == 1 else f"{missing} originals are missing")
+    return ". ".join(part[0].upper() + part[1:] for part in parts) + "."
 
 
 def partial_coverage_clause(store: Path, category: str) -> str | None:
@@ -605,9 +659,7 @@ def partial_coverage_clause(store: Path, category: str) -> str | None:
         conn.close()
     if numbers["tracked"] <= 0 or numbers["eligible"] <= 0:
         return None
-    if numbers["completed"] >= numbers["eligible"]:
-        return None
-    return f"{numbers['completed']} of {numbers['eligible']} photos checked"
+    return coverage_detail(numbers, category=category)
 
 
 def discover_coverage_text(store: Path) -> str:
@@ -636,6 +688,7 @@ def _discover_line(category: str, report: dict, probe: ProviderProbe) -> str:
     label = _label(category)
     eligible = int(report.get("eligible") or 0)
     completed = int(report.get("completed") or 0)
+    detail = coverage_detail(report, category=category)
     if not probe.available and completed <= 0:
         reason = (probe.reason or f"{label} is not available on this computer.").strip()
         if "downloaded" not in reason.lower():
@@ -643,22 +696,17 @@ def _discover_line(category: str, report: dict, probe: ProviderProbe) -> str:
         return f"{label}: {reason}"
     if eligible <= 0:
         return f"{label}: no photos to check yet."
-    if category == CATEGORY_REGIONS:
-        frame = int(report.get("frame_indexed") or 0)
-        detail = int(report.get("detail_indexed") or 0)
-        if completed >= eligible:
-            return f"{label}: all {eligible} photos checked."
-        if frame <= 0 and detail <= 0:
-            return f"{label}: not checked yet. {eligible} photos are in the library."
-        return (
-            f"{label}: {frame} of {eligible} photos have a whole-picture look. "
-            f"{detail} of {eligible} have fine detail."
-        )
+    if not probe.available:
+        reason = (probe.reason or f"{label} is not available on this computer now.").strip()
+        if "downloaded" not in reason.lower():
+            reason = reason.rstrip(".") + ". Nothing was downloaded."
+        lead = detail or f"{completed} of {eligible} photos checked."
+        return f"{label}: {lead} {reason}"
+    if detail:
+        return f"{label}: {detail}"
     if completed >= eligible:
         return f"{label}: all {eligible} photos checked."
-    if completed <= 0:
-        return f"{label}: not checked yet. {eligible} photos are in the library."
-    return f"{label}: {completed} of {eligible} photos checked. The rest have not been checked."
+    return f"{label}: not checked yet. {eligible} photos are in the library."
 
 
 def _message(category: str, *, status: str, completed: int, total: int, skipped_done: int, failed: int, reason: str) -> str:

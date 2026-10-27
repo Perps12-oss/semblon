@@ -528,3 +528,138 @@ def test_job_engine_uses_category_runner_not_ingest(tmp_path, monkeypatch):
     assert seen["status"] == "completed"
     assert calls["ingest"] == 0
     assert "complete" not in seen["message"].lower() or "checked" in seen["message"].lower()
+
+
+def test_discover_separates_unavailable_failures_and_region_depth(tmp_path, monkeypatch):
+    store = _store(tmp_path, ("a.jpg", "b.jpg", "c.jpg"))
+    (tmp_path / "c.jpg").unlink()
+    calls = _install(
+        monkeypatch,
+        decode=lambda path: None if __import__("pathlib").Path(path).name == "a.jpg" else object(),
+        words=lambda img: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    rec = run_category_backfill(store, "words")
+    assert rec["status"] == "failed"
+    report = coverage_report(store, "words")
+    assert report["read_failed"] == 1
+    assert report["execution_failed"] == 1
+    assert report["missing_original"] == 1
+    assert report["completed"] == 0
+    text = __import__("semblon.category_backfill", fromlist=["discover_coverage_text"]).discover_coverage_text(store)
+    assert "1 could not be read" in text
+    assert "1 failed while checking" in text
+    assert "1 original is missing" in text
+    assert "Objects:" in text and "People:" in text
+    objects = coverage_report(store, "objects")
+    assert objects["tracked"] == 0
+    assert calls["people"] == calls["objects"] == calls["regions"] == calls["ingest"] == 0
+
+    def words_ok(img):
+        return {"text": "hello", "score": 1.0, "words": []}
+
+    monkeypatch.setattr("semblon.category_backfill.words_ocr", words_ok)
+    monkeypatch.setattr("semblon.category_backfill.decode_image", lambda path: object())
+    again = run_category_backfill(store, "words")
+    assert again["failed"] == 0 or coverage_report(store, "words")["read_failed"] == 0
+    after = coverage_report(store, "words")
+    assert after["completed"] == 2
+    assert after["read_failed"] == 0
+    assert after["execution_failed"] == 0
+    assert after["missing_original"] == 1
+    assert coverage_report(store, "objects")["tracked"] == 0
+
+
+def test_people_search_reports_coverage_without_naming(tmp_path, monkeypatch):
+    from semblon.search import search_people
+
+    store = _store(tmp_path)
+    _install(monkeypatch)
+    conn = connect(store)
+    conn.execute(
+        """INSERT INTO category_coverage(
+             media_id, category, sha256, provider_id, provider_version, state, outcome,
+             attempt_count, last_error, frame_done, detail_done, started_at, finished_at, updated_at)
+           VALUES ('a.jpg','people','sha-a.jpg','people','v1','completed','faces',1,NULL,0,0,'t','t','t')"""
+    )
+    conn.commit()
+    conn.close()
+    rec = search_people(store)
+    assert rec["count"] == 0
+    assert "1 of 2 photos checked" in rec["note"]
+    assert "rest have not been checked" in rec["note"]
+    conn = connect(store)
+    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM faces WHERE person_id IS NOT NULL").fetchone()[0] == 0
+    conn.close()
+
+
+def test_region_search_says_fine_detail_is_missing_without_tier_bits(tmp_path):
+    from semblon.region_search import _attach_coverage
+
+    store = _store(tmp_path, ("a.jpg",))
+    conn = connect(store)
+    conn.execute(
+        """INSERT INTO category_coverage(
+             media_id, category, sha256, provider_id, provider_version, state, outcome,
+             attempt_count, last_error, frame_done, detail_done, started_at, finished_at, updated_at)
+           VALUES ('a.jpg','regions','sha-a.jpg','dinov2','v1','pending','frame_only',1,NULL,1,0,'t',NULL,'t')"""
+    )
+    conn.commit()
+    conn.close()
+    rec = {"reason": "No similar region."}
+    _attach_coverage(rec, store)
+    assert "Fine-detail" in rec["reason"]
+    assert "still being prepared" not in rec["reason"]
+    conn = connect(store)
+    assert conn.execute("SELECT COUNT(*) FROM work_items").fetchone()[0] == 0
+    conn.close()
+
+
+def test_resume_action_prefers_the_category_over_folder_ingest():
+    from semblon.jobs import resume_action
+
+    assert resume_action(paused=True, busy=True, category="people", folder_ready=True) == "unpause"
+    assert resume_action(paused=False, busy=False, category="words", folder_ready=True) == "category"
+    assert resume_action(paused=False, busy=True, category="words", folder_ready=True) == "none"
+    assert resume_action(paused=False, busy=False, category=None, folder_ready=True) == "ingest"
+    assert resume_action(paused=False, busy=False, category="", folder_ready=False) == "none"
+
+
+def test_pause_then_cancel_does_not_check_the_next_photo(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    from semblon.application import Application
+
+    store = _store(tmp_path)
+    hold = threading.Event()
+    entered = threading.Event()
+
+    def words(img):
+        if not entered.is_set():
+            entered.set()
+            assert hold.wait(3)
+        return {"text": "one", "score": 1.0, "words": []}
+
+    calls = _install(monkeypatch, words=words)
+    app = Application(store)
+    app.submit_category("words")
+    assert entered.wait(3)
+    app.pause_job()
+    hold.set()
+    time.sleep(0.3)
+    assert calls["words"] == 1
+    app.cancel_job()
+    app.engine._thread.join(3)
+    assert not app.busy
+    conn = connect(store)
+    rows = conn.execute(
+        "SELECT media_id, state FROM category_coverage WHERE category='words' ORDER BY media_id"
+    ).fetchall()
+    conn.close()
+    by_id = {row["media_id"]: row["state"] for row in rows}
+    assert by_id.get("a.jpg") == "completed"
+    assert by_id.get("b.jpg") != "completed"
+    assert calls["ingest"] == 0
+    assert calls["people"] == calls["objects"] == calls["regions"] == 0
+
