@@ -13,10 +13,11 @@ Item {
     readonly property alias field: entry
     implicitHeight: panel.height + 12
 
-    function focusEntry(m) {
+    function focusEntry(m, searchMode) {
         if (empty)
             return
         mode = m
+        if (m === "detail" && searchMode) shell.setSearchMode(searchMode)
         entry.forceActiveFocus()
     }
     function submit() {
@@ -28,7 +29,6 @@ Item {
             bar.dateRequested(p[0] + (p.length > 1 ? "-" + ("0" + p[1]).slice(-2) : ""))
             return
         }
-        shell.setSearchMode("text")
         shell.submitCommand(t)
         shell.showMatchesOnRoll()
     }
@@ -135,7 +135,7 @@ Item {
                     dimmed: bar.empty
                     hint: "Describe it, or open a photo and draw around it"
                     selected: bar.mode === "detail"
-                    onActivated: bar.focusEntry(bar.mode === "detail" ? "" : "detail")
+                    onActivated: bar.focusEntry(bar.mode === "detail" ? "" : "detail", "text")
                 }
                 Tool {
                     label: "Tidy up copies"
