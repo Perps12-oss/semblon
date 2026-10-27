@@ -24,6 +24,7 @@ from semblon.progress import ProgressEvent
 KIND_INGEST = "ingest"
 KIND_VISUAL = "visual"
 KIND_VISUAL_ANALYZE = "visual_analyze"
+KIND_CATEGORY = "category_backfill"
 
 STATE_IDLE = "idle"
 STATE_RUNNING = "running"
@@ -56,6 +57,7 @@ class JobHandle:
     resume: bool
     store: Path
     media_id: str | None = None
+    category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -212,6 +214,58 @@ class JobEngine:
             self._thread = thread
         thread.start()
         return handle
+
+    def submit_category(
+        self,
+        category: str,
+        *,
+        on_event: OnEvent | None = None,
+        on_done: OnDone | None = None,
+    ) -> JobHandle:
+        """Full-library backfill for one Discover category. Not broad reprocess."""
+        handle = JobHandle(
+            kind=KIND_CATEGORY,
+            folder=self.store,
+            resume=False,
+            store=self.store,
+            category=str(category),
+        )
+        with self._lock:
+            if self._current is not None:
+                raise JobBusy("a job is already running")
+            self._cancel.clear()
+            self._pause.clear()
+            self._cancelling = False
+            self._current = handle
+        thread = threading.Thread(
+            target=self._run_category,
+            args=(handle, on_event, on_done),
+            daemon=False,
+            name="semblon-job-category",
+        )
+        with self._lock:
+            self._thread = thread
+        thread.start()
+        return handle
+
+    def _run_category(self, handle: JobHandle, on_event, on_done) -> None:
+        from semblon.category_backfill import run_category_backfill
+
+        result = JobResult(status="failed")
+        try:
+            rec = run_category_backfill(
+                self.store,
+                str(handle.category or ""),
+                gate=self._gate,
+                on_event=on_event,
+            )
+            result = JobResult(status=str(rec.get("status") or "failed"), rec=rec)
+        except Exception as e:  # noqa: BLE001 — surface to the submitting UI
+            result = JobResult(status="failed", error=e)
+        finally:
+            self._release(handle)
+            if on_done is not None:
+                on_done(result)
 
     def submit_visual(
         self,

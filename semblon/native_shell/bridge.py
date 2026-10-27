@@ -301,6 +301,7 @@ class ShellBridge(QObject):
         self._model = model
         self._job_active = False
         self._job_state = "idle"
+        self._category_note = ""
         self._last_folder: Path | None = None
         self._resume_ready = False
         self._cancel_requested = False
@@ -772,6 +773,10 @@ class ShellBridge(QObject):
         if self._job_state == "cancelling":
             return "Cancelling"
         return self._progress_label or "Processing"
+
+    @Property(str, notify=jobChanged)
+    def categoryScanNote(self) -> str:
+        return self._category_note
 
     @Property(int, notify=jobChanged)
     def jobCurrent(self) -> int:
@@ -5022,6 +5027,60 @@ class ShellBridge(QObject):
         self._apply_result(result)
         return self._notice
 
+    @Slot(str)
+    def startCategoryScan(self, category: str) -> None:
+        """Check one Discover category across the archive. Not the broad rescan."""
+        name = str(category or "").strip()
+        if name not in {"people", "objects", "regions", "words"}:
+            self._category_note = "Choose people, objects, regions, or words in photos."
+            self.jobChanged.emit()
+            return
+        if self._jobs.busy:
+            self._category_note = "Something is already running."
+            self.jobChanged.emit()
+            return
+        self._category_note = ""
+        self._cancel_requested = False
+        try:
+            self._jobs.submit_category(
+                name,
+                on_event=self._on_worker_progress,
+                on_done=self._on_category_done,
+            )
+        except JobBusy:
+            self._category_note = "Something is already running."
+            self.jobChanged.emit()
+            return
+        self._poll_job()
+
+    def _on_category_done(self, result) -> None:
+        status = str(getattr(result, "status", "") or "")
+        rec = getattr(result, "rec", None) or {}
+        note = str(rec.get("user_message") or "")
+        if not note:
+            if status == "cancelled":
+                note = "Stopped. Unfinished photos were not marked done."
+            elif status == "unavailable":
+                note = "That check is not available on this computer."
+            elif status == "failed":
+                note = "The check failed before it finished."
+            else:
+                note = ""
+        self._category_note = note
+        self._terminal_status = status or "completed"
+        # A category stop is not a folder ingest to resume.
+        self._cancel_requested = False
+        self._events.record(
+            {
+                "completed": JOB_COMPLETED,
+                "cancelled": JOB_CANCELLED,
+                "failed": JOB_FAILED,
+                "unavailable": JOB_FAILED,
+            }.get(status, JOB_COMPLETED),
+            {"status": status or "completed", "category": str(rec.get("category") or "")},
+        )
+        self._queue_ingest_finished()
+
     @Slot()
     def rescanFolder(self) -> None:
         """Re-run the last folder through the existing ingest door with reprocess."""
@@ -5477,6 +5536,7 @@ class ShellBridge(QObject):
                 "current": current,
                 "total": total,
                 "outcome": str(getattr(ev, "outcome", "") or ""),
+                "message": str(getattr(ev, "message", "") or ""),
             },
         )
         QMetaObject.invokeMethod(self, "_flush_progress", Qt.ConnectionType.QueuedConnection)
@@ -5503,24 +5563,29 @@ class ShellBridge(QObject):
         if isinstance(current, int) and isinstance(total, int) and total > 0:
             self._progress_current = current
             self._progress_total = total
-            outcome = str(payload.get("outcome") or "")
-            if outcome in {"indexed", "detailed"} and outcome != self._pass_outcome:
-                self._pass_outcome = outcome
-                self._pass_started_mono = time.monotonic()
-            if outcome == "indexed":
-                self._progress_label = (
-                    f"Getting your photos ready to search: {current} of {total}. "
-                    "You can already browse, open and search them."
-                )
-            elif outcome == "detailed":
-                self._progress_label = (
-                    f"Sharpening search: {current} of {total}. "
-                    "Everything already works; searches just get more precise."
-                )
+            message = str(payload.get("message") or "")
+            if str(payload.get("stage") or "") == "category" and message:
+                self._progress_label = message
+                self._category_note = message
             else:
-                self._progress_label = (
-                    f"Getting your photos ready: {current} of {total}. You can already browse and open them."
-                )
+                outcome = str(payload.get("outcome") or "")
+                if outcome in {"indexed", "detailed"} and outcome != self._pass_outcome:
+                    self._pass_outcome = outcome
+                    self._pass_started_mono = time.monotonic()
+                if outcome == "indexed":
+                    self._progress_label = (
+                        f"Getting your photos ready to search: {current} of {total}. "
+                        "You can already browse, open and search them."
+                    )
+                elif outcome == "detailed":
+                    self._progress_label = (
+                        f"Sharpening search: {current} of {total}. "
+                        "Everything already works; searches just get more precise."
+                    )
+                else:
+                    self._progress_label = (
+                        f"Getting your photos ready: {current} of {total}. You can already browse and open them."
+                    )
         elif payload.get("stage"):
             self._progress_label = "Processing"
         self.jobChanged.emit()

@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "5"
+SCHEMA_VERSION = "6"
 
 DDL = """
 PRAGMA journal_mode=WAL;
@@ -202,6 +202,7 @@ _WRITER = threading.RLock()
 
 # Biometric and library tables. schema_meta and schema_migrations stay.
 LIBRARY_TABLES = (
+    "category_coverage",
     "work_items",
     "eval_pairs",
     "eval_sets",
@@ -427,11 +428,35 @@ CREATE TABLE IF NOT EXISTS work_items (
 );
 """
 
+MIGRATION_6 = """
+CREATE TABLE IF NOT EXISTS category_coverage (
+  media_id          TEXT NOT NULL,
+  category          TEXT NOT NULL CHECK (category IN ('people','objects','regions','words')),
+  sha256            TEXT NOT NULL,
+  provider_id       TEXT NOT NULL,
+  provider_version  TEXT NOT NULL,
+  state             TEXT NOT NULL CHECK (state IN (
+                      'pending','running','completed','failed','unavailable','interrupted','skipped')),
+  outcome           TEXT,
+  attempt_count     INTEGER NOT NULL DEFAULT 0,
+  last_error        TEXT,
+  frame_done        INTEGER NOT NULL DEFAULT 0,
+  detail_done       INTEGER NOT NULL DEFAULT 0,
+  started_at        TEXT,
+  finished_at       TEXT,
+  updated_at        TEXT NOT NULL,
+  PRIMARY KEY (media_id, category)
+);
+CREATE INDEX IF NOT EXISTS ix_category_coverage_cat_state
+  ON category_coverage(category, state);
+"""
+
 MIGRATIONS = (
     (2, MIGRATION_2),
     (3, MIGRATION_3),
     (4, MIGRATION_4),
     (5, MIGRATION_5),
+    (6, MIGRATION_6),
 )
 
 

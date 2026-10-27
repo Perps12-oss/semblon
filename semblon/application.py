@@ -139,6 +139,15 @@ class Application:
             reprocess=reprocess,
         )
 
+    def submit_category(self, category: str, *, on_event: OnEvent | None = None, on_done: OnDone | None = None):
+        """One Discover category across the archive. Not rescanFolder / reprocess."""
+        return self.engine.submit_category(category, on_event=on_event, on_done=on_done)
+
+    def category_coverage(self, category: str | None = None) -> dict:
+        from semblon.category_backfill import coverage_report
+
+        return coverage_report(self.store, category)
+
     def submit_visual(self, media_id: str, *, run_id: str, **kwargs):
         """Background visual understanding. The engine decodes the stored file."""
         return self.engine.submit_visual(media_id=media_id, run_id=run_id, **kwargs)

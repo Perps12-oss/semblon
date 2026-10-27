@@ -18,16 +18,16 @@ This file lists the product-completion sequence. It does not redefine the vision
 | 6 | Face → archive discovery | Slices A–E **landed**. Q/L/I/P **not PASS** | A–E are in the build. Those four gates are not marked passed. `docs/SHIP-GATES.md`. |
 | 7 | Multi-leg local retrieval | Synthetic rank bar **CLOSED / PASS 5/5**. Precision **not PASS** | `docs/evidence/lens-retrieval-eval.json` lines 2, 6, 65, 319, 326. Kind door SKIPPED. `ann_justified` false. ANN is out of ship. |
 
-## Next engineering slice — category-specific scan/backfill (OPEN)
+## Next engineering slice — category-specific scan/backfill (landed, suite incomplete)
 
-The Discover category chooser is a presentation/routing change, not proof that each category has been scanned. Implement targeted full-library backfill as a separate JobEngine/Application slice:
+The Discover category chooser is a presentation/routing change. Targeted full-library backfill now has its own job, separate from broad `reprocess=True` ingest:
 
 - People: face analysis only, retaining the identity firewall and human-only naming.
 - Objects: NanoDet labels only when the BYO pack is ready; contour regions must not be presented as object classes.
 - Regions: DINOv2 whole-frame/patch indexing and coverage, without rerunning People, Objects, or OCR.
 - Words in photos: OCR only, with missing provider, failed read, empty read and completed read distinguished.
 
-Each job must cover existing archive media, report category-specific progress and coverage, support cooperative pause/cancel/resume, and be idempotent. It must not use broad `reprocess=True` ingest as a shortcut. See `docs/decisions/2026-10-27-category-backfill.md`. This slice is **OPEN / NOT IMPLEMENTED** until code and tests land.
+Each job covers existing archive media, reports category-specific progress and coverage, supports cooperative pause/cancel/resume through `JobEngine`, and skips coverage that is still valid for the same file and provider version. See `docs/decisions/2026-10-27-category-backfill.md`. Targeted tests passed (34). The full suite has not been run in the environment that landed this slice.
 
 ## Pass verdict
 

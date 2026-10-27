@@ -1,8 +1,8 @@
 # Decision — category-specific full-library scan and backfill
 
 **Date:** 2026-10-27  
-**Status:** agreed engineering slice; implementation not started  
-**Branch:** `feat/discover-category-entry` (follow-on commit after Discover navigation)
+**Status:** implemented on `feat/discover-category-entry`; full-suite evidence not recorded in this environment  
+**Branch:** `feat/discover-category-entry`
 
 ## Problem
 
@@ -57,4 +57,12 @@ Categories:
 
 ## Completion rule
 
-This slice is **NOT IMPLEMENTED** until the category-specific worker, Application/JobEngine/bridge wiring, UI progress/status, idempotency and isolation tests, and local full-suite evidence are committed. Update `docs/BUILD-STATUS.md` with actual commands and counts only after they run.
+The worker, coverage table (schema migration 6, `category_coverage`), `JobEngine.submit_category`, `Application.submit_category`, `ShellBridge.startCategoryScan`, and the Discover check controls are implemented. People does not write `persons` or `faces.person_id` and does not cluster. Objects do not call contour labelling. The broad `reprocess=True` ingest path is not used.
+
+Targeted tests, run in this environment without PySide6 or onnxruntime:
+
+`python3 -m pytest -q --noconftest tests/test_category_backfill.py tests/test_schema.py tests/test_scan_tiers.py tests/test_discover_categories.py`
+
+Result: **34 passed**.
+
+`python3 -m pytest -q --noconftest tests/test_ship_audit.py` then failed one pre-existing ingest test with `ModuleNotFoundError: onnxruntime`. The full suite was not run. Do not treat this slice as release evidence.

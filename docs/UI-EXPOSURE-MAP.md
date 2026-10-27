@@ -12,7 +12,7 @@
 - **Discover (branch PR #200):** `DiscoverSheet.qml` offers People, Objects, Regions and Words in photos as category entry points. It routes into existing People, Focus, and text/object search paths; it does not create four galleries or separate archives.
 - **Settings:** `SettingsBody.qml` includes Add a folder, **Check for new photos**, library health and activity. Check for new photos is the existing broad `reprocess=True` ingest route, not a category-specific backfill.
 
-**Scanning status must not be inferred from a menu item.** People review and region retrieval have existing workflows. Object labels and OCR text are searchable only where those observations have actually been stored and their providers are available. The existing `rescanFolder()` path calls ingest with `reprocess=True`; it is not a safe category-specific backfill because it re-enters the full ingest/cluster pipeline. Category-specific full-library scan/backfill is a separate, not-yet-implemented engineering slice. See `docs/decisions/2026-10-27-category-backfill.md`.
+**Scanning status must not be inferred from a menu item.** Opening People, Objects, Regions, or Words does not start a scan. Discover has separate Check controls (`ShellBridge.startCategoryScan`) that run `category_backfill` for that category only. `rescanFolder()` remains the broad `reprocess=True` ingest route and is not a category scan. See `docs/decisions/2026-10-27-category-backfill.md`.
 
 Product contract: `docs/PRODUCT.md`. Verified implementation status: `docs/BUILD-STATUS.md`. Architecture: `docs/ARCHITECTURE.md`.
 

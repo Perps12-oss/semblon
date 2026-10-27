@@ -28,7 +28,7 @@ Item {
         open: chooser.open
         anchors.centerIn: parent
         width: Math.min(parent.width - 40, 620)
-        height: Math.min(parent.height - 40, 430)
+        height: Math.min(parent.height - 40, 560)
         onDismissed: chooser.dismissed()
 
         Column {
@@ -83,6 +83,42 @@ Item {
                 font.family: Theme.ui
                 font.pixelSize: Theme.small
                 color: Theme.faint
+            }
+
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: shell.categoryScanNote
+                visible: shell.categoryScanNote.length > 0
+                font.family: Theme.ui
+                font.pixelSize: Theme.small
+                color: Theme.text
+            }
+
+            Flow {
+                width: parent.width
+                spacing: Theme.gap
+                Tool {
+                    label: "Check people"
+                    onActivated: shell.startCategoryScan("people")
+                }
+                Tool {
+                    label: "Check objects"
+                    onActivated: shell.startCategoryScan("objects")
+                }
+                Tool {
+                    label: "Check regions"
+                    onActivated: shell.startCategoryScan("regions")
+                }
+                Tool {
+                    label: "Check words"
+                    onActivated: shell.startCategoryScan("words")
+                }
+                Tool {
+                    label: "Stop"
+                    visible: shell.jobActive
+                    onActivated: shell.cancelJob()
+                }
             }
         }
     }
