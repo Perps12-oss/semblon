@@ -1985,24 +1985,28 @@ class ShellBridge(QObject):
     def reopenLastVisualSearch(self) -> None:
         path = self._discovery_file()
         if not path.is_file():
+            note = "Similar (Similar look): no saved search yet."
             self._publish_similar(
                 "empty",
-                "Similar (Similar look): no saved search yet.",
+                note,
                 [],
                 basis="region",
                 basis_label="Similar look",
             )
+            self._apply_result(Result("empty", note))
             return
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
+            note = "Similar (Similar look): the saved search could not be read."
             self._publish_similar(
                 "unavailable",
-                "Similar (Similar look): the saved search could not be read.",
+                note,
                 [],
                 basis="region",
                 basis_label="Similar look",
             )
+            self._apply_result(Result("unavailable", note))
             return
         query = str(payload.get("query_media_id") or "")
         if query:
@@ -2025,13 +2029,17 @@ class ShellBridge(QObject):
                     float(norm[3]),
                 )
             )
+        note = str(payload.get("note") or "Similar (Similar look): restored.")
+        state = str(payload.get("state") or ("ready" if rows else "empty"))
         self._publish_similar(
-            str(payload.get("state") or ("ready" if rows else "empty")),
-            str(payload.get("note") or "Similar (Similar look): restored."),
+            state,
+            note,
             rows,
             basis=str(payload.get("basis") or "region"),
             basis_label=str(payload.get("basis_label") or "Similar look"),
         )
+        if not self._session.focus_id:
+            self._apply_result(Result(state if state in {"ready", "empty", "unavailable"} else "ready", note))
 
     @Slot()
     def cancelSimilar(self) -> None:
@@ -4714,15 +4722,12 @@ class ShellBridge(QObject):
                 if text:
                     rows.append({"section": label, "text": text})
         self._activity_rows = rows
-        self._activity_open = self._mode == ADVANCED
-        if self._mode != ADVANCED:
+        if not rows:
+            self._activity_open = False
             self._apply_result(result)
             return
-        if not rows:
-            self._apply_result(result)
-        else:
-            self._apply_result(Result("ready", f"Activity: {len(rows)} recent lines.", {"activity": rec}))
-        self.surfaceChanged.emit()
+        self._activity_open = True
+        self._apply_result(Result("ready", f"Activity: {len(rows)} recent lines.", {"activity": rec}))
 
     @Slot()
     def closeActivity(self) -> None:

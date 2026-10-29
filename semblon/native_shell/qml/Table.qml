@@ -16,10 +16,12 @@ Window {
     Binding { target: Theme; property: "reducedMotion"; value: shell.reducedMotion }
 
     property bool settingsOpen: false
+    property bool momentsOpen: false
     property bool jobMini: false
     Connections {
         target: shell
         function onJobChanged() { if (!shell.jobActive) win.jobMini = false }
+        function onSurfaceChanged() { if (shell.facet !== "moments") win.momentsOpen = false }
     }
 
     function jumpToDate(prefix) {
@@ -36,7 +38,9 @@ Window {
     function run(id) {
         if (id === "add") shell.addFolder()
         else if (id === "people") shell.openPeople()
+        else if (id === "overlooked") shell.openUnresolvedInbox()
         else if (id === "moment") table.focusEntry("moment")
+        else if (id === "moments") { shell.setFacet("moments"); momentsOpen = true }
         else if (id === "detail") table.focusEntry("detail")
         else if (id === "tidy") shell.openTidy()
         else if (id === "settings") settingsOpen = true
@@ -51,6 +55,7 @@ Window {
         else if (id === "v-copies") shell.scanDuplicates()
         else if (id === "v-describe") shell.nameSelection()
         else if (id === "v-ask") shell.askPhoto()
+        else if (id === "v-day") { shell.showDayAroundFocus(); if (shell.scopeKind === "day") { shell.escape(); viewer.closed() } }
         else if (id === "v-more") shell.setSearchQuality("max")
         else if (id === "v-closer") shell.setSearchQuality("fast")
     }
@@ -89,6 +94,7 @@ Window {
         visible: !viewer.active && !people.active && !tidy.active
         receded: rollView.scrolling
         onPeopleRequested: shell.openPeople()
+        onMomentsRequested: { shell.setFacet("moments"); win.momentsOpen = true }
         onSettingsRequested: win.settingsOpen = true
         onPaletteRequested: palette.open = true
         onDateRequested: function (p) { win.jumpToDate(p) }
@@ -252,7 +258,10 @@ Window {
         width: Math.min(parent.width - 60, 560)
         height: Math.min(parent.height - 60, 680)
         onDismissed: { win.settingsOpen = false; rollView.forceActiveFocus() }
-        SettingsBody { anchors.fill: parent }
+        SettingsBody {
+            anchors.fill: parent
+            onLastFindRequested: { win.settingsOpen = false; shell.reopenLastVisualSearch() }
+        }
     }
 
     Sheet {
@@ -275,6 +284,39 @@ Window {
         }
     }
 
+    Sheet {
+        id: moments
+        objectName: "momentsSheet"
+        heading: "Moments"
+        open: win.momentsOpen
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 60, 520)
+        height: Math.min(parent.height - 80, 460)
+        onDismissed: { win.momentsOpen = false; rollView.forceActiveFocus() }
+        ListView {
+            id: momentList
+            anchors.fill: parent
+            clip: true
+            spacing: 6
+            model: shell.buckets
+            delegate: Tool {
+                objectName: "momentBucket"
+                width: momentList.width
+                label: modelData.label + (modelData.count > 0 ? " · " + modelData.count : "")
+                onActivated: { shell.selectBucket(modelData.key); win.momentsOpen = false }
+            }
+        }
+        Text {
+            anchors.fill: parent
+            visible: shell.buckets.length === 0
+            wrapMode: Text.WordWrap
+            text: "No moments to group yet."
+            font.family: Theme.ui
+            font.pixelSize: Theme.body
+            color: Theme.muted
+        }
+    }
+
     Tidy { id: tidy; anchors.fill: parent; onClosed: rollView.forceActiveFocus() }
 
     Confirm { id: confirmSheet; anchors.fill: parent; z: 50 }
@@ -291,6 +333,7 @@ Window {
             { id: "v-copies", label: "Find copies of this photo" },
             { id: "v-describe", label: "Describe this area" },
             { id: "v-ask", label: "Ask about this photo" },
+            { id: "v-day", label: "See this day" },
             { id: "v-more", label: "Show more matches" },
             { id: "v-closer", label: "Show fewer, closer matches" },
             { id: "settings", label: "Settings" }
@@ -302,7 +345,9 @@ Window {
         ] : [
             { id: "add", label: "Add a folder" },
             { id: "moment", label: "Find by date" },
+            { id: "moments", label: "Moments" },
             { id: "people", label: "Find a person" },
+            { id: "overlooked", label: "Review overlooked faces" },
             { id: "detail", label: "Find by description" },
             { id: "tidy", label: "Tidy up copies" },
             { id: "zoomin", label: "Bigger pictures" },

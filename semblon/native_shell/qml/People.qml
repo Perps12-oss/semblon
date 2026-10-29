@@ -306,6 +306,16 @@ Item {
                 visible: shell.canBrowsePersonTime
                 onActivated: { shell.browseSelectedPersonInTime(); shell.closePeople(); table.closed() }
             }
+            Tool {
+                objectName: "onlyTheirPhotos"
+                label: "Only their photos"
+                visible: shell.selectedPersonId !== ""
+                onActivated: {
+                    shell.showSelectedPersonOnly()
+                    if (shell.personFieldFilterActive)
+                        table.closed()
+                }
+            }
         }
         Text {
             anchors.bottom: parent.bottom

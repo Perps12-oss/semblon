@@ -6,6 +6,7 @@ Item {
     property string mode: ""          // "", "moment", "detail", "tidy"
     signal peopleRequested()
     signal dateRequested(string prefix)
+    signal momentsRequested()
     signal settingsRequested()
     signal paletteRequested()
     property bool receded: false       // set by the window while the Roll scrolls
@@ -34,7 +35,7 @@ Item {
     }
 
     HoverHandler { id: nearPointer }
-    readonly property bool shrunk: receded && !nearPointer.hovered && mode === "" && !shell.matchesOnRoll
+    readonly property bool shrunk: receded && !nearPointer.hovered && mode === "" && !shell.matchesOnRoll && shell.facet === "memory" && !shell.personFieldFilterActive
 
     Rectangle {
         id: panel
@@ -105,9 +106,13 @@ Item {
                 }
             }
             Text {
-                visible: shell.matchesOnRoll
+                visible: shell.matchesOnRoll || shell.personFieldFilterActive || shell.facet !== "memory"
                 width: parent.width
-                text: shell.similarNote !== "" ? shell.similarNote : "Showing matches on the roll."
+                text: shell.personFieldFilterActive
+                      ? "Only " + shell.personFieldFilterLabel
+                      : shell.matchesOnRoll
+                        ? (shell.similarNote !== "" ? shell.similarNote : "Showing matches on the roll.")
+                        : shell.gridTitle
                 font.family: Theme.ui
                 font.pixelSize: Theme.small
                 color: Theme.amber
@@ -124,11 +129,25 @@ Item {
                     onActivated: bar.focusEntry(bar.mode === "moment" ? "" : "moment")
                 }
                 Tool {
+                    objectName: "momentsButton"
+                    label: "Moments"
+                    dimmed: bar.empty
+                    hint: "Photos that happened together"
+                    onActivated: bar.momentsRequested()
+                }
+                Tool {
                     objectName: "peopleButton"
                     label: "Find a person"
                     dimmed: bar.empty
                     hint: "Review faces and give them names"
                     onActivated: bar.peopleRequested()
+                }
+                Tool {
+                    objectName: "reviewOverlooked"
+                    label: "Review overlooked faces"
+                    dimmed: bar.empty
+                    hint: "Open the first face that still needs a look"
+                    onActivated: shell.openUnresolvedInbox()
                 }
                 Tool {
                     label: "Find by description"
@@ -145,10 +164,19 @@ Item {
                     onActivated: shell.openTidy()
                 }
                 Tool {
-                    visible: shell.matchesOnRoll
+                    objectName: "showEverything"
+                    visible: shell.matchesOnRoll || shell.facet !== "memory" || shell.personFieldFilterActive
                     label: "Show everything again"
                     primary: true
-                    onActivated: { shell.clearMatches(); entry.text = "" }
+                    onActivated: {
+                        if (shell.matchesOnRoll)
+                            shell.clearMatches()
+                        if (shell.personFieldFilterActive)
+                            shell.clearPersonFieldFilter()
+                        if (shell.facet !== "memory")
+                            shell.setFacet("memory")
+                        entry.text = ""
+                    }
                 }
                 Tool {
                     objectName: "moreButton"
