@@ -329,6 +329,17 @@ def test_saved_human_region_name_is_reused_by_surface():
     }
     assert soft_object_label(named_visual) == "garden gate"
 
+    # Confirmed human name outranks an automatic selection label on the same region.
+    named_over_auto = {
+        "provider": "visual.region",
+        "payload": {
+            "class": "visual_region",
+            "selected_label": "auto chip",
+            "named": "garden gate",
+        },
+    }
+    assert soft_object_label(named_over_auto) == "garden gate"
+
 
 def test_visual_job_finishes_without_a_person(tmp_path):
     rgb, _person, _hood, _hand = _scene()

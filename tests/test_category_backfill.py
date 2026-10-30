@@ -132,6 +132,8 @@ def test_provider_isolation(tmp_path, monkeypatch):
 
 
 def test_people_does_not_assign_identity(tmp_path, monkeypatch):
+    from semblon.engine import process_arch, process_execution
+
     store = _store(tmp_path, ("a.jpg",))
     vector = np.ones(128, dtype=np.float32)
     vector /= np.linalg.norm(vector)
@@ -154,12 +156,102 @@ def test_people_does_not_assign_identity(tmp_path, monkeypatch):
     try:
         persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
         faces = conn.execute("SELECT person_id, cluster_id, status FROM faces").fetchall()
+        run = conn.execute(
+            "SELECT arch, execution FROM runs WHERE config_json LIKE '%category_backfill%'"
+        ).fetchone()
     finally:
         conn.close()
     assert persons == 0
     assert len(faces) == 1
     assert faces[0]["person_id"] is None
     assert faces[0]["cluster_id"] is None
+    assert run["arch"] == process_arch()
+    assert run["execution"] == process_execution()
+
+
+def test_people_redo_does_not_stack_unnamed_faces(tmp_path, monkeypatch):
+    store = _store(tmp_path, ("a.jpg",))
+    vector = np.ones(128, dtype=np.float32)
+    vector /= np.linalg.norm(vector)
+
+    def detect(_img):
+        return [{
+            "bbox": (1.0, 2.0, 40.0, 50.0),
+            "det_score": 0.99,
+            "face_w": 39,
+            "face_h": 48,
+            "dim": 128,
+            "embedding": vector,
+        }]
+
+    _install(monkeypatch, detect=detect, probe=_probe("v1"))
+    assert run_category_backfill(store, "people")["status"] == "completed"
+    _install(monkeypatch, detect=detect, probe=_probe("v2"))
+    assert run_category_backfill(store, "people")["status"] == "completed"
+    conn = connect(store)
+    try:
+        unnamed = conn.execute(
+            "SELECT COUNT(*) FROM faces WHERE person_id IS NULL"
+        ).fetchone()[0]
+        persons = conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0]
+    finally:
+        conn.close()
+    assert unnamed == 1
+    assert persons == 0
+
+
+def test_people_redo_keeps_named_faces(tmp_path, monkeypatch):
+    store = _store(tmp_path, ("a.jpg",))
+    vector = np.ones(128, dtype=np.float32)
+    vector /= np.linalg.norm(vector)
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id, embedding_dim, embedding_norm,
+           config_json, runtime_json, arch, execution)
+           VALUES ('seed','t','1','pack',128,'l2','{}','{}','x64','native')"""
+    )
+    conn.execute(
+        "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES ('o-seed','a.jpg',NULL,NULL,'seed')"
+    )
+    conn.execute(
+        "INSERT INTO persons(person_id, display_name, status) VALUES ('p1','Ada','active')"
+    )
+    conn.execute(
+        """INSERT INTO faces(face_id, observation_id, run_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+           det_score, face_w, face_h, size_band, embedding, embedding_pack, embedding_dim, status, person_id)
+           VALUES ('f-named','o-seed','seed',0,0,1,1,0.9,10,10,'ok',?,?,?,'ok','p1')""",
+        (vector.tobytes(), "pack", 128),
+    )
+    conn.commit()
+    conn.close()
+
+    def detect(_img):
+        return [{
+            "bbox": (5.0, 5.0, 45.0, 55.0),
+            "det_score": 0.99,
+            "face_w": 40,
+            "face_h": 50,
+            "dim": 128,
+            "embedding": vector,
+        }]
+
+    _install(monkeypatch, detect=detect, probe=_probe("v1"))
+    assert run_category_backfill(store, "people")["status"] == "completed"
+    conn = connect(store)
+    try:
+        named = conn.execute(
+            "SELECT face_id, person_id FROM faces WHERE person_id IS NOT NULL"
+        ).fetchall()
+        unnamed = conn.execute(
+            "SELECT COUNT(*) FROM faces WHERE person_id IS NULL"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert len(named) == 1
+    assert named[0]["face_id"] == "f-named"
+    assert named[0]["person_id"] == "p1"
+    assert unnamed == 1
 
 
 def test_objects_unavailable_does_not_invent_labels(tmp_path, monkeypatch):

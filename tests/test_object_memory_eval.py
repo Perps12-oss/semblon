@@ -25,6 +25,14 @@ def test_object_memory_eval_rejects_cases_without_relevant_ids():
         evaluate_cases([{"case_id": "bad", "ranked_media_ids": ["x"]}])
 
 
+def test_object_memory_eval_empty_manifest_is_not_run():
+    report = evaluate_cases([])
+    assert report["status"] == "NOT_RUN"
+    assert report["case_count"] == 0
+    assert report["real_photo_claim_allowed"] is False
+    assert "no cases" in report["warning"].lower()
+
+
 def test_object_memory_eval_does_not_call_unverified_case_real_photo():
     report = evaluate_cases([{
         "case_id": "fixture-only",
