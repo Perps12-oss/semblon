@@ -4,7 +4,7 @@
 **Status tracker:** `docs/BUILD-STATUS.md`.  
 **This file** records which identified gaps are closed, which are closed as a written procedure with an owner act still visible, and which are out of ship.
 
-No new schema columns. No identity-threshold edits. No second application path.
+No open-ended schema invention. Schema **v6** `category_coverage` is the authorized exception (`docs/CONTRACTS.md`, `docs/decisions/2026-10-27-category-backfill.md`); further columns need a stamped migration plus a contracts update. No identity-threshold edits. No second application path.
 
 ## Already closed, and stays closed
 

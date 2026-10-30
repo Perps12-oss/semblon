@@ -175,7 +175,10 @@ def probe_category(category: str) -> ProviderProbe:
 
 def _open_run(conn, *, pack_id: str, dim: int, category: str) -> str:
     from semblon import __version__
+    from semblon.engine import process_arch, process_execution
 
+    arch = process_arch()
+    execution = process_execution()
     run_id = _now().replace(":", "").replace("-", "")[:15] + "-" + uuid.uuid4().hex[:8]
     conn.execute(
         """INSERT INTO runs(run_id, started_at, software_version, pack_id,
@@ -189,9 +192,9 @@ def _open_run(conn, *, pack_id: str, dim: int, category: str) -> str:
             int(dim),
             "l2",
             json.dumps({"category_backfill": category}),
-            "{}",
-            "x64",
-            "native",
+            json.dumps({"arch": arch, "execution": execution, "category_backfill": category}),
+            arch,
+            execution,
         ),
     )
     return run_id
@@ -340,7 +343,40 @@ def _clear_items(conn, media_id: str, *, provider: str, kind: str) -> None:
     conn.execute(f"DELETE FROM observation_items WHERE item_id IN ({marks})", ids)
 
 
-def process_people(conn, img, *, observation_id: str, run_id: str, probe: ProviderProbe) -> ItemResult:
+def _clear_unnamed_faces(conn, media_id: str) -> None:
+    """Drop prior unnamed detections for this photo so a redo does not stack faces.
+
+    Faces with person_id set are human naming and must stay. Clustering links on
+    unnamed rows are cleared with the face; people backfill never re-clusters.
+    """
+    face_rows = conn.execute(
+        """SELECT f.face_id FROM faces f
+           JOIN observations o ON o.observation_id = f.observation_id
+           WHERE o.media_id=? AND f.person_id IS NULL""",
+        (media_id,),
+    ).fetchall()
+    face_ids = [str(row["face_id"]) for row in face_rows]
+    if not face_ids:
+        return
+    marks = ",".join("?" for _ in face_ids)
+    item_rows = conn.execute(
+        f"SELECT item_id FROM observation_items WHERE face_id IN ({marks})",
+        face_ids,
+    ).fetchall()
+    item_ids = [str(row["item_id"]) for row in item_rows]
+    if item_ids:
+        imarks = ",".join("?" for _ in item_ids)
+        conn.execute(f"DELETE FROM group_members WHERE item_id IN ({imarks})", item_ids)
+        conn.execute(f"DELETE FROM track_members WHERE item_id IN ({imarks})", item_ids)
+        conn.execute(f"DELETE FROM embeddings WHERE item_id IN ({imarks})", item_ids)
+        conn.execute(f"DELETE FROM observation_items WHERE item_id IN ({imarks})", item_ids)
+    conn.execute(f"DELETE FROM decisions WHERE face_id IN ({marks})", face_ids)
+    conn.execute(f"DELETE FROM faces WHERE face_id IN ({marks})", face_ids)
+
+
+def process_people(
+    conn, img, *, media_id: str, observation_id: str, run_id: str, probe: ProviderProbe
+) -> ItemResult:
     """Face detections and embeddings only. Never persons, person_id, or clusters."""
     from semblon.ingest import _persist_faces
 
@@ -348,6 +384,7 @@ def process_people(conn, img, *, observation_id: str, run_id: str, probe: Provid
         faces = people_detect(img)
     except Exception as exc:  # noqa: BLE001 — one photo must stay retryable
         return ItemResult(STATE_FAILED, "execution_failure", f"{type(exc).__name__}: {exc}")
+    _clear_unnamed_faces(conn, media_id)
     _persist_faces(
         conn,
         obs_id=observation_id,
@@ -968,7 +1005,14 @@ def run_category_backfill(store: Path, category: str, *, gate=None, on_event=Non
             elif category == CATEGORY_PEOPLE:
                 with writer_lock():
                     observation_id = _ensure_observation(conn, media_id, run_id)
-                    result = process_people(conn, img, observation_id=observation_id, run_id=run_id, probe=probe)
+                    result = process_people(
+                        conn,
+                        img,
+                        media_id=media_id,
+                        observation_id=observation_id,
+                        run_id=run_id,
+                        probe=probe,
+                    )
                     conn.commit()
             elif category == CATEGORY_OBJECTS:
                 with writer_lock():

@@ -380,10 +380,13 @@ def _object_labels(
                 candidate_box = tuple(float(v) for v in bbox)
             except (TypeError, ValueError):
                 candidate_box = ()
+            # Exact pixel box only (tiny float slack). A 1px drift is a
+            # different region and must not inherit another region's name.
             if len(candidate_box) == 4 and all(
-                abs(a - b) <= 1.0 for a, b in zip(candidate_box, selected_box)
+                abs(a - b) <= 1e-3 for a, b in zip(candidate_box, selected_box)
             ):
                 _add(str(payload.get("named") or ""))
+            # Named text stays gated above. Class/label hints still flow.
         _add(str(payload.get("label") or payload.get("class") or ""))
     if not labels and crop is not None:
         try:
