@@ -19,7 +19,26 @@ Window {
     property bool momentsOpen: false
     property bool discoverOpen: false
     property bool keepsOpen: false
+    property int renameKeptIndex: -1
+    property string renameKeptDraft: ""
     property bool jobMini: false
+    function beginRenameKept(index) {
+        renameKeptIndex = index
+        renameKeptDraft = shell.keptName(index)
+    }
+    function commitRenameKept() {
+        if (renameKeptIndex < 0)
+            return
+        var label = (renameKeptDraft || "").trim()
+        if (label !== "")
+            shell.renameKept(renameKeptIndex, label)
+        renameKeptIndex = -1
+        renameKeptDraft = ""
+    }
+    function cancelRenameKept() {
+        renameKeptIndex = -1
+        renameKeptDraft = ""
+    }
     Connections {
         target: shell
         function onJobChanged() { if (!shell.jobActive) win.jobMini = false }
@@ -432,27 +451,60 @@ Window {
                 }
                 Repeater {
                     model: shell ? shell.keptCount : 0
-                    delegate: Row {
+                    delegate: Column {
                         width: parent.width
-                        spacing: 6
-                        Tool {
-                            objectName: "openKept" + index
-                            width: parent.width - 160
-                            label: shell.keptLabel(index)
-                            onActivated: { shell.openKept(index); win.keepsOpen = false }
-                        }
-                        Tool {
-                            objectName: "renameKept" + index
-                            label: "Rename"
-                            onActivated: {
-                                var next = shell.keptLabel(index).split(" · ")[0]
-                                shell.renameKept(index, next + " (renamed)")
+                        spacing: 4
+                        Row {
+                            width: parent.width
+                            spacing: 6
+                            visible: win.renameKeptIndex !== index
+                            Tool {
+                                objectName: "openKept" + index
+                                width: parent.width - 160
+                                label: shell.keptLabel(index)
+                                onActivated: { shell.openKept(index); win.keepsOpen = false; win.cancelRenameKept() }
+                            }
+                            Tool {
+                                objectName: "renameKept" + index
+                                label: "Rename"
+                                onActivated: win.beginRenameKept(index)
+                            }
+                            Tool {
+                                objectName: "deleteKept" + index
+                                label: "Delete"
+                                onActivated: { shell.deleteKept(index); if (win.renameKeptIndex === index) win.cancelRenameKept() }
                             }
                         }
-                        Tool {
-                            objectName: "deleteKept" + index
-                            label: "Delete"
-                            onActivated: shell.deleteKept(index)
+                        Row {
+                            width: parent.width
+                            spacing: 6
+                            visible: win.renameKeptIndex === index
+                            Rectangle {
+                                width: parent.width - 140
+                                height: 34
+                                radius: 3
+                                color: "transparent"
+                                border.width: renameField.activeFocus ? 2 : 1
+                                border.color: renameField.activeFocus ? Theme.amber : Theme.line
+                                TextInput {
+                                    id: renameField
+                                    objectName: "renameKeptField"
+                                    anchors.fill: parent
+                                    anchors.margins: 8
+                                    text: win.renameKeptDraft
+                                    font.family: Theme.ui
+                                    font.pixelSize: Theme.small
+                                    color: Theme.text
+                                    selectByMouse: true
+                                    clip: true
+                                    Accessible.name: "New name for this kept find"
+                                    onTextChanged: win.renameKeptDraft = text
+                                    onAccepted: win.commitRenameKept()
+                                    Component.onCompleted: { forceActiveFocus(); selectAll() }
+                                }
+                            }
+                            Tool { objectName: "renameKeptSave"; label: "Save"; primary: true; onActivated: win.commitRenameKept() }
+                            Tool { objectName: "renameKeptCancel"; label: "Cancel"; onActivated: win.cancelRenameKept() }
                         }
                     }
                 }

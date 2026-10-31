@@ -45,9 +45,27 @@ Item {
         if (zoom === 1) { panX = 0; panY = 0 }
     }
     property string shownId: shell.focusId
+    // Normalized match box for the previewed strip hit (presentation-only).
+    property real previewMatchX: 0
+    property real previewMatchY: 0
+    property real previewMatchW: 0
+    property real previewMatchH: 0
     onShownIdChanged: { resetZoom(); spots.clearTap(); spots.shimmer() }
-    onPreviewIdChanged: { resetZoom(); spots.clearTap() }
+    onPreviewIdChanged: {
+        resetZoom()
+        spots.clearTap()
+        refreshPreviewMatch()
+    }
     function reset() { lx = 0; ly = 0; lw = 0; lh = 0; loupeOn = false; spots.clearTap(); shell.clearDrawnQuery() }
+    function refreshPreviewMatch() {
+        previewMatchX = 0; previewMatchY = 0; previewMatchW = 0; previewMatchH = 0
+        if (!shell || viewer.previewId === "")
+            return
+        var n = shell.matchNormFor(viewer.previewId)
+        if (!n || n.length < 4)
+            return
+        previewMatchX = n[0]; previewMatchY = n[1]; previewMatchW = n[2]; previewMatchH = n[3]
+    }
     function syncSelectionFromShell() {
         if (!shell || !shell.selectionOnFocus || photo.paintedWidth <= 0)
             return
@@ -71,10 +89,8 @@ Item {
         target: shell
         enabled: viewer.active
         function onSelectionChanged() { viewer.syncSelectionFromShell() }
-        function onSimilarChanged() {
-            if (!shell.selectionOnFocus && shell.matchW > 0)
-                viewer.zoomToMatchIfNeeded()
-        }
+        // Zoom once when a hit is opened as Focus — not on every similar strip refresh.
+        function onFocusMatchZoomRequested() { viewer.zoomToMatchIfNeeded() }
     }
     function search() {
         if (lw < 8 || lh < 8 || photo.paintedWidth <= 0)
@@ -199,6 +215,21 @@ Item {
                     y: shell.matchY * canvas.height
                     width: Math.max(2, shell.matchW * canvas.width)
                     height: Math.max(2, shell.matchH * canvas.height)
+                    color: "transparent"
+                    border.width: 3
+                    border.color: Theme.amber
+                    Rectangle { anchors.fill: parent; color: Theme.amber; opacity: 0.10 }
+                }
+                // Match box while previewing a strip hit (Focus id unchanged).
+                Rectangle {
+                    id: previewMatchBox
+                    objectName: "previewMatchBox"
+                    visible: viewer.previewId !== "" && canvas.width > 0
+                             && viewer.previewMatchW > 0 && viewer.previewMatchH > 0
+                    x: viewer.previewMatchX * canvas.width
+                    y: viewer.previewMatchY * canvas.height
+                    width: Math.max(2, viewer.previewMatchW * canvas.width)
+                    height: Math.max(2, viewer.previewMatchH * canvas.height)
                     color: "transparent"
                     border.width: 3
                     border.color: Theme.amber

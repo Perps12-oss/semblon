@@ -17,11 +17,11 @@ Owner Windows still proves scored hits with a real pack; Linux CI does not downl
 
 ### Phase B — match geometry UI
 
-Adapter already publishes `match_nx`… into 6-tuple strip rows (`_publish_similar_result`). This branch draws those boxes on the similar strip and Focus overlay, and zooms toward a match when opening a hit. SAM2/ORB not required for this exit.
+Adapter already publishes `match_nx`… into 6-tuple strip rows (`_publish_similar_result`). This branch draws those boxes on the similar strip and Focus overlay (including preview via `matchNormFor`), and zooms toward a match **once** on `openDiscoveryHit` (`focusMatchZoomRequested`) — not on every similar refresh. SAM2/ORB not required for this exit.
 
 ### Phase C — exploration / keeps
 
-In-session `openDiscoveryHit` / `backToDiscovery` already restores the strip without re-query. Dual sidecars stay: `{store}.visual-discovery.json` (last search) and `{store}.discoveries.json` (kept finds). This branch: atomic JSON writes; rename/delete kept finds; Keep action on Focus.
+In-session `openDiscoveryHit` / `backToDiscovery` already restores the strip without re-query. Dual sidecars stay: `{store}.visual-discovery.json` (last search) and `{store}.discoveries.json` (kept finds). This branch: atomic JSON writes; rename (inline field) / delete kept finds; Keep action on Focus; keeps panel.
 
 ### Phase D — release ops (engineering only)
 

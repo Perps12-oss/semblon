@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -60,15 +62,22 @@ def test_publish_similar_result_keeps_six_tuple_geometry(tmp_path, monkeypatch):
         assert rows[0][0] == "m2"
         assert rows[0][2:] == (0.1, 0.2, 0.3, 0.4)
         assert bridge.matchNormFor("m2") == [0.1, 0.2, 0.3, 0.4]
+        zoomed = []
+        bridge.focusMatchZoomRequested.connect(lambda: zoomed.append(True))
         bridge.openDiscoveryHit("m2")
         assert bridge.matchX == pytest.approx(0.1)
         assert bridge.matchW == pytest.approx(0.3)
-        from pathlib import Path
+        assert zoomed == [True]
+        assert bridge.matchNormFor("m2") == [0.1, 0.2, 0.3, 0.4]
 
         qml = Path("semblon/native_shell/qml/Viewer.qml").read_text(encoding="utf-8")
         assert "stripMatchBox" in qml
         assert "focusMatchBox" in qml
-        assert "PreserveAspectFit" in qml
+        assert "previewMatchBox" in qml
+        # Zoom once on openDiscoveryHit via Connections — not on every similar refresh.
+        assert "onFocusMatchZoomRequested" in qml
+        assert "zoomToMatchIfNeeded" in qml
+        assert "onSimilarChanged" not in qml
     finally:
         shutdown_shell(engine)
 
@@ -96,10 +105,17 @@ def test_keep_rename_delete_atomic(tmp_path, monkeypatch):
         assert bridge.keepDiscovery() == "Kept this find."
         assert bridge.keptCount == 1
         assert bridge._keeps_file().is_file()
+        assert bridge.keptName(0)
         assert bridge.renameKept(0, "Mug find") is True
+        assert bridge.keptName(0) == "Mug find"
         assert bridge.keptLabel(0).startswith("Mug find")
+        assert bridge.renameKept(0, "   ") is False
+        assert bridge.keptName(0) == "Mug find"
         assert bridge.deleteKept(0) is True
         assert bridge.keptCount == 0
         assert not bridge._keeps_file().exists()
+        table = Path("semblon/native_shell/qml/Table.qml").read_text(encoding="utf-8")
+        assert "renameKeptField" in table
+        assert "(renamed)" not in table
     finally:
         shutdown_shell(engine)

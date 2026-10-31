@@ -295,6 +295,8 @@ class ShellBridge(QObject):
     tasksChanged = Signal()
     confirmChanged = Signal()
     tidyChanged = Signal()
+    # QML zooms once when a discovery hit becomes Focus (not on every similar refresh).
+    focusMatchZoomRequested = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -1987,6 +1989,7 @@ class ShellBridge(QObject):
             return
         self._push_discovery()
         self._open_focus_keep_results(media_id)
+        self.focusMatchZoomRequested.emit()
 
     @Slot()
     def backToDiscovery(self) -> None:
@@ -2592,6 +2595,15 @@ class ShellBridge(QObject):
     @Property(int, notify=keepsChanged)
     def keptCount(self) -> int:
         return len(self._recent_keeps())
+
+    @Slot(int, result=str)
+    def keptName(self, index: int) -> str:
+        """Display name only (for rename field)."""
+        rows = self._recent_keeps()
+        if index < 0 or index >= len(rows):
+            return ""
+        item = rows[index]
+        return str(item.get("name") or item.get("understanding") or "Kept find").strip() or "Kept find"
 
     @Slot(int, result=str)
     def keptLabel(self, index: int) -> str:
