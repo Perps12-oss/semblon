@@ -29,3 +29,6 @@ docs/evidence/small-object-recall.raw.json
 wheelhouse/
 wheelhouse-*/
 
+# Owner Gate L evidence scratch (tools/msi/gate_l_verify_packs.py --out)
+docs/gate_l_signoff_temp.md
+

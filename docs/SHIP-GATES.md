@@ -72,7 +72,7 @@ dotnet tool install --global wix
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\msi\build-msi.ps1
 ```
 
-Sign locally with `-SignThumbprint` or `-SignPfxPath`, or dispatch `.github/workflows/msi-release.yml` after setting `CODE_SIGNING_PFX_BASE64` and `CODE_SIGNING_PFX_PASSWORD`. The workflow verifies with `signtool verify /pa`. Then run `packaging/msi/smoke-checklist.md` on a clean machine. Confirm the install tree contains no `.onnx`.
+Sign locally with `-SignThumbprint` or `-SignPfxPath`, or dispatch `.github/workflows/msi-release.yml` after setting `CODE_SIGNING_PFX_BASE64` and `CODE_SIGNING_PFX_PASSWORD`. The workflow verifies with `signtool verify /pa`. Then run `packaging/msi/smoke-checklist.md` or `packaging/msi/smoke-clean-vm.ps1` on a clean machine. Confirm the install tree contains no `.onnx`. Signing rules: `packaging/msi/SIGNING_GATE.md`.
 
 Until those secrets exist, release readiness stays **NOT READY**. That is an absent certificate, not an open product question. The product already requires a signed, versioned package (`docs/PRODUCT.md` workflow 5). The commands above are how that package is produced.
 
