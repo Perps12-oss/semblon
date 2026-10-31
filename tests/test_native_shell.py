@@ -1295,6 +1295,13 @@ def test_advanced_activity_opens_history_rows(tmp_path, monkeypatch):
     assert root.findChild(QObject, "activitySheet") is not None
     bridge.closeActivity()
     assert bridge.activityOpen is False
+    bridge.setMode("primary")
+    bridge.showActivity()
+    assert bridge.activityOpen is True
+    assert len(bridge.activityRows) == 3
+    assert bridge.resultText.startswith("Activity:")
+    bridge.closeActivity()
+    assert bridge.activityOpen is False
     shutdown_shell(engine)
 
 

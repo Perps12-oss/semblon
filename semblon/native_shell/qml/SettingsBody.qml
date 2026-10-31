@@ -3,6 +3,7 @@ import QtQuick
 // Everything adjustable, in plain words. Scrolls when the window is small.
 Flickable {
     id: body
+    signal lastFindRequested()
     clip: true
     contentWidth: width
     contentHeight: col.implicitHeight + 12
@@ -62,6 +63,7 @@ Flickable {
             Tool { label: "Check for new photos"; onActivated: shell.rescanFolder() }
             Tool { label: "Check everything is in place"; onActivated: shell.libraryHealth() }
             Tool { label: "Recent activity"; onActivated: shell.showActivity() }
+            Tool { objectName: "reopenLastFind"; label: "Open the last find"; onActivated: body.lastFindRequested() }
             Tool { label: "Things you have named"; onActivated: shell.openNamedItems() }
         }
         Label { visible: shell.resultText !== ""; text: shell.resultText; color: Theme.text }

@@ -701,6 +701,76 @@ def test_discovery_result_preview_does_not_mutate_bridge_focus_or_search(qml_she
     assert bridge.similarCount == original_count
 
 
+def test_lens_recovery_controls_call_existing_slots(qml_shell):
+    """Loaded window reaches the slots that were already implemented."""
+    from pathlib import Path
+
+    from PySide6.QtCore import QObject
+
+    app, _engine, root, bridge = qml_shell
+    qml = Path("semblon/native_shell/qml")
+    viewer = (qml / "Viewer.qml").read_text(encoding="utf-8")
+    light = (qml / "LightTable.qml").read_text(encoding="utf-8")
+    people = (qml / "People.qml").read_text(encoding="utf-8")
+    settings = (qml / "SettingsBody.qml").read_text(encoding="utf-8")
+    table = (qml / "Table.qml").read_text(encoding="utf-8")
+    assert 'objectName: "backDiscovery"' in viewer and "shell.backToDiscovery" in viewer
+    assert "shell.canBackDiscovery" in viewer
+    assert 'objectName: "seeThisDay"' in viewer and "shell.showDayAroundFocus" in viewer
+    assert 'label: "Find by date"' in light
+    assert "momentsRequested" in light and "shell.openUnresolvedInbox" in light
+    assert "shell.clearPersonFieldFilter" in light and 'shell.setFacet("memory")' in light
+    assert "shell.showSelectedPersonOnly" in people
+    assert "shell.browseSelectedPersonInTime" in people
+    assert 'objectName: "reopenLastFind"' in settings and "lastFindRequested" in settings
+    assert "shell.reopenLastVisualSearch" in table
+    assert 'shell.setFacet("moments")' in table and "shell.selectBucket" in table
+    assert 'objectName: "momentsSheet"' in table
+    for path in qml.glob("*.qml"):
+        text = path.read_text(encoding="utf-8")
+        assert "push_lens" not in text
+        assert "DiscoverySession" not in text
+        assert "CompareSession" not in text
+        assert "lens_home" not in text
+
+    app.processEvents()
+    for name in (
+        "backDiscovery",
+        "seeThisDay",
+        "reopenLastFind",
+        "onlyTheirPhotos",
+        "momentsButton",
+        "reviewOverlooked",
+        "showEverything",
+        "momentsSheet",
+    ):
+        assert root.findChild(QObject, name) is not None, name
+
+    root.findChild(QObject, "momentsButton").activated.emit()
+    app.processEvents()
+    assert bridge.facet == "moments"
+    assert root.findChild(QObject, "momentsSheet").property("open") is True
+    root.findChild(QObject, "showEverything").activated.emit()
+    app.processEvents()
+    assert bridge.facet == "memory"
+    assert root.findChild(QObject, "momentsSheet").property("open") is False
+
+    root.setProperty("settingsOpen", True)
+    root.findChild(QObject, "reopenLastFind").activated.emit()
+    app.processEvents()
+    assert root.property("settingsOpen") is False
+    assert "no saved search yet" in bridge.noticeText
+
+    root.findChild(QObject, "seeThisDay").activated.emit()
+    app.processEvents()
+    assert bridge.scopeKind != "day"
+    assert "No date on file" in bridge.resultText
+
+    root.findChild(QObject, "reviewOverlooked").activated.emit()
+    app.processEvents()
+    assert bridge.peopleOpen is True
+
+
 def test_discovery_preview_has_explicit_navigation_and_escape_return():
     from pathlib import Path
 

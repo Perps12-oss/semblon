@@ -310,6 +310,8 @@ Item {
             x: 8; y: 8
             width: parent.width - 16
             spacing: 4
+            Tool { objectName: "backDiscovery"; width: menuCol.width; label: "Back to the previous find"; visible: shell.canBackDiscovery; onActivated: moreMenu.pick(function () { viewer.previewId = ""; shell.backToDiscovery() }) }
+            Tool { objectName: "seeThisDay"; width: menuCol.width; label: "See this day"; visible: viewer.previewId === ""; onActivated: moreMenu.pick(function () { shell.showDayAroundFocus(); if (shell.scopeKind === "day") { shell.escape(); viewer.closed() } }) }
             Tool { objectName: "wholePhoto"; width: menuCol.width; label: "Find photos like this one"; hint: "Shortcut W"; onActivated: moreMenu.pick(shell.findSimilarWhole) }
             Tool { objectName: "similarAction"; width: menuCol.width; label: "Find the picked area elsewhere"; hint: "Shortcut S"; visible: shell.selectionOnFocus; onActivated: moreMenu.pick(shell.findSimilar) }
             Tool { objectName: "sameFaceDoor"; width: menuCol.width; label: "Find faces like these"; hint: "Shortcut F"; onActivated: moreMenu.pick(shell.findSimilarFaces) }
