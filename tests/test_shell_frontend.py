@@ -655,20 +655,32 @@ def test_windows_journey_launch_ingest_browse_search_theme_restart_recover(tmp_p
         shutdown_shell(engine)
 
 
-def test_discovery_result_preview_does_not_mutate_bridge_focus_or_search(qml_shell):
+def test_discovery_result_preview_does_not_mutate_bridge_focus_or_search(qml_shell, tmp_path):
+    from pathlib import Path
+
     from PySide6.QtCore import QObject
 
     app, _engine, root, bridge = qml_shell
+    # Viewer opacity is 0 until a photo is open; child Item.visible then reads false
+    # even when the strip's own loupe/results binding is true.
+    store = Path(bridge._jobs.store)
+    _seed(store, tmp_path, n=1)
+    bridge._refresh_library()
+    bridge.openFocus("m0")
+    app.processEvents()
+
     viewer = root.findChild(QObject, "viewer")
     strip = root.findChild(QObject, "similarStrip")
     return_tool = root.findChild(QObject, "returnFromPreview")
     open_tool = root.findChild(QObject, "previewThisPhoto")
     assert viewer is not None and strip is not None
     assert return_tool is not None and open_tool is not None
+    assert viewer.property("active") is True
 
     original_focus = bridge.focusId
     original_state = bridge.similarState
     original_count = bridge.similarCount
+    assert original_focus == "m0"
 
     viewer.setProperty("previewId", "match-preview")
     viewer.setProperty("loupeOn", True)
