@@ -7,7 +7,9 @@ import os
 import re
 import sqlite3
 import sys
+import tempfile
 import time
+import uuid
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -293,6 +295,8 @@ class ShellBridge(QObject):
     tasksChanged = Signal()
     confirmChanged = Signal()
     tidyChanged = Signal()
+    # QML zooms once when a discovery hit becomes Focus (not on every similar refresh).
+    focusMatchZoomRequested = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -1889,6 +1893,23 @@ class ShellBridge(QObject):
         store = Path(self._jobs.store)
         return store.with_name(store.stem + ".visual-discovery.json")
 
+    def _atomic_write_json(self, path: Path, payload: object) -> None:
+        """tmp → fsync → replace. Keeps sidecars readable after a crash mid-write."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_name, path)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+
     def _persist_discovery(self) -> None:
         if self._similar_state not in {"ready", "empty"}:
             return
@@ -1910,7 +1931,7 @@ class ShellBridge(QObject):
             ],
         }
         try:
-            self._discovery_file().write_text(json.dumps(payload), encoding="utf-8")
+            self._atomic_write_json(self._discovery_file(), payload)
         except OSError:
             return
 
@@ -1928,8 +1949,8 @@ class ShellBridge(QObject):
                 "region": self._region_norm,
             }
         )
-        if len(self._discovery_trail) > 8:
-            self._discovery_trail = self._discovery_trail[-8:]
+        if len(self._discovery_trail) > 20:
+            self._discovery_trail = self._discovery_trail[-20:]
 
     def _open_focus_keep_results(self, media_id: str) -> None:
         item = self._jobs.media(media_id)
@@ -1968,6 +1989,7 @@ class ShellBridge(QObject):
             return
         self._push_discovery()
         self._open_focus_keep_results(media_id)
+        self.focusMatchZoomRequested.emit()
 
     @Slot()
     def backToDiscovery(self) -> None:
@@ -2413,13 +2435,14 @@ class ShellBridge(QObject):
         self,
         state: str,
         note: str,
-        rows: list[tuple[str, float]],
+        rows: list,
         *,
         basis: str = "",
         basis_label: str = "",
         persist: bool = True,
         phase: str = "",
     ) -> None:
+        # Rows are (media_id, score) or (media_id, score, nx, ny, nw, nh).
         self._similar.set_rows(rows)
         self._similar_state = state
         self._similar_note = present_message(self._mode, note, fallback="Similar search could not run.")
@@ -2430,14 +2453,24 @@ class ShellBridge(QObject):
         if persist and state in {"ready", "empty"}:
             self._persist_discovery()
 
-    def _match_for_focus(self) -> tuple[float, float, float, float]:
-        focus = self._session.focus_id or ""
+    def _match_for_media(self, media_id: str) -> tuple[float, float, float, float]:
+        wanted = str(media_id or "")
+        if not wanted:
+            return 0.0, 0.0, 0.0, 0.0
         for row in self._similar._rows:
-            if str(row[0]) != focus or len(row) < 6:
+            if str(row[0]) != wanted or len(row) < 6:
                 continue
             if float(row[4]) > 0 and float(row[5]) > 0:
                 return float(row[2]), float(row[3]), float(row[4]), float(row[5])
         return 0.0, 0.0, 0.0, 0.0
+
+    def _match_for_focus(self) -> tuple[float, float, float, float]:
+        return self._match_for_media(self._session.focus_id or "")
+
+    @Slot(str, result="QVariantList")
+    def matchNormFor(self, media_id: str):
+        """Normalized match box for a strip hit (Focus overlay / preview)."""
+        return list(self._match_for_media(media_id))
 
     @Property(float, notify=similarChanged)
     def matchX(self) -> float:
@@ -2532,12 +2565,45 @@ class ShellBridge(QObject):
             return [item for item in payload if isinstance(item, dict)]
         return []
 
+    def _write_keeps(self, rows: list[dict]) -> bool:
+        try:
+            self._atomic_write_json(self._keeps_file(), rows)
+        except OSError:
+            return False
+        self.keepsChanged.emit()
+        return True
+
     def _recent_keeps(self) -> list[dict]:
         return list(reversed(self._read_keeps()[-8:]))
+
+    def _kept_file_index(self, recent_index: int) -> int | None:
+        rows = self._read_keeps()
+        recent = list(reversed(rows[-8:]))
+        if recent_index < 0 or recent_index >= len(recent):
+            return None
+        target = recent[recent_index]
+        kept_id = str(target.get("kept_id") or "")
+        if kept_id:
+            for i, row in enumerate(rows):
+                if str(row.get("kept_id") or "") == kept_id:
+                    return i
+        for i, row in enumerate(rows):
+            if row == target:
+                return i
+        return None
 
     @Property(int, notify=keepsChanged)
     def keptCount(self) -> int:
         return len(self._recent_keeps())
+
+    @Slot(int, result=str)
+    def keptName(self, index: int) -> str:
+        """Display name only (for rename field)."""
+        rows = self._recent_keeps()
+        if index < 0 or index >= len(rows):
+            return ""
+        item = rows[index]
+        return str(item.get("name") or item.get("understanding") or "Kept find").strip() or "Kept find"
 
     @Slot(int, result=str)
     def keptLabel(self, index: int) -> str:
@@ -2545,7 +2611,7 @@ class ShellBridge(QObject):
         if index < 0 or index >= len(rows):
             return ""
         item = rows[index]
-        label = str(item.get("understanding") or "Kept find")
+        label = str(item.get("name") or item.get("understanding") or "Kept find")
         count = len(item.get("items") or [])
         noun = "match" if count == 1 else "matches"
         return f"{label} · {count} {noun}"
@@ -2556,6 +2622,8 @@ class ShellBridge(QObject):
         if self._similar_state != "ready" or not self._similar._rows or not self._region_norm:
             return "Search a region before keeping a find."
         entry = {
+            "kept_id": uuid.uuid4().hex[:12],
+            "name": str(self._selection_note or "Kept find").strip() or "Kept find",
             "query_media_id": self._query_focus_id or self._session.focus_id or "",
             "basis": self._similar_basis,
             "basis_label": self._similar_basis_label,
@@ -2574,13 +2642,43 @@ class ShellBridge(QObject):
         rows = self._read_keeps()
         rows.append(entry)
         rows = rows[-50:]
-        try:
-            self._keeps_file().write_text(json.dumps(rows), encoding="utf-8")
-        except OSError:
+        if not self._write_keeps(rows):
             return "This find could not be kept."
-        self.keepsChanged.emit()
         self._set_result("Kept this find.")
         return "Kept this find."
+
+    @Slot(int, str, result=bool)
+    def renameKept(self, index: int, name: str) -> bool:
+        label = str(name or "").strip()
+        if not label:
+            return False
+        file_index = self._kept_file_index(index)
+        if file_index is None:
+            return False
+        rows = self._read_keeps()
+        if file_index < 0 or file_index >= len(rows):
+            return False
+        rows[file_index]["name"] = label
+        return self._write_keeps(rows)
+
+    @Slot(int, result=bool)
+    def deleteKept(self, index: int) -> bool:
+        file_index = self._kept_file_index(index)
+        if file_index is None:
+            return False
+        rows = self._read_keeps()
+        if file_index < 0 or file_index >= len(rows):
+            return False
+        del rows[file_index]
+        if not rows:
+            path = self._keeps_file()
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                return False
+            self.keepsChanged.emit()
+            return True
+        return self._write_keeps(rows)
 
     @Slot(int)
     def openKept(self, index: int) -> None:

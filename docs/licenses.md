@@ -17,6 +17,8 @@ InsightFace **code** and **buffalo_l weights** are **retired from the production
 
 **Gate L status:** **OPEN / BYO only.** Source-directory licence labels are recorded; commercial redistribution of the exact weight bytes is **not** claimed until legal sign-off files local SHA-256 pins + NOTICE packaging. The code MSI / WiX path (`packaging/msi`, `tools/msi/assert-no-weights.py`) fails closed on any `.onnx`.
 
+Owner hash evidence tooling (not a PASS claim): `python tools/msi/gate_l_verify_packs.py` compares local BYO ONNX bytes to pins in `docs/IDENTITY-PACK.md`, `docs/OBJECT-PACK.md`, and `docs/REGION-PACK.md`.
+
 Exact install + hashes: `docs/IDENTITY-PACK.md`. Evaluation order: `docs/decisions/2026-10-16-identity-stack-eval-order.md`.  
 Notice copies: `docs/notices/yunet-MIT.txt`, `docs/notices/sface-APACHE-2.0.txt`, `docs/notices/nanodet-APACHE-2.0.txt`.
 

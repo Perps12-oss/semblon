@@ -1,3 +1,32 @@
+## Current branch addendum — A→B→C→D evidence lock (retrieval + match geometry + release ops)
+
+**Branch:** `cursor/abc-then-d-fb3d`. Evidence from this checkout’s code and docs. Not Gate C / Gate L PASS. Not a PhotoDisco rebuild.
+
+### Phase A — retrieval path (CLOSED as landed)
+
+| ID | Proposal | Verdict | Cite |
+|---|---|---|---|
+| A.1 | DINOv2 region pack pin/install/hash | **DONE** | `docs/REGION-PACK.md`; `tools/fetch_region_pack.py`; `ArchiveAdapter.install_region_pack`; Settings `region_pack` |
+| A.2 | Whole + patch embedding backfill | **DONE path** | `semblon/category_backfill.py` Regions door; `modality=region_patch` / `scene`; on-demand detail in `region_search` |
+| A.3 | `findSimilar` / whole return hits when pack present | **DONE path** | `ShellBridge.findSimilar` / `findSimilarWhole` → `remember_and_find_region`; unavailable without pack/region is honest |
+| A.4 | SigLIP required | **DEFER** | Optional BYO; kind door SKIPPED when absent (`docs/SHIP-GATES.md`) |
+| A.5 | Florence-2 describe | **REFUSED** | NanoDet DONE (`docs/OBJECT-PACK.md`); Florence-2 out of ship |
+| A.6 | HNSW / sqlite-vec now | **REFUSED until measured** | `ann_index.py`; `ann_justified` false |
+
+Owner Windows still proves scored hits with a real pack; Linux CI does not download weights.
+
+### Phase B — match geometry UI
+
+Adapter already publishes `match_nx`… into 6-tuple strip rows (`_publish_similar_result`). This branch draws those boxes on the similar strip and Focus overlay (including preview via `matchNormFor`), and zooms toward a match **once** on `openDiscoveryHit` (`focusMatchZoomRequested`) — not on every similar refresh. SAM2/ORB not required for this exit.
+
+### Phase C — exploration / keeps
+
+In-session `openDiscoveryHit` / `backToDiscovery` already restores the strip without re-query. Dual sidecars stay: `{store}.visual-discovery.json` (last search) and `{store}.discoveries.json` (kept finds). This branch: atomic JSON writes; rename (inline field) / delete kept finds; Keep action on Focus; keeps panel.
+
+### Phase D — release ops (engineering only)
+
+`packaging/msi/SIGNING_GATE.md`, `tools/msi/gate_l_verify_packs.py` (BYO hash evidence — not L PASS), `packaging/msi/smoke-clean-vm.ps1`. No offline-bundle MSI. No bundled weights.
+
 ## Current branch addendum — 2026-10-27 (Discover categories)
 
 **Branch:** `feat/discover-category-entry` · **Draft PR:** [#200](https://github.com/Perps12-oss/semblon/pull/200). This addendum is branch work, not merged-main or release evidence.

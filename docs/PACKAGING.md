@@ -51,7 +51,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\msi\build-msi.ps1 -Sig
 
 Optional CI: `.github/workflows/msi-release.yml` (`workflow_dispatch`). Builds the code MSI on `windows-latest`. Signs only when repository secret `CODE_SIGNING_PFX_BASE64` is set (plus `CODE_SIGNING_PFX_PASSWORD`). Without those secrets the job still uploads an **unsigned** engineering MSI — that is not Gate C.
 
-Details: `packaging/msi/README.md`. Smoke: `packaging/msi/smoke-checklist.md`.
+Details: `packaging/msi/README.md`.  
+Signing runbook: `packaging/msi/SIGNING_GATE.md`.  
+Smoke: `packaging/msi/smoke-checklist.md` or `packaging/msi/smoke-clean-vm.ps1`.  
+BYO pack hash evidence (not L PASS): `python tools/msi/gate_l_verify_packs.py`.
 
 ## Upgrade / uninstall
 
