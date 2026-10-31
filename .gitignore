@@ -22,6 +22,9 @@ semblon/observatory/
 .pytest-tmp/
 .pytest_tmp/
 
+# Full small-object bench dumps (headline summary stays in docs/evidence/)
+docs/evidence/small-object-recall.raw.json
+
 # Local offline wheels (not committed)
 wheelhouse/
 wheelhouse-*/

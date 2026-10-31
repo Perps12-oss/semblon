@@ -24,7 +24,18 @@ def reciprocal_rank(relevant: set[str], ranked: list[str]) -> float:
 
 def evaluate_cases(cases: list[dict[str, Any]], *, ks=(1, 5, 10)) -> dict:
     if not cases:
-        raise ObjectMemoryEvalError("evaluation manifest contains no cases")
+        return {
+            "status": "NOT_RUN",
+            "evaluation": "object-memory",
+            "case_count": 0,
+            "dataset_type": "empty_manifest",
+            "recall_at_k": {str(k): None for k in ks},
+            "mrr": None,
+            "hard_negative_win_rate": None,
+            "real_photo_claim_allowed": False,
+            "warning": "Manifest has no cases. Not a recognition baseline.",
+            "cases": [],
+        }
     recalls = {int(k): [] for k in ks}
     reciprocal_ranks: list[float] = []
     hard_negative_wins: list[bool] = []
@@ -36,8 +47,7 @@ def evaluate_cases(cases: list[dict[str, Any]], *, ks=(1, 5, 10)) -> dict:
         if not relevant:
             raise ObjectMemoryEvalError(f"{case.get('case_id', '<unknown>')}: no relevant media IDs")
         evaluated += 1
-        first_relevant = next((i for i, mid in enumerate(ranked, 1) if mid in relevant), None)
-        reciprocal_ranks.append(1.0 / first_relevant if first_relevant else 0.0)
+        reciprocal_ranks.append(reciprocal_rank(relevant, ranked))
         for k in recalls:
             recalls[k].append(float(any(mid in relevant for mid in ranked[:k])))
         if hard:
@@ -77,5 +87,5 @@ def evaluate_manifest(path: Path, out: Path | None = None) -> dict:
     report["manifest"] = str(path)
     if out is not None:
         Path(out).parent.mkdir(parents=True, exist_ok=True)
-        Path(out).write_text(json.dumps(report, indent=2) + "\\n", encoding="utf-8")
+        Path(out).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report

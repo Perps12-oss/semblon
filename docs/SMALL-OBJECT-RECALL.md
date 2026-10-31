@@ -14,12 +14,12 @@ export QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=Basic
 export PYTHONPATH=.
 export SEMBLON_PERF=0
 python tools/bench_small_object.py --work /tmp/small-object-bench --reps 3 \
-  --out docs/evidence/small-object-recall.json
+  --out docs/evidence/small-object-recall.raw.json
 ```
 
 `LD_LIBRARY_PATH` is only so PySide can see libEGL in this sandbox. The bench itself calls the same ingest and search entry points as `tools/bench_hybrid.py`. Each prep and each search is a fresh process. Cold is the first pass over the queries. Warm is the same queries again on the same database.
 
-Pixels and sqlite files stay in the work directory. Do not commit them. The raw report is [docs/evidence/small-object-recall.json](evidence/small-object-recall.json). It has no filesystem paths.
+Pixels and sqlite files stay in the work directory. Do not commit them. Write the full raw report to `docs/evidence/small-object-recall.raw.json` (gitignored). The committed [docs/evidence/small-object-recall.json](evidence/small-object-recall.json) keeps headline metrics only.
 
 Corpus checks, with no model and no search: `tests/test_small_object_corpus.py`.
 

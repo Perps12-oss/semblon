@@ -1,13 +1,14 @@
 # SEMBLON — Contracts V1.1-corrected
 **Status:** AUTHORITATIVE schema / CLI / runtime  
 **Date:** 2026-09-09  
-**Note:** 2026-09-13 — staging pointer and CLI surface clarified. No column changes.  
+**Note:** 2026-09-13 — staging pointer and CLI surface clarified. No column changes.
 **Production UI (2026-10-05):** does not change this schema. The shell baseline is `docs/ARCHITECTURE.md` (PySide6 → Application). `review.html` is retired.
+**Schema v6 (2026-10-27):** adds `category_coverage` only — see Schema versions below. Authorized by `docs/decisions/2026-10-27-category-backfill.md`.
 
-This file is the only schema authority.  
-Planned work is `docs/SEM-ARCH-V1.4.md`. Status: `docs/COMPLETION-MATRIX.md`. There is no `SEMBLON_IMPLEMENTATION_PLAN.md` and no OBS / SIM / FACE-n successor clock.  
-The plan does not invent columns.  
-Do not invent columns. Do not implement the pre-correction V1.1 draft.
+This file is the only schema authority.
+Planned work is `docs/SEM-ARCH-V1.4.md`. Status: `docs/COMPLETION-MATRIX.md`. There is no `SEMBLON_IMPLEMENTATION_PLAN.md` and no OBS / SIM / FACE-n successor clock.
+Do not invent columns beyond the stamped migration list in `semblon/store.py`.
+Do not implement the pre-correction V1.1 draft.
 
 ## Pack identity
 
@@ -55,6 +56,17 @@ Implemented now: `lab profile` (FACE-000); `process` (happy-path ingest -> clust
 `observations` remains a source/frame slot (`media_id`, `frame_id`, `run_id`) for the identity path.
 
 Schema **v2** (migration engine) adds `observation_items`, `embeddings`, `tracks`, `observation_groups`, `relationships`, `events`. Face identity embeddings stay on `faces`. `embeddings.modality='face'` is forbidden. `compare_space()` refuses face identity. Extra observers never write `faces.person_id`. Dense visual search stores one vector per content patch as `embeddings.modality='region_patch'` with its own `pack_id` (`…/patch`). That is not a new column and it is not identity.
+
+### Schema versions (stamped in `schema_meta`)
+
+| Version | What it adds | Identity effect |
+|---|---|---|
+| 1 | Base biometric + library tables | — |
+| 2 | `observation_items`, `embeddings`, tracks/groups/relationships/events | Face identity stays on `faces`; `embeddings.modality='face'` forbidden |
+| 3–5 | Work-queue / decisions rebuild / related (see `semblon/store.py` migrations) | No identity-threshold changes |
+| **6** | **`category_coverage`** — per-media, per-category (`people`\|`objects`\|`regions`\|`words`) check state for Discover backfill | People rows may write face detections/embeddings only. Never `persons`, never `faces.person_id`, never cluster. Not the shared observe tier. |
+
+`SCHEMA_VERSION` in `semblon/store.py` is **6**. Further tables or columns need a new stamped migration and an update here before merge.
 
 Progress `on_event` kinds: `queued` / `started` / `progress` / `partial` / `completed` / `failed` / `cancelled` / `stalled`. Skip is an `outcome` on `progress` (`skipped_seen`, `skipped_same_run`), not a silent success. Cancel stamps `runs.finished_at` and `runs.notes=cancelled`. SIGINT is cooperative at file boundaries. Writer commits in batches (every N files or ~100 ms), not necessarily per file; cancelled work that already committed stays. Cancelled work must not emit `completed`. A stall watchdog may emit `stalled`; it does not kill the job. `process --resume` continues the latest unfinished run for that folder: same `run_id` for cancelled ingest (same-run skip), then cluster. It does not write `review.html`. Completed stages are skipped (`outcome=skipped_stage`). No new columns. Progress events carry wall-clock `clock`, `elapsed_s`, and `eta_s` only when files already done give a real rate. Stills percent is `files_processed/files_total` (0–100) with **monotonic** `files_processed`; never invent a denominator. Progress emits are time-throttled; the final tick for a file set is always emitted.
 

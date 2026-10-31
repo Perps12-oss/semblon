@@ -30,6 +30,8 @@ def main(argv=None) -> int:
         "status", "dataset_type", "case_count", "recall_at_k", "mrr",
         "hard_negative_win_rate", "real_photo_claim_allowed", "warning"
     )}, indent=2))
+    if report.get("status") == "NOT_RUN":
+        return 0
     return 0
 
 if __name__ == "__main__":
