@@ -524,7 +524,7 @@ def test_discover_says_what_is_checked_without_scanning(tmp_path, monkeypatch):
     assert calls["people"] == calls["objects"] == calls["regions"] == calls["words"] == calls["ingest"] == 0
 
 
-def test_search_names_a_partial_check_and_leaves_an_untracked_library_alone(tmp_path):
+def test_search_names_a_partial_check_and_leaves_an_untracked_library_alone(tmp_path, monkeypatch):
     from semblon.search import search_object, search_text
 
     store = _store(tmp_path)
@@ -563,10 +563,27 @@ def test_search_names_a_partial_check_and_leaves_an_untracked_library_alone(tmp_
     assert legacy["status"] == "NO_RESULT"
     assert "coverage_clause" not in legacy
     assert legacy["reason"] == "No text matched in your photos."
+
+    # Untracked + pack ready: say labels are missing. Do not invent coverage wording.
+    monkeypatch.setattr("semblon.object_pack.probe_nanodet_status", lambda: (True, None))
     empty = search_object(store, "dog")
     assert empty["status"] == "UNAVAILABLE"
-    assert "have not been checked" in empty["reason"]
+    assert empty["error_id"] == "object.NO_STORED_LABELS"
+    assert "coverage_clause" not in empty
+    assert "No searchable region names" in empty["reason"]
+    assert "have not been checked" not in empty["reason"]
     assert "empty read" not in empty["reason"]
+
+    # Untracked + pack missing: checker absence may note that photos were not checked.
+    monkeypatch.setattr(
+        "semblon.object_pack.probe_nanodet_status",
+        lambda: (False, "NanoDet pack is missing."),
+    )
+    unread = search_object(store, "dog")
+    assert unread["status"] == "UNAVAILABLE"
+    assert unread["error_id"] == "object.PACK_MISSING"
+    assert "have not been checked" in unread["reason"]
+    assert "empty read" not in unread["reason"]
 
 
 def test_region_coverage_is_visible_without_the_shared_tier_bit(tmp_path):
