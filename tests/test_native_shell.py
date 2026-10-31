@@ -504,7 +504,10 @@ def test_viewer_keeps_the_strip_and_a_primary_similar_action():
     assert 'sequence: "Ctrl+Shift+S"' in viewer
     assert "shell.toggleScreenQueryMode" in viewer
     assert 'objectName: "findSimilar"' not in viewer
-    assert "shell.openFocus(mediaId)" in viewer
+    # Strip clicks preview in place; committing uses openDiscoveryHit, not openFocus.
+    assert "shell.openFocus(mediaId)" not in viewer
+    assert "shell.openDiscoveryHit(target)" in viewer
+    assert "viewer.previewId = mediaId" in viewer
     assert 'objectName: "primaryModeButton"' in (qml_root / "SettingsBody.qml").read_text(encoding="utf-8")
     host = (
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "host.py"

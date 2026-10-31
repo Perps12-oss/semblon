@@ -14,10 +14,11 @@ Item {
     readonly property alias field: entry
     implicitHeight: panel.height + 12
 
-    function focusEntry(m) {
+    function focusEntry(m, searchMode) {
         if (empty)
             return
         mode = m
+        if (m === "detail" && searchMode) shell.setSearchMode(searchMode)
         entry.forceActiveFocus()
     }
     function submit() {
@@ -29,7 +30,6 @@ Item {
             bar.dateRequested(p[0] + (p.length > 1 ? "-" + ("0" + p[1]).slice(-2) : ""))
             return
         }
-        shell.setSearchMode("text")
         shell.submitCommand(t)
         shell.showMatchesOnRoll()
     }
@@ -97,6 +97,10 @@ Item {
                     Text {
                         visible: entry.text === ""
                         text: bar.empty ? "Add a folder of photos first, then search them here"
+                              : bar.mode === "detail" && shell.searchModeShort === "Objects"
+                              ? "Name an object: bicycle, cake, dog"
+                              : bar.mode === "detail" && shell.searchModeShort === "Text in photos"
+                              ? "Find words in photos: menu, sign, label"
                               : bar.mode === "detail"
                               ? "Describe it: a red bicycle, a birthday cake, a handwritten sign"
                               : "Type a date or a few words: summer 2019, the beach, a dog"
@@ -154,7 +158,7 @@ Item {
                     dimmed: bar.empty
                     hint: "Describe it, or open a photo and draw around it"
                     selected: bar.mode === "detail"
-                    onActivated: bar.focusEntry(bar.mode === "detail" ? "" : "detail")
+                    onActivated: bar.focusEntry(bar.mode === "detail" ? "" : "detail", "text")
                 }
                 Tool {
                     label: "Tidy up copies"

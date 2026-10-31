@@ -1,3 +1,15 @@
+## Current branch addendum — 2026-10-27 (Discover categories)
+
+**Branch:** `feat/discover-category-entry` · **Draft PR:** [#200](https://github.com/Perps12-oss/semblon/pull/200). This addendum is branch work, not merged-main or release evidence.
+
+- The production QML root is `native_shell/qml/Table.qml`, loaded by `native_shell/host.py`; `Shell.qml` / HomeLaunchpad navigation references in older inventories are stale. See `docs/UI-EXPOSURE-MAP.md`.
+- Discover exposes People, Objects, Regions and Words in photos. It reuses the existing People desk, Focus, and text/object search modes over the one archive. It does not create separate galleries or trigger a full-library scan.
+- Object search depends on saved object labels and the optional NanoDet BYO pack. Words-in-photos search depends on stored OCR observations and provider availability. A menu entry is not evidence of coverage.
+- `ShellBridge.rescanFolder()` exists, but it reruns broad ingest with `reprocess=True`; it is not a category-specific scan and must not be reused as one. That route can re-enter face analysis and clustering.
+- **Category-specific full-library backfill: implemented on this branch, not release evidence.** Entry points: `semblon.category_backfill.run_category_backfill`, `JobEngine.submit_category`, `Application.submit_category`, `ShellBridge.startCategoryScan`. Coverage is `category_coverage` (schema 6), not the shared observe tier. People writes face rows only (no `persons`, no `faces.person_id`, no clustering). Objects call NanoDet only and return unavailable when the BYO pack is missing. Regions index frame then detail. Words keeps unavailable / read failure / execution failure / empty / text distinct. Discover shows Check people / objects / regions / words plus the job note. It does not scan just because the category was opened.
+- **Search states and the people desk: implemented on this branch, not release evidence.** Object and word search name an unavailable checker, an unreadable photo, a failed check, and a photo not yet checked as different facts. An empty OCR read stays `NO_RESULT`. People backfill faces with status `ok` show on the review board as unassigned; `persons` and `faces.person_id` stay empty, and a later words check does not remove them. `JobEngine` rejects a second category while one is running.
+- Tests actually run here: `python3 -m pytest -q --noconftest tests/test_category_backfill.py tests/test_schema.py tests/test_scan_tiers.py tests/test_discover_categories.py tests/test_observers.py tests/test_production.py` → **69 passed**. Full suite was not run (no PySide6, no onnxruntime). A real archive with the face, NanoDet, DINOv2 and OCR packs was not run.
+
 # Semblon build status — completion programme tracker
 
 **Authority:** this file is the single completion tracker for the 12-issue programme.  

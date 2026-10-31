@@ -1,7 +1,7 @@
 # SEMBLON completion matrix — Blueprint v3 frontend
 
-**Date:** 2026-10-09  
-**Does not replace** `docs/COMPLETION-MATRIX.md`.  
+**Historical snapshot:** 2026-10-09. **Does not replace** `docs/COMPLETION-MATRIX.md`.  
+**Current-source correction — 2026-10-27:** the production shell QML root is `native_shell/qml/Table.qml`; current surfaces and category routes are documented in `docs/UI-EXPOSURE-MAP.md`. This matrix's Windows exercise and counts are historical evidence, not current branch verification.  
 **Annotated blueprint:** `docs/FRONTEND-BLUEPRINT-V3-ANNOTATED.md`
 
 Verdicts: COMPLETE | PARTIAL | NOT EXPOSED | NOT IMPLEMENTED.  
@@ -71,7 +71,7 @@ Columns: backend, adapter, UI, data flow, dependency, branch, Windows, verdict.
 | 44 | Pause / resume | `pause_job`, `unpause_job`, resume submit | `pauseJob`, `resumeJob` | job chrome | engine state | resume-after-cancel is a new submit | existing | pause/unpause/resume test | COMPLETE | Same job door. |
 | 45 | Cancel | `cancel_job` | `cancelJob` | job chrome | `job.cancelled` | cancel is not success | existing | cancel test reaches idle | COMPLETE | Cooperative cancel. |
 | 46 | Library health | `store.integrity_report` | `library_health` | Settings | `noticeText` | missing file → empty; problems → error | read-only | `libraryHealth()` notice | COMPLETE | Report text came back. Does not repair. |
-| 47 | Rescan | `process_folder(reprocess=True)` not on Application | none | none | — | — | did not widen JobEngine | — | NOT EXPOSED | Reprocess is not an application command. |
+| 47 | Check for new photos / rescan | `Application.submit_ingest(..., reprocess=True)` / `ShellBridge.rescanFolder()` | existing ingest job | Settings → Check for new photos | full ingest + cluster | full pipeline dependencies | existing JobEngine | not re-run for this snapshot | PARTIAL | User-facing broad reprocess exists. Category backfill is a separate job (`category_backfill.run_category_backfill`, Discover → Check). Do not reuse this rescan as that job. |
 | 48 | Duplicate review | `duplicates.find_integrity_groups` | `duplicates` | Settings, Advanced | notice | OpenCV miss → unavailable | Advanced only | not invoked | PARTIAL | Button exists. Scan did not run. |
 | 49 | Error reporting | failed `JobResult` | `_terminal_status` | “Last add failed” | job label | failure is not success | existing job result | no failed job in this run | PARTIAL | Path exists. No failure was produced. |
 | 50 | Background activity | `Application.activity_memory` | `activity` | Settings | notice | no run → empty | read-only | not invoked | PARTIAL | Button exists. Not clicked. |
