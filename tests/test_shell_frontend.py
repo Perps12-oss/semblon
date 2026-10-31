@@ -684,12 +684,23 @@ def test_discovery_result_preview_does_not_mutate_bridge_focus_or_search(qml_she
 
     viewer.setProperty("previewId", "match-preview")
     viewer.setProperty("loupeOn", True)
+    # Viewer.visible follows opacity (Behavior animation). Offscreen CI needs a
+    # few frames before child strip.visible reports true through the ancestor.
+    import time
+
+    deadline = time.time() + 2.0
+    while time.time() < deadline:
+        app.processEvents()
+        if strip.property("visible") is True and float(viewer.property("opacity") or 0) > 0.01:
+            break
+        time.sleep(0.02)
     app.processEvents()
 
     assert viewer.property("previewId") == "match-preview"
     assert bridge.focusId == original_focus
     assert bridge.similarState == original_state
     assert bridge.similarCount == original_count
+    assert float(viewer.property("opacity") or 0) > 0.01
     assert strip.property("visible") is True
     assert return_tool.property("visible") is True
     assert open_tool.property("visible") is True

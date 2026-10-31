@@ -48,6 +48,34 @@ Item {
     onShownIdChanged: { resetZoom(); spots.clearTap(); spots.shimmer() }
     onPreviewIdChanged: { resetZoom(); spots.clearTap() }
     function reset() { lx = 0; ly = 0; lw = 0; lh = 0; loupeOn = false; spots.clearTap(); shell.clearDrawnQuery() }
+    function syncSelectionFromShell() {
+        if (!shell || !shell.selectionOnFocus || photo.paintedWidth <= 0)
+            return
+        lx = shell.selectionX * photo.paintedWidth
+        ly = shell.selectionY * photo.paintedHeight
+        lw = shell.selectionW * photo.paintedWidth
+        lh = shell.selectionH * photo.paintedHeight
+    }
+    function zoomToMatchIfNeeded() {
+        if (!shell || photo.paintedWidth <= 0)
+            return
+        var nx = shell.matchX, ny = shell.matchY, nw = shell.matchW, nh = shell.matchH
+        if (nw <= 0 || nh <= 0)
+            return
+        var z = Math.min(8, Math.max(1.8, 0.85 / Math.max(nw, nh)))
+        var cx = ((photo.width - photo.paintedWidth) / 2) + (nx + nw / 2) * photo.paintedWidth
+        var cy = ((photo.height - photo.paintedHeight) / 2) + (ny + nh / 2) * photo.paintedHeight
+        viewer.zoomAt(cx, cy, z / Math.max(viewer.zoom, 0.001))
+    }
+    Connections {
+        target: shell
+        enabled: viewer.active
+        function onSelectionChanged() { viewer.syncSelectionFromShell() }
+        function onSimilarChanged() {
+            if (!shell.selectionOnFocus && shell.matchW > 0)
+                viewer.zoomToMatchIfNeeded()
+        }
+    }
     function search() {
         if (lw < 8 || lh < 8 || photo.paintedWidth <= 0)
             return
@@ -160,6 +188,21 @@ Item {
                     border.width: 3
                     border.color: Theme.amber
                     Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.amber; opacity: 0.12 }
+                }
+                // Match box when the focused photo is a hit (not the query selection).
+                Rectangle {
+                    id: matchBox
+                    objectName: "focusMatchBox"
+                    visible: viewer.previewId === "" && canvas.width > 0 && shell.matchW > 0 && shell.matchH > 0
+                             && !shell.selectionOnFocus
+                    x: shell.matchX * canvas.width
+                    y: shell.matchY * canvas.height
+                    width: Math.max(2, shell.matchW * canvas.width)
+                    height: Math.max(2, shell.matchH * canvas.height)
+                    color: "transparent"
+                    border.width: 3
+                    border.color: Theme.amber
+                    Rectangle { anchors.fill: parent; color: Theme.amber; opacity: 0.10 }
                 }
                 Hotspots {
                     id: spots
@@ -311,6 +354,7 @@ Item {
             width: parent.width - 16
             spacing: 4
             Tool { objectName: "backDiscovery"; width: menuCol.width; label: "Back to the previous find"; visible: shell.canBackDiscovery; onActivated: moreMenu.pick(function () { viewer.previewId = ""; shell.backToDiscovery() }) }
+            Tool { objectName: "keepDiscovery"; width: menuCol.width; label: "Keep this find"; visible: shell.similarState === "ready" && shell.selectionOnFocus; onActivated: moreMenu.pick(function () { shell.keepDiscovery() }) }
             Tool { objectName: "seeThisDay"; width: menuCol.width; label: "See this day"; visible: viewer.previewId === ""; onActivated: moreMenu.pick(function () { shell.showDayAroundFocus(); if (shell.scopeKind === "day") { shell.escape(); viewer.closed() } }) }
             Tool { objectName: "wholePhoto"; width: menuCol.width; label: "Find photos like this one"; hint: "Shortcut W"; onActivated: moreMenu.pick(shell.findSimilarWhole) }
             Tool { objectName: "similarAction"; width: menuCol.width; label: "Find the picked area elsewhere"; hint: "Shortcut S"; visible: shell.selectionOnFocus; onActivated: moreMenu.pick(shell.findSimilar) }
@@ -457,7 +501,30 @@ Item {
                 Accessible.role: Accessible.Button
                 Accessible.name: "Preview match " + (index + 1)
                 Keys.onReturnPressed: { viewer.previewId = mediaId; viewer.forceActiveFocus() }
-                Image { anchors.fill: parent; source: "image://archive/t/" + mediaId; fillMode: Image.PreserveAspectCrop; asynchronous: true }
+                Image {
+                    id: thumb
+                    anchors.fill: parent
+                    source: "image://archive/t/" + mediaId
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                }
+                // Fit (not crop) so the normalized match box stays on the pictured region.
+                Item {
+                    anchors.centerIn: thumb
+                    width: thumb.paintedWidth
+                    height: thumb.paintedHeight
+                    visible: matchW > 0 && matchH > 0
+                    Rectangle {
+                        objectName: "stripMatchBox"
+                        x: matchX * parent.width
+                        y: matchY * parent.height
+                        width: Math.max(2, matchW * parent.width)
+                        height: Math.max(2, matchH * parent.height)
+                        color: "transparent"
+                        border.width: 2
+                        border.color: Theme.amber
+                    }
+                }
                 Rectangle { anchors.fill: parent; color: "transparent"; border.width: parent.activeFocus ? 3 : 0; border.color: Theme.amber }
                 Rectangle { anchors.fill: parent; color: viewer.previewId === mediaId ? Theme.amber : "transparent"; opacity: viewer.previewId === mediaId ? 0.14 : 0; border.width: viewer.previewId === mediaId ? 2 : 0; border.color: Theme.amber }
                 MouseArea { anchors.fill: parent; onClicked: { viewer.previewId = mediaId; viewer.forceActiveFocus() } }

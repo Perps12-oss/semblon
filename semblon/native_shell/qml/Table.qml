@@ -18,6 +18,7 @@ Window {
     property bool settingsOpen: false
     property bool momentsOpen: false
     property bool discoverOpen: false
+    property bool keepsOpen: false
     property bool jobMini: false
     Connections {
         target: shell
@@ -60,6 +61,8 @@ Window {
         else if (id === "v-day") { shell.showDayAroundFocus(); if (shell.scopeKind === "day") { shell.escape(); viewer.closed() } }
         else if (id === "v-more") shell.setSearchQuality("max")
         else if (id === "v-closer") shell.setSearchQuality("fast")
+        else if (id === "v-keep") shell.keepDiscovery()
+        else if (id === "keeps") keepsOpen = true
     }
 
     Roll {
@@ -357,6 +360,8 @@ Window {
             { id: "v-describe", label: "Describe this area" },
             { id: "v-ask", label: "Ask about this photo" },
             { id: "v-day", label: "See this day" },
+            { id: "v-keep", label: "Keep this find" },
+            { id: "keeps", label: "Open kept finds" },
             { id: "v-more", label: "Show more matches" },
             { id: "v-closer", label: "Show fewer, closer matches" },
             { id: "settings", label: "Settings" }
@@ -373,6 +378,7 @@ Window {
             { id: "overlooked", label: "Review overlooked faces" },
             { id: "detail", label: "Find by description" },
             { id: "tidy", label: "Tidy up copies" },
+            { id: "keeps", label: "Open kept finds" },
             { id: "zoomin", label: "Bigger pictures" },
             { id: "zoomout", label: "Smaller pictures" },
             { id: "dark", label: "Use Darkroom look" },
@@ -380,6 +386,78 @@ Window {
             { id: "settings", label: "Settings" }
         ]
         onChosen: function (id) { win.run(id) }
+    }
+
+    // Kept finds: list / open / rename / delete against {store}.discoveries.json.
+    Rectangle {
+        objectName: "keepsPanel"
+        visible: win.keepsOpen
+        anchors.fill: parent
+        color: Theme.scrim
+        z: 40
+        MouseArea { anchors.fill: parent; onClicked: win.keepsOpen = false }
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(480, parent.width - 48)
+            height: Math.min(420, parent.height - 48)
+            radius: Theme.radius
+            color: Theme.surface
+            border.width: 1
+            border.color: Theme.line
+            MouseArea { anchors.fill: parent }
+            Column {
+                anchors.fill: parent
+                anchors.margins: Theme.pad
+                spacing: Theme.gap
+                Row {
+                    width: parent.width
+                    spacing: Theme.gap
+                    Text {
+                        text: "Kept finds"
+                        font.family: Theme.display
+                        font.pixelSize: Theme.lead
+                        color: Theme.text
+                        width: parent.width - 80
+                    }
+                    Tool { label: "Close"; onActivated: win.keepsOpen = false }
+                }
+                Text {
+                    visible: !shell || shell.keptCount === 0
+                    text: "No kept finds yet. From a region search, choose Keep this find."
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                    font.family: Theme.ui
+                    font.pixelSize: Theme.small
+                    color: Theme.muted
+                }
+                Repeater {
+                    model: shell ? shell.keptCount : 0
+                    delegate: Row {
+                        width: parent.width
+                        spacing: 6
+                        Tool {
+                            objectName: "openKept" + index
+                            width: parent.width - 160
+                            label: shell.keptLabel(index)
+                            onActivated: { shell.openKept(index); win.keepsOpen = false }
+                        }
+                        Tool {
+                            objectName: "renameKept" + index
+                            label: "Rename"
+                            onActivated: {
+                                var next = shell.keptLabel(index).split(" · ")[0]
+                                shell.renameKept(index, next + " (renamed)")
+                            }
+                        }
+                        Tool {
+                            objectName: "deleteKept" + index
+                            label: "Delete"
+                            onActivated: shell.deleteKept(index)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Shortcut { sequence: "Ctrl+K"; onActivated: palette.open = !palette.open }
