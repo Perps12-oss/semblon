@@ -451,62 +451,60 @@ Window {
                 }
                 Repeater {
                     model: shell ? shell.keptCount : 0
-                    delegate: Column {
+                    delegate: Row {
                         width: parent.width
-                        spacing: 4
-                        Row {
-                            width: parent.width
-                            spacing: 6
-                            visible: win.renameKeptIndex !== index
-                            Tool {
-                                objectName: "openKept" + index
-                                width: parent.width - 160
-                                label: shell.keptLabel(index)
-                                onActivated: { shell.openKept(index); win.keepsOpen = false; win.cancelRenameKept() }
-                            }
-                            Tool {
-                                objectName: "renameKept" + index
-                                label: "Rename"
-                                onActivated: win.beginRenameKept(index)
-                            }
-                            Tool {
-                                objectName: "deleteKept" + index
-                                label: "Delete"
-                                onActivated: { shell.deleteKept(index); if (win.renameKeptIndex === index) win.cancelRenameKept() }
-                            }
+                        spacing: 6
+                        // Hide the row being renamed; one shared editor sits below.
+                        visible: win.renameKeptIndex !== index
+                        Tool {
+                            objectName: "openKept" + index
+                            width: parent.width - 160
+                            label: shell.keptLabel(index)
+                            onActivated: { shell.openKept(index); win.keepsOpen = false; win.cancelRenameKept() }
                         }
-                        Row {
-                            width: parent.width
-                            spacing: 6
-                            visible: win.renameKeptIndex === index
-                            Rectangle {
-                                width: parent.width - 140
-                                height: 34
-                                radius: 3
-                                color: "transparent"
-                                border.width: renameField.activeFocus ? 2 : 1
-                                border.color: renameField.activeFocus ? Theme.amber : Theme.line
-                                TextInput {
-                                    id: renameField
-                                    objectName: "renameKeptField"
-                                    anchors.fill: parent
-                                    anchors.margins: 8
-                                    text: win.renameKeptDraft
-                                    font.family: Theme.ui
-                                    font.pixelSize: Theme.small
-                                    color: Theme.text
-                                    selectByMouse: true
-                                    clip: true
-                                    Accessible.name: "New name for this kept find"
-                                    onTextChanged: win.renameKeptDraft = text
-                                    onAccepted: win.commitRenameKept()
-                                    Component.onCompleted: { forceActiveFocus(); selectAll() }
-                                }
-                            }
-                            Tool { objectName: "renameKeptSave"; label: "Save"; primary: true; onActivated: win.commitRenameKept() }
-                            Tool { objectName: "renameKeptCancel"; label: "Cancel"; onActivated: win.cancelRenameKept() }
+                        Tool {
+                            objectName: "renameKept" + index
+                            label: "Rename"
+                            onActivated: win.beginRenameKept(index)
+                        }
+                        Tool {
+                            objectName: "deleteKept" + index
+                            label: "Delete"
+                            onActivated: { shell.deleteKept(index); if (win.renameKeptIndex === index) win.cancelRenameKept() }
                         }
                     }
+                }
+                // One TextInput outside the Repeater — avoids id-in-delegate issues on Windows.
+                Row {
+                    width: parent.width
+                    spacing: 6
+                    visible: win.renameKeptIndex >= 0
+                    Rectangle {
+                        width: parent.width - 140
+                        height: 34
+                        radius: 3
+                        color: "transparent"
+                        border.width: renameKeptField.activeFocus ? 2 : 1
+                        border.color: renameKeptField.activeFocus ? Theme.amber : Theme.line
+                        TextInput {
+                            id: renameKeptField
+                            objectName: "renameKeptField"
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            text: win.renameKeptDraft
+                            font.family: Theme.ui
+                            font.pixelSize: Theme.small
+                            color: Theme.text
+                            selectByMouse: true
+                            clip: true
+                            Accessible.name: "New name for this kept find"
+                            onTextChanged: win.renameKeptDraft = text
+                            onAccepted: win.commitRenameKept()
+                            onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() }
+                        }
+                    }
+                    Tool { objectName: "renameKeptSave"; label: "Save"; primary: true; onActivated: win.commitRenameKept() }
+                    Tool { objectName: "renameKeptCancel"; label: "Cancel"; onActivated: win.cancelRenameKept() }
                 }
             }
         }

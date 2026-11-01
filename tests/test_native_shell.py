@@ -126,6 +126,36 @@ def test_shell_qml_shows_time_and_empty_archive(tmp_path, monkeypatch):
     shutdown_shell(engine)
 
 
+def test_build_shell_surfaces_qml_errors(tmp_path, monkeypatch):
+    """Windows launcher only captures stderr — load failures must name the QML error."""
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtWidgets import QApplication
+
+    import semblon.native_shell.host as host
+
+    bad = tmp_path / "Broken.qml"
+    bad.write_text("import QtQuick\nItem {\n    this is not valid qml\n}\n", encoding="utf-8")
+    monkeypatch.setattr(host, "QML", bad)
+    app = QApplication.instance() or QApplication([])
+    with pytest.raises(RuntimeError, match="failed to load") as raised:
+        host.build_shell(tmp_path / "empty.sqlite", app=app)
+    assert "Broken.qml" in str(raised.value)
+    # Prefer a real parser message over the empty fallback.
+    assert "no QML errors reported" not in str(raised.value) or "Broken" in str(raised.value)
+
+
+def test_keeps_rename_editor_lives_outside_repeater():
+    table = Path("semblon/native_shell/qml/Table.qml").read_text(encoding="utf-8")
+    assert 'objectName: "renameKeptField"' in table
+    assert "id: renameKeptField" in table
+    # Editor must not sit inside the keeps Repeater delegate (Windows id issues).
+    repeater = table.split("Repeater {", 1)[1]
+    keeps_block = repeater.split("// One TextInput outside the Repeater", 1)[0]
+    assert "renameKeptField" not in keeps_block
+
+
 def test_shell_focus_roundtrip_follows_the_time_lens(tmp_path, monkeypatch):
     pytest.importorskip("PySide6")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")

@@ -59,13 +59,24 @@ def configure_logging(directory: Path | None = None) -> Path | None:
     _LOG.propagate = False
 
     def _hook(exc_type, exc, tb):
-        _LOG.error("unhandled %s", getattr(exc_type, "__name__", "error"), exc_info=(exc_type, exc, tb))
+        try:
+            _LOG.error(
+                "unhandled %s",
+                getattr(exc_type, "__name__", "error"),
+                exc_info=(exc_type, exc, tb),
+            )
+        except Exception:
+            # Never let logging (e.g. Windows rotate lock) hide the real crash.
+            pass
         sys.__excepthook__(exc_type, exc, tb)
 
     sys.excepthook = _hook
+    # faulthandler must not hold the rotating log open — on Windows that blocks
+    # rollover (WinError 32) and then masks the real exception with a Logging error.
+    fault_path = dest_dir / "semblon-fault.log"
     try:
-        handle = path.open("a", encoding="utf-8")
-        faulthandler.enable(file=handle, all_threads=True)
+        fault_handle = fault_path.open("a", encoding="utf-8")
+        faulthandler.enable(file=fault_handle, all_threads=True)
     except OSError:
         faulthandler.enable(all_threads=True)
     _READY = True

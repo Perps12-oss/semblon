@@ -44,7 +44,7 @@ QtObject {
     readonly property int radius: 10
     readonly property int pill: 999
     readonly property int edge: 60
-readonly property int gutter: 5
+    readonly property int gutter: 5
 
     // Motion. Reduced motion turns every duration to zero.
     readonly property int fast: reducedMotion ? 0 : 120

@@ -88,6 +88,7 @@ Item {
     Connections {
         target: shell
         enabled: viewer.active
+        ignoreUnknownSignals: true
         function onSelectionChanged() { viewer.syncSelectionFromShell() }
         // Zoom once when a hit is opened as Focus — not on every similar strip refresh.
         function onFocusMatchZoomRequested() { viewer.zoomToMatchIfNeeded() }
@@ -224,8 +225,7 @@ Item {
                 Rectangle {
                     id: previewMatchBox
                     objectName: "previewMatchBox"
-                    visible: viewer.previewId !== "" && canvas.width > 0
-                             && viewer.previewMatchW > 0 && viewer.previewMatchH > 0
+                    visible: viewer.previewId !== "" && canvas.width > 0 && viewer.previewMatchW > 0 && viewer.previewMatchH > 0
                     x: viewer.previewMatchX * canvas.width
                     y: viewer.previewMatchY * canvas.height
                     width: Math.max(2, viewer.previewMatchW * canvas.width)

@@ -66,15 +66,30 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     bridge = ShellBridge(model, jobs)
     bridge.setParent(qapp)
     engine = QQmlApplicationEngine()
+    # Explicit import path so Windows file:// loads still resolve qmldir singles.
+    engine.addImportPath(str(QML.parent))
     engine.addImageProvider("archive", ArchiveImageProvider(bridge.path_for, thumb_cache_dir(path)))
     engine.addImageProvider("face", FaceCropImageProvider(bridge.face_crop_spec))
     engine.rootContext().setContextProperty("shell", bridge)
     engine.rootContext().setContextProperty("archiveModel", model)
     engine.rootContext().setContextProperty("similarModel", bridge.similar_model)
     engine.rootContext().setContextProperty("peopleModel", bridge.people_model)
+    qml_errors: list[str] = []
+
+    def _on_warnings(errors) -> None:
+        for err in errors:
+            try:
+                qml_errors.append(str(err.toString()))
+            except Exception:
+                qml_errors.append(str(err))
+
+    engine.warnings.connect(_on_warnings)
     engine.load(QUrl.fromLocalFile(str(QML)))
     if not engine.rootObjects():
-        raise RuntimeError(f"archive shell failed to load {QML}")
+        detail = "; ".join(qml_errors) if qml_errors else "no QML errors reported"
+        message = f"archive shell failed to load {QML}: {detail}"
+        print(message, flush=True)
+        raise RuntimeError(message)
     # Keep Python owners alive for the engine's lifetime.
     engine._semblon_bridge = bridge  # type: ignore[attr-defined]
     engine._semblon_model = model  # type: ignore[attr-defined]
