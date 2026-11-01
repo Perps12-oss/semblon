@@ -115,7 +115,9 @@ def test_keep_rename_delete_atomic(tmp_path, monkeypatch):
         assert bridge.keptCount == 0
         assert not bridge._keeps_file().exists()
         table = Path("semblon/native_shell/qml/Table.qml").read_text(encoding="utf-8")
-        assert "renameKeptField" in table
+        assert 'objectName: "renameKeptField"' in table
+        assert "id: renameKeptField" in table
         assert "(renamed)" not in table
+        assert "One TextInput outside the Repeater" in table
     finally:
         shutdown_shell(engine)

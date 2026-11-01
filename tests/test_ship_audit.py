@@ -503,8 +503,17 @@ def test_log_redacts_home_and_names(tmp_path, monkeypatch):
         text = redact(str(Path.home() / "secret") + " display_name='Ada'")
         assert "Ada" not in text
         assert str(Path.home()) not in text
+        # Fault dump is a sibling file so rotate can rename semblon.log on Windows.
+        assert path.name == "semblon.log"
+        assert (tmp_path / "semblon-fault.log").exists()
     finally:
         sys.excepthook = previous
+
+
+def test_log_fault_file_is_separate_from_rotating_log():
+    src = Path("semblon/logging_setup.py").read_text(encoding="utf-8")
+    assert 'fault_path = dest_dir / "semblon-fault.log"' in src
+    assert "faulthandler.enable(file=fault_handle" in src
 
 
 def test_live_retention_chunks_past_the_variable_limit(tmp_path):
