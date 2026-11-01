@@ -7,7 +7,9 @@ import numpy as np
 from semblon.native_shell.adapter import ArchiveAdapter
 from semblon.region_search import (
     drop_low_info_tokens,
+    geometric_consensus,
     is_low_info_crop,
+    shortlist_media_by_cls,
     translation_consensus,
 )
 from semblon.selection_retrieval import _strip_label_from_channels
@@ -137,3 +139,87 @@ def test_score_one_block_hides_inconsistent_union():
     assert item is not None
     assert item["location_uncertain"] is True
     assert item["match_norm"] == [0.0, 0.0, 0.0, 0.0]
+
+
+def test_geometric_consensus_accepts_scaled_match():
+    # Spread query points so translation-only cannot absorb a 1.8× scale.
+    pairs = []
+    scale = 1.8
+    tx, ty = 0.05, 0.02
+    for i in range(6):
+        q_nx = 0.05 + 0.15 * i
+        q_ny = 0.1 + 0.12 * (i % 3)
+        g_nx = scale * q_nx + tx
+        g_ny = scale * q_ny + ty
+        pairs.append((1.0, q_nx, q_ny, g_nx, g_ny, (g_nx * 100, g_ny * 100, g_nx * 100 + 6, g_ny * 100 + 6)))
+    boxes, size = translation_consensus(pairs, tol=0.05, min_keep=4)
+    assert boxes == []  # scale≠1 must not pass translation-only
+    boxes, size, model = geometric_consensus(pairs, tol=0.05, min_keep=4)
+    assert size >= 4
+    assert len(boxes) >= 4
+    assert model is not None
+    assert 1.6 <= float(model["scale"]) <= 2.0
+
+
+def test_shortlist_media_by_cls_ranks_region_neighbours(tmp_path, monkeypatch):
+    from semblon.region_encoder import OUTPUT_DIM, MODALITY_REGION, pack_id_for, KNOWN_SHA256, WEIGHT_NAME
+    from semblon.store import connect, init_db
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    init_db(conn)
+    conn.execute(
+        """INSERT INTO runs(run_id, started_at, software_version, pack_id,
+           embedding_dim, embedding_norm, config_json, runtime_json, arch, execution)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        ("r1", "t", "0.0.1", "pack-a", OUTPUT_DIM, "l2", "{}", "{}", "x64", "native"),
+    )
+    pack = pack_id_for(KNOWN_SHA256[WEIGHT_NAME])
+    query = np.zeros(OUTPUT_DIM, dtype=np.float32)
+    query[0] = 1.0
+    near = query.copy()
+    near[0] = 0.95
+    near[1] = (1.0 - 0.95**2) ** 0.5
+    far = np.zeros(OUTPUT_DIM, dtype=np.float32)
+    far[2] = 1.0
+    for media_id, vec in (("m-near", near), ("m-far", far), ("m-query", query)):
+        path = tmp_path / f"{media_id}.png"
+        path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 16)
+        conn.execute(
+            "INSERT INTO media(media_id, source_type, path, sha256, width, height, mtime_ns, byte_size) VALUES (?,?,?,?,?,?,?,?)",
+            (media_id, "folder", str(path), media_id, 32, 32, 0, 1),
+        )
+        obs = f"o-{media_id}"
+        item = f"i-{media_id}"
+        conn.execute(
+            "INSERT INTO observations(observation_id, media_id, frame_id, t_ms, run_id) VALUES (?,?,?,?,?)",
+            (obs, media_id, None, None, "r1"),
+        )
+        conn.execute(
+            """INSERT INTO observation_items(item_id, observation_id, run_id, kind, provider,
+               bbox_x1, bbox_y1, bbox_x2, bbox_y2, score, payload_json)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (item, obs, "r1", "clip", "dinov2", 0, 0, 8, 8, 1.0, "{}"),
+        )
+        blob = (vec / max(float(np.linalg.norm(vec)), 1e-8)).astype(np.float32).tobytes()
+        conn.execute(
+            """INSERT INTO embeddings(embedding_id, item_id, modality, pack_id, embedding_dim, embedding)
+               VALUES (?,?,?,?,?,?)""",
+            (f"e-{media_id}", item, MODALITY_REGION, pack, OUTPUT_DIM, blob),
+        )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(
+        "semblon.region_search.active_pack",
+        lambda root=None: (pack, OUTPUT_DIM),
+    )
+    ids, status = shortlist_media_by_cls(
+        store,
+        query.astype(np.float32).tobytes(),
+        exclude_media_id="m-query",
+        limit=2,
+    )
+    assert status == "ok"
+    assert ids[0] == "m-near"
+    assert "m-query" not in ids

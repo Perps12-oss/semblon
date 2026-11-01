@@ -614,12 +614,16 @@ def _norm_xy(x: float, y: float, width: int, height: int) -> tuple[float, float]
     return (max(0.0, min(1.0, float(x) / w)), max(0.0, min(1.0, float(y) / h)))
 
 
-# Translation-consensus for match boxes. Raw argmax unions track query corners
-# when tokens carry absolute position; consensus keeps only a rigid offset.
+# Geometric consensus for match boxes. Raw argmax unions track query corners
+# when tokens carry absolute position; consensus keeps a rigid similarity.
 _CONSENSUS_TOL = 0.08
 _CONSENSUS_MIN = 3
+_SCALE_MIN = 0.5
+_SCALE_MAX = 2.0
 _LOW_INFO_STD = 12.0
 _LOW_INFO_TOKEN_VAR = 1e-4
+# Stage-1 crop CLS shortlist size before patch verify (exact dot product; not FAISS).
+STAGE1_K = 50
 
 
 def is_low_info_crop(crop) -> bool:
@@ -666,36 +670,88 @@ def drop_low_info_tokens(
     return filtered, boxes
 
 
+def _inliers_for_similarity(
+    pairs: list[tuple[float, float, float, float, float, tuple[float, float, float, float]]],
+    *,
+    scale: float,
+    tx: float,
+    ty: float,
+    tol: float,
+) -> list[tuple[float, float, float, float, float, tuple[float, float, float, float]]]:
+    kept = []
+    for item in pairs:
+        _w, qx, qy, gx, gy, _box = item
+        pred_x = float(scale) * float(qx) + float(tx)
+        pred_y = float(scale) * float(qy) + float(ty)
+        if abs(float(gx) - pred_x) <= float(tol) and abs(float(gy) - pred_y) <= float(tol):
+            kept.append(item)
+    return kept
+
+
+def geometric_consensus(
+    pairs: list[tuple[float, float, float, float, float, tuple[float, float, float, float]]],
+    *,
+    tol: float = _CONSENSUS_TOL,
+    min_keep: int = _CONSENSUS_MIN,
+    scale_min: float = _SCALE_MIN,
+    scale_max: float = _SCALE_MAX,
+) -> tuple[list[tuple[float, float, float, float]], int, dict | None]:
+    """Largest subset of (q→g) matches that share one scale+translation.
+
+    Each pair is ``(weight, q_nx, q_ny, g_nx, g_ny, g_box)``. Returns the
+    consensus gallery boxes, consensus size, and the fitted model
+    ``{scale, tx, ty}``. Empty boxes means location uncertain — callers must
+    not invent a query-rect fallback.
+    """
+    if len(pairs) < 2:
+        return [], 0, None
+    need = max(2, min(int(min_keep), len(pairs)))
+    best: list[tuple[float, float, float, float, float, tuple[float, float, float, float]]] = []
+    best_model: dict | None = None
+
+    def consider(scale: float, tx: float, ty: float) -> None:
+        nonlocal best, best_model
+        if scale < float(scale_min) or scale > float(scale_max):
+            return
+        kept = _inliers_for_similarity(pairs, scale=scale, tx=tx, ty=ty, tol=tol)
+        if len(kept) > len(best):
+            best = kept
+            best_model = {"scale": float(scale), "tx": float(tx), "ty": float(ty)}
+
+    # Translation-only hypotheses (scale = 1) — covers the Slice 1 case.
+    for _w, qx, qy, gx, gy, _box in pairs:
+        consider(1.0, float(gx) - float(qx), float(gy) - float(qy))
+
+    # Scale+translation from correspondence pairs.
+    for i in range(len(pairs)):
+        for j in range(i + 1, len(pairs)):
+            _wi, qxi, qyi, gxi, gyi, _bi = pairs[i]
+            _wj, qxj, qyj, gxj, gyj, _bj = pairs[j]
+            dq = ((float(qxi) - float(qxj)) ** 2 + (float(qyi) - float(qyj)) ** 2) ** 0.5
+            dg = ((float(gxi) - float(gxj)) ** 2 + (float(gyi) - float(gyj)) ** 2) ** 0.5
+            if dq < 1e-4:
+                continue
+            scale = dg / dq
+            tx = float(gxi) - scale * float(qxi)
+            ty = float(gyi) - scale * float(qyi)
+            consider(scale, tx, ty)
+
+    if len(best) < need:
+        return [], len(best), None
+    return [item[5] for item in best], len(best), best_model
+
+
 def translation_consensus(
     pairs: list[tuple[float, float, float, float, float, tuple[float, float, float, float]]],
     *,
     tol: float = _CONSENSUS_TOL,
     min_keep: int = _CONSENSUS_MIN,
 ) -> tuple[list[tuple[float, float, float, float]], int]:
-    """Largest subset of (q→g) matches that share one 2D translation.
-
-    Each pair is ``(weight, q_nx, q_ny, g_nx, g_ny, g_box)``. Returns the
-    consensus gallery boxes and the consensus size. Empty boxes means location
-    uncertain — callers must not invent a query-rect fallback.
-    """
-    if len(pairs) < 2:
-        return [], 0
-    need = max(2, min(int(min_keep), len(pairs)))
-    best: list[tuple[float, float, float, float, float, tuple[float, float, float, float]]] = []
-    for _w, qx, qy, gx, gy, _box in pairs:
-        tx = float(gx) - float(qx)
-        ty = float(gy) - float(qy)
-        kept = [
-            item
-            for item in pairs
-            if abs((float(item[3]) - float(item[1])) - tx) <= float(tol)
-            and abs((float(item[4]) - float(item[2])) - ty) <= float(tol)
-        ]
-        if len(kept) > len(best):
-            best = kept
-    if len(best) < need:
-        return [], len(best)
-    return [item[5] for item in best], len(best)
+    """Backward-compatible wrapper: scale fixed at 1. Prefer geometric_consensus."""
+    boxes, size, _model = geometric_consensus(
+        pairs, tol=tol, min_keep=min_keep, scale_min=1.0, scale_max=1.0
+    )
+    return boxes, size
 
 
 def load_patch_groups(store: Path, conn, pack: str, dim: int) -> tuple[list[dict], bool]:
@@ -824,7 +880,7 @@ def _score_one_block(
             "why": "patch max-sim without a verified location; not a person",
         }
     pairs.sort(key=lambda item: -item[0])
-    consensus_boxes, consensus_size = translation_consensus(pairs)
+    consensus_boxes, consensus_size, model = geometric_consensus(pairs)
     if not consensus_boxes:
         return {
             "item_id": None,
@@ -838,6 +894,7 @@ def _score_one_block(
             "above_floor": above,
             "consensus_size": int(consensus_size),
             "location_uncertain": True,
+            "transform": None,
             "why": "patch matches disagreed on location; not a person",
         }
     span = _union_box(consensus_boxes)
@@ -864,7 +921,8 @@ def _score_one_block(
         "above_floor": above,
         "consensus_size": int(consensus_size),
         "location_uncertain": False,
-        "why": "patch max-sim with translation consensus; not a person",
+        "transform": model,
+        "why": "patch max-sim with scale+translation verify; not a person",
     }
 
 
@@ -969,6 +1027,54 @@ def roi_query_tokens(
     return np.ascontiguousarray(matrix[rows], dtype=np.float32), boxes, size
 
 
+def shortlist_media_by_cls(
+    store: Path,
+    cls_blob: bytes,
+    *,
+    exclude_media_id: str | None = None,
+    limit: int = STAGE1_K,
+    cancelled=None,
+) -> tuple[list[str], str]:
+    """Stage 1: exact crop-CLS neighbours in the region embedding space.
+
+    Uses ``modality=region`` only (never whole-frame ``scene``). Returns
+    ``(media_ids, status)`` where status is ``ok``, ``empty``, or ``unavailable``.
+    Exact SQLite / derived-matrix scan — not an approximate ANN library.
+    """
+    pack = active_pack()
+    if pack is None or not cls_blob:
+        return [], "unavailable"
+    pack_id, dim = pack
+    # Over-fetch item hits so per-media dedupe still fills the shortlist.
+    rec = search_vector(
+        store,
+        blob=cls_blob,
+        modality=MODALITY_REGION,
+        pack_id=pack_id,
+        dim=dim,
+        limit=max(int(limit) * 4, int(limit)),
+        exclude_media_id=exclude_media_id,
+        min_score=None,
+        cancelled=cancelled,
+    )
+    status = str(rec.get("status") or "")
+    if status == "UNAVAILABLE":
+        return [], "unavailable"
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for item in rec.get("items") or []:
+        media_id = str(item.get("media_id") or "")
+        if not media_id or media_id in seen:
+            continue
+        seen.add(media_id)
+        ordered.append(media_id)
+        if len(ordered) >= int(limit):
+            break
+    if not ordered:
+        return [], "empty"
+    return ordered, "ok"
+
+
 def search_patches(
     store: Path,
     crop,
@@ -984,13 +1090,15 @@ def search_patches(
     query_box: tuple[int, int, int, int] | None = None,
     shortlist_out: list | None = None,
     prefer_crop_forward: bool = True,
+    stage1_k: int = STAGE1_K,
 ) -> dict:
-    """Late interaction of the query crop against stored content patches.
+    """Two-stage region search: crop CLS shortlist, then patch verify.
 
-    Focus region search uses crop-forward tokens (``prefer_crop_forward=True``)
-    so absolute positional embeddings from full-frame index tokens cannot lock
-    every match box to the query corner. Match boxes come only from a
-    translation-consensus subset of per-token argmaxes — never a raw union.
+    Focus uses crop-forward tokens so full-frame index tokens cannot lock
+    every match box to the query corner. Stage 1 ranks photos by crop CLS
+    against ``modality=region`` (exact neighbours). Stage 2 runs late
+    interaction only on that shortlist. Match boxes require scale+translation
+    geometric consensus — never a raw argmax union.
     """
     pack = pack_id_patches(KNOWN_SHA256[WEIGHT_NAME])
     empty = {
@@ -1014,6 +1122,7 @@ def search_patches(
     query_boxes: list[tuple[float, float, float, float]] | None = None
     query_size: tuple[int, int] | None = None
     query_source = "crop-forward"
+    cls_blob: bytes | None = None
     crop_arr = np.asarray(crop) if crop is not None else None
     if prefer_crop_forward:
         ready, missing = probe_region_pack()
@@ -1021,7 +1130,7 @@ def search_patches(
             empty["reason"] = missing or empty["reason"]
             return empty
         try:
-            _cls, records = content_patch_records(crop, interactive=True, cancelled=cancelled)
+            cls_blob, records = content_patch_records(crop, interactive=True, cancelled=cancelled)
         except RegionPackError as exc:
             if cancelled is not None and cancelled():
                 empty["status"] = "CANCELLED"
@@ -1065,7 +1174,7 @@ def search_patches(
             empty["reason"] = missing or empty["reason"]
             return empty
         try:
-            _cls, records = content_patch_records(crop, interactive=True, cancelled=cancelled)
+            cls_blob, records = content_patch_records(crop, interactive=True, cancelled=cancelled)
         except RegionPackError as exc:
             if cancelled is not None and cancelled():
                 empty["status"] = "CANCELLED"
@@ -1108,6 +1217,32 @@ def search_patches(
         )
         empty["error_id"] = "region.NO_PATCH_INDEX"
         return empty
+
+    stage1_ids: list[str] = []
+    stage1_status = "skipped"
+    full_groups = groups
+    if prefer_crop_forward and cls_blob:
+        stage1_ids, stage1_status = shortlist_media_by_cls(
+            path,
+            cls_blob,
+            exclude_media_id=exclude_media_id,
+            limit=max(int(stage1_k), int(limit)),
+            cancelled=cancelled,
+        )
+        if stage1_status == "ok" and stage1_ids:
+            allow = set(stage1_ids)
+            filtered = [group for group in groups if str(group.get("media_id") or "") in allow]
+            if filtered:
+                rank = {media_id: index for index, media_id in enumerate(stage1_ids)}
+                filtered.sort(key=lambda group: rank.get(str(group.get("media_id") or ""), 10**9))
+                groups = filtered
+                if shortlist_out is not None:
+                    shortlist_out.extend(stage1_ids)
+            else:
+                # CLS neighbours exist but none have a patch map yet — keep full gallery.
+                stage1_status = "no_patch_overlap"
+                groups = full_groups
+
     score_kwargs = dict(
         exclude_media_id=exclude_media_id,
         cancelled=cancelled,
@@ -1117,8 +1252,8 @@ def search_patches(
         query_boxes=query_boxes,
         query_size=query_size,
     )
-    if shortlist_out is not None:
-        # A wider, unfiltered ranking decides which photos deserve fine detail first.
+    if shortlist_out is not None and stage1_status != "ok":
+        # No CLS shortlist — fall back to a weak full-gallery ranking for detail promote.
         wide = score_patch_groups(
             query,
             groups,
@@ -1143,6 +1278,12 @@ def search_patches(
             "h": int(query_box[3]),
         }
     uncertain = sum(1 for item in items if item.get("location_uncertain"))
+    stage1_meta = {
+        "stage1_status": stage1_status,
+        "stage1_k": int(stage1_k),
+        "stage1_count": len(stage1_ids),
+        "verify": "scale+translation",
+    }
     if not items:
         return {
             "kind": "region_similar",
@@ -1161,6 +1302,7 @@ def search_patches(
             "query_source": query_source,
             "crop_rect": crop_rect,
             "location_uncertain_count": 0,
+            **stage1_meta,
             "note": "A patch match is not a named person.",
         }
     located = sum(1 for item in items if not item.get("location_uncertain"))
@@ -1186,6 +1328,7 @@ def search_patches(
         "query_source": query_source,
         "crop_rect": crop_rect,
         "location_uncertain_count": int(uncertain),
+        **stage1_meta,
         "note": "Patch-map match. Not a name and not colour.",
     }
 

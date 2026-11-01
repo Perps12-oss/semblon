@@ -241,10 +241,17 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 ## Behaviour landed — Lens-local region honesty (2026-11-01)
 
 1. Focus region search **crop-forwards** the selection (`prefer_crop_forward=True`). Full-frame `roi_query_tokens` stay available for lab (`prefer_crop_forward=False`) but are not the Focus default — they carry absolute positional signal that locked match boxes to the query corner.
-2. Match boxes require **translation consensus** over per-token argmaxes (`translation_consensus` in `region_search`). Inconsistent correspondences publish `location_uncertain` with a zero `match_norm` — the strip draws no box rather than a corner-tracking union.
+2. Match boxes require **geometric consensus** over per-token argmaxes. Slice 2D upgrades this to **scale+translation** verify (`geometric_consensus`); inconsistent correspondences publish `location_uncertain` with a zero `match_norm`.
 3. Flat / low-information crops gate to **Colour only** with `region.LOW_INFO` and the strip line “pick a more detailed area.” They do not claim **Similar look**.
-4. Adapter / fuse never override a colour basis with a **Similar look** `strip_label`. Advanced mode exposes `searchDebugLine`: door | basis | engine | query_source | crop | hit norms | uncertain count.
+4. Adapter / fuse never override a colour basis with a **Similar look** `strip_label`. Advanced mode exposes `searchDebugLine`: door | basis | engine | query_source | crop | stage1 | verify | hit norms | uncertain count.
 5. Tests: `tests/test_region_localization.py` (+ discovery slice D / selection retrieval / region search / match geometry / lens responsiveness). Identity thresholds and face door unchanged.
+
+## Behaviour landed — two-stage region verify / Slice 2D (2026-11-01)
+
+1. Stage 1: crop CLS exact neighbours in `modality=region` (`shortlist_media_by_cls`, K≈50). Never scans whole-frame `scene`. Not FAISS — SQLite / exact matrix.
+2. Stage 2: patch late-interaction only against that shortlist (full gallery only when Stage 1 is unavailable / empty / no patch overlap).
+3. Stage 3: scale+translation geometric verify → box or no box. Supersedes standalone 2C (relative descriptors) and translation-only over-hiding on scale-variant matches.
+4. Debug fields: `stage1_status`, `stage1_count`, `stage1_k`, `verify=scale+translation`.
 
 ## Behaviour landed — discovery slice D
 
