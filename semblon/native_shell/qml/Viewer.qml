@@ -438,6 +438,7 @@ Item {
         spacing: Theme.gap
         Text { objectName: "searchDoorLabel"; text: shell.searchDoorLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; font.weight: Font.DemiBold; color: Theme.amber }
         Text { objectName: "searchPhaseBadge"; text: shell.similarPhaseLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted }
+        Text { objectName: "searchDebugLine"; text: shell.searchDebugLine; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.tiny; color: Theme.faint }
         Text { objectName: "nameConfidence"; text: shell.nameConfidenceLabel; visible: text !== ""; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.muted }
         Text { objectName: "screenQueryProgress"; text: shell.screenQueryProgressLabel; visible: shell.screenQueryInProgress; font.family: Theme.ui; font.pixelSize: Theme.small; color: Theme.amber }
     }

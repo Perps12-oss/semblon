@@ -413,13 +413,17 @@ def test_indexed_region_search_does_not_encode_the_crop(tmp_path, monkeypatch):
         token_floor=0.0,
         score_floor=0.0,
         coverage_floor=0.0,
+        prefer_crop_forward=False,
     )
     assert result["query_source"] == "index"
     assert result["status"] == "SUCCESS"
     assert result["items"][0]["media_id"] == "m2"
     tokens = roi_query_tokens(groups, "m1", (8, 8, 20, 20))
     assert tokens is not None
-    assert tokens.shape == (4, 4)
+    matrix, boxes, size = tokens
+    assert matrix.shape == (4, 4)
+    assert len(boxes) == 4
+    assert size[0] > 0 and size[1] > 0
 
 
 def test_batched_forward_matches_single_image_tokens():
