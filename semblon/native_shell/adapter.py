@@ -352,6 +352,10 @@ class ArchiveAdapter:
             "crop_rect",
             "location_uncertain_count",
             "query_pixels",
+            "stage1_status",
+            "stage1_k",
+            "stage1_count",
+            "verify",
         ):
             if key in rec:
                 meta[key] = rec.get(key)

@@ -2759,6 +2759,12 @@ class ShellBridge(QObject):
                 )
         uncertain = data.get("location_uncertain_count")
         bits = [door, basis, engine, source or "-", crop_bit]
+        stage1 = data.get("stage1_status")
+        if stage1:
+            bits.append(f"stage1={stage1}:{int(data.get('stage1_count') or 0)}/{int(data.get('stage1_k') or 0)}")
+        verify = data.get("verify")
+        if verify:
+            bits.append(f"verify={verify}")
         if norms:
             bits.append("hits=" + ";".join(norms))
         if uncertain is not None:
