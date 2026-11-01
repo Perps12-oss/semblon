@@ -253,6 +253,15 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 3. Stage 3: scale+translation geometric verify → box or no box. Supersedes standalone 2C (relative descriptors) and translation-only over-hiding on scale-variant matches.
 4. Debug fields: `stage1_status`, `stage1_count`, `stage1_k`, `verify=scale+translation`.
 
+## Behaviour landed — Lens-parity Focus backlog (2026-11-01)
+
+1. **Box refine:** after a region find, Focus selection shows edge/corner handles; drag calls `adjustSelectionBox`, release calls `commitSelectionPixels` and re-searches.
+2. **Whole-photo escalate:** on a hit photo (`canEscalateWhole`), “Search this whole photo” runs `searchWholeFocus` → `findSimilarWhole` without a new pipeline.
+3. **Dots as initial boxes:** hotspot menu “Search this area by look” → `adoptDotAsRegion` (region door, including faces; not Same face).
+4. **Multi-dot AND:** pin up to four dots (`togglePinnedDot`); `searchPinnedDots` intersects face + region result media ids (“Combined find”).
+5. **LOW_INFO recovery:** when the flat-crop gate fires (`lowInfoRecovery`), Expand selection / Search the whole photo / Draw again — not a dead end.
+6. Identity thresholds and face door defaults unchanged. Owner-archive measurement still gates accuracy claims.
+
 ## Behaviour landed — discovery slice D
 
 1. Whole / region / face Similar all publish through shared adapter + Focus strip (`similarBasis` / `similarBasisLabel`).

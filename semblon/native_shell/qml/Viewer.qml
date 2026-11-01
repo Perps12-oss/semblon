@@ -198,13 +198,71 @@ Item {
                     }
                 }
                 Rectangle {
+                    id: selectionBox
+                    objectName: "selectionBox"
                     visible: viewer.previewId === "" && viewer.lw > 0
                     x: viewer.lx; y: viewer.ly; width: viewer.lw; height: viewer.lh
-                    radius: Math.min(width, height) / 2
+                    // Loupe drag stays circular; after a find the box is rectangular with handles.
+                    radius: (viewer.loupeOn || !shell.selectionOnFocus) ? Math.min(width, height) / 2 : 0
                     color: "transparent"
                     border.width: 3
                     border.color: Theme.amber
                     Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.amber; opacity: 0.12 }
+                    // Post-query refine: drag an edge or corner, then re-search on release.
+                    Repeater {
+                        model: (shell.selectionOnFocus && !viewer.loupeOn && viewer.previewId === "")
+                               ? ["tl","t","tr","l","r","bl","b","br"] : []
+                        delegate: Rectangle {
+                            required property string modelData
+                            readonly property string edge: modelData
+                            readonly property bool corner: edge.length === 2
+                            objectName: "selectionHandle_" + edge
+                            width: corner ? 12 : (edge === "t" || edge === "b" ? Math.max(18, selectionBox.width - 24) : 10)
+                            height: corner ? 12 : (edge === "l" || edge === "r" ? Math.max(18, selectionBox.height - 24) : 10)
+                            radius: corner ? 2 : 3
+                            color: Theme.amber
+                            border.width: 1
+                            border.color: Theme.bg
+                            x: edge.indexOf("l") >= 0 ? -width / 2
+                               : edge.indexOf("r") >= 0 ? selectionBox.width - width / 2
+                               : (selectionBox.width - width) / 2
+                            y: edge.indexOf("t") >= 0 ? -height / 2
+                               : edge.indexOf("b") >= 0 ? selectionBox.height - height / 2
+                               : (selectionBox.height - height) / 2
+                            z: 5
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "Resize selection " + edge
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                cursorShape: Qt.SizeAllCursor
+                                property real ox: 0
+                                property real oy: 0
+                                property real bx: 0
+                                property real by: 0
+                                property real bw: 0
+                                property real bh: 0
+                                onPressed: function (m) {
+                                    ox = m.x; oy = m.y
+                                    bx = viewer.lx; by = viewer.ly; bw = viewer.lw; bh = viewer.lh
+                                }
+                                onPositionChanged: function (m) {
+                                    var dx = m.x - ox, dy = m.y - oy
+                                    var parts = String(shell.adjustSelectionBox(
+                                        bx, by, bw, bh, edge, dx, dy,
+                                        0, 0, canvas.width, canvas.height
+                                    )).split(",")
+                                    if (parts.length < 4) return
+                                    viewer.lx = parseFloat(parts[0]); viewer.ly = parseFloat(parts[1])
+                                    viewer.lw = parseFloat(parts[2]); viewer.lh = parseFloat(parts[3])
+                                }
+                                onReleased: shell.commitSelectionPixels(
+                                    viewer.lx, viewer.ly, viewer.lw, viewer.lh,
+                                    canvas.width, canvas.height
+                                )
+                            }
+                        }
+                    }
                 }
                 // Match box when the focused photo is a hit (not the query selection).
                 Rectangle {
@@ -360,6 +418,63 @@ Item {
         label: "Get finding-by-look ready"
         visible: shell.installSuggestionVisible && !shell.searchBusy
         onActivated: shell.installSuggestedModel()
+    }
+    Row {
+        id: lowInfoRow
+        objectName: "lowInfoRecovery"
+        x: Theme.pad
+        y: Theme.pad + 48
+        spacing: Theme.gap
+        visible: shell.lowInfoRecovery && !shell.searchBusy && viewer.previewId === ""
+        Tool {
+            objectName: "expandSelection"
+            label: "Expand selection"
+            hint: "Grow the box and try again"
+            primary: true
+            onActivated: shell.expandSelection()
+        }
+        Tool {
+            objectName: "lowInfoWhole"
+            label: "Search the whole photo"
+            onActivated: shell.searchWholeFocus()
+        }
+        Tool {
+            objectName: "lowInfoRedraw"
+            label: "Draw again"
+            onActivated: { viewer.reset(); viewer.loupeOn = true }
+        }
+    }
+    Row {
+        id: pinBar
+        objectName: "pinBar"
+        x: Theme.pad
+        y: Theme.pad + (lowInfoRow.visible ? 96 : 48)
+        spacing: Theme.gap
+        visible: shell.pinnedDotCount > 0 && viewer.previewId === "" && !shell.searchBusy
+        Tool {
+            objectName: "searchPinnedDots"
+            label: shell.pinnedDotCount < 2
+                   ? ("Combined find needs one more (" + shell.pinnedDotCount + " pinned)")
+                   : ("Find every pinned clue (" + shell.pinnedDotCount + ")")
+            primary: shell.pinnedDotCount >= 2
+            onActivated: shell.searchPinnedDots()
+        }
+        Tool {
+            objectName: "clearPinnedDots"
+            label: "Clear pins"
+            onActivated: shell.clearPinnedDots()
+        }
+    }
+    Tool {
+        objectName: "escalateWhole"
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.pad
+        y: Theme.pad + 48
+        label: "Search this whole photo"
+        hint: "Escalate from this match"
+        visible: shell.canEscalateWhole && !shell.searchBusy && viewer.previewId === ""
+        primary: true
+        onActivated: shell.searchWholeFocus()
     }
     Rectangle {
         id: moreMenu

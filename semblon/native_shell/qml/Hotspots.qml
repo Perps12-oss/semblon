@@ -132,6 +132,12 @@ Item {
             visible: !spots.isHidden(modelData.id)
             readonly property bool hot: hover.hovered || activeFocus
             readonly property bool chosen: shell.selectedObservationId === modelData.id
+            readonly property bool pinned: {
+                var pins = shell.pinnedDotIds
+                for (var i = 0; i < pins.length; i++)
+                    if (pins[i] === modelData.id) return true
+                return false
+            }
             x: modelData.cx * spots.picture.width - width / 2
             y: modelData.cy * spots.picture.height - height / 2
             width: spots.hitSize
@@ -225,13 +231,28 @@ Item {
             }
             Rectangle {
                 anchors.centerIn: parent
-                width: dot.hot || dot.chosen ? 20 : 14
+                width: dot.hot || dot.chosen || dot.pinned ? 20 : 14
                 height: width
                 radius: width / 2
                 color: Theme.amber
-                border.width: 2
-                border.color: Theme.bg
+                border.width: dot.pinned ? 3 : 2
+                border.color: dot.pinned ? Theme.text : Theme.bg
                 Behavior on width { NumberAnimation { duration: Theme.fast } }
+            }
+            // Small pin mark so combined-find clues stay visible.
+            Rectangle {
+                objectName: "dotPin"
+                visible: dot.pinned
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.top
+                anchors.bottomMargin: -2
+                width: 8
+                height: 8
+                radius: 4
+                color: Theme.text
+                border.width: 1
+                border.color: Theme.amber
+                z: 6
             }
             HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: dot.go(); onLongPressed: dot.openMenu() }
@@ -268,6 +289,32 @@ Item {
                 width: menuCol.width
                 label: "Find more like this"
                 onActivated: { var d = menu.dotData; spots.menuDot = null; spots.pickedDot(d) }
+            }
+            Tool {
+                objectName: "dotSearchByLook"
+                width: menuCol.width
+                label: "Search this area by look"
+                onActivated: {
+                    var d = menu.dotData
+                    spots.menuDot = null
+                    shell.adoptDotAsRegion(d.id)
+                }
+            }
+            Tool {
+                objectName: "dotPinToggle"
+                width: menuCol.width
+                label: {
+                    var pins = shell.pinnedDotIds
+                    var id = menu.dotData ? menu.dotData.id : ""
+                    for (var i = 0; i < pins.length; i++)
+                        if (pins[i] === id) return "Remove from combined find"
+                    return "Add to combined find"
+                }
+                onActivated: {
+                    var d = menu.dotData
+                    spots.menuDot = null
+                    shell.togglePinnedDot(d.id)
+                }
             }
             Tool {
                 objectName: "dotHide"
