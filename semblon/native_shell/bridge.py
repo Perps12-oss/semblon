@@ -325,6 +325,7 @@ class ShellBridge(QObject):
         self._similar_basis = ""
         self._similar_basis_label = ""
         self._similar_phase = ""
+        self._search_debug = ""
         self._selection_note = ""
         self._selection_kind = ""
         self._refine_mode = "look"
@@ -2531,9 +2532,26 @@ class ShellBridge(QObject):
 
     @Property(str, notify=similarChanged)
     def similarCaution(self) -> str:
-        if self._similar_state != "ready" or self._similar_basis == "face":
+        if self._similar_basis == "face":
             return ""
+        if self._similar_state == "empty" and "more detailed" in (self._similar_note or "").lower():
+            return "Pick a more detailed area."
+        if self._similar_state != "ready":
+            return ""
+        if "colour" in (self._similar_basis_label or "").lower():
+            return "Colour only — not the same as finding the same look."
+        uncertain = 0
+        for row in self._similar._rows:
+            if len(row) >= 6 and float(row[4]) <= 0 and float(row[5]) <= 0:
+                uncertain += 1
+        if uncertain and uncertain >= max(1, len(self._similar._rows) // 2):
+            return "Match location uncertain on some hits."
         return "A match is a similar region, not proof it is the same object."
+
+    @Property(str, notify=similarChanged)
+    def searchDebugLine(self) -> str:
+        """Advanced readout: door | basis | engine | query_source | crop | consensus."""
+        return self._search_debug if self._mode == ADVANCED else ""
 
     @Property(str, notify=similarChanged)
     def retrievalDetail(self) -> str:
@@ -2545,6 +2563,8 @@ class ShellBridge(QObject):
             parts.append(self._index_state)
         if self._similar._rows:
             parts.append(f"top {float(self._similar._rows[0][1]):.2f}")
+        if self._mode == ADVANCED and self._search_debug:
+            parts.append(self._search_debug)
         if self._mode == ADVANCED and self._search_failure:
             parts.append(self._search_failure)
         return " · ".join(parts)
@@ -2718,6 +2738,33 @@ class ShellBridge(QObject):
             basis_label=str(item.get("basis_label") or "Similar look"),
         )
 
+    def _format_search_debug(self, data: dict, rows: list) -> str:
+        door = str(self._search_door or data.get("basis") or "")
+        basis = str(data.get("basis_label") or data.get("similarity_basis") or "")
+        engine = str(data.get("engine") or "")
+        source = str(data.get("query_source") or "")
+        crop = data.get("crop_rect") or data.get("query_pixels") or {}
+        if isinstance(crop, dict) and crop:
+            crop_bit = (
+                f"crop={int(crop.get('x', 0))},{int(crop.get('y', 0))},"
+                f"{int(crop.get('w', 0))}x{int(crop.get('h', 0))}"
+            )
+        else:
+            crop_bit = "crop=-"
+        norms = []
+        for row in rows[:3]:
+            if len(row) >= 6:
+                norms.append(
+                    f"{float(row[2]):.2f},{float(row[3]):.2f},{float(row[4]):.2f},{float(row[5]):.2f}"
+                )
+        uncertain = data.get("location_uncertain_count")
+        bits = [door, basis, engine, source or "-", crop_bit]
+        if norms:
+            bits.append("hits=" + ";".join(norms))
+        if uncertain is not None:
+            bits.append(f"uncertain={int(uncertain)}")
+        return " | ".join(str(bit) for bit in bits if bit)
+
     def _publish_similar_result(self, result, *, interim: bool = False) -> None:
         """Shared Focus strip publish for whole / region / face doors."""
         self._note_search_timing(final=not interim)
@@ -2738,6 +2785,7 @@ class ShellBridge(QObject):
                     float(item.get("match_nh") or 0.0),
                 )
             )
+        self._search_debug = self._format_search_debug(result.data or {}, rows)
         state = result.state if result.state in {"ready", "empty", "unavailable", "error"} else "error"
         note = result.message if result.message else "Similar search could not run."
         error_id = str((result.data or {}).get("error_id") or "")

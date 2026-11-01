@@ -139,7 +139,7 @@ def _empty(status: str, reason: str, channels: list[dict], spec: QuerySpec, part
         "items": [],
         "channels": channels,
         "similarity_basis": _join_bases(channels, []),
-        "strip_label": _strip_label(spec),
+        "strip_label": _strip_label_from_channels(spec, channels),
         "engine": "selection",
         "query_spec": spec.as_public(),
         "parts": list(parts or []),
@@ -180,6 +180,27 @@ def _add_hit(grouped: dict[str, dict], item: dict, basis: str, door: str) -> Non
 
 def _region_basis_fallback() -> str:
     return "Similar look"
+
+
+def _strip_label_from_channels(spec: QuerySpec, channels: list[dict]) -> str:
+    """Strip label must not hide Colour only behind Similar look."""
+    if spec.mode == MODE_KIND:
+        return mode_label(spec.mode)
+    for channel in channels:
+        door = str(channel.get("door") or "")
+        if door not in {DOOR_LOOK, "region"}:
+            continue
+        if channel.get("status") in {_SKIPPED, _NO_QUERY}:
+            continue
+        basis = str(channel.get("similarity_basis") or "").strip()
+        engine = str(channel.get("engine") or "").lower()
+        if not basis:
+            continue
+        lowered = basis.lower()
+        if "colour" in lowered or "color" in lowered or "color-hist" in engine:
+            return "Colour only"
+        return basis
+    return _region_basis_fallback()
 
 
 def _take_region(store, *, crop, kind, limit, cancelled, channels, grouped, ranked, region_rec, spec) -> None:
@@ -571,10 +592,6 @@ def _join_bases(channels: list[dict], items: list[dict]) -> str:
     return " · ".join(ordered) or _region_basis_fallback()
 
 
-def _strip_label(spec: QuerySpec) -> str:
-    return mode_label(spec.mode) if spec.mode == MODE_KIND else _region_basis_fallback()
-
-
 def _merged(
     channels: list[dict],
     grouped: dict[str, dict],
@@ -616,7 +633,7 @@ def _merged(
                 "match_norm": item.get("match_norm") or [0.0, 0.0, 0.0, 0.0],
                 "bases": bases,
                 "door_scores": item.get("door_scores") or {},
-                "similarity_basis": " · ".join(bases) if len(bases) > 1 else (bases[0] if bases else _strip_label(spec, [])),
+                "similarity_basis": " · ".join(bases) if len(bases) > 1 else (bases[0] if bases else _strip_label_from_channels(spec, channels)),
                 "why": "selection retrieval; not a person",
             }
         )
@@ -659,7 +676,7 @@ def _merged(
         "items": packed,
         "channels": channels,
         "similarity_basis": _join_bases(channels, packed),
-        "strip_label": _strip_label(spec),
+        "strip_label": _strip_label_from_channels(spec, channels),
         "engine": "selection",
         "understanding": understanding,
         "selection_kind": selection_kind,

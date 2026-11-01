@@ -238,6 +238,14 @@ Environment: Windows ARM64 host; `.venv-312` for discovery slices.
 2. Day chip / Browse → close People → `openFocusInContext` (Gate A archive-wide day neighbours). Honest empty if no dated stills.
 3. Explicit **Show only this person** Field filter (opt-in); day neighbours stay archive-wide until that filter is on. No auto-name.
 
+## Behaviour landed — Lens-local region honesty (2026-11-01)
+
+1. Focus region search **crop-forwards** the selection (`prefer_crop_forward=True`). Full-frame `roi_query_tokens` stay available for lab (`prefer_crop_forward=False`) but are not the Focus default — they carry absolute positional signal that locked match boxes to the query corner.
+2. Match boxes require **translation consensus** over per-token argmaxes (`translation_consensus` in `region_search`). Inconsistent correspondences publish `location_uncertain` with a zero `match_norm` — the strip draws no box rather than a corner-tracking union.
+3. Flat / low-information crops gate to **Colour only** with `region.LOW_INFO` and the strip line “pick a more detailed area.” They do not claim **Similar look**.
+4. Adapter / fuse never override a colour basis with a **Similar look** `strip_label`. Advanced mode exposes `searchDebugLine`: door | basis | engine | query_source | crop | hit norms | uncertain count.
+5. Tests: `tests/test_region_localization.py` (+ discovery slice D / selection retrieval / region search / match geometry / lens responsiveness). Identity thresholds and face door unchanged.
+
 ## Behaviour landed — discovery slice D
 
 1. Whole / region / face Similar all publish through shared adapter + Focus strip (`similarBasis` / `similarBasisLabel`).

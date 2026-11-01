@@ -322,9 +322,41 @@ class ArchiveAdapter:
         if rec.get("understanding"):
             meta["understanding"] = str(rec.get("understanding"))
         strip = str(rec.get("strip_label") or "").strip()
-        if strip:
+        # Strip label may refine "Same kind", but must never hide Colour only.
+        colourish = (
+            "colour" in basis_label.lower()
+            or "color" in basis_label.lower()
+            or "color-hist" in engine.lower()
+            or "colour" in strip.lower()
+            or "color" in strip.lower()
+        )
+        if colourish:
+            basis_label = "Colour only"
+            meta["basis_label"] = basis_label
+            engine = str(rec.get("engine") or "color-hist")
+            meta["engine"] = engine
+            empty_msg = f"Similar ({basis_label}): no colour histogram matches."
+            ready_msg = f"Similar ({basis_label}): {len(items)} colour histogram matches."
+        elif strip:
             basis_label = strip
             meta["basis_label"] = strip
+            if "colour" in strip.lower() or "color" in strip.lower():
+                empty_msg = f"Similar ({basis_label}): no colour histogram matches."
+                ready_msg = f"Similar ({basis_label}): {len(items)} colour histogram matches."
+            else:
+                empty_msg = f"Similar ({basis_label}): nothing close enough."
+                noun = "match" if len(items) == 1 else "matches"
+                ready_msg = f"Similar ({basis_label}): {len(items)} {noun}."
+        for key in (
+            "query_source",
+            "crop_rect",
+            "location_uncertain_count",
+            "query_pixels",
+        ):
+            if key in rec:
+                meta[key] = rec.get(key)
+        if rec.get("error_id") == "region.LOW_INFO":
+            meta["low_info"] = True
         spec = rec.get("query_spec")
         if isinstance(spec, dict):
             meta["query_spec"] = spec
@@ -341,6 +373,12 @@ class ArchiveAdapter:
                 {**meta, "items": []},
             )
         if not items:
+            if meta.get("low_info"):
+                return Result(
+                    "empty",
+                    f"Similar ({basis_label}): pick a more detailed area.",
+                    meta,
+                )
             return Result("empty", empty_msg, meta)
         return Result(
             "ready",

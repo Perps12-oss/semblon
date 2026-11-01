@@ -604,6 +604,100 @@ def _norm_box(box: tuple[float, float, float, float], width: int, height: int) -
     return [nx, ny, nw, nh]
 
 
+def _box_center(box: tuple[float, float, float, float]) -> tuple[float, float]:
+    return ((float(box[0]) + float(box[2])) * 0.5, (float(box[1]) + float(box[3])) * 0.5)
+
+
+def _norm_xy(x: float, y: float, width: int, height: int) -> tuple[float, float]:
+    w = max(1.0, float(width))
+    h = max(1.0, float(height))
+    return (max(0.0, min(1.0, float(x) / w)), max(0.0, min(1.0, float(y) / h)))
+
+
+# Translation-consensus for match boxes. Raw argmax unions track query corners
+# when tokens carry absolute position; consensus keeps only a rigid offset.
+_CONSENSUS_TOL = 0.08
+_CONSENSUS_MIN = 3
+_LOW_INFO_STD = 12.0
+_LOW_INFO_TOKEN_VAR = 1e-4
+
+
+def is_low_info_crop(crop) -> bool:
+    """Flat / near-uniform crops must not claim Similar look localization."""
+    if crop is None:
+        return True
+    arr = np.asarray(crop)
+    if arr.size == 0:
+        return True
+    if arr.ndim == 3:
+        gray = arr.astype(np.float32).mean(axis=2)
+    else:
+        gray = arr.astype(np.float32)
+    return float(np.std(gray)) < _LOW_INFO_STD
+
+
+def drop_low_info_tokens(
+    query: np.ndarray,
+    query_boxes: list[tuple[float, float, float, float]] | None = None,
+) -> tuple[np.ndarray, list[tuple[float, float, float, float]] | None]:
+    """Drop near-constant / near-mean query tokens before late interaction."""
+    if query is None or query.size == 0 or query.ndim != 2 or query.shape[0] < 2:
+        return query, query_boxes
+    # Per-token energy: flat patches collapse toward a near-constant vector.
+    self_var = np.var(query.astype(np.float32), axis=1)
+    norms = np.linalg.norm(query, axis=1, keepdims=True)
+    unit = query / np.maximum(norms, 1e-8)
+    mean_u = unit.mean(axis=0)
+    mean_n = float(np.linalg.norm(mean_u))
+    if mean_n > 1e-8:
+        mean_u = mean_u / mean_n
+    sims = unit @ mean_u
+    keep = (self_var >= float(_LOW_INFO_TOKEN_VAR)) & (sims < 0.995)
+    if int(keep.sum()) < 2:
+        # Keep the most energetic tokens so a flat crop still has something to score.
+        order = np.argsort(-self_var)
+        keep = np.zeros(query.shape[0], dtype=bool)
+        keep[order[: max(2, query.shape[0] // 2)]] = True
+    rows = np.flatnonzero(keep)
+    filtered = np.ascontiguousarray(query[rows], dtype=np.float32)
+    boxes = None
+    if query_boxes is not None and len(query_boxes) == int(query.shape[0]):
+        boxes = [query_boxes[int(i)] for i in rows.tolist()]
+    return filtered, boxes
+
+
+def translation_consensus(
+    pairs: list[tuple[float, float, float, float, float, tuple[float, float, float, float]]],
+    *,
+    tol: float = _CONSENSUS_TOL,
+    min_keep: int = _CONSENSUS_MIN,
+) -> tuple[list[tuple[float, float, float, float]], int]:
+    """Largest subset of (q→g) matches that share one 2D translation.
+
+    Each pair is ``(weight, q_nx, q_ny, g_nx, g_ny, g_box)``. Returns the
+    consensus gallery boxes and the consensus size. Empty boxes means location
+    uncertain — callers must not invent a query-rect fallback.
+    """
+    if len(pairs) < 2:
+        return [], 0
+    need = max(2, min(int(min_keep), len(pairs)))
+    best: list[tuple[float, float, float, float, float, tuple[float, float, float, float]]] = []
+    for _w, qx, qy, gx, gy, _box in pairs:
+        tx = float(gx) - float(qx)
+        ty = float(gy) - float(qy)
+        kept = [
+            item
+            for item in pairs
+            if abs((float(item[3]) - float(item[1])) - tx) <= float(tol)
+            and abs((float(item[4]) - float(item[2])) - ty) <= float(tol)
+        ]
+        if len(kept) > len(best):
+            best = kept
+    if len(best) < need:
+        return [], len(best)
+    return [item[5] for item in best], len(best)
+
+
 def load_patch_groups(store: Path, conn, pack: str, dim: int) -> tuple[list[dict], bool]:
     """Patch matrices for one pack. A second search reuses them until the index changes."""
     global _GALLERY_LOADS
@@ -682,6 +776,8 @@ def _score_one_block(
     score_floor: float,
     coverage_floor: float,
     keep_weak: bool,
+    query_boxes: list[tuple[float, float, float, float]] | None = None,
+    query_size: tuple[int, int] | None = None,
 ) -> dict | None:
     maxes = block.max(axis=1)
     score = float(maxes.mean())
@@ -689,16 +785,29 @@ def _score_one_block(
     above = score >= float(score_floor) and coverage >= float(coverage_floor)
     if not above and not keep_weak:
         return None
-    winners: list[tuple[float, tuple[float, float, float, float]]] = []
     chosen = block.argmax(axis=1)
     boxes = group["boxes"]
+    media_id = group["media_id"]
+    gw = int(group["width"] or 0)
+    gh = int(group["height"] or 0)
+    qw, qh = (int(query_size[0]), int(query_size[1])) if query_size else (0, 0)
+    pairs: list[tuple[float, float, float, float, float, tuple[float, float, float, float]]] = []
     for index, column in enumerate(chosen):
         weight = float(block[index, column])
-        if weight >= float(token_floor):
-            winners.append((weight, boxes[int(column)]))
-    media_id = group["media_id"]
-    if not winners:
-        if not keep_weak:
+        if weight < float(token_floor):
+            continue
+        g_box = boxes[int(column)]
+        gx, gy = _box_center(g_box)
+        g_nx, g_ny = _norm_xy(gx, gy, gw, gh)
+        if query_boxes is not None and index < len(query_boxes) and qw > 0 and qh > 0:
+            qx, qy = _box_center(query_boxes[index])
+            q_nx, q_ny = _norm_xy(qx, qy, qw, qh)
+        else:
+            # Without query geometry a union is not a verified location.
+            continue
+        pairs.append((weight, q_nx, q_ny, g_nx, g_ny, g_box))
+    if not pairs:
+        if not keep_weak and not above:
             return None
         return {
             "item_id": None,
@@ -709,16 +818,39 @@ def _score_one_block(
             "match_box": [0.0, 0.0, 0.0, 0.0],
             "match_norm": [0.0, 0.0, 0.0, 0.0],
             "coverage": coverage,
-            "above_floor": False,
-            "why": "patch max-sim below the token line; not a person",
+            "above_floor": above,
+            "consensus_size": 0,
+            "location_uncertain": True,
+            "why": "patch max-sim without a verified location; not a person",
         }
-    winners.sort(key=lambda item: -item[0])
-    span = _union_box([box for _weight, box in winners])
+    pairs.sort(key=lambda item: -item[0])
+    consensus_boxes, consensus_size = translation_consensus(pairs)
+    if not consensus_boxes:
+        return {
+            "item_id": None,
+            "media_id": media_id,
+            "kind": "clip",
+            "provider": PROVIDER,
+            "score": score,
+            "match_box": [0.0, 0.0, 0.0, 0.0],
+            "match_norm": [0.0, 0.0, 0.0, 0.0],
+            "coverage": coverage,
+            "above_floor": above,
+            "consensus_size": int(consensus_size),
+            "location_uncertain": True,
+            "why": "patch matches disagreed on location; not a person",
+        }
+    span = _union_box(consensus_boxes)
     area = max(0.0, span[2] - span[0]) * max(0.0, span[3] - span[1])
-    frame = float(int(group["width"]) * int(group["height"]) or 1)
-    if area > 0.55 * frame and len(winners) > 4:
-        keep = max(4, len(winners) // 4)
-        span = _union_box([box for _weight, box in winners[:keep]])
+    frame = float(max(1, gw * gh))
+    if area > 0.55 * frame and len(consensus_boxes) > 4:
+        keep = max(4, len(consensus_boxes) // 4)
+        ranked = sorted(
+            consensus_boxes,
+            key=lambda box: -((box[2] - box[0]) * (box[3] - box[1])),
+        )
+        # Prefer the densest cluster of consensus boxes, not the largest single patch.
+        span = _union_box(ranked[:keep] if keep < len(ranked) else consensus_boxes)
     x1, y1, x2, y2 = span
     return {
         "item_id": None,
@@ -727,10 +859,12 @@ def _score_one_block(
         "provider": PROVIDER,
         "score": score,
         "match_box": [x1, y1, max(1.0, x2 - x1), max(1.0, y2 - y1)],
-        "match_norm": _norm_box(span, int(group["width"]), int(group["height"])),
+        "match_norm": _norm_box(span, gw, gh),
         "coverage": coverage,
         "above_floor": above,
-        "why": "patch max-sim; source excluded; not a person",
+        "consensus_size": int(consensus_size),
+        "location_uncertain": False,
+        "why": "patch max-sim with translation consensus; not a person",
     }
 
 
@@ -745,6 +879,8 @@ def score_patch_groups(
     score_floor: float = 0.28,
     coverage_floor: float = 0.28,
     limit: int = 10,
+    query_boxes: list[tuple[float, float, float, float]] | None = None,
+    query_size: tuple[int, int] | None = None,
 ) -> list[dict]:
     """Late interaction. One multiply covers many photos; the score is still max-sim."""
     skipped = str(exclude_media_id or "")
@@ -768,6 +904,8 @@ def score_patch_groups(
                 score_floor=score_floor,
                 coverage_floor=coverage_floor,
                 keep_weak=keep_weak,
+                query_boxes=query_boxes,
+                query_size=query_size,
             )
             start += count
             if item is not None:
@@ -789,11 +927,13 @@ def score_patch_groups(
     return items[: int(limit)]
 
 
-def roi_query_tokens(groups: list[dict], media_id: str, box: tuple[int, int, int, int]) -> np.ndarray | None:
+def roi_query_tokens(
+    groups: list[dict], media_id: str, box: tuple[int, int, int, int]
+) -> tuple[np.ndarray, list[tuple[float, float, float, float]], tuple[int, int]] | None:
     """Tokens already stored for this photo whose centres sit in the box.
 
-    The finest stored scale that covers the box is the query. A photo that was
-    indexed does not need another encoder pass.
+    Returns ``(matrix, boxes, (width, height))``. Index tokens keep absolute
+    positional signal — Focus region search prefers crop-forward instead.
     """
     x, y, w, h = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if w <= 0 or h <= 0:
@@ -824,7 +964,9 @@ def roi_query_tokens(groups: list[dict], media_id: str, box: tuple[int, int, int
     if len(selected) < 4:
         selected = [index for _area, index in hits]
     rows = np.asarray(selected, dtype=np.int64)
-    return np.ascontiguousarray(matrix[rows], dtype=np.float32)
+    boxes = [group["boxes"][int(i)] for i in rows.tolist()]
+    size = (int(group["width"] or 0), int(group["height"] or 0))
+    return np.ascontiguousarray(matrix[rows], dtype=np.float32), boxes, size
 
 
 def search_patches(
@@ -841,12 +983,14 @@ def search_patches(
     coverage_floor: float = 0.28,
     query_box: tuple[int, int, int, int] | None = None,
     shortlist_out: list | None = None,
+    prefer_crop_forward: bool = True,
 ) -> dict:
     """Late interaction of the query crop against stored content patches.
 
-    Score is the mean, over query patches, of the best cosine in the other
-    photo. The match box is the union of those winning patches. Proposal
-    rows are not read.
+    Focus region search uses crop-forward tokens (``prefer_crop_forward=True``)
+    so absolute positional embeddings from full-frame index tokens cannot lock
+    every match box to the query corner. Match boxes come only from a
+    translation-consensus subset of per-token argmaxes — never a raw union.
     """
     pack = pack_id_patches(KNOWN_SHA256[WEIGHT_NAME])
     empty = {
@@ -867,8 +1011,34 @@ def search_patches(
     groups = None
     saw_rows = False
     query = None
+    query_boxes: list[tuple[float, float, float, float]] | None = None
+    query_size: tuple[int, int] | None = None
     query_source = "crop-forward"
-    if query_box is not None and exclude_media_id and path.is_file():
+    crop_arr = np.asarray(crop) if crop is not None else None
+    if prefer_crop_forward:
+        ready, missing = probe_region_pack()
+        if not ready:
+            empty["reason"] = missing or empty["reason"]
+            return empty
+        try:
+            _cls, records = content_patch_records(crop, interactive=True, cancelled=cancelled)
+        except RegionPackError as exc:
+            if cancelled is not None and cancelled():
+                empty["status"] = "CANCELLED"
+                empty["reason"] = "Search cancelled."
+                empty["error_id"] = "region.CANCELLED"
+                return empty
+            empty["reason"] = str(exc)
+            empty["error_id"] = "region.ENCODE"
+            return empty
+        query = np.stack([np.frombuffer(record["blob"], dtype=np.float32).copy() for record in records])
+        query_boxes = [tuple(record["bbox"]) for record in records]
+        if crop_arr is not None and crop_arr.ndim >= 2:
+            query_size = (int(crop_arr.shape[1]), int(crop_arr.shape[0]))
+        else:
+            query_size = (1, 1)
+        query_source = "crop-forward"
+    elif query_box is not None and exclude_media_id and path.is_file():
         conn = _open_ro(path)
         try:
             groups, saw_rows = load_patch_groups(path, conn, pack, OUTPUT_DIM)
@@ -877,7 +1047,7 @@ def search_patches(
         if saw_rows:
             stored = roi_query_tokens(groups, str(exclude_media_id), query_box)
             if stored is not None:
-                query = stored
+                query, query_boxes, query_size = stored
                 query_source = "index"
             else:
                 indexed = any(str(item.get("media_id") or "") == str(exclude_media_id) for item in groups)
@@ -906,10 +1076,19 @@ def search_patches(
             empty["error_id"] = "region.ENCODE"
             return empty
         query = np.stack([np.frombuffer(record["blob"], dtype=np.float32).copy() for record in records])
+        query_boxes = [tuple(record["bbox"]) for record in records]
+        if crop_arr is not None and crop_arr.ndim >= 2:
+            query_size = (int(crop_arr.shape[1]), int(crop_arr.shape[0]))
+        else:
+            query_size = (1, 1)
+        query_source = "crop-forward"
     stride = max(1, int(token_stride))
     if stride > 1 and query.shape[0] > stride:
         query = query[::stride]
-    if query.size == 0:
+        if query_boxes is not None:
+            query_boxes = query_boxes[::stride]
+    query, query_boxes = drop_low_info_tokens(query, query_boxes)
+    if query is None or query.size == 0:
         empty["reason"] = "The selection produced no patches."
         empty["query_source"] = query_source
         return empty
@@ -929,31 +1108,41 @@ def search_patches(
         )
         empty["error_id"] = "region.NO_PATCH_INDEX"
         return empty
+    score_kwargs = dict(
+        exclude_media_id=exclude_media_id,
+        cancelled=cancelled,
+        token_floor=token_floor,
+        score_floor=score_floor,
+        coverage_floor=coverage_floor,
+        query_boxes=query_boxes,
+        query_size=query_size,
+    )
     if shortlist_out is not None:
         # A wider, unfiltered ranking decides which photos deserve fine detail first.
         wide = score_patch_groups(
             query,
             groups,
-            exclude_media_id=exclude_media_id,
-            cancelled=cancelled,
             keep_weak=True,
-            token_floor=token_floor,
-            score_floor=score_floor,
-            coverage_floor=coverage_floor,
             limit=SHORTLIST_SIZE,
+            **score_kwargs,
         )
         shortlist_out.extend(str(item["media_id"]) for item in wide if item.get("media_id"))
     items = score_patch_groups(
         query,
         groups,
-        exclude_media_id=exclude_media_id,
-        cancelled=cancelled,
         keep_weak=keep_weak,
-        token_floor=token_floor,
-        score_floor=score_floor,
-        coverage_floor=coverage_floor,
         limit=limit,
+        **score_kwargs,
     )
+    crop_rect = None
+    if query_box is not None:
+        crop_rect = {
+            "x": int(query_box[0]),
+            "y": int(query_box[1]),
+            "w": int(query_box[2]),
+            "h": int(query_box[3]),
+        }
+    uncertain = sum(1 for item in items if item.get("location_uncertain"))
     if not items:
         return {
             "kind": "region_similar",
@@ -970,12 +1159,20 @@ def search_patches(
             "engine": "dinov2-patch",
             "fallback": None,
             "query_source": query_source,
+            "crop_rect": crop_rect,
+            "location_uncertain_count": 0,
             "note": "A patch match is not a named person.",
         }
+    located = sum(1 for item in items if not item.get("location_uncertain"))
+    reason = (
+        "Matching region in your archive. The box marks where it sits."
+        if located
+        else "Matching region in your archive. Match location is uncertain on these hits."
+    )
     return {
         "kind": "region_similar",
         "status": "SUCCESS",
-        "reason": "Matching region in your archive. The box marks where it sits.",
+        "reason": reason,
         "error_id": None,
         "count": len(items),
         "items": items,
@@ -987,6 +1184,8 @@ def search_patches(
         "engine": "dinov2-patch",
         "fallback": None,
         "query_source": query_source,
+        "crop_rect": crop_rect,
+        "location_uncertain_count": int(uncertain),
         "note": "Patch-map match. Not a name and not colour.",
     }
 
@@ -1081,6 +1280,23 @@ def _find_similar_from_crop(
             int(query_pixels["w"]),
             int(query_pixels["h"]),
         )
+    if is_low_info_crop(crop):
+        colour = _colour_result(
+            store,
+            crop,
+            limit=capped_limit,
+            exclude_media_id=media_id,
+            cancelled=cancelled,
+            reason="Low-information region. Pick a more detailed area, or browse colour-only matches.",
+            min_score=quality.whole_colour_floor,
+            quality=quality,
+        )
+        colour["error_id"] = "region.LOW_INFO"
+        colour["query_source"] = "low-info"
+        if query_pixels is not None:
+            colour["query_pixels"] = query_pixels
+            colour["crop_rect"] = dict(query_pixels)
+        return _attach_understanding(colour, understanding, selection_kind=selection_kind)
     dense = search_patches(
         store,
         crop,
@@ -1093,6 +1309,7 @@ def _find_similar_from_crop(
         coverage_floor=quality.patch_coverage_floor,
         query_box=box,
         shortlist_out=shortlist_out,
+        prefer_crop_forward=True,
     )
     dense["search_profile"] = quality.key
     dense["search_profile_label"] = quality.label
@@ -1706,6 +1923,15 @@ def _fuse_region(
         parts=parts,
     )
     if fused.get("status") == "SUCCESS" and fused.get("items"):
+        visual_basis = str(visual.get("similarity_basis") or "")
+        fused_strip = str(fused.get("strip_label") or "")
+        # Never let a Similar look strip_label hide a colour engine result.
+        if "colour" in visual_basis.lower() or "color" in visual_basis.lower():
+            strip = visual_basis
+            basis = visual_basis
+        else:
+            strip = fused_strip or visual_basis
+            basis = visual_basis or fused_strip
         out = dict(visual)
         out.update(
             {
@@ -1713,8 +1939,8 @@ def _fuse_region(
                 "items": fused.get("items") or [],
                 "count": fused.get("count") or 0,
                 "channels": fused.get("channels") or [],
-                "similarity_basis": visual.get("similarity_basis") or fused.get("strip_label"),
-                "strip_label": fused.get("strip_label") or visual.get("similarity_basis"),
+                "similarity_basis": basis,
+                "strip_label": strip,
                 "query_spec": fused.get("query_spec"),
                 "parts": fused.get("parts") or parts,
                 "engine": visual.get("engine") or fused.get("engine"),
