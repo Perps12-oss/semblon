@@ -275,8 +275,8 @@ Item {
                 Rectangle {
                     id: matchBox
                     objectName: "focusMatchBox"
-                    visible: viewer.previewId === "" && canvas.width > 0 && shell && shell.matchW > 0 && shell.matchH > 0
-                             && !shell.selectionOnFocus
+                    visible: viewer.previewId === "" && canvas.width > 0 && shell
+                             && shell.matchW > 0 && shell.matchH > 0 && !shell.selectionOnFocus
                     x: shell ? shell.matchX * canvas.width : 0
                     y: shell ? shell.matchY * canvas.height : 0
                     width: shell ? Math.max(2, shell.matchW * canvas.width) : 0

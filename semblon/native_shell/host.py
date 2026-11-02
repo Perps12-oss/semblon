@@ -84,53 +84,11 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
                 qml_errors.append(str(err))
 
     engine.warnings.connect(_on_warnings)
-    # #region agent log
-    try:
-        import json as _json, time as _time
-        open("/opt/cursor/logs/debug.log", "a").write(
-            _json.dumps(
-                {
-                    "hypothesisId": "B",
-                    "location": "host.py:build_shell:pre_load",
-                    "message": "loading Table.qml",
-                    "data": {
-                        "qml": str(QML),
-                        "pinnedDotCount": int(bridge.pinnedDotCount),
-                        "lowInfoRecovery": bool(bridge.lowInfoRecovery),
-                        "canEscalateWhole": bool(bridge.canEscalateWhole),
-                        "selectionOnFocus": bool(bridge.selectionOnFocus),
-                    },
-                    "timestamp": int(_time.time() * 1000),
-                }
-            )
-            + "\n"
-        )
-    except Exception:
-        pass
-    # #endregion
     engine.load(QUrl.fromLocalFile(str(QML)))
     if not engine.rootObjects():
         detail = "; ".join(qml_errors) if qml_errors else "no QML errors reported"
         message = f"archive shell failed to load {QML}: {detail}"
         print(message, flush=True)
-        # #region agent log
-        try:
-            import json as _json, time as _time
-            open("/opt/cursor/logs/debug.log", "a").write(
-                _json.dumps(
-                    {
-                        "hypothesisId": "A",
-                        "location": "host.py:build_shell:load_fail",
-                        "message": "QML rootObjects empty",
-                        "data": {"detail": detail, "qml_errors": list(qml_errors)},
-                        "timestamp": int(_time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-        except Exception:
-            pass
-        # #endregion
         raise RuntimeError(message)
     # Keep Python owners alive for the engine's lifetime.
     engine._semblon_bridge = bridge  # type: ignore[attr-defined]
@@ -138,48 +96,6 @@ def build_shell(store: Path | None = None, app: QApplication | None = None):
     engine._semblon_similar = bridge.similar_model  # type: ignore[attr-defined]
     engine._semblon_people = bridge.people_model  # type: ignore[attr-defined]
     engine._semblon_session = jobs.archive  # type: ignore[attr-defined]
-    # #region agent log
-    try:
-        import json as _json, time as _time
-        from PySide6.QtCore import QObject as _QObject
-
-        _root = engine.rootObjects()[0]
-        _viewer = _root.findChild(_QObject, "viewer")
-        _handles = [
-            n
-            for n in (
-                "selectionHandle_tl",
-                "selectionHandle_t",
-                "selectionHandle_tr",
-                "selectionHandle_l",
-                "selectionHandle_r",
-                "selectionHandle_bl",
-                "selectionHandle_b",
-                "selectionHandle_br",
-            )
-            if _root.findChild(_QObject, n) is not None
-        ]
-        open("/opt/cursor/logs/debug.log", "a").write(
-            _json.dumps(
-                {
-                    "hypothesisId": "A",
-                    "location": "host.py:build_shell:post_load",
-                    "message": "shell loaded",
-                    "data": {
-                        "roots": len(engine.rootObjects()),
-                        "viewer": _viewer is not None,
-                        "handles_at_start": _handles,
-                        "qml_errors": list(qml_errors),
-                        "runId": "post-fix",
-                    },
-                    "timestamp": int(_time.time() * 1000),
-                }
-            )
-            + "\n"
-        )
-    except Exception:
-        pass
-    # #endregion
     return qapp, engine
 
 
@@ -188,25 +104,6 @@ def shutdown_shell(engine: QQmlApplicationEngine) -> None:
     bridge = getattr(engine, "_semblon_bridge", None)
     if bridge is not None:
         bridge.shutdown()
-    # #region agent log
-    try:
-        import json as _json, time as _time
-
-        open("/opt/cursor/logs/debug.log", "a").write(
-            _json.dumps(
-                {
-                    "hypothesisId": "B",
-                    "location": "host.py:shutdown_shell:pre_null",
-                    "message": "about to null context properties",
-                    "data": {"had_bridge": bridge is not None},
-                    "timestamp": int(_time.time() * 1000),
-                }
-            )
-            + "\n"
-        )
-    except Exception:
-        pass
-    # #endregion
     ctx = engine.rootContext()
     for name in ("shell", "archiveModel", "similarModel", "peopleModel"):
         ctx.setContextProperty(name, None)
