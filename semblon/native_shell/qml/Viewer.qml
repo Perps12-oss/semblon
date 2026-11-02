@@ -200,21 +200,24 @@ Item {
                 Rectangle {
                     id: selectionBox
                     objectName: "selectionBox"
+                    // Integer Repeater model + edge lookup — avoids JS string-array models
+                    // (fragile with required modelData on some Windows Qt builds; same class as #206).
+                    readonly property var edges: ["tl", "t", "tr", "l", "r", "bl", "b", "br"]
                     visible: viewer.previewId === "" && viewer.lw > 0
                     x: viewer.lx; y: viewer.ly; width: viewer.lw; height: viewer.lh
                     // Loupe drag stays circular; after a find the box is rectangular with handles.
-                    radius: (viewer.loupeOn || !shell.selectionOnFocus) ? Math.min(width, height) / 2 : 0
+                    radius: (viewer.loupeOn || !(shell && shell.selectionOnFocus)) ? Math.min(width, height) / 2 : 0
                     color: "transparent"
                     border.width: 3
                     border.color: Theme.amber
                     Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.amber; opacity: 0.12 }
                     // Post-query refine: drag an edge or corner, then re-search on release.
                     Repeater {
-                        model: (shell.selectionOnFocus && !viewer.loupeOn && viewer.previewId === "")
-                               ? ["tl","t","tr","l","r","bl","b","br"] : []
+                        model: (shell && shell.selectionOnFocus && !viewer.loupeOn && viewer.previewId === "")
+                               ? selectionBox.edges.length : 0
                         delegate: Rectangle {
-                            required property string modelData
-                            readonly property string edge: modelData
+                            required property int index
+                            readonly property string edge: selectionBox.edges[index]
                             readonly property bool corner: edge.length === 2
                             objectName: "selectionHandle_" + edge
                             width: corner ? 12 : (edge === "t" || edge === "b" ? Math.max(18, selectionBox.width - 24) : 10)
@@ -247,6 +250,7 @@ Item {
                                     bx = viewer.lx; by = viewer.ly; bw = viewer.lw; bh = viewer.lh
                                 }
                                 onPositionChanged: function (m) {
+                                    if (!shell) return
                                     var dx = m.x - ox, dy = m.y - oy
                                     var parts = String(shell.adjustSelectionBox(
                                         bx, by, bw, bh, edge, dx, dy,
@@ -256,10 +260,13 @@ Item {
                                     viewer.lx = parseFloat(parts[0]); viewer.ly = parseFloat(parts[1])
                                     viewer.lw = parseFloat(parts[2]); viewer.lh = parseFloat(parts[3])
                                 }
-                                onReleased: shell.commitSelectionPixels(
-                                    viewer.lx, viewer.ly, viewer.lw, viewer.lh,
-                                    canvas.width, canvas.height
-                                )
+                                onReleased: {
+                                    if (!shell) return
+                                    shell.commitSelectionPixels(
+                                        viewer.lx, viewer.ly, viewer.lw, viewer.lh,
+                                        canvas.width, canvas.height
+                                    )
+                                }
                             }
                         }
                     }
@@ -268,12 +275,12 @@ Item {
                 Rectangle {
                     id: matchBox
                     objectName: "focusMatchBox"
-                    visible: viewer.previewId === "" && canvas.width > 0 && shell.matchW > 0 && shell.matchH > 0
+                    visible: viewer.previewId === "" && canvas.width > 0 && shell && shell.matchW > 0 && shell.matchH > 0
                              && !shell.selectionOnFocus
-                    x: shell.matchX * canvas.width
-                    y: shell.matchY * canvas.height
-                    width: Math.max(2, shell.matchW * canvas.width)
-                    height: Math.max(2, shell.matchH * canvas.height)
+                    x: shell ? shell.matchX * canvas.width : 0
+                    y: shell ? shell.matchY * canvas.height : 0
+                    width: shell ? Math.max(2, shell.matchW * canvas.width) : 0
+                    height: shell ? Math.max(2, shell.matchH * canvas.height) : 0
                     color: "transparent"
                     border.width: 3
                     border.color: Theme.amber
@@ -425,18 +432,18 @@ Item {
         x: Theme.pad
         y: Theme.pad + 48
         spacing: Theme.gap
-        visible: shell.lowInfoRecovery && !shell.searchBusy && viewer.previewId === ""
+        visible: !!(shell && shell.lowInfoRecovery) && !(shell && shell.searchBusy) && viewer.previewId === ""
         Tool {
             objectName: "expandSelection"
             label: "Expand selection"
             hint: "Grow the box and try again"
             primary: true
-            onActivated: shell.expandSelection()
+            onActivated: if (shell) shell.expandSelection()
         }
         Tool {
             objectName: "lowInfoWhole"
             label: "Search the whole photo"
-            onActivated: shell.searchWholeFocus()
+            onActivated: if (shell) shell.searchWholeFocus()
         }
         Tool {
             objectName: "lowInfoRedraw"
@@ -450,19 +457,19 @@ Item {
         x: Theme.pad
         y: Theme.pad + (lowInfoRow.visible ? 96 : 48)
         spacing: Theme.gap
-        visible: shell.pinnedDotCount > 0 && viewer.previewId === "" && !shell.searchBusy
+        visible: !!(shell && shell.pinnedDotCount > 0) && viewer.previewId === "" && !(shell && shell.searchBusy)
         Tool {
             objectName: "searchPinnedDots"
-            label: shell.pinnedDotCount < 2
-                   ? ("Combined find needs one more (" + shell.pinnedDotCount + " pinned)")
+            label: !(shell && shell.pinnedDotCount >= 2)
+                   ? ("Combined find needs one more (" + (shell ? shell.pinnedDotCount : 0) + " pinned)")
                    : ("Find every pinned clue (" + shell.pinnedDotCount + ")")
-            primary: shell.pinnedDotCount >= 2
-            onActivated: shell.searchPinnedDots()
+            primary: !!(shell && shell.pinnedDotCount >= 2)
+            onActivated: if (shell) shell.searchPinnedDots()
         }
         Tool {
             objectName: "clearPinnedDots"
             label: "Clear pins"
-            onActivated: shell.clearPinnedDots()
+            onActivated: if (shell) shell.clearPinnedDots()
         }
     }
     Tool {
@@ -472,9 +479,9 @@ Item {
         y: Theme.pad + 48
         label: "Search this whole photo"
         hint: "Escalate from this match"
-        visible: shell.canEscalateWhole && !shell.searchBusy && viewer.previewId === ""
+        visible: !!(shell && shell.canEscalateWhole) && !(shell && shell.searchBusy) && viewer.previewId === ""
         primary: true
-        onActivated: shell.searchWholeFocus()
+        onActivated: if (shell) shell.searchWholeFocus()
     }
     Rectangle {
         id: moreMenu
