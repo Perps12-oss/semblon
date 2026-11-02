@@ -47,6 +47,24 @@ def test_viewer_and_hotspots_expose_parity_actions():
         assert literal in viewer or literal in hotspots
 
 
+def test_selection_handles_avoid_js_array_repeater_and_null_shell():
+    """Same class as #206: fragile Repeater models / bare shell.* can abort Windows load."""
+    viewer = Path("semblon/native_shell/qml/Viewer.qml").read_text(encoding="utf-8")
+    hotspots = Path("semblon/native_shell/qml/Hotspots.qml").read_text(encoding="utf-8")
+    # Edges may live in a var list for lookup, but must not be the Repeater model itself.
+    assert "? [\"tl\"" not in viewer and "?['tl'" not in viewer.replace(" ", "")
+    assert "required property string modelData" not in viewer
+    assert "required property int index" in viewer
+    assert "selectionBox.edges.length" in viewer
+    assert "shell && shell.selectionOnFocus" in viewer
+    assert "shell && shell.lowInfoRecovery" in viewer
+    assert "shell && shell.canEscalateWhole" in viewer
+    assert "shell && shell.pinnedDotCount" in viewer
+    assert "if (!shell) return false" in hotspots
+    # Bind the pinnedDotIds *property*, never the isDotPinned slot, in QML property bindings.
+    assert "shell.isDotPinned(" not in hotspots
+
+
 def test_combined_find_messages_are_primary_safe():
     for line in (
         "Pin at most four dots for a combined find.",
@@ -135,6 +153,41 @@ def test_expand_and_commit_refine_the_selection(tmp_path, monkeypatch):
         assert abs(bridge.selectionX - 0.10) < 1e-6
         assert abs(bridge.selectionW - 0.40) < 1e-6
         assert bridge.similarState == "ready"
+    finally:
+        shutdown_shell(engine)
+
+
+def test_selection_handles_instantiate_from_integer_model(tmp_path, monkeypatch):
+    """Handles must appear once selectionOnFocus is true — integer Repeater model, not JS array."""
+    from PySide6.QtQuick import QQuickItem, QQuickWindow
+
+    from semblon.native_shell.host import shutdown_shell
+
+    app, engine, bridge = _shell(tmp_path, monkeypatch)
+    try:
+        bridge.setRegion(0.20, 0.20, 0.20, 0.20)
+        app.processEvents()
+        assert bridge.selectionOnFocus is True
+
+        def walk(item, acc):
+            if isinstance(item, QQuickWindow):
+                content = item.contentItem()
+                if content is not None:
+                    walk(content, acc)
+                return
+            if not isinstance(item, QQuickItem):
+                return
+            name = item.objectName() or ""
+            if name.startswith("selectionHandle_"):
+                acc.append(name)
+            for child in item.childItems():
+                walk(child, acc)
+
+        found: list[str] = []
+        for root in engine.rootObjects():
+            walk(root, found)
+        for edge in ("tl", "t", "tr", "l", "r", "bl", "b", "br"):
+            assert f"selectionHandle_{edge}" in found, found
     finally:
         shutdown_shell(engine)
 

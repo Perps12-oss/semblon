@@ -132,8 +132,11 @@ Item {
             visible: !spots.isHidden(modelData.id)
             readonly property bool hot: hover.hovered || activeFocus
             readonly property bool chosen: shell.selectedObservationId === modelData.id
+            // Read the pinnedDotIds property (not the isDotPinned slot) so bindings stay property-safe.
             readonly property bool pinned: {
+                if (!shell) return false
                 var pins = shell.pinnedDotIds
+                if (!pins) return false
                 for (var i = 0; i < pins.length; i++)
                     if (pins[i] === modelData.id) return true
                 return false
@@ -297,15 +300,17 @@ Item {
                 onActivated: {
                     var d = menu.dotData
                     spots.menuDot = null
-                    shell.adoptDotAsRegion(d.id)
+                    if (shell && d) shell.adoptDotAsRegion(d.id)
                 }
             }
             Tool {
                 objectName: "dotPinToggle"
                 width: menuCol.width
                 label: {
+                    if (!shell) return "Add to combined find"
                     var pins = shell.pinnedDotIds
                     var id = menu.dotData ? menu.dotData.id : ""
+                    if (!pins) return "Add to combined find"
                     for (var i = 0; i < pins.length; i++)
                         if (pins[i] === id) return "Remove from combined find"
                     return "Add to combined find"
@@ -313,7 +318,7 @@ Item {
                 onActivated: {
                     var d = menu.dotData
                     spots.menuDot = null
-                    shell.togglePinnedDot(d.id)
+                    if (shell && d) shell.togglePinnedDot(d.id)
                 }
             }
             Tool {
