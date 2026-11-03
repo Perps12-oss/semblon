@@ -326,6 +326,8 @@ class ShellBridge(QObject):
         self._similar_basis_label = ""
         self._similar_phase = ""
         self._search_debug = ""
+        self._low_info = False
+        self._pinned_dots: list[str] = []
         self._selection_note = ""
         self._selection_kind = ""
         self._refine_mode = "look"
@@ -2516,6 +2518,28 @@ class ShellBridge(QObject):
     def queryFocusId(self) -> str:
         return self._query_focus_id or ""
 
+    @Property(bool, notify=similarChanged)
+    def lowInfoRecovery(self) -> bool:
+        """Flat-crop gate fired — offer expand / whole / redraw, not a dead end."""
+        return bool(self._low_info) and self._similar_state in {"empty", "ready"}
+
+    @Property(bool, notify=similarChanged)
+    def canEscalateWhole(self) -> bool:
+        """Hit photo (not the query) can escalate to a whole-photo search."""
+        focus = self._session.focus_id or ""
+        query = self._query_focus_id or ""
+        if not focus or self._similar_state not in {"ready", "empty"}:
+            return False
+        return bool(query) and focus != query
+
+    @Property("QVariantList", notify=focusChanged)
+    def pinnedDotIds(self):
+        return list(self._pinned_dots)
+
+    @Property(int, notify=focusChanged)
+    def pinnedDotCount(self) -> int:
+        return len(self._pinned_dots)
+
     @Property(bool, notify=searchBusyChanged)
     def searchBusy(self) -> bool:
         return self._search_busy
@@ -2792,6 +2816,7 @@ class ShellBridge(QObject):
                 )
             )
         self._search_debug = self._format_search_debug(result.data or {}, rows)
+        self._low_info = bool((result.data or {}).get("low_info"))
         state = result.state if result.state in {"ready", "empty", "unavailable", "error"} else "error"
         note = result.message if result.message else "Similar search could not run."
         error_id = str((result.data or {}).get("error_id") or "")
@@ -2865,6 +2890,10 @@ class ShellBridge(QObject):
         self._region_norm = None
         self._selection_kind = ""
         self._selection_note = ""
+        self._low_info = False
+        if self._pinned_dots:
+            self._pinned_dots = []
+            self.focusChanged.emit()
         self.selectionChanged.emit()
         self._drop_name()
         self._search_door = ""
@@ -2879,6 +2908,8 @@ class ShellBridge(QObject):
 
         self._selected_observation = ""
         self._focus_boxes = []
+        if self._pinned_dots:
+            self._pinned_dots = []
         item = self._jobs.media(media_id)
         if item is None or item.source_type not in {"folder", "video"}:
             return
@@ -4163,6 +4194,224 @@ class ShellBridge(QObject):
     def clearDrawnQuery(self) -> None:
         """Drop a drag that is not a query. Stale thumbnails must not survive it."""
         self._clear_query()
+
+    @Slot(float, float, float, float, float, float)
+    def commitSelectionPixels(
+        self,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        painted_w: float,
+        painted_h: float,
+    ) -> None:
+        """Commit a painted-pixel selection and re-run region search (post-query refine)."""
+        if painted_w <= 0 or painted_h <= 0 or w < 8 or h < 8:
+            return
+        self._low_info = False
+        self.setRegion(x / painted_w, y / painted_h, w / painted_w, h / painted_h)
+        self.findSimilar()
+
+    @Slot()
+    def expandSelection(self) -> None:
+        """Grow the current Focus selection ~25% and search again (LOW_INFO recovery)."""
+        if not self.selectionOnFocus or self._region_norm is None:
+            self._set_result("Draw a region on the photo first.")
+            return
+        nx, ny, nw, nh = self._region_norm
+        pad_x = max(0.02, nw * 0.25)
+        pad_y = max(0.02, nh * 0.25)
+        x1 = max(0.0, nx - pad_x)
+        y1 = max(0.0, ny - pad_y)
+        x2 = min(1.0, nx + nw + pad_x)
+        y2 = min(1.0, ny + nh + pad_y)
+        self._low_info = False
+        self.setRegion(x1, y1, max(0.01, x2 - x1), max(0.01, y2 - y1))
+        self.findSimilar()
+
+    @Slot()
+    def searchWholeFocus(self) -> None:
+        """Whole-photo door on the open Focus still (escalate from a region hit / LOW_INFO)."""
+        self._low_info = False
+        self.findSimilarWhole()
+
+    @Slot(str)
+    def adoptDotAsRegion(self, observation_id: str) -> None:
+        """Use a dot's box as the region query — including faces (look, not Same face)."""
+        wanted = str(observation_id or "").strip()
+        for box in self._focus_boxes:
+            if str(box.get("id") or "") != wanted:
+                continue
+            self._selected_observation = wanted
+            self.setRegion(
+                float(box.get("nx") or 0),
+                float(box.get("ny") or 0),
+                float(box.get("nw") or 0),
+                float(box.get("nh") or 0),
+            )
+            kind = str(box.get("kind") or "")
+            self._selection_kind = "face" if kind == "face" else ("text" if kind == "text" else "object")
+            self._selection_note = "Selected from a dot."
+            self.focusChanged.emit()
+            self.similarChanged.emit()
+            self.findSimilar()
+            return
+
+    @Slot(str, result=bool)
+    def isDotPinned(self, observation_id: str) -> bool:
+        return str(observation_id or "").strip() in self._pinned_dots
+
+    @Slot(str)
+    def togglePinnedDot(self, observation_id: str) -> None:
+        wanted = str(observation_id or "").strip()
+        if not wanted:
+            return
+        if wanted in self._pinned_dots:
+            self._pinned_dots = [item for item in self._pinned_dots if item != wanted]
+        else:
+            if len(self._pinned_dots) >= 4:
+                self._set_result("Pin at most four dots for a combined find.")
+                return
+            self._pinned_dots = list(self._pinned_dots) + [wanted]
+        self.focusChanged.emit()
+
+    @Slot()
+    def clearPinnedDots(self) -> None:
+        if not self._pinned_dots:
+            return
+        self._pinned_dots = []
+        self.focusChanged.emit()
+
+    @Slot()
+    def searchPinnedDots(self) -> None:
+        """Intersect Same-face and region doors for the pinned dots (AND)."""
+        pins = list(self._pinned_dots)
+        if len(pins) < 2:
+            self._set_result("Pin at least two dots, then search the combination.")
+            return
+        by_id = {str(box.get("id") or ""): box for box in self._focus_boxes}
+        face_ids: list[str] = []
+        region_boxes: list[dict] = []
+        for pin in pins:
+            box = by_id.get(pin)
+            if box is None:
+                continue
+            if str(box.get("kind") or "") == "face":
+                face_ids.append(pin)
+            else:
+                region_boxes.append(box)
+        if not ((face_ids and region_boxes) or len(region_boxes) >= 2 or len(face_ids) >= 2):
+            self._set_result("Combined find needs a face with a thing, or two areas.")
+            return
+        media_id = self._session.focus_id
+        if not media_id:
+            self._set_result("Open a photo first.")
+            return
+        adapter = self._adapter
+        sets: list[set[str]] = []
+        norms: dict[str, list[float]] = {}
+        scores: dict[str, float] = {}
+
+        def absorb(result: Result) -> bool:
+            if result.state not in {"ready", "empty"}:
+                self._apply_result(result)
+                return False
+            media: set[str] = set()
+            for item in result.data.get("items") or []:
+                mid = str(item.get("media_id") or "")
+                if not mid:
+                    continue
+                media.add(mid)
+                sc = float(item.get("score") or 0.0)
+                if mid not in scores or sc > scores[mid]:
+                    scores[mid] = sc
+                nw = float(item.get("match_nw") or 0)
+                if mid not in norms or nw > float(norms[mid][2]):
+                    norms[mid] = [
+                        float(item.get("match_nx") or 0),
+                        float(item.get("match_ny") or 0),
+                        float(item.get("match_nw") or 0),
+                        float(item.get("match_nh") or 0),
+                    ]
+            sets.append(media)
+            return True
+
+        for face_id in face_ids:
+            if not absorb(self._safe_call(lambda fid=face_id: adapter.similar_faces(fid))):
+                return
+
+        item = self._jobs.media(media_id)
+        width = int(item.width or 0) if item is not None else 0
+        height = int(item.height or 0) if item is not None else 0
+        for box in region_boxes:
+            if width <= 0 or height <= 0:
+                continue
+            x = max(0, min(width - 1, int(round(float(box.get("nx") or 0) * width))))
+            y = max(0, min(height - 1, int(round(float(box.get("ny") or 0) * height))))
+            w = max(1, int(round(float(box.get("nw") or 0) * width)))
+            h = max(1, int(round(float(box.get("nh") or 0) * height)))
+            if x + w > width:
+                w = width - x
+            if y + h > height:
+                h = height - y
+            kind = "text" if str(box.get("kind") or "") == "text" else "object"
+            try:
+                rec = self._jobs.remember_and_find_region(
+                    media_id,
+                    x,
+                    y,
+                    w,
+                    h,
+                    selection_kind=kind,
+                    search_quality="fast",
+                )
+            except Exception as exc:  # noqa: BLE001 - keep the Focus strip honest
+                self._apply_result(Result("error", str(exc) or "Similar search could not run."))
+                return
+            if not absorb(adapter.similar_region(rec if isinstance(rec, dict) else {})):
+                return
+
+        if len(sets) < 2:
+            self._publish_similar(
+                "empty",
+                "Similar (Combined find): nothing to search.",
+                [],
+                basis="region",
+                basis_label="Combined find",
+            )
+            return
+        shared = set.intersection(*sets)
+        shared.discard(str(media_id))
+        rows = [
+            (
+                mid,
+                float(scores.get(mid, 1.0)),
+                float((norms.get(mid) or [0.0, 0.0, 0.0, 0.0])[0]),
+                float((norms.get(mid) or [0.0, 0.0, 0.0, 0.0])[1]),
+                float((norms.get(mid) or [0.0, 0.0, 0.0, 0.0])[2]),
+                float((norms.get(mid) or [0.0, 0.0, 0.0, 0.0])[3]),
+            )
+            for mid in sorted(shared, key=lambda m: (-scores.get(m, 0.0), m))
+        ]
+        self._set_door("region")
+        self._query_focus_id = media_id
+        self._low_info = False
+        if rows:
+            self._publish_similar(
+                "ready",
+                f"Similar (Combined find): {len(rows)} photos with every pinned clue.",
+                rows,
+                basis="region",
+                basis_label="Combined find",
+            )
+        else:
+            self._publish_similar(
+                "empty",
+                "Similar (Combined find): nothing close enough.",
+                [],
+                basis="region",
+                basis_label="Combined find",
+            )
 
     @Slot(int, result=str)
     def similarId(self, row: int) -> str:
