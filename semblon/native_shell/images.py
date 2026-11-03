@@ -27,6 +27,9 @@ _TINY_DISK = 96
 _DECODE_COUNT = 0
 _DECODE_LOCK = threading.Lock()
 _DISK_LOCK = threading.Lock()
+# QImageReader / Qt image plugins are not safe for parallel use on Windows;
+# many Roll thumbs at once were crashing the shell (0xC0000005 in Qt6Core).
+_QIMAGE_LOCK = threading.Lock()
 
 
 class ImageDecodeCache:
@@ -127,9 +130,11 @@ def _disk_thumb_path(cache_dir: Path, key) -> Path:
 
 
 def _read_disk_thumb(path: Path) -> QImage:
-    reader = QImageReader(str(path))
-    reader.setAutoTransform(True)
-    loaded = reader.read()
+    with _DISK_LOCK:
+        with _QIMAGE_LOCK:
+            reader = QImageReader(str(path))
+            reader.setAutoTransform(True)
+            loaded = reader.read()
     if loaded.isNull():
         return QImage()
     return loaded
@@ -141,7 +146,9 @@ def _write_disk_thumb(path: Path, image: QImage) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_suffix(".jpg.part")
     with _DISK_LOCK:
-        if image.save(str(partial), "JPEG", 82):
+        with _QIMAGE_LOCK:
+            saved = image.save(str(partial), "JPEG", 82)
+        if saved:
             partial.replace(path)
         elif partial.is_file():
             partial.unlink(missing_ok=True)
@@ -161,19 +168,20 @@ def _decode_original(path: str, max_side: int) -> QImage:
         return _video_frame(file, max_side)
     if file is None or not file.is_file():
         return image
-    reader = QImageReader(str(file))
-    reader.setAutoTransform(True)
-    size = reader.size()
-    if size.isValid() and max_side > 0:
-        longest = max(size.width(), size.height(), 1)
-        scale = min(1.0, float(max_side) / float(longest))
-        reader.setScaledSize(
-            QSize(
-                max(1, int(size.width() * scale)),
-                max(1, int(size.height() * scale)),
+    with _QIMAGE_LOCK:
+        reader = QImageReader(str(file))
+        reader.setAutoTransform(True)
+        size = reader.size()
+        if size.isValid() and max_side > 0:
+            longest = max(size.width(), size.height(), 1)
+            scale = min(1.0, float(max_side) / float(longest))
+            reader.setScaledSize(
+                QSize(
+                    max(1, int(size.width() * scale)),
+                    max(1, int(size.height() * scale)),
+                )
             )
-        )
-    loaded = reader.read()
+        loaded = reader.read()
     if not loaded.isNull():
         image = loaded
     return image

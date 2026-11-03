@@ -47,6 +47,7 @@ class ArchiveModel(QAbstractListModel):
         self._cache: list = []
         self._cache_start = -1
         self._ids: list[str] | None = None
+        self._days_cache: list[str] | None = None
 
     def reload(self) -> None:
         self.beginResetModel()
@@ -54,6 +55,7 @@ class ArchiveModel(QAbstractListModel):
         self._count = self._app.archive_count()
         self._cache = []
         self._cache_start = -1
+        self._days_cache = None
         self.endResetModel()
 
     def set_media_ids(self, media_ids: list[str] | None) -> None:
@@ -70,6 +72,7 @@ class ArchiveModel(QAbstractListModel):
             self._count = len(self._ids)
         self._cache = []
         self._cache_start = -1
+        self._days_cache = None
         self.endResetModel()
 
     def media_ids(self) -> list[str] | None:
@@ -79,14 +82,30 @@ class ArchiveModel(QAbstractListModel):
         return list(self._ids)
 
     def days(self) -> list[str]:
-        """Day key of every row, in the order the Roll shows them."""
+        """Day key of every row, in the order the Roll shows them.
+
+        ``rollLayout`` calls this while QML is still loading. Per-id ``media()``
+        lookups freeze a full archive (~25k) for tens of seconds with no window.
+        One timeline window fills the map; only true gaps fall back to ``media()``.
+        """
         if self._ids is None:
             return self._app.archive_days()
-        out = []
+        if self._days_cache is not None:
+            return list(self._days_cache)
+        if not self._ids:
+            self._days_cache = []
+            return []
+        day_by_id = {
+            m.media_id: m.day
+            for m in self._app.archive_window(0, max(self._count, self._app.archive_count()))
+        }
         for media_id in self._ids:
+            if media_id in day_by_id:
+                continue
             item = self._app.media(media_id)
-            out.append(item.day if item is not None else "")
-        return out
+            day_by_id[media_id] = item.day if item is not None else ""
+        self._days_cache = [day_by_id.get(media_id, "") for media_id in self._ids]
+        return list(self._days_cache)
 
     def row_info(self, row: int) -> dict:
         item = self._at(row)

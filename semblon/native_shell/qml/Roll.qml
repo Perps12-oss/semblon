@@ -60,6 +60,9 @@ Item {
     readonly property bool scrolling: grid.moving || settle.running
     readonly property real headerHeight: band.height
     readonly property bool dayBreaks: !matchMode && cellSize >= 120
+    // False until after the first deferred layout. Column/size bindings fire
+    // during engine.load; running rollLayout then blocks the Window from appearing.
+    property bool layoutReady: false
 
     signal opened(string mediaId, rect cell)
 
@@ -310,12 +313,17 @@ Item {
     }
 
     onRowTopChanged: { updateWindow(); refreshHeading() }
-    onColumnsChanged: if (columns !== laidColumns) relayout(zooming ? zoomAnchor : -1)
+    onColumnsChanged: if (layoutReady && columns !== laidColumns) relayout(zooming ? zoomAnchor : -1)
     onCellSizeChanged: if (zooming && photoCount > 0) jumpToIndex(zoomAnchor)
-    onMatchModeChanged: relayout(0)
-    onDayBreaksChanged: relayout(-1)
-    Component.onCompleted: relayout(0)
-
+    onMatchModeChanged: if (layoutReady) relayout(0)
+    onDayBreaksChanged: if (layoutReady) relayout(-1)
+    // Defer the first layout so the Window can appear before a full-archive
+    // rollLayout runs (tens of thousands of day keys). Otherwise the shell
+    // looks like it never opened.
+    Component.onCompleted: Qt.callLater(function () {
+        layoutReady = true
+        relayout(0)
+    })
     Connections {
         target: archiveModel
         function onModelReset() { Qt.callLater(roll.relayout, -1) }
