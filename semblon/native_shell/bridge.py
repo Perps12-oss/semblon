@@ -303,6 +303,10 @@ class ShellBridge(QObject):
         self._jobs = jobs
         self._session = jobs.archive
         self._model = model
+        self._archive_generation = 0
+        self._model.modelReset.connect(self._bump_archive_generation)
+        self._model.rowsInserted.connect(self._bump_archive_generation)
+        self._model.rowsRemoved.connect(self._bump_archive_generation)
         self._job_active = False
         self._job_state = "idle"
         self._category_note = ""
@@ -1449,6 +1453,42 @@ class ShellBridge(QObject):
         from semblon.native_shell.sections import build_sections
 
         return build_sections(self._model.days(), int(columns), grouped=bool(grouped), day_rows=bool(dayRows))
+
+    def _bump_archive_generation(self, *args) -> None:
+        self._archive_generation += 1
+
+    @Slot(result=int)
+    def archiveGeneration(self) -> int:
+        """Monotonic archive layout generation for temporal-nav snapshots."""
+        return int(self._archive_generation)
+
+    @Slot(int, bool, bool, float, float, float, result="QVariantMap")
+    def temporalNavGeometry(
+        self,
+        columns: int,
+        grouped: bool,
+        dayRows: bool,
+        cellW: float,
+        monthH: float,
+        dayH: float,
+    ):
+        """Immutable chronological geometry for the time strip (calendar ≠ content)."""
+        from semblon.native_shell.sections import build_sections
+        from semblon.native_shell.temporal_geometry import build_temporal_geometry
+
+        days = self._model.days()
+        laid = build_sections(
+            days, int(columns), grouped=bool(grouped), day_rows=bool(dayRows)
+        )
+        geometry = build_temporal_geometry(
+            days,
+            laid.get("rows") or [],
+            cell_w=float(cellW),
+            month_h=float(monthH),
+            day_h=float(dayH),
+            generation=int(self._archive_generation),
+        )
+        return geometry.to_dict()
 
     @Slot(int, result="QVariantMap")
     def cellInfo(self, index: int):

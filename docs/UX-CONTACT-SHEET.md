@@ -3,7 +3,7 @@
 The Semblon desktop shell (PySide6 + QML, `semblon shell`) is one zoomable **Roll** of every photo.
 
 - **Roll**: all photos on one canvas, newest first. Pinch, Ctrl+scroll or Ctrl +/- to zoom from months to single frames.
-- **Film edge**: the strip on the right shows years sized by how many photos each holds. Click or drag to travel through time.
+- **Film edge**: the strip on the right is a chronological navigation instrument. Calendar years keep uniform time (including empty years as gaps). Populated years are the only navigable detents. Click or drag to travel through time; the content Roll owns scrolling and animation.
 - **Light Table**: the bar at the bottom has four verbs: Find by date, Find a person, Find by description, Tidy up copies. Ctrl+K opens everything else.
 - **Picture view**: opens over the Roll. Left/Right move between photos; Esc returns.
 - **Find this part again**: point at part of a picture and Semblon finds it again elsewhere. Matches can be shown on the Roll.
@@ -17,7 +17,7 @@ Screenshots: `docs/evidence/contact-sheet/`.
 ## Polish pass
 
 - First run: the whole canvas is the drop zone (dashed amber edge, lights up while a folder is dragged over). One primary action, "Choose a folder"; the top-right "Add a folder" appears only once photos exist. The four verbs are dimmed with "Add photos first" but stay focusable. Ctrl+K lists only actions that work now.
-- Roll: month header is its own sticky band (title, count on its own line, soft fade). Day breaks carry a frame-number tag (e.g. SAT 14 SEP) with small gutters between thumbnails. The scrubber is higher-contrast, shows the current year and month, and gives hover and drag feedback; the grid fills the width beside it.
+- Roll: month header is its own sticky band (title, count on its own line, soft fade). Day breaks carry a frame-number tag (e.g. SAT 14 SEP) with small gutters between thumbnails. The time strip shows a passive viewport segment on the left rail and a destination year pill while dragging; the grid fills the width beside it.
 - Bottom bar: the Roll reserves bar height plus a margin at the end of a scroll; the bar shrinks and fades while scrolling and returns when scrolling stops or the pointer nears it. "Everything" is now "More... Ctrl+K" (Cmd+K on macOS).
 - Language: install and download dialogs describe what becomes possible ("Get finding-by-look ready"). A test scans user-visible strings for banned engine words.
 - Keyboard: loupe (L, arrows move, Shift+arrows resize, Enter finds) and People (S same as the next group, X send away, Tab to a "Same as" stack then Enter).
@@ -26,7 +26,7 @@ Screenshots: `docs/evidence/contact-sheet/`.
 
 - The Roll is a sectioned list: a month row, then one row per day (frame tag such as "SAT 8 FEB" and that day's count), then that day's photos. Every photo sits under its own month and day. Counts are per month and per day.
 - The sticky band names the month under it. A scrubber landing is only honoured while that month's header is still at the band.
-- The scrubber has even month slots, density as a small bar, a marker on the left rail, and lands exactly on the month header.
+- The time strip uses a uniform calendar-year scale (empty years keep chronological space but are not destinations). Landings resolve to populated years via content geometry (`offset_for_year`), never by inventing photos in empty years.
 - Gutter between pictures is `Theme.gutter` (5px) at every size.
 - Add a folder and Settings live in the sticky band, never over pictures.
 - Pictures: lift and amber hairline on hover, date and time chip, selected state (Ctrl/Shift click, keyboard). Grid centre-crops; the photo view shows the whole picture.
@@ -42,6 +42,15 @@ Screenshots: `docs/evidence/contact-sheet/`.
 - Tidy up copies is a real review view (Keep this one, plain confirm, Recycle Bin).
 - Plain wording for the preflight confirm; both add-on sheets show their size.
 
+
+## Temporal navigation (Phase 1)
+
+Calendar time and Roll `contentY` are different metric spaces. They meet only through:
+
+- `time_for_offset(content_offset)` — maps dated content position to chronological time (monotonic over dated content; empty years keep duration on the strip; undated is an explicit result).
+- `offset_for_year(year)` — maps a populated year to its content destination, or `None` for empty years (never silent clamp).
+
+Implementation: `semblon/native_shell/temporal_geometry.py`, Roll `navigateToOffset` / `redirectNavigation` / `cancelNavigation`, and `qml/Scrubber.qml` (Idle → Armed → Tracking → Settling). Phase 2 photographic ribbon and Phase 3 loupe are not built.
 
 ## Capture dates and the Recycle Bin
 

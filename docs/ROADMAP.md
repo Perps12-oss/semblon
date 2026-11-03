@@ -18,6 +18,14 @@ This file lists the product-completion sequence. It does not redefine the vision
 | 6 | Face → archive discovery | Slices A–E **landed**. Q/L/I/P **not PASS** | A–E are in the build. Those four gates are not marked passed. `docs/SHIP-GATES.md`. |
 | 7 | Multi-leg local retrieval | Synthetic rank bar **CLOSED / PASS 5/5**. Precision **not PASS** | `docs/evidence/lens-retrieval-eval.json` lines 2, 6, 65, 319, 326. Kind door SKIPPED. `ann_justified` false. ANN is out of ship. |
 
+## Temporal navigation strip
+
+| Phase | Outcome | Status |
+|---|---|---|
+| 1 | Chronological scale, year detents, empty-year gaps, destination pill, viewport segment, content-owned navigate/redirect/cancel | **Landed** — `docs/BUILD-STATUS.md`, `docs/UX-CONTACT-SHEET.md` |
+| 2 | Photographic ribbon from existing thumb caches | Not started |
+| 3 | Loupe / richer strip interactions | Not started |
+
 ## Next engineering slice — search states and the people desk (landed, suite incomplete)
 
 Object and word search now keep four states apart: the checker is unavailable, a photo could not be read, a check failed, and a photo has not been checked. An empty word read stays a miss, not a failure and not an unavailable reader.

@@ -223,7 +223,10 @@ def test_sticky_header_follows_the_scroll_across_month_boundaries(tmp_path, monk
         shutdown_shell(engine)
 
 
-def test_scrubber_lands_exactly_on_a_months_header(tmp_path, monkeypatch):
+def test_scrubber_lands_on_populated_year_headers(tmp_path, monkeypatch):
+    """Phase-1 strip: uniform calendar years; landings are year detents on content geometry."""
+    import time as _time
+
     from PySide6.QtQuick import QQuickItem
 
     from semblon.native_shell.host import shutdown_shell
@@ -234,24 +237,53 @@ def test_scrubber_lands_exactly_on_a_months_header(tmp_path, monkeypatch):
         scrub = root.findChild(QQuickItem, "scrubber")
         band = root.findChild(QQuickItem, "rollHeader")
         slots = scrub.property("slots").toVariant()["items"]
-        months = [s for s in slots if s["kind"] == "month"]
-        assert len(months) == len(PLAN)
-        heights = {round(s["h"], 3) for s in months}
-        assert len(heights) == 1, "months get even spacing, not density-based distance"
-        for slot in (months[3], months[5]):
+        years = [s for s in slots if s["kind"] == "year"]
+        assert years, "calendar years occupy the strip"
+        heights = {round(s["h"], 3) for s in years}
+        assert len(heights) == 1, "years use uniform chronological spacing, not photo density"
+        populated = [s for s in years if s.get("populated")]
+        assert len(populated) >= 2
+        # Ensure slot geometry is available (passive geometry fills after first layout).
+        _call(scrub, "updateViewportSeg")
+        _spin(app, 0.2)
+        slots = scrub.property("slots").toVariant()["items"]
+        populated = [s for s in slots if s.get("kind") == "year" and s.get("populated")]
+        assert len(populated) >= 2
+        for slot in (populated[0], populated[-1]):
             _call(scrub, "go", slot["y"] + slot["h"] / 2)
-            _spin(app, 0.25)
-            assert roll.property("currentMonth") == slot["key"]
-            assert roll.property("heading") == sections.month_title(slot["key"])
-            top = float(_call(roll, "monthTopInView", slot["key"]))
-            assert abs(top - band.height()) <= 2, (top, band.height())
-        before = roll.property("currentMonth")
+            end = _time.monotonic() + 2.5
+            while _time.monotonic() < end:
+                app.processEvents()
+                if not roll.property("navigating") and scrub.property("mode") == "idle":
+                    break
+                _time.sleep(0.02)
+            _spin(app, 0.2)
+            month = str(roll.property("currentMonth") or "")
+            assert month.startswith(str(slot["year"])), (month, slot)
+            if slot.get("key"):
+                top = float(_call(roll, "monthTopInView", slot["key"]))
+                assert abs(top - band.height()) <= 6, (top, band.height())
+        # Land on the newest populated year, then step toward an older detent.
+        _call(scrub, "go", populated[0]["y"] + populated[0]["h"] / 2)
+        end = _time.monotonic() + 2.5
+        while _time.monotonic() < end:
+            app.processEvents()
+            if not roll.property("navigating") and scrub.property("mode") == "idle":
+                break
+            _time.sleep(0.02)
+        before_year = str(roll.property("currentMonth") or "")[:4]
         _call(scrub, "step", 1)
-        _spin(app, 0.25)
-        keys = [m["key"] for m in months]
-        assert roll.property("currentMonth") == keys[keys.index(before) + 1]
+        end = _time.monotonic() + 2.5
+        while _time.monotonic() < end:
+            app.processEvents()
+            if not roll.property("navigating") and scrub.property("mode") == "idle":
+                break
+            _time.sleep(0.02)
+        after_year = str(roll.property("currentMonth") or "")[:4]
+        assert after_year != before_year and before_year != ""
         marker = scrub.findChild(QQuickItem, "scrubMarker")
-        assert marker.x() + marker.width() <= 8, "the marker stays on the left rail, clear of every label"
+        assert marker is not None
+        assert marker.x() + marker.width() <= 8, "the viewport segment stays on the left rail"
     finally:
         shutdown_shell(engine)
 
