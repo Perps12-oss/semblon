@@ -106,6 +106,47 @@ def test_archive_model_fetches_a_window_not_the_library(tmp_path):
     assert sum(limit for _offset, limit in calls) < 500
 
 
+def test_archive_model_days_for_scoped_ids_does_not_query_per_photo(tmp_path):
+    """rollLayout needs every day key; N media() round-trips freeze shell open."""
+    pytest.importorskip("PySide6")
+    from semblon.application import Application
+    from semblon.native_shell.model import ArchiveModel
+    from semblon.store import connect, init_db
+
+    store = tmp_path / "s.sqlite"
+    conn = connect(store)
+    try:
+        init_db(conn)
+        conn.executemany(
+            "INSERT INTO media VALUES (?,?,?,?,?,?,?,?)",
+            [
+                (f"m{i:04d}", "folder", f"{i}.jpg", f"h{i}", 10, 10, (500 - i) * 1_000_000_000, 1)
+                for i in range(200)
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    jobs = Application(store)
+    media_calls: list[str] = []
+    real_media = jobs.media
+
+    def wrapped_media(media_id: str):
+        media_calls.append(media_id)
+        return real_media(media_id)
+
+    jobs.media = wrapped_media  # type: ignore[method-assign]
+    model = ArchiveModel(jobs)
+    ids = [f"m{i:04d}" for i in range(200)]
+    model.set_media_ids(ids)
+    days = model.days()
+    assert len(days) == 200
+    assert media_calls == []
+    assert model.days() == days
+    assert media_calls == []
+
+
+
 
 def test_shell_qml_shows_time_and_empty_archive(tmp_path, monkeypatch):
     pytest.importorskip("PySide6")
