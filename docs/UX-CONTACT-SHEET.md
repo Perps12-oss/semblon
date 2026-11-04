@@ -50,7 +50,57 @@ Calendar time and Roll `contentY` are different metric spaces. They meet only th
 - `time_for_offset(content_offset)` — maps dated content position to chronological time (monotonic over dated content; empty years keep duration on the strip; undated is an explicit result).
 - `offset_for_year(year)` — maps a populated year to its content destination, or `None` for empty years (never silent clamp).
 
-Implementation: `semblon/native_shell/temporal_geometry.py`, Roll `navigateToOffset` / `redirectNavigation` / `cancelNavigation`, and `qml/Scrubber.qml` (Idle → Armed → Tracking → Settling). Undated occupies a terminal zone **below** the dated calendar track so it cannot rescale year positions. Phase 2 photographic ribbon and Phase 3 loupe are not built.
+Implementation: `semblon/native_shell/temporal_geometry.py`, Roll `navigateToOffset` / `redirectNavigation` / `cancelNavigation`, and `qml/Scrubber.qml` (Idle → Armed → Tracking → Settling). Undated occupies a terminal zone **below** the dated calendar track so it cannot rescale year positions. Phase 1 navigation stays as landed.
+
+## Phase 2 — Intelligent photographic ribbon & hybrid temporal magnification
+
+Phase 2 makes the timeline useful for **understanding** the archive, not only navigating it. The user can recognise periods with photographs, dense vs sparse stretches, and gaps; get a visual impression of a period; magnify year → month → populated days; inspect a few representative actual photographs; and navigate to a selected period deliberately.
+
+The ribbon must remain understandable with 10,000 photographs in two months, and with archives of hundreds of thousands of photographs. It must never become an overcrowded miniature photo gallery.
+
+### Founding principles
+
+1. **The timeline's chronological scale remains independent of photograph density.** Density changes the visual representation, not the calendar geometry.
+2. **Hovering changes inspection detail, not archive position.** Hover must never move `contentY` or invoke navigate / redirect / cancel.
+3. Magnification is a **local temporal lens** (hybrid year → month → day), not a global rescaling of the strip.
+
+Phase 1 navigation (Idle → Armed → Tracking → Settling, destination pill, content-owned scrub) stays unchanged.
+
+### Acceptance criterion (required)
+
+**10,000 photographs taken in July and August must produce a visually coherent representation of those two months, not 10,000 competing visual marks.**
+
+Visual mark budget:
+
+| Scale | Idle / overview | Under hover magnification |
+|---|---|---|
+| Years | One coherent cell per populated year (`O(years)`) | — |
+| Months | — | One coherent cell per populated month in the expanded year (`≤ 12`) |
+| Days | — | One coherent cell per populated day in the expanded month (never one mark per photo) |
+| Preview panel | — | At most four representative photographs for the focused period |
+
+A month or day with thousands of photographs is still **one** cell (aggregated colour from a capped deterministic sample). Empty calendar years remain gaps with no fill. A naive mosaic that draws one thumb (or mark) per photograph is out of Phase 2.
+
+### Contextual photographic preview
+
+While hovering a magnified period, a contextual panel beside the strip shows up to four deterministic representative thumbnails for that period (day if resolved, else month, else year). Sources are existing thumb caches only (`thumb_on_disk` / `read_cached_thumb`, then `image://archive/s/…`). Cold originals are skipped — missing cache → colour/placeholder fallback; no synchronous full-archive decode, no new indexing or identity work.
+
+This preview panel is Phase 2. Phase 3's advanced loupe (richer inspection chrome) is not this slice.
+
+### Interaction (three actions)
+
+| Action | Behaviour |
+|---|---|
+| **Hover** | Inspect a finer temporal scale (year → month → day) and the contextual photo preview. **Never moves the archive.** |
+| **Click** | Navigate to that period via existing content-owned navigate. |
+| **Click and drag** | Scrub through populated periods using **unchanged Phase 1** Idle → Armed → Tracking → Settling. |
+
+### Implementation
+
+- Sampling / cells: `semblon/native_shell/temporal_ribbon.py` (`year_cells`, `month_cells_for_year`, `day_cells_for_month`).
+- Cache gate: `thumb_on_disk` / `read_cached_thumb` in `images.py` — ribbon colour and preview ids never decode originals.
+- Bridge: `ribbonYearCells` / `ribbonMonthCells` / `ribbonDayCells` (cached thumbs only; `hasTiny` + filtered `sampleIds`).
+- Strip: `qml/Scrubber.qml` — year colour washes; local lens + preview panel (`image://archive/s/…`); hover subdivides the hovered year slot without rescaling neighbours; click uses the captured period; drag is unchanged Phase 1.
 
 ## Capture dates and the Recycle Bin
 

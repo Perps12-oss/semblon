@@ -304,6 +304,8 @@ class ShellBridge(QObject):
         self._session = jobs.archive
         self._model = model
         self._archive_generation = 0
+        self._ribbon_ids_gen = -1
+        self._ribbon_ids_cache: list[str] = []
         self._model.modelReset.connect(self._bump_archive_generation)
         self._model.rowsInserted.connect(self._bump_archive_generation)
         self._model.rowsRemoved.connect(self._bump_archive_generation)
@@ -1456,6 +1458,8 @@ class ShellBridge(QObject):
 
     def _bump_archive_generation(self, *args) -> None:
         self._archive_generation += 1
+        self._ribbon_ids_gen = -1
+        self._ribbon_ids_cache = []
 
     @Slot(result=int)
     def archiveGeneration(self) -> int:
@@ -1489,6 +1493,105 @@ class ShellBridge(QObject):
             generation=int(self._archive_generation),
         )
         return geometry.to_dict()
+
+    def _ribbon_media_ids(self) -> list[str]:
+        """Media ids in Roll order, aligned with ``days()``. Cached per archive generation."""
+        if self._ribbon_ids_gen == self._archive_generation and self._ribbon_ids_cache:
+            return list(self._ribbon_ids_cache)
+        value = self._model.media_ids()
+        if value is not None:
+            self._ribbon_ids_cache = list(value)
+        else:
+            count = int(self._model.rowCount())
+            if count <= 0:
+                self._ribbon_ids_cache = []
+            else:
+                window = self._jobs.archive_window(0, max(count, self._jobs.archive_count()))
+                self._ribbon_ids_cache = [str(m.media_id) for m in window][:count]
+        self._ribbon_ids_gen = self._archive_generation
+        return list(self._ribbon_ids_cache)
+
+    def _ribbon_cached_thumbs(self, sample_ids: list[str]):
+        """Load only already-cached thumbs (memory or disk). Never decode originals."""
+        from pathlib import Path
+
+        from semblon.native_shell import images as image_mod
+        from semblon.native_shell.images import read_cached_thumb, thumb_cache_dir
+
+        cache_dir = thumb_cache_dir(Path(self._jobs.store))
+        images = []
+        cached_ids: list[str] = []
+        for media_id in sample_ids:
+            if not media_id or str(media_id).startswith("idx:"):
+                continue
+            path = self.path_for(str(media_id))
+            if not path:
+                continue
+            # Tiny first, then standard thumb tier — both are cache-only reads.
+            frame = read_cached_thumb(path, 96, cache_dir=cache_dir)
+            if frame is image_mod._MISS:
+                frame = read_cached_thumb(path, 384, cache_dir=cache_dir)
+            if frame is image_mod._MISS or frame is None:
+                continue
+            if getattr(frame, "isNull", lambda: True)():
+                continue
+            images.append(frame)
+            cached_ids.append(str(media_id))
+        return images, cached_ids
+
+    def _ribbon_peek_colors(self, sample_ids: list[str]) -> str:
+        """Aggregate colour from cached thumbs only — never decode originals here."""
+        from semblon.native_shell.temporal_ribbon import aggregate_color_from_images
+
+        images, _cached = self._ribbon_cached_thumbs(sample_ids)
+        return aggregate_color_from_images(images) or ""
+
+    def _ribbon_cell_payload(self, cell) -> dict:
+        payload = cell.to_dict()
+        images, cached_ids = self._ribbon_cached_thumbs(list(cell.sample_ids))
+        from semblon.native_shell.temporal_ribbon import aggregate_color_from_images
+
+        color = aggregate_color_from_images(images) or ""
+        if color:
+            payload["color"] = color
+        # Preview panel should only request ids that will not force an original decode.
+        if cached_ids:
+            payload["sampleIds"] = cached_ids[:4]
+            payload["hasTiny"] = True
+        else:
+            payload["sampleIds"] = []
+            payload["hasTiny"] = False
+        return payload
+
+    @Slot(result="QVariantList")
+    def ribbonYearCells(self):
+        """Idle ribbon: one coherent cell per populated year (density-aware)."""
+        from semblon.native_shell.temporal_ribbon import year_cells
+
+        days = self._model.days()
+        media_ids = self._ribbon_media_ids()
+        cells = year_cells(days, media_ids=media_ids or None)
+        return [self._ribbon_cell_payload(cell) for cell in cells]
+
+    @Slot(int, result="QVariantList")
+    def ribbonMonthCells(self, year: int):
+        """Local year lens: one cell per populated month (≤12), never per photo."""
+        from semblon.native_shell.temporal_ribbon import month_cells_for_year
+
+        days = self._model.days()
+        media_ids = self._ribbon_media_ids()
+        cells = month_cells_for_year(days, int(year), media_ids=media_ids or None)
+        return [self._ribbon_cell_payload(cell) for cell in cells]
+
+    @Slot(str, result="QVariantList")
+    def ribbonDayCells(self, monthKey: str):
+        """Local month lens: one cell per populated day in that month."""
+        from semblon.native_shell.temporal_ribbon import day_cells_for_month
+
+        days = self._model.days()
+        media_ids = self._ribbon_media_ids()
+        cells = day_cells_for_month(days, str(monthKey or ""), media_ids=media_ids or None)
+        return [self._ribbon_cell_payload(cell) for cell in cells]
 
     @Slot(int, result="QVariantMap")
     def cellInfo(self, index: int):

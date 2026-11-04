@@ -22,9 +22,11 @@ This file lists the product-completion sequence. It does not redefine the vision
 
 | Phase | Outcome | Status |
 |---|---|---|
-| 1 | Chronological scale, year detents, empty-year gaps, destination pill, viewport segment, content-owned navigate/redirect/cancel | **Landed** — `docs/BUILD-STATUS.md`, `docs/UX-CONTACT-SHEET.md` |
-| 2 | Photographic ribbon from existing thumb caches | Not started |
-| 3 | Loupe / richer strip interactions | Not started |
+| 1 | Chronological scale, year detents, empty-year gaps, destination pill, viewport segment, content-owned navigate/redirect/cancel | **Landed** — keep unchanged |
+| 2 | Intelligent photographic ribbon + hybrid temporal magnification (density-aware cells, local year → month → day lens, contextual ≤4-photo preview; hover never moves the archive) | **Landed** — `docs/BUILD-STATUS.md`, `docs/UX-CONTACT-SHEET.md` |
+| 3 | Advanced loupe / richer strip inspection | Not started |
+
+Phase 2 acceptance (explicit): **10,000 photographs taken in July and August must produce a visually coherent representation of those two months, not 10,000 competing visual marks.** Chronological scale stays independent of density; density changes representation only. A naive per-photo mosaic is not Phase 2.
 
 ## Next engineering slice — search states and the people desk (landed, suite incomplete)
 

@@ -7,9 +7,13 @@ from semblon.native_shell.images import (
     clear_thumb_cache,
     image_decode_count,
     load_display_image,
+    peek_display_image,
+    read_cached_thumb,
     reset_image_cache,
     thumb_cache_dir,
+    thumb_on_disk,
 )
+from semblon.native_shell import images as image_mod
 
 
 def _png(path) -> None:
@@ -66,3 +70,34 @@ def test_clear_thumb_cache_removes_the_directory(tmp_path):
     assert cache.is_dir()
     clear_thumb_cache(store)
     assert not cache.exists()
+
+
+def test_thumb_on_disk_does_not_generate(tmp_path):
+    reset_image_cache()
+    source = tmp_path / "photo.png"
+    _png(source)
+    cache = tmp_path / "library.thumbs"
+    assert thumb_on_disk(str(source), 96, cache_dir=cache) is False
+    assert thumb_on_disk(str(source), 384, cache_dir=cache) is False
+    assert image_decode_count() == 0
+    assert list(cache.rglob("*.jpg")) == []
+    load_display_image(str(source), 96, cache_dir=cache)
+    assert thumb_on_disk(str(source), 96, cache_dir=cache) is True
+    assert image_decode_count() == 1
+
+
+def test_read_cached_thumb_never_decodes_original(tmp_path):
+    reset_image_cache()
+    source = tmp_path / "photo.png"
+    _png(source)
+    cache = tmp_path / "library.thumbs"
+    assert read_cached_thumb(str(source), 96, cache_dir=cache) is image_mod._MISS
+    assert image_decode_count() == 0
+    load_display_image(str(source), 96, cache_dir=cache)
+    assert image_decode_count() == 1
+    clear_decoded_frames()
+    assert peek_display_image(str(source), 96, cache_dir=cache) is image_mod._MISS
+    again = read_cached_thumb(str(source), 96, cache_dir=cache)
+    assert again is not image_mod._MISS
+    assert not again.isNull()
+    assert image_decode_count() == 1

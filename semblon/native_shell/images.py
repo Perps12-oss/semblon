@@ -201,6 +201,38 @@ def peek_display_image(path: str, max_side: int, *, cache_dir: Path | None) -> Q
     return _memory_cache(thumb).get(key)
 
 
+def thumb_on_disk(path: str, max_side: int, *, cache_dir: Path | None) -> bool:
+    """True when a thumb JPEG already sits beside the store — never generates one."""
+    if cache_dir is None or max_side > _THUMB_CEILING:
+        return False
+    side = _TINY_DISK if max_side <= _TINY_DISK else _THUMB_DISK
+    key = _cache_key(path, side)
+    if key is None:
+        return False
+    return _disk_thumb_path(cache_dir, key).is_file()
+
+
+def read_cached_thumb(path: str, max_side: int, *, cache_dir: Path | None) -> QImage | object:
+    """Memory peek, else existing disk JPEG. Never decodes the original."""
+    peeked = peek_display_image(path, max_side, cache_dir=cache_dir)
+    if peeked is not _MISS:
+        return peeked
+    if cache_dir is None or max_side > _THUMB_CEILING:
+        return _MISS
+    side = _TINY_DISK if max_side <= _TINY_DISK else _THUMB_DISK
+    key = _cache_key(path, side)
+    if key is None:
+        return _MISS
+    disk_path = _disk_thumb_path(cache_dir, key)
+    if not disk_path.is_file():
+        return _MISS
+    image = _read_disk_thumb(disk_path)
+    if image.isNull():
+        return _MISS
+    _memory_cache(True).put(key, image)
+    return image
+
+
 def load_display_image(path: str, max_side: int, *, cache_dir: Path | None = None) -> QImage:
     """Thumbnails prefer a small JPEG beside the store. Focus frames stay in memory."""
     thumb = cache_dir is not None and max_side <= _THUMB_CEILING
