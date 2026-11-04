@@ -1,9 +1,11 @@
 import QtQuick
 
-// Chronological navigation strip (Phase 1).
+// Chronological navigation strip (Phase 1 + Phase 2 density lens).
 // Calendar time and Roll contentY are different metric spaces — reconciled only
 // through geometry snapshots (time_for_offset / offset_for_year on the bridge).
 // Interaction: Idle → Armed → Tracking → Settling → Idle.
+// Phase 2: hover inspects year → month → day locally (never moves contentY);
+// click navigates to that period; drag keeps Phase 1 scrub.
 Item {
     id: edge
     property var roll
@@ -19,8 +21,23 @@ Item {
     property var frozenSegment: null
     property real hoverY: -1
 
+    // Phase 2 ribbon — density-aware cells (cached; invalidated with geometry).
+    property var yearRibbon: []
+    property int lensYear: -1
+    property string lensMonth: ""   // "YYYY-MM" or ""
+    property string lensDay: ""     // "YYYY-MM-DD" or ""
+    property var lensMonths: []
+    property var lensDays: []
+    property real lensAnchorY: 0
+    property real lensAnchorH: 0
+    // Click target captured at press (before drag threshold) so a click can
+    // navigate to the magnified period without ever having moved the archive.
+    property string pressPeriodKind: ""   // year | month | day | undated | ""
+    property string pressPeriodKey: ""
+
     readonly property bool dragging: mode === "armed" || mode === "tracking"
     readonly property bool hovered: seek.containsMouse || dragging
+    readonly property bool lensOpen: mode === "idle" && lensYear >= 0
     readonly property real innerTop: 14
     // Chronological dated track occupies the full inner strip. Undated lives in
     // the terminal padding below — outside the dated calendar coordinate system —
@@ -100,6 +117,193 @@ Item {
         passiveGeometry = null
         if (mode === "idle")
             snapshot = null
+        yearRibbon = []
+        clearLens()
+        ribbonRefresh.restart()
+    }
+
+    function clearLens() {
+        lensYear = -1
+        lensMonth = ""
+        lensDay = ""
+        lensMonths = []
+        lensDays = []
+        lensAnchorY = 0
+        lensAnchorH = 0
+    }
+
+    function refreshYearRibbon() {
+        if (!roll || !roll.layoutReady)
+            return
+        try {
+            yearRibbon = shell.ribbonYearCells() || []
+        } catch (e) {
+            yearRibbon = []
+        }
+    }
+
+    function colorForYear(year) {
+        for (var i = 0; i < yearRibbon.length; i++) {
+            if (yearRibbon[i].year === year && yearRibbon[i].color)
+                return yearRibbon[i].color
+        }
+        return ""
+    }
+
+    function slotForYear(year) {
+        var items = slots.items || []
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].kind === "year" && items[i].year === year)
+                return items[i]
+        }
+        return null
+    }
+
+    function yearAtY(y) {
+        var g = ensureGeometry()
+        if (!g)
+            return -1
+        if (g.undated && y >= undatedZoneTop - 0.5)
+            return -1
+        var t = stripT(y)
+        var at = yearFracAtT(g, t)
+        if (!at)
+            return -1
+        var year = nearestDetent(g, at.yearFrac)
+        return year === null ? -1 : year
+    }
+
+    // Local temporal lens: pointer stays on the strip. The hovered year's slot is
+    // subdivided into months (then days) without moving other years' calendar
+    // positions. Never touches contentY.
+    function updateLensFromHover(y) {
+        if (mode !== "idle")
+            return
+        if (y < 0) {
+            clearLens()
+            return
+        }
+        var year = yearAtY(y)
+        if (year < 0) {
+            clearLens()
+            return
+        }
+        var slot = slotForYear(year)
+        if (!slot || !slot.populated) {
+            clearLens()
+            return
+        }
+        if (year !== lensYear) {
+            lensYear = year
+            lensMonth = ""
+            lensDay = ""
+            lensDays = []
+            lensAnchorY = slot.y
+            lensAnchorH = slot.h
+            try {
+                lensMonths = shell.ribbonMonthCells(year) || []
+            } catch (e) {
+                lensMonths = []
+            }
+        } else {
+            lensAnchorY = slot.y
+            lensAnchorH = slot.h
+        }
+        if (!lensMonths.length) {
+            lensMonth = ""
+            lensDay = ""
+            lensDays = []
+            return
+        }
+        // Subdivide this year slot only — local expansion, not a global rescale.
+        var local = y - slot.y
+        var monthH = slot.h / lensMonths.length
+        var idx = Math.max(0, Math.min(lensMonths.length - 1, Math.floor(local / Math.max(1e-6, monthH))))
+        var cell = lensMonths[idx]
+        if (!cell)
+            return
+        if (cell.key !== lensMonth) {
+            lensMonth = cell.key
+            lensDay = ""
+            try {
+                lensDays = shell.ribbonDayCells(cell.key) || []
+            } catch (e) {
+                lensDays = []
+            }
+        }
+        if (!lensDays.length) {
+            lensDay = ""
+            return
+        }
+        var dayLocal = local - idx * monthH
+        var dayH = monthH / lensDays.length
+        var di = Math.max(0, Math.min(lensDays.length - 1, Math.floor(dayLocal / Math.max(1e-6, dayH))))
+        lensDay = lensDays[di] ? lensDays[di].key : ""
+    }
+
+    function capturePressPeriod(y) {
+        pressPeriodKind = ""
+        pressPeriodKey = ""
+        if (lensDay !== "") {
+            pressPeriodKind = "day"
+            pressPeriodKey = lensDay
+            return
+        }
+        if (lensMonth !== "") {
+            pressPeriodKind = "month"
+            pressPeriodKey = lensMonth
+            return
+        }
+        var year = yearAtY(y)
+        if (year >= 0) {
+            pressPeriodKind = "year"
+            pressPeriodKey = String(year)
+            return
+        }
+        var g = ensureGeometry()
+        if (g && g.undated && y >= undatedZoneTop - 0.5) {
+            pressPeriodKind = "undated"
+            pressPeriodKey = "undated"
+        }
+    }
+
+    function navigateToPressPeriod() {
+        if (!roll)
+            return false
+        if (pressPeriodKind === "month" && pressPeriodKey !== "") {
+            mode = "settling"
+            roll.navigateToMonth(pressPeriodKey)
+            return true
+        }
+        if (pressPeriodKind === "day" && pressPeriodKey !== "") {
+            var cells = lensDays
+            var first = -1
+            for (var i = 0; i < cells.length; i++) {
+                if (cells[i].key === pressPeriodKey) {
+                    first = cells[i].photoFirst
+                    break
+                }
+            }
+            if (first >= 0) {
+                // Instant land on the day's first frame, then return to idle.
+                roll.jumpToIndex(first)
+                resetIdle()
+                return true
+            }
+            if (pressPeriodKey.length >= 7) {
+                mode = "settling"
+                roll.navigateToMonth(pressPeriodKey.substring(0, 7))
+                return true
+            }
+        }
+        return false
+    }
+
+    Timer {
+        id: ribbonRefresh
+        interval: 40
+        repeat: false
+        onTriggered: edge.refreshYearRibbon()
     }
 
     function stripT(y) {
@@ -313,8 +517,12 @@ Item {
         snapshotGen = -1
         pointerY = -1
         hoverY = -1
+        pressPeriodKind = ""
+        pressPeriodKey = ""
         // Refresh passive geometry after a gesture so the segment matches the new layout.
         passiveGeometry = null
+        // Keep lens closed after a navigate; hover will reopen without moving content.
+        clearLens()
     }
 
     function abortGesture(cancelNav) {
@@ -331,6 +539,9 @@ Item {
                 roll.cancelNavigation()
             resetIdle()
         }
+        // Capture magnified period before closing the lens for Phase 1 drag chrome.
+        capturePressPeriod(y)
+        clearLens()
         snapshot = refreshSnapshot()
         snapshotGen = snapshot ? snapshot.generation : shell.archiveGeneration()
         frozenSegment = computeSegment(snapshot)
@@ -347,8 +558,12 @@ Item {
         hoverY = y
         if (mode === "armed" && Math.abs(y - pressY) < armThreshold)
             return
-        if (mode === "armed")
+        if (mode === "armed") {
             mode = "tracking"
+            // Drag uses Phase 1 year scrub — drop finer click target.
+            pressPeriodKind = ""
+            pressPeriodKey = ""
+        }
         selectAtY(y)
     }
 
@@ -358,7 +573,12 @@ Item {
         pointerY = y
         hoverY = y
         if (mode === "armed") {
-            // Click without drag: navigate to nearest populated year at the click.
+            // Click without drag: prefer magnified period; else Phase 1 year detent.
+            if (navigateToPressPeriod()) {
+                pressPeriodKind = ""
+                pressPeriodKey = ""
+                return
+            }
             selectAtY(y)
             if (destinationYear < 0 && !destinationUndated) {
                 resetIdle()
@@ -522,7 +742,10 @@ Item {
         function onMonthListChanged() { edge.invalidateGeometry(); edge.updateViewportSeg() }
         function onLayoutReadyChanged() { if (edge.roll.layoutReady) edge.updateViewportSeg() }
     }
-    Component.onCompleted: Qt.callLater(edge.updateViewportSeg)
+    Component.onCompleted: {
+        Qt.callLater(edge.updateViewportSeg)
+        Qt.callLater(edge.refreshYearRibbon)
+    }
     Connections {
         target: archiveModel
         function onModelReset() {
@@ -567,6 +790,7 @@ Item {
     }
 
     // Chronological year marks: populated = detent tick; empty = gap (no tick).
+    // Phase 2: populated years also carry one density-aware colour wash (not per-photo marks).
     Repeater {
         model: edge.slots.items
         delegate: Item {
@@ -574,10 +798,22 @@ Item {
             readonly property bool isYear: modelData.kind === "year"
             readonly property bool isUndated: modelData.kind === "undated"
             readonly property bool populated: modelData.populated === true
+            readonly property string yearColor: slot.isYear && slot.populated ? edge.colorForYear(modelData.year) : ""
             y: modelData.y
             width: edge.width
             height: Math.max(1, modelData.h)
 
+            Rectangle {
+                // One coherent year cell — colour from capped cached thumbs, else faint wash.
+                visible: slot.isYear && slot.populated && slot.height >= 3
+                x: edge.railW + 2
+                width: parent.width - edge.railW - 4
+                height: Math.max(2, parent.height - 2)
+                y: 1
+                radius: 2
+                color: slot.yearColor !== "" ? slot.yearColor : Theme.amberSoft
+                opacity: edge.lensYear === modelData.year ? 0.55 : (slot.yearColor !== "" ? 0.42 : 0.22)
+            }
             Rectangle {
                 visible: slot.isYear
                 x: edge.railW + 3
@@ -618,6 +854,208 @@ Item {
                 font.pixelSize: 10
                 font.weight: Font.Medium
                 color: Theme.muted
+            }
+        }
+    }
+
+    // Focused period's capped representatives for the contextual photo preview.
+    // Day > month > year. Never more than four ids — density cannot inflate this.
+    function previewSampleIds() {
+        function take(cell) {
+            if (!cell || !cell.sampleIds)
+                return []
+            var out = []
+            for (var i = 0; i < cell.sampleIds.length && out.length < 4; i++) {
+                var id = cell.sampleIds[i]
+                if (id && String(id).indexOf("idx:") !== 0)
+                    out.push(String(id))
+            }
+            return out
+        }
+        if (lensDay !== "") {
+            for (var d = 0; d < lensDays.length; d++)
+                if (lensDays[d].key === lensDay)
+                    return take(lensDays[d])
+        }
+        if (lensMonth !== "") {
+            for (var m = 0; m < lensMonths.length; m++)
+                if (lensMonths[m].key === lensMonth)
+                    return take(lensMonths[m])
+        }
+        for (var y = 0; y < yearRibbon.length; y++)
+            if (yearRibbon[y].year === lensYear)
+                return take(yearRibbon[y])
+        return []
+    }
+
+    function previewTitle() {
+        if (lensDay !== "")
+            return lensDay
+        if (lensMonth !== "")
+            return lensMonth
+        if (lensYear >= 0)
+            return String(lensYear)
+        return ""
+    }
+
+    // Local temporal lens + contextual photographic preview.
+    // Overlays the hovered year without rescaling the chronological track.
+    // Hover never moves the archive; click navigates; drag uses Phase 1.
+    Item {
+        id: lensPanel
+        objectName: "temporalLens"
+        visible: edge.lensOpen && edge.lensMonths.length > 0
+        z: 8
+        readonly property var previewIds: edge.lensOpen ? edge.previewSampleIds() : []
+        readonly property real previewH: 72
+        readonly property real monthBandH: {
+            if (!edge.lensMonths.length)
+                return 18
+            var natural = Math.max(edge.lensAnchorH, edge.lensMonths.length * 16)
+            return Math.max(14, Math.min(28, natural / edge.lensMonths.length))
+        }
+        readonly property real monthsH: Math.max(edge.lensAnchorH, edge.lensMonths.length * monthBandH)
+        width: 168
+        height: monthsH + previewH + 10
+        // Anchor beside the strip so other years' calendar positions stay put.
+        x: -width - 6
+        y: {
+            var top = edge.lensAnchorY + edge.lensAnchorH / 2 - height / 2
+            return Math.max(2, Math.min(edge.height - height - 2, top))
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.radius
+            color: Theme.raised
+            border.width: 1
+            border.color: Theme.line
+            opacity: 0.97
+        }
+
+        Column {
+            id: lensBody
+            anchors.fill: parent
+            anchors.margins: 4
+            spacing: 4
+
+            // Hybrid magnification: populated months for the hovered year only.
+            Column {
+                id: monthCol
+                width: parent.width
+                spacing: 1
+                Repeater {
+                    model: edge.lensMonths
+                    delegate: Item {
+                        id: monthRow
+                        width: monthCol.width
+                        height: lensPanel.monthBandH
+                        readonly property bool active: modelData.key === edge.lensMonth
+                        readonly property string wash: modelData.color || ""
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 3
+                            color: monthRow.wash !== "" ? monthRow.wash : Theme.amberSoft
+                            opacity: monthRow.active ? 0.72 : 0.38
+                        }
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 6
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: {
+                                var k = modelData.key || ""
+                                if (k.length >= 7)
+                                    return k.substring(5, 7) + " · " + modelData.photoCount
+                                return String(modelData.photoCount || "")
+                            }
+                            font.family: Theme.ui
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            color: Theme.text
+                        }
+                        // One mark per populated day inside the active month — never per photo.
+                        Row {
+                            visible: monthRow.active && edge.lensDays.length > 0 && parent.height >= 16
+                            anchors.right: parent.right
+                            anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 1
+                            Repeater {
+                                model: edge.lensDays
+                                delegate: Rectangle {
+                                    width: 5
+                                    height: 10
+                                    radius: 1
+                                    color: modelData.key === edge.lensDay
+                                           ? Theme.amber
+                                           : (modelData.color || Theme.faint)
+                                    opacity: 0.9
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Contextual photographic preview — ≤4 representatives for the focused period.
+            Item {
+                id: previewPane
+                objectName: "ribbonPreview"
+                width: parent.width
+                height: lensPanel.previewH
+
+                Text {
+                    id: previewLabel
+                    text: edge.previewTitle()
+                    font.family: Theme.ui
+                    font.pixelSize: 10
+                    font.weight: Font.Medium
+                    color: Theme.muted
+                    width: parent.width
+                    elide: Text.ElideRight
+                }
+                Row {
+                    id: previewRow
+                    anchors.top: previewLabel.bottom
+                    anchors.topMargin: 4
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    spacing: 3
+                    Repeater {
+                        model: lensPanel.previewIds
+                        delegate: Item {
+                            width: Math.floor((previewRow.width - 9) / 4)
+                            height: Math.max(36, previewPane.height - previewLabel.height - 8)
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 3
+                                color: Theme.amberSoft
+                                clip: true
+                                Image {
+                                    anchors.fill: parent
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    cache: true
+                                    source: modelData ? ("image://archive/t/" + modelData) : ""
+                                }
+                            }
+                        }
+                    }
+                    // Placeholder tiles when cache has not produced sample ids yet.
+                    Repeater {
+                        model: Math.max(0, 4 - lensPanel.previewIds.length)
+                        delegate: Rectangle {
+                            width: Math.floor((previewRow.width - 9) / 4)
+                            height: Math.max(36, previewPane.height - previewLabel.height - 8)
+                            radius: 3
+                            color: Theme.bg
+                            border.width: 1
+                            border.color: Theme.line
+                            opacity: 0.7
+                        }
+                    }
+                }
             }
         }
     }
@@ -719,10 +1157,17 @@ Item {
             edge.hoverY = m.y
             if (pressed)
                 edge.track(m.y)
+            else if (edge.mode === "idle")
+                edge.updateLensFromHover(m.y)
         }
         onReleased: function (m) { edge.release(m.y) }
         onCanceled: edge.abortGesture(true)
-        onExited: if (edge.mode === "idle") edge.hoverY = -1
+        onExited: {
+            if (edge.mode === "idle") {
+                edge.hoverY = -1
+                edge.clearLens()
+            }
+        }
         onWheel: function (wheel) {
             if (!edge.roll || !edge.roll.view)
                 return

@@ -304,6 +304,8 @@ class ShellBridge(QObject):
         self._session = jobs.archive
         self._model = model
         self._archive_generation = 0
+        self._ribbon_ids_gen = -1
+        self._ribbon_ids_cache: list[str] = []
         self._model.modelReset.connect(self._bump_archive_generation)
         self._model.rowsInserted.connect(self._bump_archive_generation)
         self._model.rowsRemoved.connect(self._bump_archive_generation)
@@ -1456,6 +1458,8 @@ class ShellBridge(QObject):
 
     def _bump_archive_generation(self, *args) -> None:
         self._archive_generation += 1
+        self._ribbon_ids_gen = -1
+        self._ribbon_ids_cache = []
 
     @Slot(result=int)
     def archiveGeneration(self) -> int:
@@ -1489,6 +1493,98 @@ class ShellBridge(QObject):
             generation=int(self._archive_generation),
         )
         return geometry.to_dict()
+
+    def _ribbon_media_ids(self) -> list[str]:
+        """Media ids in Roll order, aligned with ``days()``. Cached per archive generation."""
+        if self._ribbon_ids_gen == self._archive_generation and self._ribbon_ids_cache:
+            return list(self._ribbon_ids_cache)
+        value = self._model.media_ids()
+        if value is not None:
+            self._ribbon_ids_cache = list(value)
+        else:
+            count = int(self._model.rowCount())
+            if count <= 0:
+                self._ribbon_ids_cache = []
+            else:
+                window = self._jobs.archive_window(0, max(count, self._jobs.archive_count()))
+                self._ribbon_ids_cache = [str(m.media_id) for m in window][:count]
+        self._ribbon_ids_gen = self._archive_generation
+        return list(self._ribbon_ids_cache)
+
+    def _ribbon_peek_colors(self, sample_ids: list[str]) -> str:
+        """Aggregate colour from memory/disk thumb peeks only — never decode originals here."""
+        from pathlib import Path
+
+        from semblon.native_shell import images as image_mod
+        from semblon.native_shell.images import peek_display_image, thumb_cache_dir
+        from semblon.native_shell.temporal_ribbon import aggregate_color_from_images
+
+        cache_dir = thumb_cache_dir(Path(self._jobs.store))
+        images = []
+        for media_id in sample_ids:
+            if not media_id or str(media_id).startswith("idx:"):
+                continue
+            path = self.path_for(str(media_id))
+            if not path:
+                continue
+            peeked = peek_display_image(path, 96, cache_dir=cache_dir)
+            if peeked is image_mod._MISS or peeked is None:
+                continue
+            if getattr(peeked, "isNull", lambda: True)():
+                continue
+            images.append(peeked)
+        return aggregate_color_from_images(images) or ""
+
+    @Slot(result="QVariantList")
+    def ribbonYearCells(self):
+        """Idle ribbon: one coherent cell per populated year (density-aware)."""
+        from semblon.native_shell.temporal_ribbon import year_cells
+
+        days = self._model.days()
+        media_ids = self._ribbon_media_ids()
+        cells = year_cells(days, media_ids=media_ids or None)
+        out = []
+        for cell in cells:
+            payload = cell.to_dict()
+            color = self._ribbon_peek_colors(list(cell.sample_ids))
+            if color:
+                payload["color"] = color
+            out.append(payload)
+        return out
+
+    @Slot(int, result="QVariantList")
+    def ribbonMonthCells(self, year: int):
+        """Local year lens: one cell per populated month (≤12), never per photo."""
+        from semblon.native_shell.temporal_ribbon import month_cells_for_year
+
+        days = self._model.days()
+        media_ids = self._ribbon_media_ids()
+        cells = month_cells_for_year(days, int(year), media_ids=media_ids or None)
+        out = []
+        for cell in cells:
+            payload = cell.to_dict()
+            color = self._ribbon_peek_colors(list(cell.sample_ids))
+            if color:
+                payload["color"] = color
+            out.append(payload)
+        return out
+
+    @Slot(str, result="QVariantList")
+    def ribbonDayCells(self, monthKey: str):
+        """Local month lens: one cell per populated day in that month."""
+        from semblon.native_shell.temporal_ribbon import day_cells_for_month
+
+        days = self._model.days()
+        media_ids = self._ribbon_media_ids()
+        cells = day_cells_for_month(days, str(monthKey or ""), media_ids=media_ids or None)
+        out = []
+        for cell in cells:
+            payload = cell.to_dict()
+            color = self._ribbon_peek_colors(list(cell.sample_ids))
+            if color:
+                payload["color"] = color
+            out.append(payload)
+        return out
 
     @Slot(int, result="QVariantMap")
     def cellInfo(self, index: int):
