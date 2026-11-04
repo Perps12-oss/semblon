@@ -123,6 +123,8 @@ Item {
     }
 
     function clearLens() {
+        cancelLensLeave()
+        lensHover = false
         lensYear = -1
         lensMonth = ""
         lensDay = ""
@@ -304,6 +306,26 @@ Item {
         interval: 40
         repeat: false
         onTriggered: edge.refreshYearRibbon()
+    }
+    // Pointer can leave the strip briefly while entering the lens/preview.
+    // Delay clear so ribbon ↔ preview moves do not flicker the lens shut.
+    property bool lensHover: false
+    Timer {
+        id: lensLeave
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (edge.mode === "idle" && !seek.containsMouse && !edge.lensHover)
+                edge.clearLens()
+        }
+    }
+    function scheduleLensLeave() {
+        if (mode !== "idle")
+            return
+        lensLeave.restart()
+    }
+    function cancelLensLeave() {
+        lensLeave.stop()
     }
 
     function stripT(y) {
@@ -1037,8 +1059,8 @@ Item {
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
                                     cache: true
-                                    // Tiny tier — ribbon only asks for ids already on disk/memory.
-                                    source: modelData ? ("image://archive/s/" + modelData) : ""
+                                    // Cache-only tiny tier — never triggers an original decode.
+                                    source: modelData ? ("image://archive/cs/" + modelData) : ""
                                 }
                             }
                         }
@@ -1057,6 +1079,43 @@ Item {
                         }
                     }
                 }
+            }
+        }
+
+        // On top of the panel so ribbon ↔ preview moves keep the lens open.
+        // Hover still must not move the archive.
+        MouseArea {
+            id: lensHoverArea
+            anchors.fill: parent
+            z: 20
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton
+            cursorShape: Qt.PointingHandCursor
+            onEntered: {
+                edge.lensHover = true
+                edge.cancelLensLeave()
+            }
+            onExited: {
+                edge.lensHover = false
+                edge.scheduleLensLeave()
+            }
+            onClicked: function (m) {
+                edge.capturePressPeriod(edge.lensAnchorY + edge.lensAnchorH / 2)
+                if (!edge.navigateToPressPeriod()) {
+                    edge.pressPeriodKind = "year"
+                    edge.pressPeriodKey = String(edge.lensYear)
+                    edge.navigateToPressPeriod()
+                }
+            }
+            onPositionChanged: function (m) {
+                if (edge.mode !== "idle")
+                    return
+                var slot = edge.slotForYear(edge.lensYear)
+                if (!slot)
+                    return
+                // Map panel Y onto the year slot so month/day subdivision stays local.
+                var local = Math.max(0, Math.min(1, m.y / Math.max(1, lensPanel.monthsH)))
+                edge.updateLensFromHover(slot.y + local * slot.h)
             }
         }
     }
@@ -1208,10 +1267,11 @@ Item {
         }
         onReleased: function (m) { edge.release(m.y) }
         onCanceled: edge.abortGesture(true)
+        onEntered: edge.cancelLensLeave()
         onExited: {
             if (edge.mode === "idle") {
                 edge.hoverY = -1
-                edge.clearLens()
+                edge.scheduleLensLeave()
             }
         }
         onWheel: function (wheel) {

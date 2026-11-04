@@ -98,9 +98,10 @@ This preview panel is Phase 2. Phase 3's advanced loupe (richer inspection chrom
 ### Implementation
 
 - Sampling / cells: `semblon/native_shell/temporal_ribbon.py` (`year_cells`, `month_cells_for_year`, `day_cells_for_month`).
-- Cache gate: `thumb_on_disk` / `read_cached_thumb` in `images.py` — ribbon colour and preview ids never decode originals.
-- Bridge: `ribbonYearCells` / `ribbonMonthCells` / `ribbonDayCells` (cached thumbs only; `hasTiny` + filtered `sampleIds`).
-- Strip: `qml/Scrubber.qml` — year colour washes; local lens + preview panel (`image://archive/s/…`); hover subdivides the hovered year slot without rescaling neighbours; click uses the captured period; drag is unchanged Phase 1.
+- Cache gate: `thumb_on_disk` / `read_cached_thumb(..., require_disk=True)` — ribbon colour never keeps ghost frames after a deleted JPEG; preview uses `image://archive/cs/…` (cache-only, no original decode).
+- Sampling: `sampleIds` ranked by media-id hash (not DB/row order), stratified across months/days so a burst day cannot fill every preview slot. Stable under reorder **and** small inserts (adding one photograph replaces at most one representative). Summary work is O(periods × budget) after one generation-scoped id load; year/month payloads are cached per archive generation.
+- Hover: delayed lens leave + lens `MouseArea` so the pointer can move between strip and preview without the lens flickering shut. Hover still never moves `contentY`.
+- Acceptance: `tests/test_temporal_ribbon_acceptance.py` (cache-only `cs/`, deletion, burst/insert sampling, 100k bound, strip↔preview interaction).
 
 ## Capture dates and the Recycle Bin
 

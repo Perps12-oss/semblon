@@ -62,6 +62,13 @@ class ImageDecodeCache:
                 _key, old = self._items.popitem(last=False)
                 self._bytes -= _image_bytes(old)
 
+    def drop(self, key) -> None:
+        with self._lock:
+            if key not in self._items:
+                return
+            old = self._items.pop(key)
+            self._bytes -= _image_bytes(old)
+
     def clear(self) -> None:
         with self._lock:
             self._items.clear()
@@ -212,11 +219,19 @@ def thumb_on_disk(path: str, max_side: int, *, cache_dir: Path | None) -> bool:
     return _disk_thumb_path(cache_dir, key).is_file()
 
 
-def read_cached_thumb(path: str, max_side: int, *, cache_dir: Path | None) -> QImage | object:
-    """Memory peek, else existing disk JPEG. Never decodes the original."""
-    peeked = peek_display_image(path, max_side, cache_dir=cache_dir)
-    if peeked is not _MISS:
-        return peeked
+def read_cached_thumb(
+    path: str,
+    max_side: int,
+    *,
+    cache_dir: Path | None,
+    require_disk: bool = False,
+) -> QImage | object:
+    """Memory peek, else existing disk JPEG. Never decodes the original.
+
+    When ``require_disk`` is true (ribbon colour / cache-only preview), a memory
+    hit is rejected if the disk JPEG is gone so deleted thumbs cannot leave
+    stale ribbon colours or preview tiles.
+    """
     if cache_dir is None or max_side > _THUMB_CEILING:
         return _MISS
     side = _TINY_DISK if max_side <= _TINY_DISK else _THUMB_DISK
@@ -224,7 +239,15 @@ def read_cached_thumb(path: str, max_side: int, *, cache_dir: Path | None) -> QI
     if key is None:
         return _MISS
     disk_path = _disk_thumb_path(cache_dir, key)
-    if not disk_path.is_file():
+    on_disk = disk_path.is_file()
+    peeked = _memory_cache(True).get(key)
+    if peeked is not _MISS:
+        if require_disk and not on_disk:
+            # Drop the stale memory frame so the ribbon cannot keep a ghost colour.
+            _memory_cache(True).drop(key)
+            return _MISS
+        return peeked
+    if not on_disk:
         return _MISS
     image = _read_disk_thumb(disk_path)
     if image.isNull():
@@ -284,30 +307,54 @@ def _video_frame(path: Path, max_side: int) -> QImage:
 
 
 class _Decode(QRunnable):
-    def __init__(self, response: "ArchiveImageResponse", path: str, max_side: int, cache_dir: Path | None):
+    def __init__(
+        self,
+        response: "ArchiveImageResponse",
+        path: str,
+        max_side: int,
+        cache_dir: Path | None,
+        *,
+        cache_only: bool = False,
+    ):
         super().__init__()
         self._response = response
         self._path = path
         self._max_side = max_side
         self._cache_dir = cache_dir
+        self._cache_only = cache_only
 
     def run(self) -> None:
         if self._response.cancelled:
             self._response.finished.emit()
             return
-        image = load_display_image(self._path, self._max_side, cache_dir=self._cache_dir)
+        if self._cache_only:
+            image = read_cached_thumb(
+                self._path, self._max_side, cache_dir=self._cache_dir, require_disk=True
+            )
+            if image is _MISS:
+                image = QImage()
+        else:
+            image = load_display_image(self._path, self._max_side, cache_dir=self._cache_dir)
         if not self._response.cancelled:
             self._response._image = image
         self._response.finished.emit()
 
 
 class ArchiveImageResponse(QQuickImageResponse):
-    def __init__(self, path: str, max_side: int, cache_dir: Path | None = None):
+    def __init__(
+        self,
+        path: str,
+        max_side: int,
+        cache_dir: Path | None = None,
+        *,
+        cache_only: bool = False,
+    ):
         super().__init__()
         self._image = QImage()
         self._path = path
         self._max_side = max_side
         self._cache_dir = cache_dir
+        self._cache_only = cache_only
         self._cancelled = False
 
     @property
@@ -319,12 +366,29 @@ class ArchiveImageResponse(QQuickImageResponse):
 
     def start(self) -> None:
         """Decode after Qt has connected ``finished``. An immediate thread can finish first."""
+        if self._cache_only:
+            cached = read_cached_thumb(
+                self._path, self._max_side, cache_dir=self._cache_dir, require_disk=True
+            )
+            if cached is not _MISS:
+                self._image = cached
+            # Miss → empty image; never schedule an original decode.
+            QTimer.singleShot(0, self.finished.emit)
+            return
         cached = peek_display_image(self._path, self._max_side, cache_dir=self._cache_dir)
         if cached is not _MISS:
             self._image = cached
             QTimer.singleShot(0, self.finished.emit)
             return
-        QThreadPool.globalInstance().start(_Decode(self, self._path, self._max_side, self._cache_dir))
+        QThreadPool.globalInstance().start(
+            _Decode(
+                self,
+                self._path,
+                self._max_side,
+                self._cache_dir,
+                cache_only=False,
+            )
+        )
 
     def textureFactory(self):
         return QQuickTextureFactory.textureFactoryForImage(self._image)
@@ -415,7 +479,7 @@ class FaceCropImageResponse(QQuickImageResponse):
 
 
 class ArchiveImageProvider(QQuickAsyncImageProvider):
-    """image://archive/t/<id> thumb, image://archive/f/<id> focus frame."""
+    """image://archive/t/<id> thumb, ``s`` tiny, ``cs``/``ct`` cache-only, ``f`` focus."""
 
     def __init__(self, lookup: Lookup, cache_dir: Path | None = None):
         super().__init__()
@@ -425,9 +489,12 @@ class ArchiveImageProvider(QQuickAsyncImageProvider):
     def requestImageResponse(self, image_id: str, requestedSize):
         kind, _, media_id = str(image_id).partition("/")
         path = self._lookup(media_id) or ""
-        if kind in ("t", "s"):
+        cache_only = kind in ("cs", "ct")
+        if kind in ("t", "s", "cs", "ct"):
             # Two disk tiers: 96px for far-out zoom, 384px for everything closer.
-            max_side = _TINY_DISK if kind == "s" else _THUMB_DISK
+            # ``cs``/``ct`` are ribbon-only: never decode originals on a miss.
+            tiny = kind in ("s", "cs")
+            max_side = _TINY_DISK if tiny else _THUMB_DISK
             cache_dir = self._cache_dir
         else:
             ceiling = _FOCUS_CEILING
@@ -436,7 +503,7 @@ class ArchiveImageProvider(QQuickAsyncImageProvider):
                 max_side = max(requestedSize.width(), requestedSize.height(), 1)
             max_side = min(int(max_side), ceiling)
             cache_dir = None
-        response = ArchiveImageResponse(path, max_side, cache_dir)
+        response = ArchiveImageResponse(path, max_side, cache_dir, cache_only=cache_only)
         response.start()
         return response
 
