@@ -1511,29 +1511,57 @@ class ShellBridge(QObject):
         self._ribbon_ids_gen = self._archive_generation
         return list(self._ribbon_ids_cache)
 
-    def _ribbon_peek_colors(self, sample_ids: list[str]) -> str:
-        """Aggregate colour from memory/disk thumb peeks only — never decode originals here."""
+    def _ribbon_cached_thumbs(self, sample_ids: list[str]):
+        """Load only already-cached thumbs (memory or disk). Never decode originals."""
         from pathlib import Path
 
         from semblon.native_shell import images as image_mod
-        from semblon.native_shell.images import peek_display_image, thumb_cache_dir
-        from semblon.native_shell.temporal_ribbon import aggregate_color_from_images
+        from semblon.native_shell.images import read_cached_thumb, thumb_cache_dir
 
         cache_dir = thumb_cache_dir(Path(self._jobs.store))
         images = []
+        cached_ids: list[str] = []
         for media_id in sample_ids:
             if not media_id or str(media_id).startswith("idx:"):
                 continue
             path = self.path_for(str(media_id))
             if not path:
                 continue
-            peeked = peek_display_image(path, 96, cache_dir=cache_dir)
-            if peeked is image_mod._MISS or peeked is None:
+            # Tiny first, then standard thumb tier — both are cache-only reads.
+            frame = read_cached_thumb(path, 96, cache_dir=cache_dir)
+            if frame is image_mod._MISS:
+                frame = read_cached_thumb(path, 384, cache_dir=cache_dir)
+            if frame is image_mod._MISS or frame is None:
                 continue
-            if getattr(peeked, "isNull", lambda: True)():
+            if getattr(frame, "isNull", lambda: True)():
                 continue
-            images.append(peeked)
+            images.append(frame)
+            cached_ids.append(str(media_id))
+        return images, cached_ids
+
+    def _ribbon_peek_colors(self, sample_ids: list[str]) -> str:
+        """Aggregate colour from cached thumbs only — never decode originals here."""
+        from semblon.native_shell.temporal_ribbon import aggregate_color_from_images
+
+        images, _cached = self._ribbon_cached_thumbs(sample_ids)
         return aggregate_color_from_images(images) or ""
+
+    def _ribbon_cell_payload(self, cell) -> dict:
+        payload = cell.to_dict()
+        images, cached_ids = self._ribbon_cached_thumbs(list(cell.sample_ids))
+        from semblon.native_shell.temporal_ribbon import aggregate_color_from_images
+
+        color = aggregate_color_from_images(images) or ""
+        if color:
+            payload["color"] = color
+        # Preview panel should only request ids that will not force an original decode.
+        if cached_ids:
+            payload["sampleIds"] = cached_ids[:4]
+            payload["hasTiny"] = True
+        else:
+            payload["sampleIds"] = []
+            payload["hasTiny"] = False
+        return payload
 
     @Slot(result="QVariantList")
     def ribbonYearCells(self):
@@ -1543,14 +1571,7 @@ class ShellBridge(QObject):
         days = self._model.days()
         media_ids = self._ribbon_media_ids()
         cells = year_cells(days, media_ids=media_ids or None)
-        out = []
-        for cell in cells:
-            payload = cell.to_dict()
-            color = self._ribbon_peek_colors(list(cell.sample_ids))
-            if color:
-                payload["color"] = color
-            out.append(payload)
-        return out
+        return [self._ribbon_cell_payload(cell) for cell in cells]
 
     @Slot(int, result="QVariantList")
     def ribbonMonthCells(self, year: int):
@@ -1560,14 +1581,7 @@ class ShellBridge(QObject):
         days = self._model.days()
         media_ids = self._ribbon_media_ids()
         cells = month_cells_for_year(days, int(year), media_ids=media_ids or None)
-        out = []
-        for cell in cells:
-            payload = cell.to_dict()
-            color = self._ribbon_peek_colors(list(cell.sample_ids))
-            if color:
-                payload["color"] = color
-            out.append(payload)
-        return out
+        return [self._ribbon_cell_payload(cell) for cell in cells]
 
     @Slot(str, result="QVariantList")
     def ribbonDayCells(self, monthKey: str):
@@ -1577,14 +1591,7 @@ class ShellBridge(QObject):
         days = self._model.days()
         media_ids = self._ribbon_media_ids()
         cells = day_cells_for_month(days, str(monthKey or ""), media_ids=media_ids or None)
-        out = []
-        for cell in cells:
-            payload = cell.to_dict()
-            color = self._ribbon_peek_colors(list(cell.sample_ids))
-            if color:
-                payload["color"] = color
-            out.append(payload)
-        return out
+        return [self._ribbon_cell_payload(cell) for cell in cells]
 
     @Slot(int, result="QVariantMap")
     def cellInfo(self, index: int):

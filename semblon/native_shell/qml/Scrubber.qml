@@ -1037,7 +1037,8 @@ Item {
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
                                     cache: true
-                                    source: modelData ? ("image://archive/t/" + modelData) : ""
+                                    // Tiny tier — ribbon only asks for ids already on disk/memory.
+                                    source: modelData ? ("image://archive/s/" + modelData) : ""
                                 }
                             }
                         }

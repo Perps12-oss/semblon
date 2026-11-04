@@ -83,7 +83,7 @@ A month or day with thousands of photographs is still **one** cell (aggregated c
 
 ### Contextual photographic preview
 
-While hovering a magnified period, a contextual panel beside the strip shows up to four deterministic representative thumbnails for that period (day if resolved, else month, else year). Sources are existing thumb caches only (`image://archive/t/…`). Missing cache → colour/placeholder fallback; no synchronous full-archive decode, no new indexing or identity work.
+While hovering a magnified period, a contextual panel beside the strip shows up to four deterministic representative thumbnails for that period (day if resolved, else month, else year). Sources are existing thumb caches only (`thumb_on_disk` / `read_cached_thumb`, then `image://archive/s/…`). Cold originals are skipped — missing cache → colour/placeholder fallback; no synchronous full-archive decode, no new indexing or identity work.
 
 This preview panel is Phase 2. Phase 3's advanced loupe (richer inspection chrome) is not this slice.
 
@@ -98,8 +98,9 @@ This preview panel is Phase 2. Phase 3's advanced loupe (richer inspection chrom
 ### Implementation
 
 - Sampling / cells: `semblon/native_shell/temporal_ribbon.py` (`year_cells`, `month_cells_for_year`, `day_cells_for_month`).
-- Bridge: `ribbonYearCells` / `ribbonMonthCells` / `ribbonDayCells` (thumb-cache peeks for colour; sample ids for preview).
-- Strip: `qml/Scrubber.qml` — year colour washes; local lens + preview panel; hover subdivides the hovered year slot without rescaling neighbours; click uses the captured period; drag is unchanged Phase 1.
+- Cache gate: `thumb_on_disk` / `read_cached_thumb` in `images.py` — ribbon colour and preview ids never decode originals.
+- Bridge: `ribbonYearCells` / `ribbonMonthCells` / `ribbonDayCells` (cached thumbs only; `hasTiny` + filtered `sampleIds`).
+- Strip: `qml/Scrubber.qml` — year colour washes; local lens + preview panel (`image://archive/s/…`); hover subdivides the hovered year slot without rescaling neighbours; click uses the captured period; drag is unchanged Phase 1.
 
 ## Capture dates and the Recycle Bin
 
