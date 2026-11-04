@@ -3,6 +3,7 @@ Grain 1.0 Grain.qml
 Tool 1.0 Tool.qml
 Roll 1.0 Roll.qml
 Scrubber 1.0 Scrubber.qml
+TemporalLoupe 1.0 TemporalLoupe.qml
 Viewer 1.0 Viewer.qml
 LightTable 1.0 LightTable.qml
 People 1.0 People.qml

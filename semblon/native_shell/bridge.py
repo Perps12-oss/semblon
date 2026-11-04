@@ -295,6 +295,7 @@ class ShellBridge(QObject):
     tasksChanged = Signal()
     confirmChanged = Signal()
     tidyChanged = Signal()
+    loupeChanged = Signal()
     # QML zooms once when a discovery hit becomes Focus (not on every similar refresh).
     focusMatchZoomRequested = Signal()
 
@@ -303,6 +304,8 @@ class ShellBridge(QObject):
         self._jobs = jobs
         self._session = jobs.archive
         self._model = model
+        # Phase 3 loupe — off until usability acceptance (experimental).
+        self._loupe_enabled = False
         self._archive_generation = 0
         self._ribbon_ids_gen = -1
         self._ribbon_ids_cache: list[str] = []
@@ -914,6 +917,19 @@ class ShellBridge(QObject):
     @Property(bool, constant=True)
     def reducedMotion(self) -> bool:
         return self._reduced
+
+    @Property(bool, notify=loupeChanged)
+    def loupeEnabled(self) -> bool:
+        """Phase 3 precision loupe. Default false until usability acceptance."""
+        return bool(self._loupe_enabled)
+
+    @Slot(bool)
+    def setLoupeEnabled(self, enabled: bool) -> None:
+        on = bool(enabled)
+        if on == self._loupe_enabled:
+            return
+        self._loupe_enabled = on
+        self.loupeChanged.emit()
 
     @Property(str, notify=surfaceChanged)
     def surfaceState(self) -> str:

@@ -85,7 +85,7 @@ A month or day with thousands of photographs is still **one** cell (aggregated c
 
 While hovering a magnified period, a contextual panel beside the strip shows up to four deterministic representative thumbnails for that period (day if resolved, else month, else year). Sources are existing thumb caches only (`thumb_on_disk` / `read_cached_thumb`, then `image://archive/s/…`). Cold originals are skipped — missing cache → colour/placeholder fallback; no synchronous full-archive decode, no new indexing or identity work.
 
-This preview panel is Phase 2. Phase 3's advanced loupe (richer inspection chrome) is not this slice.
+This preview panel is Phase 2. Phase 3's precision loupe is a separate drag-destination surface (not a second preview).
 
 ### Interaction (three actions)
 
@@ -102,6 +102,42 @@ This preview panel is Phase 2. Phase 3's advanced loupe (richer inspection chrom
 - Sampling: `sampleIds` ranked by media-id hash (not DB/row order), stratified across months/days so a burst day cannot fill every preview slot. Stable under reorder **and** small inserts (adding one photograph replaces at most one representative). Summary work is O(periods × budget) after one generation-scoped id load; year/month payloads are cached per archive generation.
 - Hover: delayed lens leave + lens `MouseArea` so the pointer can move between strip and preview without the lens flickering shut. Hover still never moves `contentY`.
 - Acceptance: `tests/test_temporal_ribbon_acceptance.py` (cache-only `cs/`, deletion, burst/insert sampling, 100k bound, strip↔preview interaction).
+
+## Phase 3 — Precision temporal loupe
+
+Phase 3 shows **how far the user is jumping and where they will land** before pointer release. The loupe is destination feedback only — not a second navigation controller and not a duplicate of the Phase 2 preview.
+
+### Contents (order fixed)
+
+1. Resolved populated-year destination  
+2. Destination photo count  
+3. Empty-year context when the pointer is over a gap  
+4. Vertical jump indicator on the **full-archive** chronological axis (Phase 1 geometry)  
+5. Optional ≤4 cache-only representative thumbs (`image://archive/cs/…`)
+
+Density silhouette on the jump axis is decoration positioned by the same canonical chronology; it is never a coordinate source.
+
+### Interaction (flag `loupe_enabled`)
+
+Modes stay Phase 1 (`idle | armed | tracking | settling`). Mapping: HOVER = idle + reserved gutter; DRAGGING = tracking; SETTLING unchanged.
+
+| Surface | Behaviour when loupe enabled |
+|---|---|
+| **Gutter hover** | Lightweight calendar year + count readout only. No thumbs, no jump, no `contentY` move. |
+| **Ribbon hover** | Idle without modifier: neither Phase 2 nor Phase 3 surface (no flicker fight). |
+| **Shift + hover** | Secondary activation for the Phase 2 lens/preview. Never simultaneous with gutter HOVER. |
+| **Click without drag** | No-op (returns to idle). Flag off restores Phase 1/2 click-nav. |
+| **Drag** | Loupe replaces destination pill; `contentY` unchanged until release commits through Roll navigate. Empty years show `YYYY is empty — will jump to ZZZZ` using the same resolved detent as commit (`Roll.navConsumedYear`). |
+| **Undated during drag** | Shows “Undated”; no jump axis / thumbs; release does not commit. |
+| **Escape** | Cancels drag (Phase 1 settling cancel preserved). |
+
+Default: `loupe_enabled=false` until usability acceptance (pill vs loupe). Tests enable the flag explicitly. A small usability study is a practical go/no-go signal, not proof of statistical significance — do not enable the production flag from automated tests alone.
+
+### Implementation
+
+- `qml/TemporalLoupe.qml`, loupe tokens on `Theme.qml`, `ShellBridge.loupeEnabled` / `setLoupeEnabled`.
+- Scrubber wires presentation only; detent / navigate / geometry stay Phase 1.
+- Acceptance: `tests/test_temporal_loupe.py`.
 
 ## Capture dates and the Recycle Bin
 

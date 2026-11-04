@@ -66,6 +66,9 @@ Item {
     // Content-owned navigation (timeline strip → Flickable). Not a second physics model.
     property bool navigating: false
     property real navTargetY: 0
+    // Last year key consumed by navigateToYearOffset ("YYYY" or "").
+    // Phase 3 acceptance compares this to the loupe's displayed destination.
+    property string navConsumedYear: ""
     property int navToken: 0
 
     signal opened(string mediaId, rect cell)
@@ -322,6 +325,7 @@ Item {
         // yearKey is "YYYY" or "" for undated — pin first month of that year when known.
         // ``offset`` is a rowTop content coordinate; convert to Flickable contentY
         // the same way placeRow does (sticky band sits above the landing).
+        navConsumedYear = (yearKey === undefined || yearKey === null) ? "" : String(yearKey)
         var pin = ""
         if (yearKey && yearKey !== "") {
             for (var i = 0; i < monthList.length; i++) {
