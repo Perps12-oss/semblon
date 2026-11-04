@@ -63,7 +63,7 @@ The right-edge strip is chronological, not density-as-distance. Calendar years k
 
 Phase 2 (**landed** on this branch): intelligent photographic ribbon + hybrid temporal magnification. Chronological scale stays independent of density; density changes representation only. Capped deterministic representatives (`semblon/native_shell/temporal_ribbon.py`); idle year colour cells from thumb-cache peeks; local hover magnification year → month → day (hover never moves `contentY`; other years' calendar positions stay put); contextual preview panel with ≤4 representative photographs from existing thumb caches; click navigates to the period under the lens; drag keeps Phase 1 scrub. Acceptance: 10k July+August photographs → two coherent month cells, not 10k marks (`tests/test_temporal_ribbon.py`). Lens hover invariant: `tests/test_temporal_lens.py`. Spec: `docs/UX-CONTACT-SHEET.md`. Phase 3 advanced loupe is not this slice.
 
-Linux check: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_temporal_ribbon.py tests/test_temporal_lens.py tests/test_temporal_geometry.py tests/test_temporal_navigation.py tests/test_temporal_nav_audit.py` → **40 passed** (ribbon density + lens hover + ≤4 preview budget).
+Linux check: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_thumb_cache.py tests/test_temporal_ribbon.py tests/test_temporal_lens.py` → **20 passed** (cache-only thumbs, deleted-thumb invalidation, media-id-stable / burst-diverse samples, 100k bounded id_at, lens hover).
 
 Navigation spike (content-owned): distant year, ~8k-photo year, in-flight redirect, and cancel all measured against actual `contentY` — redirect required stop-before-retarget so a finishing animation could not observe the new destination; after that fix, redirect and cancel hold.
 
