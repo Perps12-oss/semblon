@@ -46,6 +46,19 @@ QtObject {
     readonly property int edge: 60
     readonly property int gutter: 5
 
+    // Phase 3 temporal loupe — centralized placement / axis (no scattered magic numbers).
+    // Axis is full-archive chronological scale (same functions as Phase 1). Fixed height:
+    // designed for archives up to ~20 years; beyond that, destination text stays authoritative.
+    readonly property int loupeAxisH: 240
+    readonly property int loupeAxisW: 28
+    readonly property int loupePanelW: 168
+    readonly property int loupeOffsetX: 24
+    readonly property int loupeOffsetY: -96
+    readonly property int loupeEdgeMargin: 160
+    readonly property int loupeUnflipDistance: 320
+    readonly property int loupeThumb: 36
+    readonly property int loupeGutterW: 13   // reserved rail hit zone (railW + pad)
+
     // Motion. Reduced motion turns every duration to zero.
     readonly property int fast: reducedMotion ? 0 : 120
     readonly property int medium: reducedMotion ? 0 : 240
