@@ -9,13 +9,16 @@ cells under year magnification, not 10,000 competing marks.
 
 Thumbnails and colours come only from existing thumb caches. No new analysis,
 indexing, schema columns, or identity work.
+
+``sampleIds`` are keyed by media id (not row index / DB order) and stratified
+across finer periods so a single burst day cannot fill every preview slot.
 """
 
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Sequence
 
 from semblon.native_shell.sections import month_key
 
@@ -23,8 +26,10 @@ from semblon.native_shell.sections import month_key
 YEAR_SAMPLE_BUDGET = 16
 MONTH_SAMPLE_BUDGET = 4
 DAY_SAMPLE_BUDGET = 2
-# Tiny mosaic tiles inside one month/day cell (Phase 2 colour / Phase 3 preview prep).
+# Tiny mosaic tiles inside one month/day cell (Phase 2 colour / preview).
 CELL_MOSAIC_MAX = 4
+
+IdAt = Callable[[int], str]
 
 
 @dataclass(frozen=True)
@@ -69,33 +74,135 @@ def _parse_day(day: str) -> tuple[int, int, int] | None:
     return year, month, day_n
 
 
-def _stable_sample(indices: Sequence[int], budget: int, salt: str) -> list[int]:
-    """Pick up to ``budget`` indices deterministically from a contiguous period.
+def _media_rank(media_id: str, salt: str) -> str:
+    """Stable order key for a media id within a period — independent of row index."""
+    return hashlib.sha1(f"{salt}\0{media_id}".encode("utf-8")).hexdigest()
 
-    Evenly spaced along the period, then stably ordered by a media-keyed hash
-    so the same archive always yields the same representatives.
+
+def _resolve_ids(
+    indices: Sequence[int],
+    *,
+    media_ids: Sequence[str] | None,
+    id_at: IdAt | None,
+) -> list[str]:
+    out: list[str] = []
+    for i in indices:
+        if media_ids is not None and 0 <= i < len(media_ids):
+            mid = str(media_ids[i] or "")
+            if mid:
+                out.append(mid)
+                continue
+        if id_at is not None:
+            mid = str(id_at(i) or "")
+            if mid and not mid.startswith("idx:"):
+                out.append(mid)
+                continue
+        out.append(f"idx:{i}")
+    return out
+
+
+def _stratify_sample(
+    strata: Sequence[Sequence[str]],
+    budget: int,
+    salt: str,
+) -> list[str]:
+    """Round-robin across strata; within a stratum pick by media-id hash.
+
+    A dense burst that occupies one stratum cannot monopolise every slot while
+    other strata still have photographs. Selection is stable for a fixed set of
+    media ids regardless of database / row order.
     """
-    n = len(indices)
-    if n <= 0 or budget <= 0:
+    if budget <= 0 or not strata:
         return []
-    if n <= budget:
-        return list(indices)
-    # Even coverage across the period (not a random cluster at one end).
-    spaced: list[int] = []
-    for i in range(budget):
-        at = int(round(i * (n - 1) / max(budget - 1, 1)))
-        spaced.append(indices[at])
-    # Deduplicate while preserving spread order.
-    seen: set[int] = set()
-    unique: list[int] = []
-    for idx in spaced:
-        if idx in seen:
+    ranked: list[list[str]] = []
+    for stratum in strata:
+        ids = [mid for mid in stratum if mid and not str(mid).startswith("idx:")]
+        if not ids:
+            # Keep placeholder indices only when nothing else exists in the stratum.
+            ids = [mid for mid in stratum if mid]
+        if not ids:
             continue
-        seen.add(idx)
-        unique.append(idx)
-    # Stable tie-break: hash(salt + index) sorts a secondary order for display.
-    unique.sort(key=lambda i: (hashlib.sha1(f"{salt}:{i}".encode()).hexdigest(), i))
-    return unique[:budget]
+        ranked.append(sorted(set(ids), key=lambda mid: (_media_rank(mid, salt), mid)))
+    if not ranked:
+        return []
+    # Round-robin so each stratum contributes before any gets a second pick.
+    picked: list[str] = []
+    seen: set[str] = set()
+    cursor = [0] * len(ranked)
+    while len(picked) < budget:
+        progressed = False
+        for s, bucket in enumerate(ranked):
+            if len(picked) >= budget:
+                break
+            at = cursor[s]
+            if at >= len(bucket):
+                continue
+            mid = bucket[at]
+            cursor[s] = at + 1
+            progressed = True
+            if mid in seen:
+                continue
+            seen.add(mid)
+            picked.append(mid)
+        if not progressed:
+            break
+    return picked[:budget]
+
+
+# Cap how many ids we resolve per stratum when the archive is huge.
+# When ``media_ids`` is provided, the full stratum is ranked (true stability).
+# When only ``id_at`` is available, we probe a bounded evenly-spaced subset then
+# rank those by media-id hash — work stays O(strata × probe), not O(photos).
+_STRATUM_PROBE_CAP = 64
+
+
+def _stratum_ids(
+    idxs: Sequence[int],
+    budget: int,
+    salt: str,
+    *,
+    media_ids: Sequence[str] | None,
+    id_at: IdAt | None,
+) -> list[str]:
+    if not idxs:
+        return []
+    if media_ids is not None:
+        return _resolve_ids(idxs, media_ids=media_ids, id_at=None)
+    # Bound id_at traffic: evenly spaced probes, then media-id rank among them.
+    probe_n = min(len(idxs), max(_STRATUM_PROBE_CAP, budget * 4))
+    if probe_n >= len(idxs):
+        probes = list(idxs)
+    else:
+        probes = []
+        seen: set[int] = set()
+        for i in range(probe_n):
+            at = int(round(i * (len(idxs) - 1) / max(probe_n - 1, 1)))
+            idx = idxs[at]
+            if idx in seen:
+                continue
+            seen.add(idx)
+            probes.append(idx)
+    return _resolve_ids(probes, media_ids=None, id_at=id_at)
+
+
+def _sample_from_groups(
+    groups: dict[str, list[int]],
+    group_keys: Sequence[str],
+    budget: int,
+    salt: str,
+    *,
+    media_ids: Sequence[str] | None,
+    id_at: IdAt | None,
+) -> list[str]:
+    strata: list[list[str]] = []
+    for key in group_keys:
+        idxs = groups.get(key) or []
+        if not idxs:
+            continue
+        strata.append(
+            _stratum_ids(idxs, budget, salt, media_ids=media_ids, id_at=id_at)
+        )
+    return _stratify_sample(strata, budget, salt)
 
 
 def index_periods(days: Sequence[str]) -> dict:
@@ -121,48 +228,59 @@ def index_periods(days: Sequence[str]) -> dict:
     }
 
 
-def _ids_for(indices: Iterable[int], media_ids: Sequence[str] | None) -> tuple[str, ...]:
-    if not media_ids:
-        return tuple(f"idx:{i}" for i in indices)
-    out: list[str] = []
-    for i in indices:
-        if 0 <= i < len(media_ids):
-            out.append(str(media_ids[i]))
-        else:
-            out.append(f"idx:{i}")
-    return tuple(out)
-
-
 def year_cells(
     days: Sequence[str],
     *,
     media_ids: Sequence[str] | None = None,
+    id_at: IdAt | None = None,
     colors: dict[str, str] | None = None,
 ) -> list[PeriodCell]:
     """One coherent cell per populated calendar year — ``O(years)``, never ``O(photos)``."""
     index = index_periods(days)
     cells: list[PeriodCell] = []
-    # Newest year first (strip reading order).
     for key in sorted(index["years"].keys(), reverse=True):
         idxs = index["years"][key]
-        sample = _stable_sample(idxs, YEAR_SAMPLE_BUDGET, key)
-        year = int(key)
+        # Stratify by month inside the year so one busy month cannot own every slot.
+        month_keys = sorted(
+            (mk for mk in index["months"] if mk.startswith(f"{key}-")),
+            reverse=True,
+        )
+        sample = _sample_from_groups(
+            index["months"],
+            month_keys,
+            YEAR_SAMPLE_BUDGET,
+            f"year:{key}",
+            media_ids=media_ids,
+            id_at=id_at,
+        )
         cells.append(
             PeriodCell(
                 kind="year",
                 key=key,
-                year=year,
+                year=int(key),
                 month=None,
                 day=None,
                 photo_count=len(idxs),
                 photo_first=idxs[0],
-                sample_ids=_ids_for(sample, media_ids),
+                sample_ids=tuple(sample),
                 color=(colors or {}).get(key),
             )
         )
     if index["undated"]:
         idxs = index["undated"]
-        sample = _stable_sample(idxs, YEAR_SAMPLE_BUDGET, "undated")
+        sample = _stratify_sample(
+            [
+                _stratum_ids(
+                    idxs,
+                    YEAR_SAMPLE_BUDGET,
+                    "undated",
+                    media_ids=media_ids,
+                    id_at=id_at,
+                )
+            ],
+            YEAR_SAMPLE_BUDGET,
+            "undated",
+        )
         cells.append(
             PeriodCell(
                 kind="undated",
@@ -172,7 +290,7 @@ def year_cells(
                 day=None,
                 photo_count=len(idxs),
                 photo_first=idxs[0],
-                sample_ids=_ids_for(sample, media_ids),
+                sample_ids=tuple(sample),
                 color=(colors or {}).get("undated"),
             )
         )
@@ -184,6 +302,7 @@ def month_cells_for_year(
     year: int,
     *,
     media_ids: Sequence[str] | None = None,
+    id_at: IdAt | None = None,
     colors: dict[str, str] | None = None,
 ) -> list[PeriodCell]:
     """Populated months inside one year — at most 12 cells, never one per photo."""
@@ -192,18 +311,25 @@ def month_cells_for_year(
     cells: list[PeriodCell] = []
     for key in sorted((k for k in index["months"] if k.startswith(prefix)), reverse=True):
         idxs = index["months"][key]
-        sample = _stable_sample(idxs, MONTH_SAMPLE_BUDGET, key)
-        month = int(key[5:7])
+        day_keys = sorted((dk for dk in index["days"] if dk.startswith(key)), reverse=True)
+        sample = _sample_from_groups(
+            index["days"],
+            day_keys,
+            MONTH_SAMPLE_BUDGET,
+            f"month:{key}",
+            media_ids=media_ids,
+            id_at=id_at,
+        )[:CELL_MOSAIC_MAX]
         cells.append(
             PeriodCell(
                 kind="month",
                 key=key,
                 year=int(year),
-                month=month,
+                month=int(key[5:7]),
                 day=None,
                 photo_count=len(idxs),
                 photo_first=idxs[0],
-                sample_ids=_ids_for(sample, media_ids)[:CELL_MOSAIC_MAX],
+                sample_ids=tuple(sample),
                 color=(colors or {}).get(key),
             )
         )
@@ -215,6 +341,7 @@ def day_cells_for_month(
     month_key_str: str,
     *,
     media_ids: Sequence[str] | None = None,
+    id_at: IdAt | None = None,
     colors: dict[str, str] | None = None,
 ) -> list[PeriodCell]:
     """Populated days inside one month — one cell per day that has photographs."""
@@ -225,11 +352,23 @@ def day_cells_for_month(
     cells: list[PeriodCell] = []
     for key in sorted((k for k in index["days"] if k.startswith(mk)), reverse=True):
         idxs = index["days"][key]
-        sample = _stable_sample(idxs, DAY_SAMPLE_BUDGET, key)
         parsed = _parse_day(key)
         if parsed is None:
             continue
         year, month, day_n = parsed
+        sample = _stratify_sample(
+            [
+                _stratum_ids(
+                    idxs,
+                    DAY_SAMPLE_BUDGET,
+                    f"day:{key}",
+                    media_ids=media_ids,
+                    id_at=id_at,
+                )
+            ],
+            DAY_SAMPLE_BUDGET,
+            f"day:{key}",
+        )[:CELL_MOSAIC_MAX]
         cells.append(
             PeriodCell(
                 kind="day",
@@ -239,7 +378,7 @@ def day_cells_for_month(
                 day=day_n,
                 photo_count=len(idxs),
                 photo_first=idxs[0],
-                sample_ids=_ids_for(sample, media_ids)[:CELL_MOSAIC_MAX],
+                sample_ids=tuple(sample),
                 color=(colors or {}).get(key),
             )
         )
@@ -258,7 +397,6 @@ def aggregate_color_from_images(images) -> str | None:
     for image in images:
         if image is None or getattr(image, "isNull", lambda: True)():
             continue
-        # Tiny average: scale to 1×1 via scaled copy when available.
         try:
             tiny = image.scaled(1, 1)
             if tiny.isNull():

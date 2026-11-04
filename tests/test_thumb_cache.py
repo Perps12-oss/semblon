@@ -101,3 +101,38 @@ def test_read_cached_thumb_never_decodes_original(tmp_path):
     assert again is not image_mod._MISS
     assert not again.isNull()
     assert image_decode_count() == 1
+
+
+def test_require_disk_drops_stale_memory_after_thumb_deleted(tmp_path):
+    reset_image_cache()
+    source = tmp_path / "photo.png"
+    _png(source)
+    cache = tmp_path / "library.thumbs"
+    load_display_image(str(source), 96, cache_dir=cache)
+    assert image_decode_count() == 1
+    # Memory still warm; delete the disk JPEG (replaced/cleared thumb).
+    for jpg in cache.rglob("*.jpg"):
+        jpg.unlink()
+    assert thumb_on_disk(str(source), 96, cache_dir=cache) is False
+    assert read_cached_thumb(str(source), 96, cache_dir=cache, require_disk=False) is not image_mod._MISS
+    assert read_cached_thumb(str(source), 96, cache_dir=cache, require_disk=True) is image_mod._MISS
+    assert image_decode_count() == 1
+
+
+def test_cache_only_archive_response_does_not_decode(tmp_path):
+    reset_image_cache()
+    source = tmp_path / "photo.png"
+    _png(source)
+    cache = tmp_path / "library.thumbs"
+    from semblon.native_shell.images import ArchiveImageResponse
+
+    response = ArchiveImageResponse(str(source), 96, cache, cache_only=True)
+    response.start()
+    # Miss path finishes empty without scheduling a decode.
+    assert image_decode_count() == 0
+    load_display_image(str(source), 96, cache_dir=cache)
+    assert image_decode_count() == 1
+    clear_decoded_frames()
+    warm = ArchiveImageResponse(str(source), 96, cache, cache_only=True)
+    warm.start()
+    assert image_decode_count() == 1
