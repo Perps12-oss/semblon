@@ -102,7 +102,7 @@ def _slot(scrub, year=None, *, populated=True, empty_label=None):
 # ---------------------------------------------------------------------------
 
 
-def test_loupe_flag_defaults_off_and_restores_pill(tmp_path, monkeypatch):
+def test_loupe_flag_defaults_on_and_can_restore_pill(tmp_path, monkeypatch):
     from PySide6.QtQuick import QQuickItem
 
     from semblon.native_shell.host import shutdown_shell
@@ -110,22 +110,9 @@ def test_loupe_flag_defaults_off_and_restores_pill(tmp_path, monkeypatch):
     store = _store_years(tmp_path, [(2024, 20), (2022, 20)])
     app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
     try:
-        assert bridge.loupeEnabled is False
-        assert scrub.property("loupeEnabled") is False
-        target = _slot(scrub)
-        _call(scrub, "arm", target["y"] + 2)
-        _call(scrub, "track", target["y"] + 30)
-        assert scrub.property("mode") == "tracking"
-        loupe = root.findChild(QQuickItem, "temporalLoupe")
-        pill = root.findChild(QQuickItem, "destinationPill")
-        assert loupe is None or not loupe.isVisible()
-        assert pill is not None and pill.isVisible()
-        _call(scrub, "abortGesture", True)
-        _spin(app, 0.1)
-
-        bridge.setLoupeEnabled(True)
-        _spin(app, 0.1)
+        assert bridge.loupeEnabled is True
         assert scrub.property("loupeEnabled") is True
+        target = _slot(scrub)
         _call(scrub, "arm", target["y"] + 2)
         _call(scrub, "track", target["y"] + 30)
         assert scrub.property("mode") == "tracking"
@@ -134,6 +121,19 @@ def test_loupe_flag_defaults_off_and_restores_pill(tmp_path, monkeypatch):
         assert loupe is not None and loupe.isVisible()
         assert pill is None or not pill.isVisible()
         assert scrub.property("loupeVisible") is True
+        _call(scrub, "abortGesture", True)
+        _spin(app, 0.1)
+
+        bridge.setLoupeEnabled(False)
+        _spin(app, 0.1)
+        assert scrub.property("loupeEnabled") is False
+        _call(scrub, "arm", target["y"] + 2)
+        _call(scrub, "track", target["y"] + 30)
+        assert scrub.property("mode") == "tracking"
+        loupe = root.findChild(QQuickItem, "temporalLoupe")
+        pill = root.findChild(QQuickItem, "destinationPill")
+        assert loupe is None or not loupe.isVisible()
+        assert pill is not None and pill.isVisible()
     finally:
         shutdown_shell(engine)
         _spin(app, 0.2)
@@ -182,7 +182,7 @@ def test_hover_gutter_readout_no_contentY_no_lens(tmp_path, monkeypatch):
         _spin(app, 0.2)
 
 
-def test_click_without_drag_noop_when_loupe_enabled(tmp_path, monkeypatch):
+def test_bare_year_click_noop_when_loupe_enabled(tmp_path, monkeypatch):
     from semblon.native_shell.host import shutdown_shell
 
     store = _store_years(tmp_path, [(2024, 25), (2022, 25)])
@@ -201,6 +201,36 @@ def test_click_without_drag_noop_when_loupe_enabled(tmp_path, monkeypatch):
         assert float(grid.property("contentY")) == pytest.approx(before, abs=0.5)
         assert not roll.property("navigating")
     finally:
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+def test_lens_month_click_still_navigates_with_loupe_on(tmp_path, monkeypatch):
+    """Phase 2 magnified click must not be stolen by the Phase 3 bare-click no-op."""
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [(2024, 36), (2022, 12)])
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        assert bridge.loupeEnabled is True
+        before = float(grid.property("contentY"))
+        target = _slot(scrub, 2024)
+        _call(scrub, "updateLensFromHover", target["y"] + target["h"] / 2)
+        _spin(app, 0.15)
+        scrub.setProperty("pressPeriodKind", "month")
+        scrub.setProperty("pressPeriodKey", "2024-01")
+        scrub.setProperty("mode", "armed")
+        _call(scrub, "release", target["y"] + target["h"] / 2)
+        assert _wait_nav(app, roll, 2.5)
+        assert scrub.property("mode") == "idle" or not roll.property("navigating")
+        after = float(grid.property("contentY"))
+        assert after != pytest.approx(before, abs=0.5) or str(
+            roll.property("currentMonth") or ""
+        ).startswith("2024")
+    finally:
+        if roll is not None and roll.property("navigating"):
+            _call(roll, "cancelNavigation")
+            _spin(app, 0.2)
         shutdown_shell(engine)
         _spin(app, 0.2)
 
@@ -357,6 +387,8 @@ def test_flag_off_restores_click_navigate(tmp_path, monkeypatch):
     store = _store_years(tmp_path, [(2025, 20), (2021, 20)])
     app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
     try:
+        bridge.setLoupeEnabled(False)
+        _spin(app, 0.1)
         assert bridge.loupeEnabled is False
         before = float(grid.property("contentY"))
         target = _slot(scrub, 2021)
@@ -512,7 +544,7 @@ def test_no_dated_media_has_no_invented_destination(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_hover_gutter_vs_ribbon_shift_lens_exclusive(tmp_path, monkeypatch):
+def test_hover_gutter_vs_ribbon_spatial_exclusive(tmp_path, monkeypatch):
     from PySide6.QtQuick import QQuickItem
 
     from semblon.native_shell.host import shutdown_shell
@@ -520,27 +552,25 @@ def test_hover_gutter_vs_ribbon_shift_lens_exclusive(tmp_path, monkeypatch):
     store = _store_years(tmp_path, [(2024, 40), (2023, 40)])
     app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
     try:
-        bridge.setLoupeEnabled(True)
+        assert bridge.loupeEnabled is True
         _spin(app, 0.2)
         target = _slot(scrub, 2024)
         before = float(grid.property("contentY"))
 
-        # Enter gutter → Phase 3 HOVER only.
+        # Enter gutter → Phase 3 HOVER only (no Phase 2 lens).
         _call(scrub, "updateGutterHover", 4.0, target["y"] + 4)
         assert scrub.property("phase3Hover") is True
         assert scrub.property("lensOpen") is False
         assert scrub.property("gutterHover") is True
 
-        # Cross into ribbon without Shift → neither surface.
-        scrub.setProperty("lensInspectHeld", False)
+        # Leave gutter → neither until ribbon hover opens the lens.
         _call(scrub, "updateGutterHover", -1, -1)
         _call(scrub, "clearLens")
         assert scrub.property("phase3Hover") is False
         assert scrub.property("lensOpen") is False
         assert float(grid.property("contentY")) == pytest.approx(before, abs=0.5)
 
-        # Stationary on ribbon with Shift → Phase 2 lens (secondary activation).
-        scrub.setProperty("lensInspectHeld", True)
+        # Ribbon column → Phase 2 lens (ordinary hover; no modifier).
         scrub.setProperty("hoverY", target["y"] + target["h"] / 2)
         _call(scrub, "updateLensFromHover", target["y"] + target["h"] / 2)
         _spin(app, 0.15)
@@ -548,8 +578,12 @@ def test_hover_gutter_vs_ribbon_shift_lens_exclusive(tmp_path, monkeypatch):
         assert scrub.property("gutterHover") is False
         assert scrub.property("phase3Hover") is False
 
+        # Re-enter gutter while lens open → lens clears, Phase 3 HOVER only.
+        _call(scrub, "updateGutterHover", 4.0, target["y"] + 4)
+        assert scrub.property("phase3Hover") is True
+        assert scrub.property("lensOpen") is False
+
         # Leave region.
-        scrub.setProperty("lensInspectHeld", False)
         _call(scrub, "clearLens")
         _call(scrub, "updateGutterHover", -1, -1)
         assert scrub.property("lensOpen") is False
@@ -714,7 +748,7 @@ def test_mutation_during_loupe_drag_aborts_without_stale_commit(tmp_path, monkey
     store = _store_years(tmp_path, [(2025, 15), (2023, 15), (2021, 15)])
     app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
     try:
-        bridge.setLoupeEnabled(True)
+        assert bridge.loupeEnabled is True
         _spin(app, 0.2)
         target = _slot(scrub, 2021)
         start = _slot(scrub, 2025)
@@ -722,8 +756,10 @@ def test_mutation_during_loupe_drag_aborts_without_stale_commit(tmp_path, monkey
         _call(scrub, "track", target["y"] + target["h"] / 2)
         assert scrub.property("mode") == "tracking"
         displayed = int(scrub.property("destinationYear"))
+        assert displayed == 2021
         before_y = float(grid.property("contentY"))
         gen_before = int(bridge.archiveGeneration())
+        consumed_before = str(roll.property("navConsumedYear") or "")
         ids = list(bridge._model.media_ids() or [])
         bridge._model.set_media_ids(ids[1:] + ids[:1] if ids else None)
         _spin(app, 0.25)
@@ -731,10 +767,10 @@ def test_mutation_during_loupe_drag_aborts_without_stale_commit(tmp_path, monkey
         assert int(bridge.archiveGeneration()) > gen_before
         assert not roll.property("navigating")
         assert abs(float(grid.property("contentY")) - before_y) < 80
-        # Must not have committed the loupe destination after abort.
-        assert str(roll.property("navConsumedYear") or "") != str(displayed) or abs(
-            float(grid.property("contentY")) - before_y
-        ) < 80
+        # Displayed destination must not become a committed navigate.
+        consumed_after = str(roll.property("navConsumedYear") or "")
+        assert consumed_after == consumed_before or consumed_after in {"", "None"}
+        assert consumed_after != str(displayed)
     finally:
         shutdown_shell(engine)
         _spin(app, 0.2)
@@ -757,9 +793,10 @@ def test_keyboard_navigation_with_loupe_enabled_and_disabled(tmp_path, monkeypat
             assert _wait_nav(app, roll, 2.5)
             assert str(roll.property("currentMonth") or "").startswith("2025")
 
-        assert bridge.loupeEnabled is False
+        # Default on: keyboard steps among populated years; Escape cancels elsewhere.
+        assert bridge.loupeEnabled is True
         _step_ends()
-        bridge.setLoupeEnabled(True)
+        bridge.setLoupeEnabled(False)
         _spin(app, 0.1)
         _step_ends()
     finally:

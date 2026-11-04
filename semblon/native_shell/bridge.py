@@ -304,8 +304,8 @@ class ShellBridge(QObject):
         self._jobs = jobs
         self._session = jobs.archive
         self._model = model
-        # Phase 3 loupe — off until usability acceptance (experimental).
-        self._loupe_enabled = False
+        # Phase 3 loupe — on for production; setLoupeEnabled(false) restores the pill.
+        self._loupe_enabled = True
         self._archive_generation = 0
         self._ribbon_ids_gen = -1
         self._ribbon_ids_cache: list[str] = []
@@ -920,7 +920,7 @@ class ShellBridge(QObject):
 
     @Property(bool, notify=loupeChanged)
     def loupeEnabled(self) -> bool:
-        """Phase 3 precision loupe. Default false until usability acceptance."""
+        """Phase 3 precision loupe. Default true; false restores the destination pill."""
         return bool(self._loupe_enabled)
 
     @Slot(bool)
@@ -1573,7 +1573,7 @@ class ShellBridge(QObject):
         from pathlib import Path
 
         from semblon.native_shell import images as image_mod
-        from semblon.native_shell.images import read_cached_thumb, thumb_cache_dir
+        from semblon.native_shell.images import read_cached_thumb_any_tier, thumb_cache_dir
 
         cache_dir = thumb_cache_dir(Path(self._jobs.store))
         images = []
@@ -1584,10 +1584,8 @@ class ShellBridge(QObject):
             path = self.path_for(str(media_id))
             if not path:
                 continue
-            # require_disk: deleted JPEGs must not leave ghost colours from memory.
-            frame = read_cached_thumb(path, 96, cache_dir=cache_dir, require_disk=True)
-            if frame is image_mod._MISS:
-                frame = read_cached_thumb(path, 384, cache_dir=cache_dir, require_disk=True)
+            # Same either-tier rule as image://archive/cs/ — 96 or 384 on disk.
+            frame = read_cached_thumb_any_tier(path, cache_dir=cache_dir, prefer_tiny=True)
             if frame is image_mod._MISS or frame is None:
                 continue
             if getattr(frame, "isNull", lambda: True)():

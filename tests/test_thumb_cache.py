@@ -9,6 +9,7 @@ from semblon.native_shell.images import (
     load_display_image,
     peek_display_image,
     read_cached_thumb,
+    read_cached_thumb_any_tier,
     reset_image_cache,
     thumb_cache_dir,
     thumb_on_disk,
@@ -136,3 +137,38 @@ def test_cache_only_archive_response_does_not_decode(tmp_path):
     warm = ArchiveImageResponse(str(source), 96, cache, cache_only=True)
     warm.start()
     assert image_decode_count() == 1
+
+
+def test_cs_falls_back_to_384_when_only_large_tier_on_disk(tmp_path):
+    """Ribbon may mark hasTiny from 384 while QML cs/ prefers 96 — still paint."""
+    reset_image_cache()
+    source = tmp_path / "photo.png"
+    _png(source)
+    cache = tmp_path / "library.thumbs"
+    # Warm only the 384 disk tier (Roll / Focus path).
+    load_display_image(str(source), 384, cache_dir=cache)
+    assert image_decode_count() == 1
+    assert thumb_on_disk(str(source), 384, cache_dir=cache) is True
+    assert thumb_on_disk(str(source), 96, cache_dir=cache) is False
+    clear_decoded_frames()
+
+    # Strict 96 peek misses; any-tier and cs/ must hit 384 without decoding.
+    assert read_cached_thumb(str(source), 96, cache_dir=cache, require_disk=True) is image_mod._MISS
+    any_tier = read_cached_thumb_any_tier(str(source), cache_dir=cache, prefer_tiny=True)
+    assert any_tier is not image_mod._MISS
+    assert not any_tier.isNull()
+    assert image_decode_count() == 1
+
+    from PySide6.QtWidgets import QApplication
+
+    from semblon.native_shell.images import ArchiveImageProvider
+
+    app = QApplication.instance() or QApplication([])
+    provider = ArchiveImageProvider(lambda _mid: str(source), cache)
+    response = provider.requestImageResponse("cs/media-large-only", None)
+    end = __import__("time").monotonic() + 0.4
+    while __import__("time").monotonic() < end:
+        app.processEvents()
+        __import__("time").sleep(0.01)
+    assert image_decode_count() == 1
+    assert not response._image.isNull()
