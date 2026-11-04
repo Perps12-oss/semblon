@@ -283,7 +283,10 @@ def test_scrubber_lands_on_populated_year_headers(tmp_path, monkeypatch):
         assert after_year != before_year and before_year != ""
         marker = scrub.findChild(QQuickItem, "scrubMarker")
         assert marker is not None
-        assert marker.x() + marker.width() <= 8, "the viewport segment stays on the left rail"
+        assert marker.x() + marker.width() <= 8, "the viewport rail stay on the left edge"
+        assert marker.height() >= 16, "short chronological spans keep a readable marker"
+        wash = scrub.findChild(QQuickItem, "viewportRange")
+        assert wash is not None and wash.isVisible() and wash.width() >= 8
     finally:
         shutdown_shell(engine)
 
