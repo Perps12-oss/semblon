@@ -24,7 +24,7 @@ This file lists the product-completion sequence. It does not redefine the vision
 |---|---|---|
 | 1 | Chronological scale, year detents, empty-year gaps, destination pill, viewport segment, content-owned navigate/redirect/cancel | **Landed** — keep unchanged |
 | 2 | Intelligent photographic ribbon + hybrid temporal magnification (density-aware cells, local year → month → day lens, contextual ≤4-photo preview; hover never moves the archive) | **Landed** — `docs/BUILD-STATUS.md`, `docs/UX-CONTACT-SHEET.md` |
-| 3 | Precision temporal loupe (jump distance / landing before release; `loupe_enabled` default false — usability outstanding) | **Landed (experimental)** — flag off until usability gate |
+| 3 | Precision temporal loupe (jump distance / landing before release; `loupe_enabled` default false — usability outstanding) | **Landed (experimental)** — acceptance hardening on PR #216; flag off until usability gate |
 
 Phase 2 acceptance (explicit): **10,000 photographs taken in July and August must produce a visually coherent representation of those two months, not 10,000 competing visual marks.** Chronological scale stays independent of density; density changes representation only. A naive per-photo mosaic is not Phase 2.
 

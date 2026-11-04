@@ -13,6 +13,7 @@ Item {
     property int destinationYear: -1
     property bool destinationUndated: false
     property real pointerYearFrac: -1    // dated pointer position; -1 if undated/unknown
+    property int pointerCalendarYear: -1 // authoritative empty-year label from Scrubber.resolveAtY
     property bool pointerOverEmpty: false
     property real pointerX: 0            // coords in this item's parent
     property real pointerY: 0
@@ -21,6 +22,7 @@ Item {
     property bool reducedMotion: Theme.reducedMotion
 
     readonly property bool undatedMode: destinationUndated
+    readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
     readonly property int photoCount: {
         if (destinationUndated || destinationYear < 0)
             return 0
@@ -45,27 +47,41 @@ Item {
         }
         return []
     }
+    // displayedDestination mirrors Scrubber.destinationYear — the same value commit consumes.
+    readonly property int displayedDestination: destinationUndated ? -1 : destinationYear
     readonly property string primaryText: {
         if (destinationUndated)
             return "Undated"
         if (destinationYear >= 0)
             return "Landing on " + destinationYear
-        return ""
+        if (pointerOverEmpty && pointerCalendarYear >= 0)
+            return pointerCalendarYear + " is empty"
+        return "No destination"
     }
     readonly property string secondaryText: {
         if (destinationUndated)
             return "Outside the calendar — release does not navigate"
-        if (pointerOverEmpty && pointerYearFrac >= 0)
-            return Math.floor(pointerYearFrac) + " is empty — no photographs"
+        if (pointerOverEmpty && pointerCalendarYear >= 0) {
+            if (destinationYear >= 0)
+                return pointerCalendarYear + " is empty — will jump to " + destinationYear
+            return pointerCalendarYear + " is empty — no destination"
+        }
         if (destinationYear >= 0 && photoCount > 0)
             return photoCount + (photoCount === 1 ? " photograph" : " photographs")
+        if (destinationYear < 0)
+            return "Release does not navigate"
         return ""
     }
     readonly property string accessAnnounce: {
         if (destinationUndated)
             return "Undated. Release does not navigate."
-        if (destinationYear < 0)
+        if (destinationYear < 0) {
+            if (pointerOverEmpty && pointerCalendarYear >= 0)
+                return pointerCalendarYear + " is empty. No destination."
             return ""
+        }
+        if (pointerOverEmpty && pointerCalendarYear >= 0)
+            return pointerCalendarYear + " is empty. Landing on " + destinationYear + "."
         var fromY = frozenFromYear()
         if (fromY >= 0 && fromY !== destinationYear)
             return "Year " + destinationYear + ", jumping from " + fromY + "."
@@ -81,6 +97,9 @@ Item {
             ? (primaryCol.implicitHeight + 16)
             : (primaryCol.implicitHeight + Theme.loupeAxisH + (sampleIds.length ? Theme.loupeThumb + 12 : 0) + 20)
     z: 40
+    // Own mirroring so RTL placement is explicit (not fighting inherited flip).
+    LayoutMirroring.enabled: false
+    LayoutMirroring.childrenInherit: false
     // Visibility owned by Scrubber (tracking/settling + flag).
     Accessible.ignored: true
     // Not focusable — presentation only.
@@ -110,36 +129,45 @@ Item {
     function updatePlacement() {
         var ox = Theme.loupeOffsetX
         var oy = Theme.loupeOffsetY
-        // Desired top-left in parent space (parent = scrubber).
-        var wantX = pointerX + (flipH ? -width - ox : ox)
+        // Open toward archive content (away from the strip's screen edge).
+        // LTR strip is trailing-right → prefer negative X; RTL strip is trailing-left → prefer positive X.
+        function contentWardX(flipped) {
+            var towardContent = rtl ? (pointerX + ox) : (pointerX - width - ox)
+            var towardEdge = rtl ? (pointerX - width - ox) : (pointerX + ox)
+            return flipped ? towardEdge : towardContent
+        }
+        var wantX = contentWardX(flipH)
         var wantY = pointerY + (flipV ? 8 : oy)
 
-        // Hysteresis: flip when within margin of window edge; unflip only after retreat.
-        var global = mapToItem(null, 0, 0)
-        // Use pointer in assumed window coords via parent chain — scrubber maps.
-        var px = pointerX
-        var py = pointerY
-        // Approximate window edges from provided window size and scrubber-relative pointer.
-        // Parent (scrubber) sits at the right; pointerX is local to scrubber.
-        if (!flipH && (px + ox + width > Theme.edge + Theme.loupeEdgeMargin))
-            flipH = true
-        else if (flipH && px < Theme.edge - Theme.loupeUnflipDistance)
-            flipH = false
+        // Hysteresis against window edges in global coordinates (layout-direction safe).
+        var stage = parent && parent.parent ? parent.parent : null
+        var probe = parent ? parent.mapToItem(null, wantX, wantY) : { x: wantX, y: wantY }
+        var winW = windowW > 0 ? windowW : 800
+        var winH = windowH > 0 ? windowH : 600
 
-        if (!flipV && py + oy < Theme.loupeEdgeMargin)
+        if (!flipH && (probe.x < Theme.loupeEdgeMargin || probe.x + width > winW - Theme.loupeEdgeMargin))
+            flipH = true
+        else if (flipH) {
+            var unflip = contentWardX(false)
+            var up = parent ? parent.mapToItem(null, unflip, wantY) : { x: unflip }
+            var clear = up.x >= Theme.loupeUnflipDistance
+                    && up.x + width <= winW - Theme.loupeUnflipDistance
+            if (clear)
+                flipH = false
+        }
+
+        if (!flipV && (probe.y < Theme.loupeEdgeMargin || probe.y + height > winH - Theme.loupeEdgeMargin))
             flipV = true
-        else if (flipV && py > Theme.loupeUnflipDistance)
+        else if (flipV && pointerY > Theme.loupeUnflipDistance && pointerY + height < winH - Theme.loupeUnflipDistance)
             flipV = false
 
-        wantX = pointerX + (flipH ? -width - ox : ox)
+        wantX = contentWardX(flipH)
         wantY = pointerY + (flipV ? 8 : oy)
 
-        // Clamp within scrubber's parent (the table stage) if sizes known.
-        var maxX = Math.max(0, windowW - width - 4)
-        var maxY = Math.max(0, windowH - height - 4)
-        // Convert want to stage coords roughly: scrubber is at right.
+        // Clamp inside the scrubber's parent (stage) height; X stays content-ward.
+        var maxY = Math.max(2, (parent ? parent.height : winH) - height - 2)
         x = wantX
-        y = Math.max(2, Math.min(Math.max(2, (parent ? parent.height : windowH) - height - 2), wantY))
+        y = Math.max(2, Math.min(maxY, wantY))
     }
 
     onPointerXChanged: updatePlacement()

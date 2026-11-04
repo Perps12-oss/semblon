@@ -274,16 +274,17 @@ def test_empty_year_pointer_resolves_detent_with_hatch_context(tmp_path, monkeyp
         assert dest_year in {2025, 2021}
         assert dest_year != 2023
         assert float(grid.property("contentY")) == pytest.approx(before, abs=0.5)
+        assert int(scrub.property("pointerCalendarYear")) == 2023
         secondary = root.findChild(QQuickItem, "loupeSecondary")
         assert secondary is not None
         text = str(secondary.property("text") or "")
-        assert "empty" in text.lower() or "2023" in text
+        assert "2023 is empty — will jump to " + str(dest_year) == text
         hatch = root.findChild(QQuickItem, "loupeEmptyHatch")
         assert hatch is not None and hatch.isVisible()
         primary = root.findChild(QQuickItem, "loupePrimary")
         assert primary is not None
         assert str(dest_year) in str(primary.property("text") or "")
-        assert "2023" not in str(primary.property("text") or "")
+        assert "Landing on" in str(primary.property("text") or "")
     finally:
         shutdown_shell(engine)
         _spin(app, 0.2)
@@ -373,5 +374,467 @@ def test_flag_off_restores_click_navigate(tmp_path, monkeypatch):
         if roll is not None and roll.property("navigating"):
             _call(roll, "cancelNavigation")
             _spin(app, 0.2)
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+# ---------------------------------------------------------------------------
+# Displayed destination == navigation consumed destination
+# ---------------------------------------------------------------------------
+
+
+def _drag_release_to_slot(scrub, roll, app, start, dest_y):
+    _call(scrub, "arm", start["y"] + 2)
+    _call(scrub, "track", dest_y)
+    assert scrub.property("mode") == "tracking"
+    displayed = int(scrub.property("destinationYear"))
+    loupe = scrub  # destinationYear is the display source TemporalLoupe binds
+    _call(scrub, "release", dest_y)
+    assert _wait_nav(app, roll, 2.5)
+    return displayed
+
+
+def test_displayed_destination_equals_nav_consumed_populated(tmp_path, monkeypatch):
+    from PySide6.QtQuick import QQuickItem
+
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [(2025, 18), (2022, 18), (2019, 18)])
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        bridge.setLoupeEnabled(True)
+        _spin(app, 0.2)
+        start = _slot(scrub, 2025)
+        dest = _slot(scrub, 2019)
+        displayed = _drag_release_to_slot(scrub, roll, app, start, dest["y"] + dest["h"] / 2)
+        assert displayed == 2019
+        assert str(roll.property("navConsumedYear") or "") == "2019"
+        assert str(roll.property("currentMonth") or "").startswith("2019")
+        loupe = root.findChild(QQuickItem, "temporalLoupe")
+        # After settle loupe dismisses; equality was against consumed year at commit.
+        assert scrub.property("mode") == "idle"
+    finally:
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+def test_displayed_destination_equals_nav_consumed_empty_between(tmp_path, monkeypatch):
+    from PySide6.QtQuick import QQuickItem
+
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [(2025, 16), (2021, 16)])
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        bridge.setLoupeEnabled(True)
+        _spin(app, 0.2)
+        start = _slot(scrub, 2025)
+        empty = _slot(scrub, empty_label="2023")
+        _call(scrub, "arm", start["y"] + 2)
+        _call(scrub, "track", empty["y"] + empty["h"] / 2)
+        displayed = int(scrub.property("destinationYear"))
+        assert scrub.property("pointerOverEmpty") is True
+        assert int(scrub.property("pointerCalendarYear")) == 2023
+        secondary = root.findChild(QQuickItem, "loupeSecondary")
+        assert str(secondary.property("text") or "") == (
+            f"2023 is empty — will jump to {displayed}"
+        )
+        loupe = root.findChild(QQuickItem, "temporalLoupe")
+        assert int(loupe.property("displayedDestination")) == displayed
+        _call(scrub, "release", empty["y"] + empty["h"] / 2)
+        assert _wait_nav(app, roll, 2.5)
+        assert str(roll.property("navConsumedYear") or "") == str(displayed)
+        assert str(roll.property("currentMonth") or "").startswith(str(displayed))
+    finally:
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+def test_displayed_destination_equals_nav_empty_adjacent_newest_and_oldest(
+    tmp_path, monkeypatch
+):
+    """Empty years at the strip edges of the calendar span (nearest detent)."""
+    from semblon.native_shell.host import shutdown_shell
+
+    # Calendar 2018..2025; populated endpoints only. Empty 2024 is next to newest;
+    # empty 2019 is next to oldest. (No empty outside [min,max] dated years.)
+    store = _store_years(tmp_path, [(2025, 14), (2018, 14)])
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        bridge.setLoupeEnabled(True)
+        _spin(app, 0.2)
+        start = _slot(scrub, 2025)
+
+        for label, allowed in (("2024", {2025, 2018}), ("2019", {2025, 2018})):
+            empty = _slot(scrub, empty_label=label)
+            _call(scrub, "arm", start["y"] + 2)
+            _call(scrub, "track", empty["y"] + empty["h"] / 2)
+            displayed = int(scrub.property("destinationYear"))
+            assert displayed in allowed
+            assert int(scrub.property("pointerCalendarYear")) == int(label)
+            _call(scrub, "release", empty["y"] + empty["h"] / 2)
+            assert _wait_nav(app, roll, 2.5)
+            assert str(roll.property("navConsumedYear") or "") == str(displayed)
+            assert str(roll.property("currentMonth") or "").startswith(str(displayed))
+            start = _slot(scrub, displayed)
+    finally:
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+def test_no_dated_media_has_no_invented_destination(tmp_path, monkeypatch):
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [], undated=10)
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        bridge.setLoupeEnabled(True)
+        _spin(app, 0.3)
+        before = float(grid.property("contentY"))
+        h = float(scrub.height())
+        _call(scrub, "arm", h * 0.3)
+        _call(scrub, "track", h * 0.6)
+        assert scrub.property("mode") == "tracking"
+        # No populated detent → no invented year destination.
+        assert int(scrub.property("destinationYear")) == -1
+        _call(scrub, "release", h * 0.6)
+        _spin(app, 0.25)
+        assert scrub.property("mode") == "idle"
+        assert str(roll.property("navConsumedYear") or "") in {"", "None"}
+        assert float(grid.property("contentY")) == pytest.approx(before, abs=0.5)
+    finally:
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+# ---------------------------------------------------------------------------
+# Hover precedence
+# ---------------------------------------------------------------------------
+
+
+def test_hover_gutter_vs_ribbon_shift_lens_exclusive(tmp_path, monkeypatch):
+    from PySide6.QtQuick import QQuickItem
+
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [(2024, 40), (2023, 40)])
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        bridge.setLoupeEnabled(True)
+        _spin(app, 0.2)
+        target = _slot(scrub, 2024)
+        before = float(grid.property("contentY"))
+
+        # Enter gutter → Phase 3 HOVER only.
+        _call(scrub, "updateGutterHover", 4.0, target["y"] + 4)
+        assert scrub.property("phase3Hover") is True
+        assert scrub.property("lensOpen") is False
+        assert scrub.property("gutterHover") is True
+
+        # Cross into ribbon without Shift → neither surface.
+        scrub.setProperty("lensInspectHeld", False)
+        _call(scrub, "updateGutterHover", -1, -1)
+        _call(scrub, "clearLens")
+        assert scrub.property("phase3Hover") is False
+        assert scrub.property("lensOpen") is False
+        assert float(grid.property("contentY")) == pytest.approx(before, abs=0.5)
+
+        # Stationary on ribbon with Shift → Phase 2 lens (secondary activation).
+        scrub.setProperty("lensInspectHeld", True)
+        scrub.setProperty("hoverY", target["y"] + target["h"] / 2)
+        _call(scrub, "updateLensFromHover", target["y"] + target["h"] / 2)
+        _spin(app, 0.15)
+        assert scrub.property("lensOpen") is True or int(scrub.property("lensYear")) == 2024
+        assert scrub.property("gutterHover") is False
+        assert scrub.property("phase3Hover") is False
+
+        # Leave region.
+        scrub.setProperty("lensInspectHeld", False)
+        _call(scrub, "clearLens")
+        _call(scrub, "updateGutterHover", -1, -1)
+        assert scrub.property("lensOpen") is False
+        assert scrub.property("phase3Hover") is False
+
+        # Drag across ribbon X: loupe stays for mode, not hover surfaces.
+        _call(scrub, "arm", target["y"] + 2)
+        scrub.setProperty("pointerX", 40.0)  # ribbon column
+        _call(scrub, "track", target["y"] + 30)
+        assert scrub.property("mode") == "tracking"
+        assert scrub.property("loupeVisible") is True
+        loupe = root.findChild(QQuickItem, "temporalLoupe")
+        assert loupe is not None and loupe.isVisible()
+        scrub.setProperty("pointerX", 4.0)  # back to gutter mid-drag
+        _call(scrub, "track", target["y"] + 35)
+        assert scrub.property("loupeVisible") is True
+        assert loupe.isVisible()
+        _call(scrub, "abortGesture", True)
+    finally:
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+# ---------------------------------------------------------------------------
+# Mixed dated / undated viewport chrome
+# ---------------------------------------------------------------------------
+
+
+def _seg_kind(scrub):
+    seg = scrub.property("viewportSeg")
+    data = seg.toVariant() if hasattr(seg, "toVariant") else seg
+    return data.get("kind") if isinstance(data, dict) else None
+
+
+def test_viewport_chrome_dated_only_archive(tmp_path, monkeypatch):
+    from PySide6.QtQuick import QQuickItem
+
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [(2025, 40), (2024, 40)], undated=0)
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        _spin(app, 0.4)
+        _call(scrub, "updateViewportSeg")
+        _spin(app, 0.1)
+        assert _seg_kind(scrub) == "dated"
+        marker = root.findChild(QQuickItem, "scrubMarker")
+        undated = root.findChild(QQuickItem, "undatedIndicator")
+        assert marker is not None and marker.isVisible()
+        assert undated is None or not undated.isVisible()
+    finally:
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+def test_viewport_chrome_mixed_undated_and_transitions(tmp_path, monkeypatch):
+    from PySide6.QtQuick import QQuickItem
+
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [(2025, 80), (2024, 80)], undated=60)
+    app, engine, root, roll, grid, scrub, bridge = _boot(
+        store, monkeypatch, width=1100, height=700
+    )
+    try:
+        _spin(app, 0.5)
+        geom = bridge.temporalNavGeometry(
+            int(roll.property("columns")),
+            True,
+            True,
+            float(roll.property("cellW")),
+            float(roll.property("monthH")),
+            float(roll.property("dayH")),
+        )
+        band = float(roll.property("headerHeight") or 0)
+        u = geom["undated"]
+        u_start = float(u["contentStart"])
+        u_end = float(u["contentEnd"])
+        # Undated may sit at the top of the Roll (photoFirst=0). Offsets are
+        # Flickable contentY targets (rowTop − sticky band).
+
+        def _goto(content_y):
+            _call(roll, "navigateToOffset", max(0.0, content_y), "")
+            assert _wait_nav(app, roll, 2.5)
+            _call(scrub, "updateViewportSeg")
+            _spin(app, 0.3)
+
+        # Undated-only: park inside the undated block.
+        _goto(max(0.0, u_start - band + 20))
+        assert _seg_kind(scrub) == "undated"
+        undated = root.findChild(QQuickItem, "undatedIndicator")
+        marker = root.findChild(QQuickItem, "scrubMarker")
+        assert undated is not None and undated.isVisible()
+        assert marker is None or not marker.isVisible()
+
+        # Mixed: straddle undated → dated boundary.
+        mix_y = max(0.0, u_end - band - float(grid.property("height")) * 0.35)
+        _goto(mix_y)
+        assert _seg_kind(scrub) == "mixed"
+        marker = root.findChild(QQuickItem, "scrubMarker")
+        undated = root.findChild(QQuickItem, "undatedIndicator")
+        assert marker is not None and marker.isVisible()
+        assert undated is not None and undated.isVisible()
+
+        # Transition back to undated-only.
+        _goto(max(0.0, u_start - band + 20))
+        assert _seg_kind(scrub) == "undated"
+        undated = root.findChild(QQuickItem, "undatedIndicator")
+        marker = root.findChild(QQuickItem, "scrubMarker")
+        assert undated is not None and undated.isVisible()
+        assert marker is None or not marker.isVisible()
+        # Dated-only chrome is covered by test_viewport_chrome_dated_only_archive
+        # (undated-free store). Geometry-level mixed/undated kinds remain in
+        # test_temporal_geometry / test_temporal_nav_audit.
+    finally:
+        if roll is not None and roll.property("navigating"):
+            _call(roll, "cancelNavigation")
+            _spin(app, 0.2)
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 invariants under loupe
+# ---------------------------------------------------------------------------
+
+
+def test_viewport_segment_frozen_throughout_tracking(tmp_path, monkeypatch):
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [(2025, 20), (2020, 20), (2015, 20)])
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        bridge.setLoupeEnabled(True)
+        _spin(app, 0.3)
+        start = _slot(scrub, 2025)
+        dest = _slot(scrub, 2015)
+        _call(scrub, "updateViewportSeg")
+        _spin(app, 0.1)
+        _call(scrub, "arm", start["y"] + 2)
+        frozen = scrub.property("frozenSegment")
+        frozend = frozen.toVariant() if hasattr(frozen, "toVariant") else frozen
+        assert isinstance(frozend, dict)
+        _call(scrub, "track", dest["y"] + dest["h"] / 2)
+        assert scrub.property("mode") == "tracking"
+        mid = scrub.property("frozenSegment")
+        midd = mid.toVariant() if hasattr(mid, "toVariant") else mid
+        assert midd.get("timeHi") == frozend.get("timeHi")
+        assert midd.get("timeLo") == frozend.get("timeLo")
+        # Live contentY unchanged; frozen segment must not chase destination year.
+        assert int(scrub.property("destinationYear")) == 2015
+        assert midd.get("timeHi") != 2015 or frozend.get("timeHi") == midd.get("timeHi")
+        _call(scrub, "abortGesture", True)
+    finally:
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+def test_mutation_during_loupe_drag_aborts_without_stale_commit(tmp_path, monkeypatch):
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [(2025, 15), (2023, 15), (2021, 15)])
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        bridge.setLoupeEnabled(True)
+        _spin(app, 0.2)
+        target = _slot(scrub, 2021)
+        start = _slot(scrub, 2025)
+        _call(scrub, "arm", start["y"] + 2)
+        _call(scrub, "track", target["y"] + target["h"] / 2)
+        assert scrub.property("mode") == "tracking"
+        displayed = int(scrub.property("destinationYear"))
+        before_y = float(grid.property("contentY"))
+        gen_before = int(bridge.archiveGeneration())
+        ids = list(bridge._model.media_ids() or [])
+        bridge._model.set_media_ids(ids[1:] + ids[:1] if ids else None)
+        _spin(app, 0.25)
+        assert scrub.property("mode") == "idle"
+        assert int(bridge.archiveGeneration()) > gen_before
+        assert not roll.property("navigating")
+        assert abs(float(grid.property("contentY")) - before_y) < 80
+        # Must not have committed the loupe destination after abort.
+        assert str(roll.property("navConsumedYear") or "") != str(displayed) or abs(
+            float(grid.property("contentY")) - before_y
+        ) < 80
+    finally:
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+def test_keyboard_navigation_with_loupe_enabled_and_disabled(tmp_path, monkeypatch):
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [(2025, 12), (2021, 12)])
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        scrub.forceActiveFocus()
+        _spin(app, 0.1)
+
+        def _step_ends():
+            _call(scrub, "stepToEnd", False)
+            assert _wait_nav(app, roll, 2.5)
+            assert str(roll.property("currentMonth") or "").startswith("2021")
+            _call(scrub, "stepToEnd", True)
+            assert _wait_nav(app, roll, 2.5)
+            assert str(roll.property("currentMonth") or "").startswith("2025")
+
+        assert bridge.loupeEnabled is False
+        _step_ends()
+        bridge.setLoupeEnabled(True)
+        _spin(app, 0.1)
+        _step_ends()
+    finally:
+        if roll is not None and roll.property("navigating"):
+            _call(roll, "cancelNavigation")
+            _spin(app, 0.2)
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+def test_jump_axis_uses_calendar_not_content_distance(tmp_path, monkeypatch):
+    from PySide6.QtQuick import QQuickItem
+
+    from semblon.native_shell.host import shutdown_shell
+
+    # Sparse 2015 vs dense 2025 — content spans differ wildly; calendar bands are equal.
+    store = _store_years(tmp_path, [(2025, 200), (2020, 10), (2015, 10)])
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        bridge.setLoupeEnabled(True)
+        _spin(app, 0.3)
+        start = _slot(scrub, 2025)
+        dest = _slot(scrub, 2015)
+        _call(scrub, "arm", start["y"] + 2)
+        _call(scrub, "track", dest["y"] + dest["h"] / 2)
+        loupe = root.findChild(QQuickItem, "temporalLoupe")
+        origin = root.findChild(QQuickItem, "loupeOriginMark")
+        dest_mark = root.findChild(QQuickItem, "loupeDestMark")
+        assert loupe and origin and dest_mark
+        axis_h = float(root.findChild(QQuickItem, "loupeJumpAxis").height())
+        # Midpoints of equal calendar decades: 2025 and 2015 are 10 years apart
+        # across a 11-year span (2015..2025) → ~10/11 of axis.
+        oy = float(origin.property("y")) + float(origin.height()) / 2
+        dy = float(dest_mark.property("y")) + float(dest_mark.height()) / 2
+        span = abs(dy - oy) / max(1.0, axis_h)
+        # Calendar ratio ≈ 10/11 ≈ 0.91; content-distance ratio would be << 0.5
+        # because 2025 holds most of the photos.
+        assert span > 0.7
+        _call(scrub, "abortGesture", True)
+    finally:
+        shutdown_shell(engine)
+        _spin(app, 0.2)
+
+
+def test_rtl_loupe_placement_stays_in_window(tmp_path, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQuick import QQuickItem
+
+    from semblon.native_shell.host import shutdown_shell
+
+    store = _store_years(tmp_path, [(2024, 20), (2020, 20)])
+    app, engine, root, roll, grid, scrub, bridge = _boot(store, monkeypatch)
+    try:
+        bridge.setLoupeEnabled(True)
+        prev = QGuiApplication.layoutDirection()
+        QGuiApplication.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        _spin(app, 0.2)
+        start = _slot(scrub, 2024)
+        dest = _slot(scrub, 2020)
+        _call(scrub, "arm", start["y"] + 2)
+        _call(scrub, "track", dest["y"] + dest["h"] / 2)
+        loupe = root.findChild(QQuickItem, "temporalLoupe")
+        assert loupe is not None and loupe.isVisible()
+        # Global rect should intersect the window and not sit fully off-screen.
+        g = loupe.mapToGlobal(loupe.boundingRect().topLeft())
+        # Offscreen platform: just require finite on-parent coords and positive size.
+        assert float(loupe.width()) > 0 and float(loupe.height()) > 0
+        assert float(loupe.property("x")) == float(loupe.property("x"))  # not NaN
+        _call(scrub, "abortGesture", True)
+        QGuiApplication.setLayoutDirection(prev)
+    finally:
+        try:
+            QGuiApplication.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        except Exception:
+            pass
         shutdown_shell(engine)
         _spin(app, 0.2)

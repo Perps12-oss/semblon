@@ -44,13 +44,17 @@ Item {
     property int hoverReadoutYear: -1
     property int hoverReadoutCount: 0
     property real pointerYearFrac: -1
+    property int pointerCalendarYear: -1   // authoritative empty-year label (not a detent)
     property bool pointerOverEmpty: false
     property bool loupeVisible: loupeEnabled && (mode === "tracking" || mode === "settling")
+    // When loupe is on, Phase 2 lens needs Shift — avoids competing with gutter HOVER.
+    property bool lensInspectHeld: false
 
     readonly property bool dragging: mode === "armed" || mode === "tracking"
     readonly property bool hovered: seek.containsMouse || dragging
     readonly property bool lensOpen: mode === "idle" && lensYear >= 0 && !gutterHover
-    readonly property bool phase3Hover: loupeEnabled && mode === "idle" && gutterHover
+            && (!loupeEnabled || lensInspectHeld)
+    readonly property bool phase3Hover: loupeEnabled && mode === "idle" && gutterHover && !lensInspectHeld
     readonly property real innerTop: 14
     // Chronological dated track occupies the full inner strip. Undated lives in
     // the terminal padding below — outside the dated calendar coordinate system —
@@ -84,6 +88,16 @@ Item {
             }
             return
         }
+        // Phase 3: Shift holds the Phase 2 lens inspect mode (secondary activation).
+        if (loupeEnabled && mode === "idle" && event.key === Qt.Key_Shift) {
+            lensInspectHeld = true
+            if (gutterHover)
+                updateGutterHover(-1, -1)
+            if (hoverY >= 0)
+                updateLensFromHover(hoverY)
+            event.accepted = false
+            return
+        }
         if (event.key === Qt.Key_Up) { stepYear(-1); event.accepted = true }
         else if (event.key === Qt.Key_Down) { stepYear(1); event.accepted = true }
         else if (event.key === Qt.Key_Home) { stepToEnd(true); event.accepted = true }
@@ -91,6 +105,15 @@ Item {
         else if (event.key === Qt.Key_Escape && mode !== "idle") {
             abortGesture(true)
             event.accepted = true
+        }
+    }
+    Keys.onReleased: function (event) {
+        if (event.key === Qt.Key_Shift && loupeEnabled && mode === "idle") {
+            lensInspectHeld = false
+            clearLens()
+            if (hoverX >= 0 && isGutterX(hoverX) && hoverY >= 0)
+                updateGutterHover(hoverX, hoverY)
+            event.accepted = false
         }
     }
 
@@ -218,7 +241,7 @@ Item {
     }
 
     function updateGutterHover(x, y) {
-        if (!loupeEnabled || mode !== "idle") {
+        if (!loupeEnabled || mode !== "idle" || lensInspectHeld) {
             gutterHover = false
             hoverReadoutYear = -1
             hoverReadoutCount = 0
@@ -230,15 +253,21 @@ Item {
             hoverReadoutCount = 0
             return
         }
-        // Gutter takes precedence — never show Phase 2 preview simultaneously.
+        // Gutter HOVER — calendar year under pointer (empty years stay empty, count 0).
+        // Never show Phase 2 preview simultaneously.
         clearLens()
         gutterHover = true
-        var year = yearAtY(y)
-        hoverReadoutYear = year
+        var r = resolveAtY(y)
+        if (r.undated || r.pointerYear < 0) {
+            hoverReadoutYear = -1
+            hoverReadoutCount = 0
+            return
+        }
+        hoverReadoutYear = r.pointerYear
         hoverReadoutCount = 0
-        if (year >= 0) {
+        if (!r.empty) {
             for (var i = 0; i < yearRibbon.length; i++) {
-                if (yearRibbon[i].year === year) {
+                if (yearRibbon[i].year === r.pointerYear) {
                     hoverReadoutCount = yearRibbon[i].photoCount || 0
                     break
                 }
@@ -251,6 +280,9 @@ Item {
     // positions. Never touches contentY.
     function updateLensFromHover(y) {
         if (mode !== "idle")
+            return
+        // When loupe is on, Phase 2 lens is Shift-held only (secondary activation).
+        if (loupeEnabled && !lensInspectHeld)
             return
         if (loupeEnabled && gutterHover)
             return
@@ -568,33 +600,51 @@ Item {
         return false
     }
 
-    function selectAtY(y) {
+    // One authoritative resolution for display AND navigation. Loupe and
+    // commitDestination both consume these fields — never recompute separately.
+    function resolveAtY(y) {
+        var none = {
+            kind: "none", pointerYear: -1, destinationYear: -1,
+            undated: false, empty: false, yearFrac: -1
+        }
         var g = ensureGeometry()
         if (!g)
-            return
-        // Terminal undated zone sits below the dated calendar track.
+            return none
         if (g.undated && y >= undatedZoneTop - 0.5) {
-            destinationUndated = true
-            destinationYear = -1
-            pointerYearFrac = -1
-            pointerOverEmpty = false
-            return
+            return {
+                kind: "undated", pointerYear: -1, destinationYear: -1,
+                undated: true, empty: false, yearFrac: -1
+            }
         }
         var t = stripT(y)
         var at = yearFracAtT(g, t)
-        if (!at) {
-            destinationYear = -1
-            destinationUndated = false
-            pointerYearFrac = -1
-            pointerOverEmpty = false
-            return
+        if (!at)
+            return none
+        var pointerYear = calendarYearAtFrac(g, at.yearFrac)
+        var empty = pointerYear >= 0 && !yearIsPopulated(g, pointerYear)
+        var dest = nearestDetent(g, at.yearFrac)
+        if (dest === null) {
+            return {
+                kind: "none", pointerYear: pointerYear, destinationYear: -1,
+                undated: false, empty: empty, yearFrac: at.yearFrac
+            }
         }
-        destinationUndated = false
-        pointerYearFrac = at.yearFrac
-        var calendarYear = calendarYearAtFrac(g, at.yearFrac)
-        pointerOverEmpty = calendarYear >= 0 && !yearIsPopulated(g, calendarYear)
-        var year = nearestDetent(g, at.yearFrac)
-        destinationYear = year === null ? -1 : year
+        return {
+            kind: "dated", pointerYear: pointerYear, destinationYear: dest,
+            undated: false, empty: empty, yearFrac: at.yearFrac
+        }
+    }
+
+    function applyResolution(r) {
+        destinationUndated = !!r.undated
+        destinationYear = r.destinationYear
+        pointerYearFrac = r.yearFrac
+        pointerCalendarYear = r.pointerYear
+        pointerOverEmpty = !!r.empty && !r.undated
+    }
+
+    function selectAtY(y) {
+        applyResolution(resolveAtY(y))
     }
 
     function commitDestination() {
@@ -608,6 +658,7 @@ Item {
             abortGesture(true)
             return
         }
+        // Consume the same destinationYear the loupe already displays.
         var offset = null
         var yearKey = ""
         if (destinationUndated && g.undated) {
@@ -642,10 +693,12 @@ Item {
         hoverX = -1
         pressX = 0
         pointerYearFrac = -1
+        pointerCalendarYear = -1
         pointerOverEmpty = false
         gutterHover = false
         hoverReadoutYear = -1
         hoverReadoutCount = 0
+        lensInspectHeld = false
         pressPeriodKind = ""
         pressPeriodKey = ""
         // Refresh passive geometry after a gesture so the segment matches the new layout.
@@ -686,7 +739,9 @@ Item {
         destinationYear = -1
         destinationUndated = false
         pointerYearFrac = -1
+        pointerCalendarYear = -1
         pointerOverEmpty = false
+        lensInspectHeld = false
         mode = "armed"
     }
 
@@ -1410,6 +1465,7 @@ Item {
         destinationYear: edge.destinationYear
         destinationUndated: edge.destinationUndated
         pointerYearFrac: edge.pointerYearFrac
+        pointerCalendarYear: edge.pointerCalendarYear
         pointerOverEmpty: edge.pointerOverEmpty
         pointerX: edge.pointerX
         pointerY: edge.pointerY
@@ -1447,11 +1503,23 @@ Item {
                 // Pointer may leave the gutter mid-drag — Phase 1 continues; loupe follows.
                 edge.track(m.y)
             } else if (edge.mode === "idle") {
-                if (edge.loupeEnabled && edge.isGutterX(m.x)) {
-                    edge.updateGutterHover(m.x, m.y)
+                var shift = !!(m.modifiers & Qt.ShiftModifier)
+                edge.lensInspectHeld = edge.loupeEnabled && shift
+                if (edge.loupeEnabled) {
+                    if (edge.lensInspectHeld) {
+                        // Secondary activation: Shift+hover opens Phase 2 lens.
+                        if (edge.gutterHover)
+                            edge.updateGutterHover(-1, -1)
+                        edge.updateLensFromHover(m.y)
+                    } else if (edge.isGutterX(m.x)) {
+                        edge.updateGutterHover(m.x, m.y)
+                    } else {
+                        // Ribbon without Shift: neither surface (no flicker fight).
+                        if (edge.gutterHover)
+                            edge.updateGutterHover(-1, -1)
+                        edge.clearLens()
+                    }
                 } else {
-                    if (edge.gutterHover)
-                        edge.updateGutterHover(-1, -1)
                     edge.updateLensFromHover(m.y)
                 }
             }

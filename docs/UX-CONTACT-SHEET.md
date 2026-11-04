@@ -123,14 +123,15 @@ Modes stay Phase 1 (`idle | armed | tracking | settling`). Mapping: HOVER = idle
 
 | Surface | Behaviour when loupe enabled |
 |---|---|
-| **Gutter hover** | Lightweight year + count readout only. No thumbs, no jump, no `contentY` move. Never simultaneous with Phase 2 lens. |
-| **Ribbon hover** | Phase 2 lens/preview unchanged. |
+| **Gutter hover** | Lightweight calendar year + count readout only. No thumbs, no jump, no `contentY` move. |
+| **Ribbon hover** | Idle without modifier: neither Phase 2 nor Phase 3 surface (no flicker fight). |
+| **Shift + hover** | Secondary activation for the Phase 2 lens/preview. Never simultaneous with gutter HOVER. |
 | **Click without drag** | No-op (returns to idle). Flag off restores Phase 1/2 click-nav. |
-| **Drag** | Loupe replaces destination pill; `contentY` unchanged until release commits through Roll navigate. |
+| **Drag** | Loupe replaces destination pill; `contentY` unchanged until release commits through Roll navigate. Empty years show `YYYY is empty — will jump to ZZZZ` using the same resolved detent as commit (`Roll.navConsumedYear`). |
 | **Undated during drag** | Shows “Undated”; no jump axis / thumbs; release does not commit. |
 | **Escape** | Cancels drag (Phase 1 settling cancel preserved). |
 
-Default: `loupe_enabled=false` until usability acceptance (pill vs loupe). Tests enable the flag explicitly.
+Default: `loupe_enabled=false` until usability acceptance (pill vs loupe). Tests enable the flag explicitly. A small usability study is a practical go/no-go signal, not proof of statistical significance — do not enable the production flag from automated tests alone.
 
 ### Implementation
 
