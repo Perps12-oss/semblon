@@ -57,6 +57,16 @@ In-session `openDiscoveryHit` / `backToDiscovery` already restores the strip wit
 
 The shell is now one Roll with a film-edge time scrubber, a four-verb Light Table, a Ctrl+K palette, a loupe for "find a detail", and a People table. Design: `docs/UX-CONTACT-SHEET.md`. Backend additions are small bridge slots only; engine, schema and identity thresholds are unchanged.
 
+## Behaviour landed — Temporal navigation strip (Phase 1)
+
+The right-edge strip is chronological, not density-as-distance. Calendar years keep uniform time (empty years remain visible gaps without becoming destinations). The Roll Flickable owns navigate / redirect / cancel animation. Geometry lives in `semblon/native_shell/temporal_geometry.py` (`time_for_offset`, `offset_for_year`). Interaction is Idle → Armed → Tracking → Settling with a destination year pill and a frozen viewport segment during drag. Undated media stay a terminal section with a separate indicator. Schema, identity thresholds, and Phase 2/3 ribbon/loupe are unchanged.
+
+Navigation spike (content-owned): distant year, ~8k-photo year, in-flight redirect, and cancel all measured against actual `contentY` — redirect required stop-before-retarget so a finishing animation could not observe the new destination; after that fix, redirect and cancel hold.
+
+Linux check on this branch: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_temporal_geometry.py tests/test_temporal_navigation.py tests/test_roll_sections.py tests/test_contact_sheet.py tests/test_native_shell.py` → **111 passed, 1 skipped**.
+
+Audit follow-up (Phase 1): undated terminal zone moved **outside** the dated calendar track (no 8% compression of year positions); Settling unfreezes the viewport segment and samples actual visible media day keys; archive mutation during Armed/Tracking/Settling aborts; wheel over the strip scrolls content without arming drag; RTL uses application layout direction. Verification: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_temporal_geometry.py tests/test_temporal_nav_audit.py tests/test_temporal_navigation.py tests/test_roll_sections.py tests/test_contact_sheet.py tests/test_native_shell.py` → **123 passed, 1 skipped**. Windows archive manual acceptance and live OS Reduce Motion preference remain owner-machine checks.
+
 ## Behaviour landed — Safelight Desk
 
 The production shell is still the only GUI (`semblon shell`). Home is a first-arrival desk: one promise, **Add a folder**, three steps, then Library, Visual discovery, and People. Everyday labels no longer name engines, packs, or search internals. A notice banner separates a failure, a missing extra, and work in progress, and says the original files were not changed. Identity thresholds, schema, and face comparison were not edited. Plan: `docs/ux-overhaul-plan.md`.

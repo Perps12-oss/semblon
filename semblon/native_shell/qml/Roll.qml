@@ -63,8 +63,13 @@ Item {
     // False until after the first deferred layout. Column/size bindings fire
     // during engine.load; running rollLayout then blocks the Window from appearing.
     property bool layoutReady: false
+    // Content-owned navigation (timeline strip → Flickable). Not a second physics model.
+    property bool navigating: false
+    property real navTargetY: 0
+    property int navToken: 0
 
     signal opened(string mediaId, rect cell)
+    signal navigationFinished(bool completed)
 
     Behavior on cellSize {
         NumberAnimation { duration: Theme.medium; easing.type: Theme.easing }
@@ -189,9 +194,104 @@ Item {
     }
 
     // --- moving -------------------------------------------------------------------------
+    function maxContentY() {
+        return Math.max(-grid.topMargin, totalH - grid.height + grid.bottomMargin)
+    }
+    function clampContentY(y) {
+        return clamp(y, -grid.topMargin, maxContentY())
+    }
+    function visibleBand() {
+        // Actual contentY band between sticky band and bottom chrome — not an
+        // animation target. Callers must re-read this as contentY moves.
+        return {
+            top: grid.contentY + band.height + 2,
+            bottom: grid.contentY + grid.height - Math.max(8, bottomInset * 0.35)
+        }
+    }
+    function photoIndexNearContentY(y, preferEnd) {
+        // Index of a photograph actually at content Y (partial rows included).
+        if (rows.length === 0 || photoCount <= 0)
+            return -1
+        var r = Math.min(rows.length - 1, rowAtY(y))
+        // Walk to a row that names photos when the band sits on a divider.
+        var guard = 0
+        while (guard < rows.length && rows[r].kind !== "photos") {
+            if (preferEnd) {
+                if (r + 1 < rows.length) r++
+                else break
+            } else {
+                if (r > 0) r--
+                else break
+            }
+            guard++
+        }
+        var row = rows[r]
+        if (row.kind === "photos")
+            return preferEnd ? (row.first + row.n - 1) : row.first
+        return clamp(row.first, 0, photoCount - 1)
+    }
+    function visibleMediaIndices() {
+        var band = visibleBand()
+        return {
+            top: photoIndexNearContentY(band.top, false),
+            bottom: photoIndexNearContentY(band.bottom, true)
+        }
+    }
+    function cancelNavigation() {
+        if (!navigating && !navAnim.running)
+            return
+        navToken += 1
+        navAnim.stop()
+        navigating = false
+        internalMove = false
+        grid.cancelFlick()
+        updateWindow()
+        refreshHeading()
+        navigationFinished(false)
+    }
+    function navigateToOffset(y, pinKey) {
+        // Animated content move. Ownership stays on the Flickable / this helper —
+        // the strip must not run its own spring. pinKey must be passed ("" ok) —
+        // QMetaObject needs the two-arg signature.
+        if (rows.length === 0)
+            return
+        grid.cancelFlick()
+        var target = clampContentY(y)
+        pinnedMonth = (pinKey === undefined || pinKey === null) ? "" : pinKey
+        // Stop any in-flight anim before bumping the token so its finished
+        // handler cannot observe the new destination.
+        if (navAnim.running)
+            navAnim.stop()
+        navToken += 1
+        var token = navToken
+        navTargetY = target
+        // Theme.reducedMotion is bound from shell at startup (Reduce Motion).
+        if (Theme.reducedMotion || Math.abs(target - grid.contentY) < 1.5) {
+            internalMove = true
+            grid.contentY = target
+            internalMove = false
+            updateWindow()
+            refreshHeading()
+            navigating = false
+            navigationFinished(true)
+            return
+        }
+        navigating = true
+        var distance = Math.abs(target - grid.contentY)
+        navAnim.duration = Theme.reducedMotion ? 0
+                         : clamp(180 + distance * 0.12, Theme.medium, 900)
+        navAnim.from = grid.contentY
+        navAnim.to = target
+        navAnim.navToken = token
+        navAnim.start()
+    }
+    function redirectNavigation(y, pinKey) {
+        navigateToOffset(y, pinKey)
+    }
     function jumpToIndex(index) {
         if (photoCount <= 0)
             return
+        cancelNavigation()
         var n = clamp(index, 0, photoCount - 1)
         placeRow(startOfRow(rowOfPhoto(n)))
         currentPhoto = n
@@ -205,10 +305,36 @@ Item {
         var m = monthMap[key]
         if (!m)
             return
+        cancelNavigation()
         placeRow(m.row)
         currentPhoto = m.first
         pinnedMonth = key
         refreshHeading()
+    }
+    function navigateToMonth(key) {
+        var m = monthMap[key]
+        if (!m)
+            return
+        currentPhoto = m.first
+        navigateToOffset(rowTop[m.row] - band.height, key)
+    }
+    function navigateToYearOffset(offset, yearKey) {
+        // yearKey is "YYYY" or "" for undated — pin first month of that year when known.
+        // ``offset`` is a rowTop content coordinate; convert to Flickable contentY
+        // the same way placeRow does (sticky band sits above the landing).
+        var pin = ""
+        if (yearKey && yearKey !== "") {
+            for (var i = 0; i < monthList.length; i++) {
+                var k = monthList[i].key
+                if (k.length >= 4 && k.substring(0, 4) === yearKey) {
+                    pin = k
+                    break
+                }
+            }
+        }
+        if (pin !== "")
+            currentPhoto = monthMap[pin] ? monthMap[pin].first : currentPhoto
+        navigateToOffset(offset - band.height, pin)
     }
     // Where a month's header row sits in the viewport right now (for the scrubber and for checks).
     function monthTopInView(key) {
@@ -332,6 +458,32 @@ Item {
     }
     Timer { id: zoomHold; interval: Theme.medium + 80; onTriggered: roll.zooming = false }
 
+    NumberAnimation {
+        id: navAnim
+        target: grid
+        property: "contentY"
+        easing.type: Theme.easing
+        property int navToken: 0
+        onStarted: {
+            roll.internalMove = true
+            roll.navigating = true
+        }
+        onStopped: {
+            // Fires on interrupt and completion — only clear the move flag here.
+            roll.internalMove = false
+            roll.updateWindow()
+            roll.refreshHeading()
+        }
+        onFinished: {
+            // Finished on its own (not stop()/restart). Safe for redirect.
+            if (navToken !== roll.navToken)
+                return
+            var done = Math.abs(grid.contentY - roll.navTargetY) < 2
+            roll.navigating = false
+            roll.navigationFinished(done)
+        }
+    }
+
     Flickable {
         id: grid
         objectName: "rollGrid"
@@ -351,6 +503,11 @@ Item {
         Accessible.name: "Your photos, newest first. Use the arrow keys to move, Enter to open, Space to select."
 
         onHeightChanged: roll.updateWindow()
+        onMovementStarted: {
+            // User fling/drag owns the scroll — abandon in-flight strip navigation.
+            if (roll.navigating && !roll.internalMove)
+                roll.cancelNavigation()
+        }
         onContentYChanged: {
             if (!roll.internalMove)
                 roll.pinnedMonth = ""
