@@ -623,14 +623,51 @@ Item {
     }
 
     // Passive viewport segment (frozen only while Armed/Tracking).
+    // Dense single-year viewports compress chronologically; keep a readable
+    // minimum height and a soft range wash so the marker is not a lost dot.
     Item {
         id: viewportChrome
         anchors.fill: parent
+        readonly property real minSegH: 16
         readonly property var seg: (edge.mode === "armed" || edge.mode === "tracking")
                                    ? edge.frozenSegment : edge.viewportSeg
         readonly property var g: (edge.mode === "armed" || edge.mode === "tracking")
                                  ? edge.snapshot : (edge.passiveGeometry || edge.snapshot)
+        readonly property real segY: {
+            var g = viewportChrome.g
+            var s = viewportChrome.seg
+            if (!g || !s || s.timeHi === undefined) return edge.innerTop
+            var tHi = edge.tForYearFrac(g, s.timeHi)
+            var tLo = (s.timeLo === undefined) ? tHi : edge.tForYearFrac(g, s.timeLo)
+            var y0 = edge.yForT(tHi)
+            var raw = Math.max(0, edge.yForT(tLo) - y0)
+            if (raw < viewportChrome.minSegH)
+                return Math.max(edge.innerTop, y0 - (viewportChrome.minSegH - raw) / 2)
+            return y0
+        }
+        readonly property real segH: {
+            var g = viewportChrome.g
+            var s = viewportChrome.seg
+            if (!g || !s || s.timeLo === undefined || s.timeHi === undefined)
+                return viewportChrome.minSegH
+            var raw = edge.yForT(edge.tForYearFrac(g, s.timeLo))
+                      - edge.yForT(edge.tForYearFrac(g, s.timeHi))
+            return Math.max(viewportChrome.minSegH, raw)
+        }
 
+        // Soft wash across the year column — same tokens, no shadow/gradient.
+        Rectangle {
+            id: rangeWash
+            objectName: "viewportRange"
+            visible: datedSeg.visible
+            x: edge.railW + 2
+            width: Math.max(8, edge.width - edge.railW - 5)
+            y: viewportChrome.segY
+            height: viewportChrome.segH
+            radius: 3
+            color: Theme.amberSoft
+            opacity: edge.mode === "tracking" ? 0.45 : 0.85
+        }
         Rectangle {
             id: datedSeg
             objectName: "scrubMarker"
@@ -641,21 +678,29 @@ Item {
             radius: 2
             color: Theme.amber
             opacity: edge.mode === "tracking" ? 0.55 : 1
-            y: {
-                var g = viewportChrome.g
-                var s = viewportChrome.seg
-                if (!g || !s || s.timeHi === undefined) return edge.innerTop
-                var tHi = edge.tForYearFrac(g, s.timeHi)
-                return edge.yForT(tHi)
-            }
-            height: {
-                var g = viewportChrome.g
-                var s = viewportChrome.seg
-                if (!g || !s || s.timeLo === undefined || s.timeHi === undefined) return 6
-                var tHi = edge.tForYearFrac(g, s.timeHi)
-                var tLo = edge.tForYearFrac(g, s.timeLo)
-                return Math.max(4, edge.yForT(tLo) - edge.yForT(tHi))
-            }
+            y: viewportChrome.segY
+            height: viewportChrome.segH
+        }
+        // Short whiskers at the ends of the segment so a short range still reads.
+        Rectangle {
+            visible: datedSeg.visible
+            x: 1
+            y: datedSeg.y
+            width: edge.railW + 10
+            height: 2
+            radius: 1
+            color: Theme.amber
+            opacity: datedSeg.opacity
+        }
+        Rectangle {
+            visible: datedSeg.visible
+            x: 1
+            y: datedSeg.y + datedSeg.height - 2
+            width: edge.railW + 10
+            height: 2
+            radius: 1
+            color: Theme.amber
+            opacity: datedSeg.opacity
         }
         Rectangle {
             id: undatedMark
@@ -663,7 +708,7 @@ Item {
             visible: viewportChrome.seg && (viewportChrome.seg.kind === "undated" || viewportChrome.seg.kind === "mixed")
             x: 1
             width: edge.railW
-            height: 8
+            height: 12
             radius: 2
             color: Theme.muted
             // Outside the dated track — bottom terminal zone.

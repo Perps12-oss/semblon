@@ -17,7 +17,7 @@ Screenshots: `docs/evidence/contact-sheet/`.
 ## Polish pass
 
 - First run: the whole canvas is the drop zone (dashed amber edge, lights up while a folder is dragged over). One primary action, "Choose a folder"; the top-right "Add a folder" appears only once photos exist. The four verbs are dimmed with "Add photos first" but stay focusable. Ctrl+K lists only actions that work now.
-- Roll: month header is its own sticky band (title, count on its own line, soft fade). Day breaks carry a frame-number tag (e.g. SAT 14 SEP) with small gutters between thumbnails. The time strip shows a passive viewport segment on the left rail and a destination year pill while dragging; the grid fills the width beside it.
+- Roll: month header is its own sticky band (title, count on its own line, soft fade). Day breaks carry a frame-number tag (e.g. SAT 14 SEP) with small gutters between thumbnails. The time strip shows a passive viewport segment (amber rail, soft range wash, end whiskers; readable minimum height in dense years) and a destination year pill while dragging; the grid fills the width beside it.
 - Bottom bar: the Roll reserves bar height plus a margin at the end of a scroll; the bar shrinks and fades while scrolling and returns when scrolling stops or the pointer nears it. "Everything" is now "More... Ctrl+K" (Cmd+K on macOS).
 - Language: install and download dialogs describe what becomes possible ("Get finding-by-look ready"). A test scans user-visible strings for banned engine words.
 - Keyboard: loupe (L, arrows move, Shift+arrows resize, Enter finds) and People (S same as the next group, X send away, Tab to a "Same as" stack then Enter).
