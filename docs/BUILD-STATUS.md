@@ -65,6 +65,8 @@ Navigation spike (content-owned): distant year, ~8k-photo year, in-flight redire
 
 Linux check on this branch: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_temporal_geometry.py tests/test_temporal_navigation.py tests/test_roll_sections.py tests/test_contact_sheet.py tests/test_native_shell.py` → **111 passed, 1 skipped**.
 
+Audit follow-up (Phase 1): undated terminal zone moved **outside** the dated calendar track (no 8% compression of year positions); Settling unfreezes the viewport segment and samples actual visible media day keys; archive mutation during Armed/Tracking/Settling aborts; wheel over the strip scrolls content without arming drag; RTL uses application layout direction. Verification: `xvfb-run -a .venv/bin/python -m pytest -q tests/test_temporal_geometry.py tests/test_temporal_nav_audit.py tests/test_temporal_navigation.py tests/test_roll_sections.py tests/test_contact_sheet.py tests/test_native_shell.py` → **123 passed, 1 skipped**. Windows archive manual acceptance and live OS Reduce Motion preference remain owner-machine checks.
+
 ## Behaviour landed — Safelight Desk
 
 The production shell is still the only GUI (`semblon shell`). Home is a first-arrival desk: one promise, **Add a folder**, three steps, then Library, Visual discovery, and People. Everyday labels no longer name engines, packs, or search internals. A notice banner separates a failure, a missing extra, and work in progress, and says the original files were not changed. Identity thresholds, schema, and face comparison were not edited. Plan: `docs/ux-overhaul-plan.md`.

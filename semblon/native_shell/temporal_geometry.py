@@ -198,35 +198,68 @@ class TemporalGeometry:
         return min(detents, key=lambda y: abs((y + 0.5) - year_frac))
 
     def year_frac_for_strip_t(self, t: float) -> float | TemporalPoint:
-        """Map strip parameter t in [0,1] (0=newest top) to year_frac or undated."""
+        """Map dated-track parameter t in [0,1] (0=newest top) to year_frac.
+
+        Undated is outside this coordinate system — callers must not pass an
+        undated hit-test into this function (use a separate terminal zone).
+        """
         t = 0.0 if t < 0 else (1.0 if t > 1 else t)
-        undated_share = 0.08 if self.undated is not None else 0.0
-        dated_span = 1.0 - undated_share
         if self.calendar_first > self.calendar_last:
-            return TemporalPoint(kind="undated") if self.undated else TemporalPoint(kind="undated")
-        if undated_share > 0 and t >= dated_span:
             return TemporalPoint(kind="undated")
         years = self.calendar_last - self.calendar_first + 1
-        # t=0 → calendar_last+1, t=dated_span → calendar_first
-        local = 0.0 if dated_span <= 0 else t / dated_span
-        return float(self.calendar_last) + 1.0 - local * years
+        # Full dated track: t=0 → calendar_last+1, t=1 → calendar_first.
+        return float(self.calendar_last) + 1.0 - t * years
 
     def strip_t_for_year_frac(self, year_frac: float) -> float:
-        """Map a dated year_frac to strip t in [0, dated_span]."""
-        undated_share = 0.08 if self.undated is not None else 0.0
-        dated_span = 1.0 - undated_share
-        years = max(1, self.calendar_last - self.calendar_first + 1)
-        # year_frac calendar_last+1 → 0; calendar_first → dated_span
+        """Map a dated year_frac onto the full dated track t in [0, 1].
+
+        Presence of undated media must not rescale this mapping.
+        """
         top = float(self.calendar_last) + 1.0
         bottom = float(self.calendar_first)
-        if top == bottom:
+        if self.calendar_first > self.calendar_last or top == bottom:
             return 0.0
         local = (top - year_frac) / (top - bottom)
-        local = 0.0 if local < 0 else (1.0 if local > 1 else local)
-        return local * dated_span
+        return 0.0 if local < 0 else (1.0 if local > 1 else local)
 
-    def strip_t_for_undated(self) -> float:
-        return 1.0 - (0.04 if self.undated is not None else 0.0)
+    def strip_t_for_undated(self) -> float | None:
+        """Undated is not on the dated t-scale; return None."""
+        return None
+
+    def time_for_day(self, day: str) -> TemporalPoint:
+        """Map a capture day key to chronological time without inventing dates."""
+        text = str(day or "")
+        if len(text) < 10 or text[4] != "-" or text[7] != "-":
+            return TemporalPoint(kind="undated")
+        if not (text[:4].isdigit() and text[5:7].isdigit() and text[8:10].isdigit()):
+            return TemporalPoint(kind="undated")
+        year = int(text[:4])
+        month = int(text[5:7])
+        day_n = int(text[8:10])
+        if month < 1 or month > 12 or day_n < 1 or day_n > 31:
+            return TemporalPoint(kind="undated")
+        # Mid-month progression within the calendar year (deterministic).
+        frac = (month - 1) / 12.0 + (min(day_n, 28) - 1) / (12.0 * 28.0)
+        return TemporalPoint(kind="dated", year_frac=float(year) + frac)
+
+    def viewport_from_media_days(
+        self, top_day: str, bottom_day: str, *, undated_visible: bool = False
+    ) -> ViewportSegment:
+        """Viewport segment from the actual topmost/bottommost visible day keys."""
+        points = [self.time_for_day(top_day), self.time_for_day(bottom_day)]
+        dated = [p.year_frac for p in points if p.kind == "dated" and p.year_frac is not None]
+        saw_undated = undated_visible or any(p.kind == "undated" for p in points)
+        if dated and saw_undated:
+            return ViewportSegment(
+                kind="mixed", time_lo=min(dated), time_hi=max(dated), undated_visible=True
+            )
+        if dated:
+            return ViewportSegment(
+                kind="dated", time_lo=min(dated), time_hi=max(dated), undated_visible=False
+            )
+        if saw_undated:
+            return ViewportSegment(kind="undated", undated_visible=True)
+        return ViewportSegment(kind="empty")
 
     def to_dict(self) -> dict:
         return {

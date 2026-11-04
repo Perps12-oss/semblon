@@ -50,7 +50,7 @@ Calendar time and Roll `contentY` are different metric spaces. They meet only th
 - `time_for_offset(content_offset)` — maps dated content position to chronological time (monotonic over dated content; empty years keep duration on the strip; undated is an explicit result).
 - `offset_for_year(year)` — maps a populated year to its content destination, or `None` for empty years (never silent clamp).
 
-Implementation: `semblon/native_shell/temporal_geometry.py`, Roll `navigateToOffset` / `redirectNavigation` / `cancelNavigation`, and `qml/Scrubber.qml` (Idle → Armed → Tracking → Settling). Phase 2 photographic ribbon and Phase 3 loupe are not built.
+Implementation: `semblon/native_shell/temporal_geometry.py`, Roll `navigateToOffset` / `redirectNavigation` / `cancelNavigation`, and `qml/Scrubber.qml` (Idle → Armed → Tracking → Settling). Undated occupies a terminal zone **below** the dated calendar track so it cannot rescale year positions. Phase 2 photographic ribbon and Phase 3 loupe are not built.
 
 ## Capture dates and the Recycle Bin
 

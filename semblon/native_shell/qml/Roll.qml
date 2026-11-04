@@ -201,10 +201,40 @@ Item {
         return clamp(y, -grid.topMargin, maxContentY())
     }
     function visibleBand() {
-        // Dated media between sticky band and bottom chrome.
+        // Actual contentY band between sticky band and bottom chrome — not an
+        // animation target. Callers must re-read this as contentY moves.
         return {
             top: grid.contentY + band.height + 2,
             bottom: grid.contentY + grid.height - Math.max(8, bottomInset * 0.35)
+        }
+    }
+    function photoIndexNearContentY(y, preferEnd) {
+        // Index of a photograph actually at content Y (partial rows included).
+        if (rows.length === 0 || photoCount <= 0)
+            return -1
+        var r = Math.min(rows.length - 1, rowAtY(y))
+        // Walk to a row that names photos when the band sits on a divider.
+        var guard = 0
+        while (guard < rows.length && rows[r].kind !== "photos") {
+            if (preferEnd) {
+                if (r + 1 < rows.length) r++
+                else break
+            } else {
+                if (r > 0) r--
+                else break
+            }
+            guard++
+        }
+        var row = rows[r]
+        if (row.kind === "photos")
+            return preferEnd ? (row.first + row.n - 1) : row.first
+        return clamp(row.first, 0, photoCount - 1)
+    }
+    function visibleMediaIndices() {
+        var band = visibleBand()
+        return {
+            top: photoIndexNearContentY(band.top, false),
+            bottom: photoIndexNearContentY(band.bottom, true)
         }
     }
     function cancelNavigation() {
@@ -235,6 +265,7 @@ Item {
         navToken += 1
         var token = navToken
         navTargetY = target
+        // Theme.reducedMotion is bound from shell at startup (Reduce Motion).
         if (Theme.reducedMotion || Math.abs(target - grid.contentY) < 1.5) {
             internalMove = true
             grid.contentY = target

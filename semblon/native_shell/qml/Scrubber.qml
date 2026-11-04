@@ -22,10 +22,14 @@ Item {
     readonly property bool dragging: mode === "armed" || mode === "tracking"
     readonly property bool hovered: seek.containsMouse || dragging
     readonly property real innerTop: 14
+    // Chronological dated track occupies the full inner strip. Undated lives in
+    // the terminal padding below — outside the dated calendar coordinate system —
+    // so its presence cannot rescale dated year positions.
     readonly property real innerH: Math.max(1, height - 28)
+    readonly property real undatedZoneTop: innerTop + innerH
+    readonly property real undatedZoneH: Math.max(0, height - undatedZoneTop - 2)
     readonly property int total: roll ? roll.count : 0
     readonly property real railW: 5
-    readonly property real undatedShare: 0.08
 
     width: Theme.edge
     z: 5
@@ -35,7 +39,7 @@ Item {
     Accessible.name: "Time strip. Arrow keys move year by year among years that have photographs."
     Accessible.description: accessNote
     activeFocusOnTab: true
-    LayoutMirroring.enabled: false
+    LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
     LayoutMirroring.childrenInherit: true
 
     Keys.onPressed: function (event) {
@@ -107,33 +111,35 @@ Item {
     }
 
     function yearFracAtT(g, t) {
+        // Dated track only — full [0,1]. Undated is selected via undatedZoneTop.
         if (!g || g.calendarFirst > g.calendarLast)
             return null
-        var share = g.undated ? undatedShare : 0
-        var datedSpan = 1 - share
-        if (share > 0 && t >= datedSpan)
-            return { kind: "undated" }
         var years = g.calendarLast - g.calendarFirst + 1
-        var local = datedSpan <= 0 ? 0 : t / datedSpan
+        var local = Math.max(0, Math.min(1, t))
         return { kind: "dated", yearFrac: g.calendarLast + 1 - local * years }
     }
 
     function tForYearFrac(g, yearFrac) {
         if (!g || g.calendarFirst > g.calendarLast)
             return 0
-        var share = g.undated ? undatedShare : 0
-        var datedSpan = 1 - share
         var top = g.calendarLast + 1
         var bottom = g.calendarFirst
         if (top === bottom)
             return 0
         var local = (top - yearFrac) / (top - bottom)
-        local = Math.max(0, Math.min(1, local))
-        return local * datedSpan
+        return Math.max(0, Math.min(1, local))
     }
 
-    function tForUndated(g) {
-        return 1 - (g && g.undated ? undatedShare * 0.5 : 0)
+    function timeForDay(day) {
+        if (!day || day.length < 10)
+            return { kind: "undated" }
+        var year = parseInt(day.substring(0, 4))
+        var month = parseInt(day.substring(5, 7))
+        var dayN = parseInt(day.substring(8, 10))
+        if (!(year > 0) || !(month >= 1 && month <= 12) || !(dayN >= 1 && dayN <= 31))
+            return { kind: "undated" }
+        var frac = (month - 1) / 12.0 + (Math.min(dayN, 28) - 1) / (12.0 * 28.0)
+        return { kind: "dated", yearFrac: year + frac }
     }
 
     function nearestDetent(g, yearFrac) {
@@ -189,23 +195,24 @@ Item {
     property var viewportSeg: ({ kind: "empty" })
 
     function liveSegment() {
-        if (mode === "armed" || mode === "tracking" || mode === "settling")
+        // Freeze only while Armed/Tracking. On release (Settling/Idle) resume
+        // reporting the actual viewport as contentY moves.
+        if (mode === "armed" || mode === "tracking")
             return frozenSegment
         return viewportSeg
     }
 
     function updateViewportSeg() {
-        if (mode !== "idle")
+        if (mode === "armed" || mode === "tracking")
             return
-        viewportSeg = computeSegment(ensureGeometry()) || ({ kind: "empty" })
+        var g = mode === "settling" ? (snapshot || ensureGeometry()) : ensureGeometry()
+        viewportSeg = computeSegment(g) || ({ kind: "empty" })
     }
 
     function computeSegment(g) {
         if (!roll || !g)
             return { kind: "empty" }
         var band = roll.visibleBand()
-        var top = timeForOffset(g, band.top)
-        var bot = timeForOffset(g, band.bottom)
         var dated = []
         var undatedVisible = false
         function take(p) {
@@ -213,8 +220,14 @@ Item {
             if (p.kind === "undated") undatedVisible = true
             else if (p.yearFrac !== undefined) dated.push(p.yearFrac)
         }
-        take(top); take(bot)
-        take(timeForOffset(g, (band.top + band.bottom) * 0.5))
+        // Prefer actual visible media day keys over animation targets.
+        var media = roll.visibleMediaIndices()
+        if (media.top >= 0)
+            take(timeForDay(shell.dayAt(media.top)))
+        if (media.bottom >= 0)
+            take(timeForDay(shell.dayAt(media.bottom)))
+        take(timeForOffset(g, band.top))
+        take(timeForOffset(g, band.bottom))
         for (var i = 0; i < (g.years || []).length; i++) {
             var y = g.years[i]
             if (!y.populated) continue
@@ -241,16 +254,17 @@ Item {
         var g = ensureGeometry()
         if (!g)
             return
+        // Terminal undated zone sits below the dated calendar track.
+        if (g.undated && y >= undatedZoneTop - 0.5) {
+            destinationUndated = true
+            destinationYear = -1
+            return
+        }
         var t = stripT(y)
         var at = yearFracAtT(g, t)
         if (!at) {
             destinationYear = -1
             destinationUndated = false
-            return
-        }
-        if (at.kind === "undated") {
-            destinationUndated = !!(g.undated)
-            destinationYear = -1
             return
         }
         destinationUndated = false
@@ -430,8 +444,8 @@ Item {
         if (!g || g.calendarFirst > g.calendarLast)
             return out
         var years = g.calendarLast - g.calendarFirst + 1
-        var share = g.undated ? undatedShare : 0
-        var datedH = innerH * (1 - share)
+        // Dated years always fill the full chronological track (innerH).
+        var datedH = innerH
         var u = datedH / Math.max(1, years)
         out.unit = u
         out.labelEvery = u >= 14 ? 1 : (u >= 8 ? 2 : 0)
@@ -446,7 +460,6 @@ Item {
                     break
                 }
             }
-            // Prefer a month key from the roll for landing compatibility.
             if (populated && roll && roll.monthList) {
                 for (var m = 0; m < roll.monthList.length; m++) {
                     var mk = roll.monthList[m].key
@@ -471,8 +484,8 @@ Item {
             out.items.push({
                 kind: "undated",
                 label: "Undated",
-                y: innerTop + datedH,
-                h: innerH * share,
+                y: undatedZoneTop,
+                h: Math.max(12, undatedZoneH),
                 key: "",
                 index: years,
                 populated: true
@@ -486,7 +499,8 @@ Item {
         function onContentYChanged() {
             if (edge.roll)
                 edge.linearIndex = edge.roll.topIndex()
-            if (edge.mode === "idle")
+            // Idle and Settling both report the live viewport from actual contentY.
+            if (edge.mode === "idle" || edge.mode === "settling")
                 viewportPulse.restart()
         }
     }
@@ -515,9 +529,23 @@ Item {
             if (edge.mode !== "idle")
                 edge.abortGesture(true)
             edge.invalidateGeometry()
+            edge.updateViewportSeg()
         }
-        function onRowsInserted() { edge.invalidateGeometry() }
-        function onRowsRemoved() { edge.invalidateGeometry() }
+        function onRowsInserted() {
+            // Never navigate from a stale snapshot after archive mutation.
+            if (edge.mode !== "idle")
+                edge.abortGesture(true)
+            else
+                edge.invalidateGeometry()
+            edge.updateViewportSeg()
+        }
+        function onRowsRemoved() {
+            if (edge.mode !== "idle")
+                edge.abortGesture(true)
+            else
+                edge.invalidateGeometry()
+            edge.updateViewportSeg()
+        }
     }
 
     // Track background.
@@ -594,12 +622,14 @@ Item {
         }
     }
 
-    // Passive viewport segment (or frozen snapshot while armed/tracking/settling).
+    // Passive viewport segment (frozen only while Armed/Tracking).
     Item {
         id: viewportChrome
         anchors.fill: parent
-        readonly property var seg: edge.mode === "idle" ? edge.viewportSeg : edge.frozenSegment
-        readonly property var g: edge.mode === "idle" ? edge.passiveGeometry : edge.snapshot
+        readonly property var seg: (edge.mode === "armed" || edge.mode === "tracking")
+                                   ? edge.frozenSegment : edge.viewportSeg
+        readonly property var g: (edge.mode === "armed" || edge.mode === "tracking")
+                                 ? edge.snapshot : (edge.passiveGeometry || edge.snapshot)
 
         Rectangle {
             id: datedSeg
@@ -636,11 +666,8 @@ Item {
             height: 8
             radius: 2
             color: Theme.muted
-            y: {
-                var g = viewportChrome.g
-                if (!g) return edge.height - 20
-                return edge.yForT(edge.tForUndated(g)) - height / 2
-            }
+            // Outside the dated track — bottom terminal zone.
+            y: edge.undatedZoneTop + Math.max(0, (edge.undatedZoneH - height) / 2)
         }
     }
 
@@ -683,7 +710,7 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        // Wheel over the strip must not arm the drag state — leave Flickable scrolling alone.
+        // Wheel must not arm the drag state; forward to content scrolling instead.
         onPressed: function (m) {
             edge.forceActiveFocus()
             edge.arm(m.y)
@@ -696,6 +723,13 @@ Item {
         onReleased: function (m) { edge.release(m.y) }
         onCanceled: edge.abortGesture(true)
         onExited: if (edge.mode === "idle") edge.hoverY = -1
-        // Do not handle wheel — events pass through / default to content scroll via parent.
+        onWheel: function (wheel) {
+            if (!edge.roll || !edge.roll.view)
+                return
+            // Ordinary content scroll — never enter Armed from wheel.
+            var next = edge.roll.clampContentY(edge.roll.view.contentY - wheel.angleDelta.y)
+            edge.roll.view.contentY = next
+            wheel.accepted = true
+        }
     }
 }
