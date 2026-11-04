@@ -133,19 +133,19 @@ def test_contextual_preview_budget_stays_at_most_four_representatives():
         assert len(cell.sample_ids) <= CELL_MOSAIC_MAX
 
 
-def test_id_at_resolves_only_sampled_indices_not_full_archive():
-    """100k-scale: sampling must not require materialising every media id."""
+def test_media_ids_path_keeps_sample_budget_on_100k_without_id_at():
+    """100k-scale with a media_ids vector: samples stay capped; no id_at traffic."""
     days = [f"2020-01-{(i % 28) + 1:02d}" for i in range(100_000)]
+    ids = [f"big-{i:06d}" for i in range(100_000)]
     seen: list[int] = []
 
     def id_at(i: int) -> str:
         seen.append(i)
-        return f"big-{i:06d}"
+        return ids[i]
 
-    cells = year_cells(days, id_at=id_at)
+    cells = year_cells(days, media_ids=ids, id_at=id_at)
     assert len(cells) == 1
     assert cells[0].photo_count == 100_000
     assert len(cells[0].sample_ids) <= YEAR_SAMPLE_BUDGET
-    # Only budget-scale resolutions — never one call per photograph.
-    assert len(seen) <= YEAR_SAMPLE_BUDGET * 32
-    assert len(seen) < 5_000
+    # media_ids path must not fall back to id_at.
+    assert seen == []

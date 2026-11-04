@@ -149,13 +149,6 @@ def _stratify_sample(
     return picked[:budget]
 
 
-# Cap how many ids we resolve per stratum when the archive is huge.
-# When ``media_ids`` is provided, the full stratum is ranked (true stability).
-# When only ``id_at`` is available, we probe a bounded evenly-spaced subset then
-# rank those by media-id hash — work stays O(strata × probe), not O(photos).
-_STRATUM_PROBE_CAP = 64
-
-
 def _stratum_ids(
     idxs: Sequence[int],
     budget: int,
@@ -164,25 +157,36 @@ def _stratum_ids(
     media_ids: Sequence[str] | None,
     id_at: IdAt | None,
 ) -> list[str]:
+    """Resolve stratum media ids for ranking.
+
+    Prefer a full ``media_ids`` vector (stable under reorder and small inserts).
+    When only ``id_at`` is available, keep an online top-k by media-id hash while
+    scanning — inserting one photograph changes membership by at most one id,
+    unlike evenly-spaced index probes.
+    """
     if not idxs:
         return []
     if media_ids is not None:
         return _resolve_ids(idxs, media_ids=media_ids, id_at=None)
-    # Bound id_at traffic: evenly spaced probes, then media-id rank among them.
-    probe_n = min(len(idxs), max(_STRATUM_PROBE_CAP, budget * 4))
-    if probe_n >= len(idxs):
-        probes = list(idxs)
-    else:
-        probes = []
-        seen: set[int] = set()
-        for i in range(probe_n):
-            at = int(round(i * (len(idxs) - 1) / max(probe_n - 1, 1)))
-            idx = idxs[at]
-            if idx in seen:
-                continue
-            seen.add(idx)
-            probes.append(idx)
-    return _resolve_ids(probes, media_ids=None, id_at=id_at)
+    if id_at is None:
+        return [f"idx:{i}" for i in idxs]
+    # Online top-k by media-id rank (k = max(budget*4, budget)).
+    # Sorted (rank, mid) list — inserting one id changes membership by ≤1.
+    import bisect
+
+    k = max(budget * 4, budget, 1)
+    best: list[tuple[str, str]] = []
+    for i in idxs:
+        mid = str(id_at(i) or "")
+        if not mid or mid.startswith("idx:"):
+            continue
+        item = (_media_rank(mid, salt), mid)
+        if len(best) < k:
+            bisect.insort(best, item)
+        elif item < best[-1]:
+            best.pop()
+            bisect.insort(best, item)
+    return [mid for _rank, mid in best]
 
 
 def _sample_from_groups(
@@ -234,9 +238,10 @@ def year_cells(
     media_ids: Sequence[str] | None = None,
     id_at: IdAt | None = None,
     colors: dict[str, str] | None = None,
+    index: dict | None = None,
 ) -> list[PeriodCell]:
     """One coherent cell per populated calendar year — ``O(years)``, never ``O(photos)``."""
-    index = index_periods(days)
+    index = index if index is not None else index_periods(days)
     cells: list[PeriodCell] = []
     for key in sorted(index["years"].keys(), reverse=True):
         idxs = index["years"][key]
@@ -304,9 +309,10 @@ def month_cells_for_year(
     media_ids: Sequence[str] | None = None,
     id_at: IdAt | None = None,
     colors: dict[str, str] | None = None,
+    index: dict | None = None,
 ) -> list[PeriodCell]:
     """Populated months inside one year — at most 12 cells, never one per photo."""
-    index = index_periods(days)
+    index = index if index is not None else index_periods(days)
     prefix = f"{int(year):04d}-"
     cells: list[PeriodCell] = []
     for key in sorted((k for k in index["months"] if k.startswith(prefix)), reverse=True):
@@ -343,12 +349,13 @@ def day_cells_for_month(
     media_ids: Sequence[str] | None = None,
     id_at: IdAt | None = None,
     colors: dict[str, str] | None = None,
+    index: dict | None = None,
 ) -> list[PeriodCell]:
     """Populated days inside one month — one cell per day that has photographs."""
     mk = month_key(month_key_str) or str(month_key_str)
     if len(mk) < 7:
         return []
-    index = index_periods(days)
+    index = index if index is not None else index_periods(days)
     cells: list[PeriodCell] = []
     for key in sorted((k for k in index["days"] if k.startswith(mk)), reverse=True):
         idxs = index["days"][key]

@@ -310,6 +310,9 @@ class ShellBridge(QObject):
         self._ribbon_year_payload: list = []
         self._ribbon_index_gen = -1
         self._ribbon_days_cache: list[str] = []
+        self._ribbon_period_index = None
+        self._ribbon_month_cache: dict = {}
+        self._ribbon_month_cache_gen = -1
         self._model.modelReset.connect(self._bump_archive_generation)
         self._model.rowsInserted.connect(self._bump_archive_generation)
         self._model.rowsRemoved.connect(self._bump_archive_generation)
@@ -1468,11 +1471,16 @@ class ShellBridge(QObject):
         self._ribbon_year_payload = []
         self._ribbon_index_gen = -1
         self._ribbon_days_cache = []
+        self._ribbon_period_index = None
+        self._ribbon_month_cache = {}
+        self._ribbon_month_cache_gen = -1
 
     def _invalidate_ribbon_cache(self) -> None:
         """Drop ribbon colours/samples after thumb cache clears (no archive mutation)."""
         self._ribbon_payload_gen = -1
         self._ribbon_year_payload = []
+        self._ribbon_month_cache = {}
+        self._ribbon_month_cache_gen = -1
 
     @Slot(result=int)
     def archiveGeneration(self) -> int:
@@ -1512,17 +1520,37 @@ class ShellBridge(QObject):
             return list(self._ribbon_days_cache)
         self._ribbon_days_cache = list(self._model.days())
         self._ribbon_index_gen = self._archive_generation
+        self._ribbon_period_index = None
         return list(self._ribbon_days_cache)
 
-    def _ribbon_id_at(self, index: int) -> str:
-        """Resolve one media id for a Roll index — avoids loading all ids for 100k archives."""
+    def _ribbon_media_ids(self) -> list[str]:
+        """Media ids aligned with ``days()``, loaded once per archive generation.
+
+        One window read (or scoped list) keeps sampling media-id-stable under
+        reorder and small inserts without probing by row index.
+        """
+        if self._ribbon_ids_gen == self._archive_generation and self._ribbon_ids_cache:
+            return list(self._ribbon_ids_cache)
         scoped = self._model.media_ids()
         if scoped is not None:
-            if 0 <= index < len(scoped):
-                return str(scoped[index] or "")
-            return ""
-        info = self._model.row_info(int(index))
-        return str(info.get("mediaId") or "")
+            self._ribbon_ids_cache = list(scoped)
+        else:
+            count = int(self._model.rowCount())
+            if count <= 0:
+                self._ribbon_ids_cache = []
+            else:
+                window = self._jobs.archive_window(0, max(count, self._jobs.archive_count()))
+                self._ribbon_ids_cache = [str(m.media_id) for m in window][:count]
+        self._ribbon_ids_gen = self._archive_generation
+        return list(self._ribbon_ids_cache)
+
+    def _ribbon_period_map(self) -> dict:
+        from semblon.native_shell.temporal_ribbon import index_periods
+
+        if self._ribbon_period_index is not None and self._ribbon_index_gen == self._archive_generation:
+            return self._ribbon_period_index
+        self._ribbon_period_index = index_periods(self._ribbon_days())
+        return self._ribbon_period_index
 
     def _ribbon_cached_thumbs(self, sample_ids: list[str]):
         """Load only already-cached thumbs (memory or disk). Never decode originals."""
@@ -1577,7 +1605,12 @@ class ShellBridge(QObject):
         if self._ribbon_payload_gen == self._archive_generation and self._ribbon_year_payload:
             return list(self._ribbon_year_payload)
         days = self._ribbon_days()
-        cells = year_cells(days, id_at=self._ribbon_id_at)
+        media_ids = self._ribbon_media_ids()
+        cells = year_cells(
+            days,
+            media_ids=media_ids or None,
+            index=self._ribbon_period_map(),
+        )
         # Colour/sample probing is O(years × budget), not O(photos).
         payload = [self._ribbon_cell_payload(cell) for cell in cells]
         self._ribbon_year_payload = payload
@@ -1589,9 +1622,25 @@ class ShellBridge(QObject):
         """Local year lens: one cell per populated month (≤12), never per photo."""
         from semblon.native_shell.temporal_ribbon import month_cells_for_year
 
+        year = int(year)
+        if self._ribbon_month_cache_gen == self._archive_generation:
+            cached = self._ribbon_month_cache.get(year)
+            if cached is not None:
+                return list(cached)
         days = self._ribbon_days()
-        cells = month_cells_for_year(days, int(year), id_at=self._ribbon_id_at)
-        return [self._ribbon_cell_payload(cell) for cell in cells]
+        media_ids = self._ribbon_media_ids()
+        cells = month_cells_for_year(
+            days,
+            year,
+            media_ids=media_ids or None,
+            index=self._ribbon_period_map(),
+        )
+        payload = [self._ribbon_cell_payload(cell) for cell in cells]
+        if self._ribbon_month_cache_gen != self._archive_generation:
+            self._ribbon_month_cache = {}
+            self._ribbon_month_cache_gen = self._archive_generation
+        self._ribbon_month_cache[year] = payload
+        return list(payload)
 
     @Slot(str, result="QVariantList")
     def ribbonDayCells(self, monthKey: str):
@@ -1599,7 +1648,13 @@ class ShellBridge(QObject):
         from semblon.native_shell.temporal_ribbon import day_cells_for_month
 
         days = self._ribbon_days()
-        cells = day_cells_for_month(days, str(monthKey or ""), id_at=self._ribbon_id_at)
+        media_ids = self._ribbon_media_ids()
+        cells = day_cells_for_month(
+            days,
+            str(monthKey or ""),
+            media_ids=media_ids or None,
+            index=self._ribbon_period_map(),
+        )
         return [self._ribbon_cell_payload(cell) for cell in cells]
 
     @Slot(int, result="QVariantMap")
