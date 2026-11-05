@@ -35,6 +35,7 @@ VALID_STATUSES = frozenset(
         "tentative",
         "confirmed",
         "contradicted",
+        "retracted",
     }
 )
 

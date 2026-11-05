@@ -304,8 +304,30 @@ def test_sync_tags_removes_stale_edges(tmp_path):
         dog = _snapshot_tag(conn, "dog")
         cat = _snapshot_tag(conn, "cat")
         assert dog is not None and dog[0] == 1 and dog[1] == pytest.approx(0.6)
+        assert dog[2] == "candidate"
         assert dog[4] == 1
-        assert cat is not None and cat[0] == 0 and cat[3] == 0
+        assert cat is not None and cat[0] == 0 and cat[2] == "retracted" and cat[3] == 0
+
+        conn.execute(
+            "UPDATE brain_observations SET payload_json=? WHERE media_id='m1'",
+            (
+                json.dumps(
+                    {
+                        "tags": [
+                            {"label": "dog", "score": 0.9},
+                            {"label": "cat", "score": 0.8},
+                        ]
+                    }
+                ),
+            ),
+        )
+        conn.commit()
+        sync_tags_from_observations(conn, "m1")
+        cat_back = _snapshot_tag(conn, "cat")
+        assert cat_back is not None
+        assert cat_back[0] == 1
+        assert cat_back[2] == "candidate"
+        assert _has_tag(conn, "m1", "cat")
     finally:
         conn.close()
 

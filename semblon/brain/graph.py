@@ -125,7 +125,14 @@ def _refresh_tag_aggregate(conn: sqlite3.Connection, tag_id: int) -> None:
             (tag_id,),
         ).fetchone()[0]
     )
-    status = "tentative" if n >= 2 else "candidate"
+    # 0 edges: the label was seen, then every photo lost it. The row stays.
+    # One edge is candidate again. Two or more stays the Inc 4 tentative band.
+    if n <= 0:
+        status = "retracted"
+    elif n >= 2:
+        status = "tentative"
+    else:
+        status = "candidate"
     conn.execute(
         """UPDATE brain_nodes
               SET member_count=?, confidence=?, status=?, updated_at=?,

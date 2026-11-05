@@ -81,7 +81,9 @@ Embedding source: existing SQLite `embeddings` (`modality` in `region` / `region
 
 **ACCEPTED** on `grok/p4-capability-manifest`.
 
-Tag-sync reconcile bug found in audit and fixed before this stamp. `sync_tags_from_observations` deletes a photo's `HAS_TAG` edges and inserts one edge per current C1 label with `support_count=1`. Tag `member_count` is the count of those edges. A second sync does not raise confidence. A label removed from the C1 payload loses its edge, and that Tag node's aggregate is recomputed.
+Tag-sync reconcile bug found in audit and fixed before this stamp. `sync_tags_from_observations` deletes a photo's `HAS_TAG` edges and inserts one edge per current C1 label with `support_count=1`. Tag `member_count` is the count of those edges. A second sync does not raise confidence. A label removed from the C1 payload loses its edge. The Tag row stays; `member_count=0` sets `status='retracted'`, and one supporting photo sets `candidate` again (`tentative` at 2 or more).
+
+No-argument `sync_tags_from_observations(conn)` is an explicit operator call. Ingest, startup, and `BrainPipeline` do not call it.
 
 | Check | Evidence |
 |---|---|

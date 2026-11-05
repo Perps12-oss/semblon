@@ -93,7 +93,7 @@ tests/brain/              # primary gate for this work
 
 ```python
 from semblon.brain import sync_tags_from_observations, rebuild_object_clusters
-sync_tags_from_observations(conn)   # C1 observations → Tag/Photo/HAS_TAG
+sync_tags_from_observations(conn)   # explicit operator call; not startup or ingest
 rebuild_object_clusters(conn)       # region embeddings → ObjectCluster/HAS_OBJECT
 ```
 
