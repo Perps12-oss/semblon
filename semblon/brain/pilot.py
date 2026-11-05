@@ -192,6 +192,10 @@ def _iter_paths(corpus: Path):
         return
     for dirpath, dirnames, filenames in os.walk(corpus):
         dirnames.sort()
+        parent = Path(dirpath)
+        # Owner holdout. Not a date filter and not deduplication.
+        if parent.name == "DCIMaw" and parent.parent.name == "Yandex.Disk" and "me" in dirnames:
+            dirnames.remove("me")
         for name in sorted(filenames):
             path = Path(dirpath) / name
             if path.suffix.lower() in IMAGE_SUFFIXES:
@@ -442,7 +446,8 @@ def run_pilot(
                     message = f"{path}: {type(exc).__name__}: {exc}"
                     log.warning("%s", message)
                     errors.append(message)
-                    notes.append(message)
+                    if sum(1 for note in notes if note.startswith("photo:")) < 30:
+                        notes.append("photo: " + message)
             elapsed = time.perf_counter() - t0
             try:
                 rss1, peak1 = rss_fn()
@@ -527,6 +532,9 @@ def run_pilot(
             notes.append(f"Top tags: {summary}")
         providers_seen = sorted({c.provider for c in chunks})
         notes.append("Providers seen: " + (", ".join(providers_seen) or "none"))
+        error_total = sum(len(c.errors) for c in chunks)
+        if error_total:
+            notes.append(f"Photo errors: {error_total} (first 30 listed)")
     except Exception:
         aborted = traceback.format_exc().strip()
         log.exception("pilot failed")
