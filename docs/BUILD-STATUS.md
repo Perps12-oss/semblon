@@ -1,3 +1,9 @@
+## Current branch addendum — Invariant hardening P0 (2026-11-05)
+
+**Branch:** `grok/p0-invariant-evidence` · **Baseline HEAD:** `af0758537fdd4f5240439ef163918db14defea9d` · **Schema:** 6.
+
+P0 evidence map, lifecycle mapping, first I1 coverage manifest, and G1 translation inventory: `docs/invariants/`. Observation tools only: `tools/p0/` (SQL static inventory + opt-in runtime trace). Focused Windows evidence: **120 passed** under `SEMBLON_P0_SQL_TRACE=1` (schema / category_backfill / scan_tiers / identify / process / production / review / run_stage_resume / audit_regressions). **P0 sign-off pending** — do not implement P1 until `docs/invariants/P0-COMPLETION.md` is signed. No identity threshold or schema changes in this phase.
+
 ## Current branch addendum — A→B→C→D evidence lock (retrieval + match geometry + release ops)
 
 **Branch:** `cursor/abc-then-d-fb3d`. Evidence from this checkout’s code and docs. Not Gate C / Gate L PASS. Not a PhotoDisco rebuild.
