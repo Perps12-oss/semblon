@@ -46,11 +46,11 @@ def _seed_store(path):
 def test_schema_version_is_eight(tmp_path):
     conn = _seed_store(tmp_path / "s.sqlite")
     try:
-        assert SCHEMA_VERSION == "8"
+        assert int(SCHEMA_VERSION) >= 8
         ver = conn.execute(
             "SELECT value FROM schema_meta WHERE key='schema_version'"
         ).fetchone()[0]
-        assert ver == "8"
+        assert int(ver) >= 8
         triggers = {
             r[0]
             for r in conn.execute(

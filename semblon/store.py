@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "8"
+SCHEMA_VERSION = "12"
 
 DDL = """
 PRAGMA journal_mode=WAL;
@@ -209,6 +209,12 @@ LIBRARY_TABLES = (
     "work_items",
     "eval_pairs",
     "eval_sets",
+    "brain_evidence",
+    "brain_edges",
+    "brain_nodes",
+    "brain_observations",
+    "brain_capabilities",
+    "brain_benchmarks",
     "identify_evaluations",
     "decisions",
     "group_members",
@@ -520,6 +526,23 @@ BEGIN
 END;
 """
 
+# BRAIN migrations 9-12. Loaded by file path to avoid circular import
+# (store -> brain.__init__ -> object_cluster -> cluster -> store).
+import importlib.util as _ilu
+from pathlib import Path as _Path
+
+_brain_mig = _Path(__file__).resolve().parent / "brain" / "_schema_migrations.py"
+_spec = _ilu.spec_from_file_location("semblon_brain_schema_migrations", _brain_mig)
+_mod = _ilu.module_from_spec(_spec)
+assert _spec.loader is not None
+_spec.loader.exec_module(_mod)
+MIGRATION_9 = _mod.MIGRATION_9
+MIGRATION_10_IDENTIFY_EVAL = _mod.MIGRATION_10_IDENTIFY_EVAL
+MIGRATION_10_TABLES = _mod.MIGRATION_10_TABLES
+MIGRATION_11_IDENTIFY_EVAL = _mod.MIGRATION_11_IDENTIFY_EVAL
+MIGRATION_12 = _mod.MIGRATION_12
+del _ilu, _Path, _brain_mig, _spec, _mod
+
 MIGRATIONS = (
     (2, MIGRATION_2),
     (3, MIGRATION_3),
@@ -528,6 +551,10 @@ MIGRATIONS = (
     (6, MIGRATION_6),
     (7, MIGRATION_7),
     (8, MIGRATION_8),
+    (9, MIGRATION_9),
+    (10, None),
+    (11, None),
+    (12, None),
 )
 
 
@@ -672,12 +699,46 @@ def apply_migrations(conn: sqlite3.Connection, *, fail_after: str | None = None)
             continue
         if version == 4:
             _apply_migration_4(conn, now, fail_after=fail_after)
+        elif version == 10:
+            _apply_migration_10(conn, now)
+        elif version == 11:
+            _apply_migration_11(conn, now)
+        elif version == 12:
+            _apply_migration_12(conn, now)
         else:
             conn.executescript(sql)
             _stamp_schema(conn, version, now)
         v = version
     conn.commit()
     return v
+
+
+def _apply_migration_10(conn: sqlite3.Connection, now: str) -> None:
+    conn.executescript(MIGRATION_10_TABLES)
+    if _table_exists(conn, "identify_evaluations"):
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='identify_evaluations'"
+        ).fetchone()
+        ddl = (row[0] if row else "") or ""
+        if "'tagged'" not in ddl:
+            conn.executescript(MIGRATION_10_IDENTIFY_EVAL)
+    _stamp_schema(conn, 10, now)
+
+
+def _apply_migration_11(conn: sqlite3.Connection, now: str) -> None:
+    if _table_exists(conn, "identify_evaluations"):
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='identify_evaluations'"
+        ).fetchone()
+        ddl = (row[0] if row else "") or ""
+        if "'suggested'" not in ddl:
+            conn.executescript(MIGRATION_11_IDENTIFY_EVAL)
+    _stamp_schema(conn, 11, now)
+
+
+def _apply_migration_12(conn: sqlite3.Connection, now: str) -> None:
+    conn.executescript(MIGRATION_12)
+    _stamp_schema(conn, 12, now)
 
 
 def init_db(conn: sqlite3.Connection) -> None:

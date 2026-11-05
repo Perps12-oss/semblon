@@ -1,0 +1,77 @@
+# BRAIN arbitration policy (Increment 1 stubs)
+# Contract only: preference order + budgets. No provider is adopted here.
+# adopted=1 lives in brain_capabilities after §6 gates.
+
+C1_tag_generic:
+  preference:
+    - existing_nanodet_tags
+    - ram_plus
+  budget:
+    latency_ms: 1500
+    confidence: 0.70
+  skip_if: observation_exists
+
+C2_localise_object:
+  preference:
+    - existing_nanodet_localise
+    - existing_sam2
+    - grounding_dino
+  budget:
+    latency_ms: 8000
+  invoke_only_if:
+    - tag_confidence_ge_0_75
+    - no_existing_bbox
+  skip_if: observation_exists
+
+C3_embed_object:
+  preference:
+    - existing_region_encoder
+  budget:
+    latency_ms: 500
+  skip_if: observation_exists
+
+C4_embed_face:
+  preference:
+    - existing_face_embedder
+    - adaface_ir18
+  budget:
+    latency_ms: 200
+  validate: validate_identity_embedding
+  skip_if: observation_exists
+  # Inc 3 suggest band (additive — does not retune confirm / DEFAULT_THRESHOLD):
+  #   suggest_floor (0.40) <= score < confirm (identity DEFAULT_THRESHOLD)
+  #   → outcome='suggested', reason='below_confirm_threshold'
+  suggest_floor: 0.40
+  confirm_threshold_ref: identity_config.DEFAULT_THRESHOLD
+
+C5_cluster_vectors:
+  preference:
+    - existing_object_dbscan
+  schedule: batch_rebuild
+  invoke_on_ingest: false
+  # Batch ObjectCluster only. Caller is rebuild_object_clusters(conn).
+  # Face DBSCAN stays in semblon.cluster. No incremental path yet.
+  # hdbscan stays a dormant registry candidate.
+
+C6_search_similar:
+  preference:
+    - existing_index
+  # Approximate ANN providers omitted until docs/SHIP-GATES.md ANN gate reopens.
+
+C7_verify_same_instance:
+  preference:
+    - existing_compare
+  stage_1: existing_compare
+  # stage_2 / SuperPoint deferred; not wired in Inc 1.
+
+C8_scene_classify:
+  preference:
+    - existing_scene_embedding
+  semantics: embedding_then_cluster
+  # Scene labels emerge from graph clustering over embeddings.
+  # A scene classifier would be NEW capability C8b, not an upgrade to C8.
+
+C9_ocr:
+  preference:
+    - existing_ocr
+  # If probe_ocr_status fails, policy returns defer — not a crash.

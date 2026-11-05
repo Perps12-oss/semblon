@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from semblon.erasure_intent import ErasureIntent, erasure_authorized
 from semblon.store import (
     connect,
     delete_observation_tree,
@@ -62,7 +63,36 @@ def forget_files(store: Path, paths: list[str], keep: list[str] | None = None) -
                 if track_ids:
                     exec_in_chunks(conn, "DELETE FROM track_members WHERE track_id IN", track_ids)
                     exec_in_chunks(conn, "DELETE FROM tracks WHERE track_id IN", track_ids)
-                conn.execute("DELETE FROM media WHERE media_id=?", (media_id,))
+                brain_intent = ErasureIntent(
+                    requestor="user",
+                    scope="media",
+                    reason="forget media",
+                    authorized_by="forget.forget_files",
+                    media_id=str(media_id),
+                )
+                with erasure_authorized(brain_intent):
+                    if conn.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='brain_observations'"
+                    ).fetchone():
+                        conn.execute(
+                            "DELETE FROM brain_observations WHERE media_id=?",
+                            (media_id,),
+                        )
+                    if conn.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='brain_nodes'"
+                    ).fetchone():
+                        photo = conn.execute(
+                            "SELECT id FROM brain_nodes WHERE node_type='Photo' AND label=?",
+                            (media_id,),
+                        ).fetchone()
+                        if photo:
+                            pid = int(photo[0])
+                            conn.execute(
+                                "DELETE FROM brain_edges WHERE source_node_id=? OR target_node_id=?",
+                                (pid, pid),
+                            )
+                            conn.execute("DELETE FROM brain_nodes WHERE id=?", (pid,))
+                    conn.execute("DELETE FROM media WHERE media_id=?", (media_id,))
                 removed += 1
             exec_in_chunks(conn, "DELETE FROM work_items WHERE path IN", wanted)
             if clusters:

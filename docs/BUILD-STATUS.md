@@ -2,13 +2,13 @@
 
 **Branch:** `grok/p4-capability-manifest` · **Schema:** **12** · **Cold start:** `docs/brain/HANDOVER.md`.
 
-**BRAIN capability router (local evidence graph) — Inc 1–3 accepted; Inc 4 code+tests complete.** Schema 9–12: capabilities/benchmarks → observations/evidence → `suggested` outcome → `brain_nodes`/`brain_edges` (Tag/Photo/ObjectCluster, HAS_TAG/HAS_OBJECT). Batch ObjectCluster via in-house DBSCAN over stored region embeddings (`existing_object_dbscan`). Zero new inference models. Identity thresholds untouched. `suggest_floor=0.40` provisional until 150-image pass.
+**BRAIN capability router (local evidence graph) — Inc 1–4 accepted.** Schema 9–12: capabilities/benchmarks → observations/evidence → `suggested` outcome → `brain_nodes`/`brain_edges` (Tag/Photo/ObjectCluster, HAS_TAG/HAS_OBJECT). Batch ObjectCluster via in-house DBSCAN over stored region embeddings (`existing_object_dbscan`). Tag sync reconciles `HAS_TAG` per photo (`support_count=1`). Zero new inference models. Identity thresholds untouched. `suggest_floor=0.40` provisional until the 100k pilot.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/brain -q --basetemp=.pytest-tmp-brain
 ```
 
-**Result:** **51 passed**. Next: human ACCEPTED on Inc 4, then 150-image pass **before** Inc 5. Do not CHECK-constrain `edge_type`. Details: `docs/brain/INC4.md`, `docs/brain/HANDOVER.md`.
+**Result:** **53 passed**. Inc 4 accepted after the tag-sync reconcile fix. Next: 100k pilot **before** Inc 5. Do not CHECK-constrain `edge_type`. Details: `docs/brain/INC4.md`, `docs/brain/HANDOVER.md`.
 
 ## Current branch addendum — Invariant hardening P4 (2026-11-05)
 
