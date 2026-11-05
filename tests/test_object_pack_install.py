@@ -10,6 +10,33 @@ from semblon.object_pack import WEIGHT_NAME, probe_nanodet_status
 from semblon.object_pack_install import ObjectPackInstallError, install_object_pack
 
 
+def test_nanodet_session_is_loaded_once_per_thread(monkeypatch):
+    import semblon.object_nanodet as nanodet
+
+    nanodet.reset_session_for_tests()
+    calls = {"n": 0}
+
+    def ready(root=None):
+        calls["n"] += 1
+        return {"path": "model.onnx"}
+
+    class _Net:
+        def __init__(self, path):
+            self.path = path
+
+    monkeypatch.setattr(nanodet, "assert_nanodet_pack_ready", ready)
+    monkeypatch.setattr(nanodet, "NanoDetSession", _Net)
+    first = nanodet.get_nanodet_session()
+    second = nanodet.get_nanodet_session()
+    assert first is second
+    assert calls["n"] == 1
+    nanodet.reset_session_for_tests()
+    third = nanodet.get_nanodet_session()
+    assert third is not first
+    assert calls["n"] == 2
+    nanodet.reset_session_for_tests()
+
+
 def test_probe_module_does_not_download():
     text = Path(object_pack_install.__file__).with_name("object_pack.py").read_text(encoding="utf-8")
     assert "urlopen" not in text

@@ -7,6 +7,7 @@ Contour regions remain a separate provider (``opencv-contour``).
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -243,18 +244,22 @@ class NanoDetSession:
         return out
 
 
-_SESSION: NanoDetSession | None = None
-_SESSION_PATH: str | None = None
+# One loaded net per thread. The weight file is hash-checked when that
+# net is created, not on every photo.
+_TLS = threading.local()
 
 
 def get_nanodet_session(root: Path | None = None) -> NanoDetSession:
-    global _SESSION, _SESSION_PATH
+    root_key = "" if root is None else str(Path(root).resolve())
+    session = getattr(_TLS, "session", None)
+    if session is not None and getattr(_TLS, "root", None) == root_key:
+        return session
     meta = assert_nanodet_pack_ready(root)
-    path = meta["path"]
-    if _SESSION is None or _SESSION_PATH != path:
-        _SESSION = NanoDetSession(Path(path))
-        _SESSION_PATH = path
-    return _SESSION
+    session = NanoDetSession(Path(meta["path"]))
+    _TLS.session = session
+    _TLS.path = meta["path"]
+    _TLS.root = root_key
+    return session
 
 
 def detect_objects(bgr, *, root: Path | None = None) -> list[dict]:
@@ -264,9 +269,9 @@ def detect_objects(bgr, *, root: Path | None = None) -> list[dict]:
 
 
 def reset_session_for_tests() -> None:
-    global _SESSION, _SESSION_PATH
-    _SESSION = None
-    _SESSION_PATH = None
+    _TLS.session = None
+    _TLS.path = None
+    _TLS.root = None
 
 
 def default_weight_name() -> str:

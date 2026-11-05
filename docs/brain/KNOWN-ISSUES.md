@@ -1,0 +1,1 @@
+Region search at scale: The product's index_image_regions produces ~1,400 vectors/photo (dense patch grid) at ~14 s/photo on CPU. At 2M photos this is ~1 TB (int8) and ~324 days. This is the product search path, not BRAIN clustering. BRAIN object clustering uses NanoDet crops (3–10/photo), not this path. Not blocking. Measure separately if product search becomes a priority.

@@ -14,6 +14,14 @@ from dataclasses import dataclass, field
 from typing import Iterator
 
 HUMAN_DECISION_KINDS = frozenset({"name", "reject", "merge", "split", "note"})
+BRAIN_ERASURE_TABLES = frozenset(
+    {
+        "brain_observations",
+        "brain_evidence",
+        "brain_nodes",
+        "brain_edges",
+    }
+)
 
 _TLS = threading.local()
 
@@ -31,11 +39,12 @@ class ErasureIntent:
     reason: str
     authorized_by: str
     person_id: str | None = None
+    media_id: str | None = None
     face_ids: frozenset[str] = field(default_factory=frozenset)
 
     def __post_init__(self) -> None:
         scope = str(self.scope or "").strip().lower()
-        if scope not in {"person", "library"}:
+        if scope not in {"person", "library", "media"}:
             raise ValueError(f"unsupported erasure scope: {self.scope!r}")
         object.__setattr__(self, "scope", scope)
         requestor = str(self.requestor or "").strip()
@@ -53,8 +62,17 @@ class ErasureIntent:
             object.__setattr__(self, "person_id", person_id)
             faces = frozenset(str(f).strip() for f in self.face_ids if str(f).strip())
             object.__setattr__(self, "face_ids", faces)
+            object.__setattr__(self, "media_id", None)
+        elif scope == "media":
+            media_id = str(self.media_id or "").strip()
+            if not media_id:
+                raise ValueError("media_id is required for scope=media")
+            object.__setattr__(self, "media_id", media_id)
+            object.__setattr__(self, "person_id", None)
+            object.__setattr__(self, "face_ids", frozenset())
         else:
             object.__setattr__(self, "person_id", None)
+            object.__setattr__(self, "media_id", None)
             object.__setattr__(self, "face_ids", frozenset())
 
 
@@ -81,12 +99,22 @@ def _sql_erasure_ok(
     person_id: str | None,
     face_id: str | None,
 ) -> int:
-    """SQLite callback: 1 allow, 0 deny. Never trust caller convention alone."""
+    """SQLite callback: 1 allow, 0 deny.
+
+    For ``brain_observations``, the third argument is ``media_id``.
+    """
     intent = current_erasure_intent()
     if intent is None:
         return 0
     table_name = str(table or "").strip().lower()
     if intent.scope == "library":
+        return 1
+    if table_name in BRAIN_ERASURE_TABLES:
+        if intent.scope != "media" or not intent.media_id:
+            return 0
+        if table_name == "brain_observations":
+            mid = str(person_id or "").strip() or None
+            return 1 if mid == intent.media_id else 0
         return 1
     if intent.scope != "person" or not intent.person_id:
         return 0
