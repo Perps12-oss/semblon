@@ -3,7 +3,7 @@
 **Date:** 2026-11-05  
 **Branch:** `grok/p4-capability-manifest` (uncommitted BRAIN work sits on top of P4)  
 **Schema:** **12** (`semblon.store.SCHEMA_VERSION`)  
-**Owner intent:** Inc 1–4 accepted. Inc 5–11 are in the tree (schema still 12). The next run is the governed 2M tag pilot, not a fresh 10k and not a region-crop wiring.
+**Owner intent:** Inc 1–4 accepted. Inc 5–11 are in the tree (schema still 12). The 2M pilot was skipped on 2026-11-05 before any chunk report. It is not a measurement. Do not resume it. Do not re-run the 10k. Do not wire region crops.
 
 Read this file first, then `INC4.md` → `INC3.md` → `INVENTORY.md`. Do **not** invent OBS/SIM tickets or reopen identity thresholds.
 
@@ -35,7 +35,7 @@ P4 and BRAIN share the branch by accident of sequence. BRAIN raised schema 8→1
 | **9** | `HAS_FACE` from `faces.cluster_id` | **IN TREE** — read-only on `faces` |
 | **10** | `HAS_SCENE` from scene embeddings; `brain_gaps` is a query | **IN TREE** — no `brain_gaps` table |
 | **11** | `approximate_predict` against an ObjectCluster centroid | **IN TREE** — not called from product ingest |
-| **2M pilot** | Governed tag run, limit 2_000_000 | **NEXT** — no region crops; 10k is not re-run |
+| **2M pilot** | Governed tag run, limit 2_000_000 | **SKIPPED** — started 2026-11-05 and stopped before a chunk report. Not a measurement. Partial store discarded. |
 
 ---
 
@@ -164,7 +164,7 @@ Then re-run `pytest tests/brain`. Do not continue coding until that prints `12`.
 1. **Inc 4 is ACCEPTED** in `INC4.md`, including the tag-sync reconcile fix (delete-then-insert per photo, `support_count=1`).
 2. **Commit strategy:** prefer BRAIN commits separate from P4. Stop before push.
 3. **Inc 5–11 are in the tree.** Do not wire `index_image_regions` or NanoDet crops into the pilot. Do not re-run the 10k. Do not retune `suggest_floor`.
-4. **2M pilot** is the governed tag run (`--limit 2000000`, workers 4, corpus `K:\LIBRARY`, store outside `docs/`). Yandex.Disk\DCIMaw\me stays held out. Checkpoint sits beside the store.
+4. **2M pilot is skipped.** Do not resume `K:\semblon-stress\pilot-2m.sqlite`. Do not treat that start as a result. A future run needs a fresh store and an explicit owner request. Yandex.Disk\DCIMaw\me stays held out.
 5. Never CHECK-constrain `edge_type` in a later migration “for cleanliness.” RAM++ / AdaFace / the hdbscan package stay dormant.
 
 ---

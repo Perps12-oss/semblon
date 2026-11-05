@@ -17,3 +17,7 @@ The tag-only floor from the completed 10k run is 506.7 photos/min. Inc 5 does no
 Inc 8 does not link a Person node and does not write `faces.person_id`. Inc 9 does not update `faces`. Inc 11 does not run DBSCAN and is not called from product ingest. The pilot runs Inc 6–10 once after tags. It does not call `approximate_predict` and it does not call `index_image_regions`.
 
 Tests: `tests/brain/test_inc5_resources.py`, `tests/brain/test_inc6_11.py`. Brain suite after this slice: 72 passed.
+
+## 2M pilot — skipped
+
+On 2026-11-05 the governed tag pilot (limit 2,000,000, corpus `K:\LIBRARY`, workers 4) was started and then stopped before any chunk report. Scheduled task `SemblonPilot2m` and pid 44600 were removed. No `PILOT-2M.md` was written. The partial store `K:\semblon-stress\pilot-2m.sqlite` was discarded, and `K:\semblon-stress\run-pilot-2m.py` was removed. That start is not a measurement. Do not resume it. Do not cite it. The last completed pilot number remains the tag-only 10k floor, 506.7 photos/min, in `PILOT-10K-VALIDATION.md`.
