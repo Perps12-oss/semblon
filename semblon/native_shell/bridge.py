@@ -3643,10 +3643,11 @@ class ShellBridge(QObject):
             self.peopleChanged.emit()
             self._apply_result(result)
             return
-        # Prefer REVIEW_REQUIRED, then UNKNOWN — navigable inbox, not auto-name.
+        # Prefer REVIEW_REQUIRED, then Not sure, then Not checked — never auto-name.
+        _rank = {"REVIEW_REQUIRED": 0, "UNKNOWN": 1, "NOT_CHECKED": 2}
         ordered = sorted(
             faces,
-            key=lambda row: 0 if str(row.get("bucket") or "") == "REVIEW_REQUIRED" else 1,
+            key=lambda row: _rank.get(str(row.get("bucket") or ""), 9),
         )
         face_id = str(ordered[0].get("face_id") or "").strip()
         subject = self._subject_for_face(face_id) if face_id else None

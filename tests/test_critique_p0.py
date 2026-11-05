@@ -50,7 +50,7 @@ def test_inbox_named_low_quality_is_known(tmp_path):
     by_id = {i["face_id"]: i["bucket"] for i in rec["items"]}
     assert by_id["f7"] == "KNOWN"
     face = {"status": "low_quality", "person_id": "p1"}
-    assert _bucket(face, None, 0.6) == "KNOWN"
+    assert _bucket(face, None, None, 0.6) == "KNOWN"
 
 
 def test_search_face_does_not_write_decision(tmp_path):

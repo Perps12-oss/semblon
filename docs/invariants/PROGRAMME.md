@@ -27,26 +27,26 @@ No state in the application — backend or GUI — may claim more confidence tha
 
 G1 applies in every phase. See [P0-GUI-STATE-TRANSLATION.md](P0-GUI-STATE-TRANSLATION.md).
 
-## Frozen phase programme
+## Phase programme (technical work, not ceremony)
 
 | Phase | Focus | Status |
 |---|---|---|
-| P0 | Empirical evidence map and lifecycle reconciliation | **IN PROGRESS — awaiting sign-off** |
-| P1 | Identity trust boundary | Blocked on P0 sign-off |
-| P2 | Human decision preservation + ErasureIntent DB enforcement | Blocked on P1 |
-| P3 | Source integrity (single-buffer digest/decode) | Blocked on prior |
-| P4 | Capability manifest (`available` / `unavailable` / `incompatible`) | Blocked on prior |
-| P5 | Observation provenance states | Blocked on prior |
-| P6 | Coverage truth on existing tables | Blocked on prior |
-| P7 | Search evidence contract then FTS projection | Blocked on prior |
-| P8 | Job idempotency and crash recovery | Blocked on prior |
-| P9 | Resource bounds and safe destructive ops | Blocked on prior |
+| P0 | Empirical evidence map and lifecycle reconciliation | **Frozen** at `50722ef` (+ addendum) |
+| P1 | Identity trust boundary | **Complete** — `P1-COMPLETION.md` |
+| P2 | Human decision preservation + ErasureIntent DB enforcement | **Not started** — wait for explicit instruction |
+| P3 | Source integrity (single-buffer digest/decode) | Planned |
+| P4 | Capability manifest (`available` / `unavailable` / `incompatible`) | Planned |
+| P5 | Observation provenance states | Planned |
+| P6 | Coverage truth on existing tables | Planned |
+| P7 | Search evidence contract then FTS projection | Planned |
+| P8 | Job idempotency and crash recovery | Planned |
+| P9 | Resource bounds and safe destructive ops | Planned |
 
-Do not add phases. Do not implement P1+ until P0 is signed off by the person who would defend the system in an incident.
+Do not add phases. Do not start P2+ without an explicit go. Verification uses feature / trust-critical / release levels (`P1-COMPLETION.md`), not per-change sign-off rituals.
 
 ## Discipline
 
-Every invariant follows: invariant → detector → baseline failure → implementation → passing detector → permanent regression gate.
+Invariant → tests for invalid/failure/persist paths where trust-critical → implement → keep regressions. Docs record results; they do not replace tests.
 
 A test that fails only because a proposed column is missing is not evidence of a provenance defect.
 

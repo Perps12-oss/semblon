@@ -1,8 +1,19 @@
-## Current branch addendum — Invariant hardening P0 (2026-11-05)
+## Current branch addendum — Invariant hardening P1 (2026-11-05)
 
-**Branch:** `grok/p0-invariant-evidence` · **Baseline HEAD:** `af0758537fdd4f5240439ef163918db14defea9d` · **Schema:** 6.
+**Branch:** `grok/p0-invariant-evidence` · **Schema:** 7 · **Freeze base:** `50722ef`.
 
-P0 evidence map, lifecycle mapping, first I1 coverage manifest, and G1 translation inventory: `docs/invariants/`. Observation tools only: `tools/p0/` (SQL static inventory + opt-in runtime trace). Focused Windows evidence: **120 passed** under `SEMBLON_P0_SQL_TRACE=1` (schema / category_backfill / scan_tiers / identify / process / production / review / run_stage_resume / audit_regressions). **P0 sign-off pending** — do not implement P1 until `docs/invariants/P0-COMPLETION.md` is signed. No identity threshold or schema changes in this phase.
+**P1 identity trust boundary — implemented (Level 2).** Fail-closed compare/persist; gallery load validation; durable `identify_evaluations`; re-embed invalidates stale evaluations; live retention/identify writes evaluations and never auto-assigns `person_id`; People/inbox wording distinguishes Named / Not sure / Not checked yet (machine ACCEPT ≠ named). Status: `docs/invariants/P1-COMPLETION.md`.
+
+Focused P1 verification (Windows):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q `
+  tests/test_identify.py tests/test_p1_i1_baseline_detectors.py tests/test_schema.py `
+  tests/test_reembed.py tests/test_people_identity_g1.py tests/test_face005.py `
+  tests/test_critique_p0.py tests/test_live.py
+```
+
+**Result at land:** see commit message / `P1-EVIDENCE.md` (57 passed on the P1-focused set including live). `tools/p0/` unchanged vs freeze. Thresholds and `decisions.kind` unchanged. **P2 not started.**
 
 ## Current branch addendum — A→B→C→D evidence lock (retrieval + match geometry + release ops)
 

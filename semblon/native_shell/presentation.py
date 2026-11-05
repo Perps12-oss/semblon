@@ -116,6 +116,7 @@ _SAFE_PRIMARY_PATTERNS = (
     re.compile(r"^Reset finished\. [^\n]+\.$"),
     re.compile(r"^Activity: [^\n]+\.$"),
     re.compile(r"^Unresolved: [^\n]+\.$"),
+    re.compile(r"^People: [^\n]+\.$"),
     re.compile(r"^Review counts: [^\n]+\.$"),
     re.compile(r"^Duplicates: [^\n]+\.$"),
     re.compile(r"^GPU: [^\n]+\.$"),

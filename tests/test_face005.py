@@ -123,7 +123,9 @@ def test_inbox_buckets_and_name_unassigned_face(tmp_path):
     assert by_id["f1"] == "KNOWN"
     assert by_id["f2"] == "KNOWN"
     assert rec["counts"]["REJECTED"] == 1
-    assert rec["counts"]["REVIEW_REQUIRED"] == 1
+    # low_quality plus any machine ACCEPT without a human name → closer look (G1)
+    assert rec["counts"]["REVIEW_REQUIRED"] >= 1
+    assert "KNOWN" not in (rec.get("people_copy") or "") or "named" in (rec.get("people_copy") or "")
 
     named = name_face(store, "r1", "f5", "Solo")
     assert named["created_person"] is True

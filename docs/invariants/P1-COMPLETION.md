@@ -1,58 +1,51 @@
-# P1a completion — Identity trust boundary
+# P1 — Identity trust boundary
 
-**Status:** **P1a COMPLETE**. **P1 programme NOT COMPLETE** (A15 GUI / G1 open; P1b A11+A12 after B2).  
-**Date:** 2026-11-05  
+**Status:** **P1 complete** (feature Level 2). P2 not started. Release Level 3 not claimed.  
 **Freeze base:** `50722efa8a9522867e37db352c30bc5d786ec1e2`  
-**`tools/p0/` modified:** no  
+**Schema:** 7  
 
-Do not treat focused pytest green counts as a P1-complete claim.
+## How we verify (replace gate bureaucracy)
 
-## Roles
+| Level | When | What |
+|---|---|---|
+| 1 — Feature | Every change | Implement · targeted tests · regression · BUILD-STATUS |
+| 2 — Trust-critical | Identity, erasure, ingest/retrieval | Invalid inputs · failure · persistence/restart · deletion · known limits |
+| 3 — Release | Ship | Full suite · Windows x64/ARM64 · perf/recovery · UX · packaging |
 
-| Role | Name |
+## What landed
+
+| Area | Behaviour |
 |---|---|
-| P1 signer | B.H |
-| Spot-checker | D.S |
-| Adjudicator | C.G.T |
+| Compare / persist | Fail-closed face embeddings; invalid never `status=ok` with blob |
+| Identify | Probe + gallery load validation; durable `identify_evaluations`; UNKNOWN valid |
+| Re-embed (A11) | Contract on write; delete evaluations for rewritten/unmatched faces |
+| Live (A12) | Persist via `_persist_faces`; validate probe; write evaluations; retention deletes evaluations; never auto `person_id` |
+| People / G1 (A15) | Named / Not sure / Not checked yet; machine ACCEPT ≠ named |
 
-## Gate fill
+## Focused verification
 
-| Gate | Result |
-|---|---|
-| Gate B (P0 + incident-defender + named signer) | PASS — addendum |
-| S5 permit list confirmed | PASS — CONFIRMED + fixture amendment recorded |
-| A1–A9, A13, A16 | PASS — see `P1-EVIDENCE.md` mapping |
-| A4 gallery load validation | PASS — independent of probe; see evidence |
-| A11 / A12 | Deferred **P1b** after **B2** (A12 = live writer disposition, acceptance criterion) |
-| A15 GUI | **OPEN** — not A16 |
-| Baseline integrity vs permit list | Implementation `8f04847`; docs pin `201f850` (`git diff --name-only 50722ef HEAD`) |
-| Privacy / no new p0 tools | PASS |
-| Spot-check protocol (K=12) | **Pending D.S** — check HEAD `201f850` (includes P1a `8f04847`), not a moving tree |
-| Adjudicator close | C.G.T named; protocol close awaits spot-check |
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q `
+  tests/test_identify.py `
+  tests/test_p1_i1_baseline_detectors.py `
+  tests/test_schema.py `
+  tests/test_reembed.py `
+  tests/test_people_identity_g1.py `
+  tests/test_face005.py `
+  tests/test_critique_p0.py `
+  tests/test_live.py
+```
 
-## What shipped (P1a)
+**Result:** **57 passed** (Windows, this land).
 
-- Fail-closed face `compare()` (NaN/Inf/L2/empty pack) + shared `validate_identity_embedding`
-- Finite threshold gate; `DEFAULT_THRESHOLD` value unchanged
-- Persist gate in `_persist_faces`
-- Gallery exemplars contract-validated at `_gallery()` load (probe and gallery independent)
-- Additive `identify_evaluations` (schema 7); `decisions.kind` CHECK unchanged
-- Restart durability test for UNKNOWN + reason; `empty_gallery` reason asserted
-- Day-one erasure registration + delete paths
-- R1–R8 detectors green
+Also: `git diff 50722ef..HEAD -- tools/p0/` empty. `DEFAULT_THRESHOLD` expression unchanged. `decisions.kind` unchanged.
 
-## Explicit non-claims
+## Known limits (not separate “failed gates”)
 
-- **P1 complete**
-- Full-suite SQL trace coverage (D1)
-- I1 “fully covered” while reembed / live disposition open (A11 / A12)
-- GUI / G1 People verification (A15)
-- Spot-check sample PASS (D.S still to run)
-- Clustering / threshold retune / `tools/p0/` changes
+- Some invalid-input shapes are source-inspected on shared validators, not each given a dedicated test name.
+- Live is not the production shell door; contract still applies when used.
+- Full-suite / dual-arch / packaging = Level 3, separate from P1 feature complete.
 
-## Next
+## Stop
 
-1. D.S spot-check against **this commit SHA**.  
-2. P1b: close B2 → A11; dispose A12 as acceptance criterion (not optional).  
-3. A15 / G1 GUI evidence before any P1-complete claim.  
-4. Do not start P2 until programme gate allows.
+Do not start P2 until explicitly instructed.

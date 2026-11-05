@@ -21,7 +21,14 @@ from semblon.engine import (
     select_execution_provider,
 )
 from semblon.eval import DEFAULT_THRESHOLD
-from semblon.identify import _decide, _gallery, _person_scores, _write_decision
+from semblon.compare import CompareError, validate_identity_embedding
+from semblon.identify import (
+    _decide,
+    _gallery,
+    _person_scores,
+    _write_decision,
+    _write_evaluation,
+)
 from semblon.ingest import CancelledError, _persist_faces
 from semblon.observers import persist_derived_tracks
 from semblon.progress import (
@@ -136,6 +143,7 @@ def _match_embeddings(
 
 
 def _identify_persisted_face(conn, *, run_id: str, pack_id_value: str, face_id: str) -> dict:
+    """Score vs named persons. Never stamps faces.person_id. Writes durable evaluation."""
     face = conn.execute(
         """
         SELECT face_id, embedding, embedding_pack, embedding_dim, status
@@ -144,7 +152,26 @@ def _identify_persisted_face(conn, *, run_id: str, pack_id_value: str, face_id: 
         (face_id, run_id),
     ).fetchone()
     if face is None or face["status"] != "ok":
-        return {"decision": "UNKNOWN", "person_id": None, "display_name": None, "decision_id": None}
+        return {
+            "decision": "UNKNOWN",
+            "person_id": None,
+            "display_name": None,
+            "decision_id": None,
+            "evaluation_id": None,
+        }
+    try:
+        validate_identity_embedding(
+            pack_id_value, int(face["embedding_dim"]), face["embedding"]
+        )
+    except CompareError:
+        return {
+            "decision": "UNKNOWN",
+            "person_id": None,
+            "display_name": None,
+            "decision_id": None,
+            "evaluation_id": None,
+            "reason": "invalid_embedding",
+        }
     gallery = _gallery(conn, pack_id_value, exclude_face=face_id)
     ranked = _person_scores(face, gallery, pack_id_value)
     verdict = _decide(ranked, DEFAULT_THRESHOLD)
@@ -157,8 +184,19 @@ def _identify_persisted_face(conn, *, run_id: str, pack_id_value: str, face_id: 
         threshold=DEFAULT_THRESHOLD,
         source="live",
     )
+    evaluation_id = _write_evaluation(
+        conn,
+        run_id=run_id,
+        pack_id=pack_id_value,
+        embedding_dim=int(face["embedding_dim"]),
+        probe_face_id=face_id,
+        verdict=verdict,
+        threshold=DEFAULT_THRESHOLD,
+        source="live",
+    )
     return {
         "decision_id": decision_id,
+        "evaluation_id": evaluation_id,
         "decision": verdict["decision"],
         "person_id": verdict["person_id"],
         "display_name": verdict["display_name"],
@@ -166,6 +204,7 @@ def _identify_persisted_face(conn, *, run_id: str, pack_id_value: str, face_id: 
         "score_top2": verdict["score_top2"],
         "margin": verdict["margin"],
         "gallery_size": verdict["gallery_size"],
+        "reason": verdict.get("reason"),
     }
 
 
@@ -199,6 +238,9 @@ def _apply_retention(
             "DELETE FROM decisions WHERE run_id=? AND face_id IN",
             face_ids,
             (run_id,),
+        )
+        exec_in_chunks(
+            conn, "DELETE FROM identify_evaluations WHERE probe_face_id IN", face_ids
         )
 
     item_rows = rows_in_chunks(

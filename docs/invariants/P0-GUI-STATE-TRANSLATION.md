@@ -16,7 +16,7 @@ This is a **contract inventory**, not permission to redesign the shell. P0 does 
 | `invalid` | Couldn’t read this file | Per-item status with retry | Partial: category `read_failure` / failed copy; not a unified per-item badge. |
 | `unavailable` capability | Optional feature not installed | Settings only | **Drift:** `surfaceState === "unavailable"` used broadly in shell (`Table.qml` treats as problem). Install suggestions exist. |
 | `incompatible` capability | Paused until update | Non-blocking capability banner | **Absent** as distinct from unavailable (P4). |
-| Identity `UNKNOWN` | Not sure | People tab | **Present:** People.qml “Not sure yet”; identify returns UNKNOWN. |
+| Identity `UNKNOWN` | Not sure | People tab | **Present:** inbox + People copy; durable via `identify_evaluations`. |
 | `below_threshold` | *(no ordinary wording)* | Reason detail only when requested | Scores live in decisions/policy; ordinary UI does not show reason codes — OK-ish; no formal Details reason panel contract tests. |
 | `pack_mismatch` / `non_finite` | Recognition needs re-check | Banner when relevant | Backend refuses mismatch (tests); **no dedicated G1 banner copy** for non_finite (no check yet). |
 | `unsupported` | File type not supported | Per-item coverage details | Backend: `skipped`+`outcome=unsupported`. Discover coverage text explains categories; not always per-item in Field. |
@@ -47,7 +47,7 @@ Any newly discovered internal state must be added here **before** ordinary UI ex
 | `unavailable` used as generic problem surface | `Table.qml` `surfaceState === "unavailable"` styled with error | G1 / P4 |
 | Job % without sentence | `Getting photos ready N%` | G1 / P9 |
 | Machine identify ACCEPT reflected as named person without human name | identify does not auto-set person_id (good); UI must not imply named | P1 |
-| UNKNOWN vs never evaluated | No identify_evaluations; UI cannot show “not checked yet” vs “checked, not sure” durably | P1 |
+| UNKNOWN vs never evaluated | **Closed in P1:** `NOT_CHECKED` vs `UNKNOWN` + People ordinary wording | P1 done |
 | Coverage complete implication on home | Discover text is careful; home must stay calm (no red badge) | P6 |
 | Empty search = exhaustive absence | Partial mitigation via coverage clauses; needs contract tests | P7 |
 | Reject implies deletion | Need copy audit for “Nothing was removed” | P2 |
