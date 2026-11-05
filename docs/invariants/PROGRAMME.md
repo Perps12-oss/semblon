@@ -35,7 +35,7 @@ G1 applies in every phase. See [P0-GUI-STATE-TRANSLATION.md](P0-GUI-STATE-TRANSL
 | P1 | Identity trust boundary | **Complete** — `P1-COMPLETION.md` |
 | P2 | Human decision preservation + ErasureIntent DB enforcement | **Complete** — `P2-COMPLETION.md` |
 | P3 | Source integrity (single-buffer digest/decode) | **Complete** — `P3-COMPLETION.md` |
-| P4 | Capability manifest (`available` / `unavailable` / `incompatible`) | Planned |
+| P4 | Capability manifest (`available` / `unavailable` / `incompatible`) | **Complete** — `P4-COMPLETION.md` |
 | P5 | Observation provenance states | Planned |
 | P6 | Coverage truth on existing tables | Planned |
 | P7 | Search evidence contract then FTS projection | Planned |

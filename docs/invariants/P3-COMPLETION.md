@@ -1,6 +1,6 @@
 # P3 — Source integrity (single-buffer digest/decode)
 
-**Status:** **P3 complete** (feature Level 2). P4 not started. Release Level 3 not claimed.  
+**Status:** **P3 complete** (feature Level 2). P4 complete — see `P4-COMPLETION.md`. Release Level 3 not claimed.  
 **Branch:** `grok/p3-source-integrity`  
 **Schema:** 8 (unchanged)  
 **Freeze:** do not modify `tools/p0/`; do not retune identity thresholds / `decisions.kind`.

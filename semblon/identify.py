@@ -261,6 +261,11 @@ def identify_face(
         threshold = require_finite_threshold(threshold)
     except CompareError as exc:
         raise IdentifyError(str(exc)) from exc
+    from semblon.capability_manifest import identity_work_allowed
+
+    allowed, capability = identity_work_allowed()
+    if not allowed:
+        raise IdentifyError(capability.message or "Face recognition is not available.")
     conn = _open(store, writable=record)
     try:
         run = _require_run(conn, run_id)

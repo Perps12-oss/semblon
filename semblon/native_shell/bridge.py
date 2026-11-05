@@ -5534,7 +5534,22 @@ class ShellBridge(QObject):
                     "status": "failed",
                 }
             ]
+        self._refresh_capability_notice()
         self.preflightChanged.emit()
+
+    def _refresh_capability_notice(self) -> None:
+        """Non-blocking, capability-specific pause copy (P4). Does not set surface unavailable."""
+        try:
+            from semblon.capability_manifest import incompatible_notice
+
+            note = incompatible_notice()
+        except Exception:  # noqa: BLE001 — notice is optional
+            note = ""
+        if note and note != self._notice:
+            # Keep existing hard errors; only fill an empty notice strip.
+            if not self._notice:
+                self._notice = note
+                self.surfaceChanged.emit()
 
     @staticmethod
     def _setup_line(text: str) -> str:
@@ -5716,6 +5731,8 @@ class ShellBridge(QObject):
         if not note:
             if status == "cancelled":
                 note = "Stopped. Unfinished photos were not marked done."
+            elif status == "incompatible":
+                note = "That check is paused until an update."
             elif status == "unavailable":
                 note = "That check is not available on this computer."
             elif status == "failed":
@@ -5733,6 +5750,7 @@ class ShellBridge(QObject):
                 "cancelled": JOB_CANCELLED,
                 "failed": JOB_FAILED,
                 "unavailable": JOB_FAILED,
+                "incompatible": JOB_FAILED,
             }.get(status, JOB_COMPLETED),
             {"status": status or "completed", "category": str(rec.get("category") or "")},
         )

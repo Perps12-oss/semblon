@@ -49,6 +49,8 @@ class ProviderProbe:
     provider_id: str
     provider_version: str
     reason: str = ""
+    # P4: available | unavailable | incompatible (empty → derive from available).
+    state: str = ""
 
 
 @dataclass(frozen=True)
@@ -121,26 +123,59 @@ def words_ocr(img) -> dict | None:
 
 def probe_category(category: str) -> ProviderProbe:
     """Provider readiness for one category. Does not download weights."""
+    from semblon.capability_manifest import (
+        AVAILABLE,
+        INCOMPATIBLE,
+        UNAVAILABLE,
+        classify_readiness,
+    )
+
+    def _probe(ready: bool, provider_id: str, version: str, reason: str) -> ProviderProbe:
+        state = classify_readiness(ready, reason)
+        return ProviderProbe(
+            bool(ready),
+            provider_id,
+            version,
+            reason,
+            state=state if state in {AVAILABLE, UNAVAILABLE, INCOMPATIBLE} else (
+                AVAILABLE if ready else UNAVAILABLE
+            ),
+        )
+
     if category == CATEGORY_PEOPLE:
-        from semblon.engine import discover_weight_hashes, pack_id
+        from semblon.engine import (
+            ModelPackError,
+            assert_face_pack_ready,
+            discover_weight_hashes,
+            pack_id,
+        )
         import cv2
 
         hashes = discover_weight_hashes()
         if not hashes:
-            return ProviderProbe(
+            return _probe(
                 False,
                 "yunet_sface",
                 "",
                 "Face checking needs the face files already on this computer. Nothing was downloaded.",
             )
+        try:
+            assert_face_pack_ready()
+        except ModelPackError as exc:
+            return _probe(
+                False,
+                "yunet_sface",
+                "",
+                str(exc) or "Face pack is not ready.",
+            )
         version = pack_id(f"opencv-{cv2.__version__}", hashes)
-        return ProviderProbe(True, "yunet_sface", version, "")
+        return _probe(True, "yunet_sface", version, "")
     if category == CATEGORY_OBJECTS:
         from semblon.object_pack import PROVIDER, probe_nanodet_status
 
         ready, note = probe_nanodet_status()
         if not ready:
-            return ProviderProbe(
+            return _probe(
                 False,
                 PROVIDER,
                 "",
@@ -149,13 +184,13 @@ def probe_category(category: str) -> ProviderProbe:
         from semblon.object_pack import assert_nanodet_pack_ready
 
         meta = assert_nanodet_pack_ready()
-        return ProviderProbe(True, PROVIDER, str(meta.get("sha256") or "")[:16], "")
+        return _probe(True, PROVIDER, str(meta.get("sha256") or "")[:16], "")
     if category == CATEGORY_REGIONS:
         from semblon.region_encoder import PROVIDER, active_pack, probe_region_pack
 
         ready, note = probe_region_pack()
         if not ready:
-            return ProviderProbe(
+            return _probe(
                 False,
                 PROVIDER,
                 "",
@@ -164,14 +199,14 @@ def probe_category(category: str) -> ProviderProbe:
         packed = active_pack()
         version = packed[0] if packed else ""
         if not version:
-            return ProviderProbe(False, PROVIDER, "", "Finding by look is not ready on this computer.")
-        return ProviderProbe(True, PROVIDER, version, "")
+            return _probe(False, PROVIDER, "", "Finding by look is not ready on this computer.")
+        return _probe(True, PROVIDER, version, "")
     if category == CATEGORY_WORDS:
         from semblon.observers import OCR_PROVIDER, probe_ocr_status
 
         ready, note = probe_ocr_status()
         if not ready:
-            return ProviderProbe(
+            return _probe(
                 False,
                 OCR_PROVIDER,
                 "",
@@ -184,7 +219,7 @@ def probe_category(category: str) -> ProviderProbe:
             version = f"tesseract/{pytesseract.get_tesseract_version()}"
         except Exception:
             version = "tesseract"
-        return ProviderProbe(True, OCR_PROVIDER, version, "")
+        return _probe(True, OCR_PROVIDER, version, "")
     raise ValueError(f"unknown category: {category}")
 
 
@@ -845,6 +880,8 @@ def _discover_line(category: str, report: dict, probe: ProviderProbe) -> str:
 
 def _message(category: str, *, status: str, completed: int, total: int, skipped_done: int, failed: int, reason: str) -> str:
     label = _label(category)
+    if status == "incompatible":
+        return reason or f"{label} is paused until an update. Other checks still work."
     if status == "unavailable":
         return reason or f"{label} is not available on this computer."
     if total == 0 and status == "completed":
@@ -872,30 +909,48 @@ def run_category_backfill(store: Path, category: str, *, gate=None, on_event=Non
     if category not in CATEGORIES:
         raise ValueError(f"unknown category: {category}")
     store = Path(store)
+    from semblon.capability_manifest import INCOMPATIBLE, category_capability
+
+    capability = category_capability(category)
     probe = probe_category(category)
     conn = connect(store)
     try:
         init_db(conn)
         recover_interrupted(conn, category)
         conn.commit()
-        if not probe.available:
+        if capability.state != "available" or not probe.available:
+            status = "incompatible" if capability.state == INCOMPATIBLE else "unavailable"
+            reason = capability.message or probe.reason
             rec = {
                 "category": category,
-                "status": "unavailable",
+                "status": status,
                 "provider_id": probe.provider_id,
                 "provider_version": probe.provider_version,
-                "reason": probe.reason,
+                "reason": reason,
                 "eligible": 0,
                 "completed": 0,
                 "skipped_already": 0,
                 "failed": 0,
                 "cancelled": False,
                 "user_message": _message(
-                    category, status="unavailable", completed=0, total=0, skipped_done=0, failed=0, reason=probe.reason
+                    category,
+                    status=status,
+                    completed=0,
+                    total=0,
+                    skipped_done=0,
+                    failed=0,
+                    reason=reason,
                 ),
             }
             if on_event is not None:
-                on_event(ProgressEvent(stage="category", kind="failed", message=rec["user_message"], outcome="unavailable"))
+                on_event(
+                    ProgressEvent(
+                        stage="category",
+                        kind="failed",
+                        message=rec["user_message"],
+                        outcome=status,
+                    )
+                )
             return rec
 
         media_rows = conn.execute(

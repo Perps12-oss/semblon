@@ -1,3 +1,32 @@
+## Current branch addendum — BRAIN Inc 1–4 (2026-11-05)
+
+**Branch:** `grok/p4-capability-manifest` · **Schema:** **12** · **Cold start:** `docs/brain/HANDOVER.md`.
+
+**BRAIN capability router (local evidence graph) — Inc 1–3 accepted; Inc 4 code+tests complete.** Schema 9–12: capabilities/benchmarks → observations/evidence → `suggested` outcome → `brain_nodes`/`brain_edges` (Tag/Photo/ObjectCluster, HAS_TAG/HAS_OBJECT). Batch ObjectCluster via in-house DBSCAN over stored region embeddings (`existing_object_dbscan`). Zero new inference models. Identity thresholds untouched. `suggest_floor=0.40` provisional until 150-image pass.
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/brain -q --basetemp=.pytest-tmp-brain
+```
+
+**Result:** **51 passed**. Next: human ACCEPTED on Inc 4, then 150-image pass **before** Inc 5. Do not CHECK-constrain `edge_type`. Details: `docs/brain/INC4.md`, `docs/brain/HANDOVER.md`.
+
+## Current branch addendum — Invariant hardening P4 (2026-11-05)
+
+**Branch:** `grok/p4-capability-manifest` · **Schema was 8 before BRAIN overlay; now 12 on this branch** · **Base:** merged P0–P3 on `main`.
+
+**P4 capability manifest — implemented (Level 2).** Three-state handshake (`available` / `unavailable` / `incompatible`) over existing probes; identity gate on `identify_face`; category early-exit distinguishes pause vs missing; preflight + Settings + non-blocking notice; identity pause does not kill OCR/objects/regions. Status: `docs/invariants/P4-COMPLETION.md`.
+
+Focused P4 verification (Windows):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q `
+  tests/test_p4_capability_manifest.py tests/test_preflight.py `
+  tests/test_category_backfill.py tests/test_identify.py `
+  --basetemp=.pytest-tmp-p4
+```
+
+**Result at land:** **77 passed**. `tools/p0/` unchanged. Thresholds and `decisions.kind` unchanged. **P5 not started.** **Same branch later gained BRAIN schema 12 — see BRAIN addendum above.**
+
 ## Current branch addendum — Invariant hardening P3 (2026-11-05)
 
 **Branch:** `grok/p3-source-integrity` · **Schema:** 8 · **Base:** merged P0–P2 on `main`.
@@ -13,7 +42,7 @@ Focused P3 verification (Windows):
   --basetemp=.pytest-tmp-p3
 ```
 
-**Result at land:** **58 passed**. `tools/p0/` unchanged. Thresholds and `decisions.kind` unchanged. **P4 not started.**
+**Result at land:** **58 passed**. `tools/p0/` unchanged. Thresholds and `decisions.kind` unchanged. **Superseded for active work by P4 addendum above.**
 
 ## Current branch addendum — Invariant hardening P2 (2026-11-05)
 
