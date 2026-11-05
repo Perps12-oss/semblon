@@ -24,7 +24,7 @@
 | 5 | Identity coverage manifest | [P0-IDENTITY-COVERAGE.md](P0-IDENTITY-COVERAGE.md) | Done (first manifest) |
 | 6 | Unresolved gaps / exclusions | Listed below + per-doc | Explicit |
 | 7 | Baseline commit + date | This record | Done |
-| 8 | Sign-off | Below | **PENDING** (see review note) |
+| 8 | Sign-off | Below | **PENDING** |
 
 ## Instruments added (observation only — not P1)
 
@@ -63,15 +63,7 @@
 8. `category_backfill._clear_unnamed_faces` deletes decisions (P2).  
 9. `incompatible` capability state unused (P4).  
 10. Provenance tuple / `legacy_unverified` absent (P5).  
-11. Human incident-defender **sign-off** — pending.  
-12. **Freeze defect:** P0 signer was unnamed in the freeze evidence. Not papered over.  
-13. Raw `artifacts/p0/*.json` were gitignored at freeze; durable pointer is `artifacts/p0/MANIFEST.json`.
-
-## Review note (2026-11-05) — not a P0 signature
-
-P1 authorizer **B.H** reviewed the P1 plan. **S1:** does not sign P0 here and does not grant a blanket PENDING waiver. Narrow exception: baseline red detectors for issue #6 / R1–R8 may be committed as evidence only.
-
-**Gate B** (all three) before behaviour change or schema: P0 sign-off · incident-defender (#11) · named P1 signer (B.H recorded; spot-checker and adjudicator still required).
+11. Human incident-defender **sign-off** — pending.
 
 ## Sign-off
 
@@ -80,9 +72,8 @@ P0 is complete only when the person responsible for defending Semblon during an 
 | Role | Name | Date | Verdict |
 |---|---|---|---|
 | Incident defender / programme owner | _pending_ | _pending_ | **NOT SIGNED** |
-| P0 programme signer | _pending_ (unnamed at freeze — defect #12) | _pending_ | **NOT SIGNED** |
 
-**Do not merge P1 behaviour change or schema until Gate B is complete.** Detector-only evidence commits are permitted under the S1 narrow exception.
+**Do not start P1 implementation until this table records an explicit sign-off.**
 
 ## Changed files (this phase)
 

@@ -2,6 +2,8 @@
 
 **Date:** 2026-11-05  
 **P1 authorizer / named P1 signer:** B.H  
+**Spot-checker:** D.S  
+**Adjudicator:** _pending_ (≠ B.H, ≠ D.S)  
 **Plan reviewed:** `P1-CONFIRMATION.md` + `P1-PLAN.md` (Task 1–2 accepted as reviewable baseline)  
 **Production code:** none authorised except as stated under S1  
 
@@ -14,16 +16,16 @@ The review message opened with the words “P0 SIGNED” while **S1** states the
 | Ask | Disposition |
 |---|---|
 | S1 Sign P0 / exception | **No waiver of Gate B.** Narrow pre-sign-off exception: author and commit the **red detector** for P0 issue #6 (and the eight-path audit) only. No fix merged, no schema, no deploy until Gate B. |
-| S2 Name roles | P1 signer named **B.H**. Spot-checker and adjudicator **still blocked** until named humans are supplied. Signer ≠ spot-checker. |
+| S2 Name roles | P1 signer **B.H**; spot-checker **D.S**. Adjudicator still required before spot-check protocol closes. |
 | S3 Durable UNKNOWN | **Grant** single additive migration exception for `identify_evaluations` (terms below). Migration itself **Gate B gated**. |
 | S4 A11 → P1b after B2 | **Confirmed.** Deferral register row required (see register). |
-| S5 §7.4 permit-list | Contents in `P1-PERMIT-LIST.md` (exact paths, justifications, hash). Awaiting authorizer confirm/strike. |
+| S5 §7.4 permit-list | Rev. T02: strikes 1–3 + R1–R5 addressed in `P1-PERMIT-LIST.md`. Awaiting confirm/strike on the revised list. |
 
-### Gate B (all three required)
+### Gate B (recorded 2026-11-05)
 
-1. P0 sign-off  
-2. Incident-defender sign-off (P0 gap #11)  
-3. Named P1 signer — **B.H recorded**; still need spot-checker ≠ signer and adjudicator ≠ both  
+1. P0 sign-off — **B.H SIGNED** (see `P0-COMPLETION-ADDENDUM.md`)  
+2. Incident-defender (#11) — **B.H SIGNED**  
+3. Named P1 signer — **B.H**; spot-checker **D.S**; adjudicator still pending for protocol close
 
 ### S3 migration terms
 
@@ -56,9 +58,12 @@ The review message opened with the words “P0 SIGNED” while **S1** states the
 
 | # | Correction | Status |
 |---|---|---|
-| 1 | Commit `artifacts/p0/MANIFEST.json` (path, sha256, timestamp) | Done in this docs/evidence commit |
-| 2 | Privacy/retention stated before identify_evaluations | Done in this document |
+| 1 | Commit `artifacts/p0/MANIFEST.json` (path, sha256, timestamp) | Done; content hash `5190afbd…` chained in addendum + permit list |
+| 2 | Privacy/retention stated before identify_evaluations | Done in this document; draft `P1-ERASURE-SCOPE.md` in Section A |
 | 3 | Eight rejection paths as red/fail_closed tests | Done — `P1-REJECTION-PATH-AUDIT.md` + `tests/test_p1_i1_baseline_detectors.py` |
+| S5-1 | Permit-list hash method byte-consistent | Done — hash excludes `**Content SHA-256` line (`7b79744e…`) |
+| S5-2 | Do not mutate frozen `P0-COMPLETION.md` | Done — restored to `50722ef`; addendum only |
+| S5-3 | Manifest hash frozen in evidence chain | Done — addendum + permit list |
 
 ## Authorised now
 

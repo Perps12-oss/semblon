@@ -9,7 +9,9 @@ Governing documentation for P0–P9. Scope is frozen. Do not add P10+.
 | [P0-LIFECYCLE.md](P0-LIFECYCLE.md) | Real `work_items` / `category_coverage` / run semantics |
 | [P0-IDENTITY-COVERAGE.md](P0-IDENTITY-COVERAGE.md) | First I1 coverage manifest |
 | [P0-GUI-STATE-TRANSLATION.md](P0-GUI-STATE-TRANSLATION.md) | G1 translation table and acceptance gaps |
-| [P0-COMPLETION.md](P0-COMPLETION.md) | P0 completion record (Gate B still needs sign-off) |
+| [P0-COMPLETION.md](P0-COMPLETION.md) | P0 completion record (**frozen** at `50722ef`) |
+| [P0-COMPLETION-ADDENDUM.md](P0-COMPLETION-ADDENDUM.md) | Post-freeze sign-off / defects (append-only) |
+| [P1-ERASURE-SCOPE.md](P1-ERASURE-SCOPE.md) | Draft erasure registration for identify_evaluations |
 | [P1-CONFIRMATION.md](P1-CONFIRMATION.md) | P1 read-back of frozen P0 |
 | [P1-PLAN.md](P1-PLAN.md) | P1 plan + gate structure |
 | [P1-REVIEW-DISPOSITION.md](P1-REVIEW-DISPOSITION.md) | S1–S5 decisions (B.H) |

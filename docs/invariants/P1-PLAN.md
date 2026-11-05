@@ -149,8 +149,8 @@ git diff --name-only 50722efa8a9522867e37db352c30bc5d786ec1e2 <P1_RECON_COMMIT>
 | Role | Name |
 |---|---|
 | P1 signer (one person; ≠ tools/p1 author; ≠ spot-checker) | **B.H** |
-| Spot-checker | **unset — S2 blocked for merge** |
-| Adjudicator | **unset — S2 blocked for merge** |
+| Spot-checker | **D.S** |
+| Adjudicator | **unset — required before spot-check protocol closes** |
 
 ## 8. Worth doing now / skip / pushback
 
