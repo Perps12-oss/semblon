@@ -20,6 +20,7 @@ import sys
 import time
 import traceback
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from ctypes import wintypes
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -292,6 +293,42 @@ def observe_c1(conn, photo: PhotoRef, observer, *, force: bool) -> str:
     return _provider_of(observations[0])
 
 
+def _default_workers(workers: int | None, *, injected_observer: bool) -> int:
+    """Real runs use a few threads. An injected observer stays single-threaded."""
+    if injected_observer:
+        return 1
+    if workers is not None:
+        return max(1, int(workers))
+    return max(1, min(4, os.cpu_count() or 1))
+
+
+def _note_photo_error(
+    notes: list[str],
+    errors: list[str],
+    path: Path,
+    exc: BaseException | None = None,
+    *,
+    detail: str | None = None,
+) -> None:
+    if detail is None:
+        detail = f"{type(exc).__name__}: {exc}"
+    message = f"{path}: {detail}"
+    log.warning("%s", message)
+    errors.append(message)
+    if sum(1 for note in notes if note.startswith("photo:")) < 30:
+        notes.append("photo: " + message)
+
+
+def _infer_photo(path: Path) -> tuple[Path, PhotoRef, list, str | None]:
+    """Decode and run NanoDet. SQLite stays on the calling thread."""
+    photo = _photo_ref(path)
+    try:
+        observations = list(NanoDetObserver().observe(photo) or [])
+        return path, photo, observations, None
+    except Exception as exc:
+        return path, photo, [], f"{type(exc).__name__}: {exc}"
+
+
 def _region_embedding_count(conn) -> int:
     row = conn.execute(
         """SELECT COUNT(*) FROM embeddings
@@ -390,6 +427,7 @@ def run_pilot(
     chunk: int = 1000,
     no_cluster: bool = False,
     force: bool = False,
+    workers: int | None = None,
     command: str = "",
     observer=None,
     cluster_fn=None,
@@ -399,7 +437,9 @@ def run_pilot(
     corpus = Path(corpus)
     out = Path(out)
     store_path = Path(store) if store is not None else out.with_suffix(".sqlite")
-    observer = observer if observer is not None else NanoDetObserver()
+    injected_observer = observer is not None
+    workers = _default_workers(workers, injected_observer=injected_observer)
+    observer = observer if injected_observer else NanoDetObserver()
     cluster_fn = cluster_fn if cluster_fn is not None else rebuild_object_clusters
     rss_fn = rss_fn if rss_fn is not None else peak_rss_mb
     swap_fn = swap_fn if swap_fn is not None else swap_sample
@@ -416,6 +456,7 @@ def run_pilot(
     notes: list[str] = [
         selection,
         "No provider fallback. A failed photo is logged and skipped.",
+        f"Workers: {workers}",
     ]
     if force:
         notes.append("force: existing C1 observations were replaced")
@@ -428,26 +469,66 @@ def run_pilot(
     did_cluster = False
     aborted: str | None = None
     code = 0
+    executor: ThreadPoolExecutor | None = None
+    if workers > 1:
+        import cv2
+
+        # One DNN forward already uses more than one core. Leave the rest
+        # of the machine to the pilot's own threads.
+        cv2.setNumThreads(1)
+        executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="pilot-c1")
     try:
         for index, group in enumerate(_chunks(paths, chunk), start=1):
             rss0, _peak0 = rss_fn()
             t0 = time.perf_counter()
             providers: list[str] = []
             errors: list[str] = []
-            for path in group:
-                photo = _photo_ref(path)
-                try:
-                    _ensure_media(conn, photo, path)
-                    conn.commit()
-                    provider = observe_c1(conn, photo, observer, force=force)
-                    sync_tags_from_observations(conn, photo.photo_id)
-                    providers.append(provider)
-                except Exception as exc:
-                    message = f"{path}: {type(exc).__name__}: {exc}"
-                    log.warning("%s", message)
-                    errors.append(message)
-                    if sum(1 for note in notes if note.startswith("photo:")) < 30:
-                        notes.append("photo: " + message)
+            if workers == 1:
+                for path in group:
+                    photo = _photo_ref(path)
+                    try:
+                        _ensure_media(conn, photo, path)
+                        conn.commit()
+                        provider = observe_c1(conn, photo, observer, force=force)
+                        sync_tags_from_observations(conn, photo.photo_id)
+                        providers.append(provider)
+                    except Exception as exc:
+                        _note_photo_error(notes, errors, path, exc)
+            else:
+                pending: list[Path] = []
+                for path in group:
+                    photo = _photo_ref(path)
+                    try:
+                        _ensure_media(conn, photo, path)
+                        row = conn.execute(
+                            """SELECT provider_name FROM brain_observations
+                               WHERE media_id=? AND capability_id='C1' LIMIT 1""",
+                            (photo.photo_id,),
+                        ).fetchone()
+                        if row is not None and not force:
+                            providers.append(str(row[0] or "unknown"))
+                            continue
+                        if row is not None and force:
+                            _delete_c1(conn, photo.photo_id)
+                        pending.append(path)
+                    except Exception as exc:
+                        _note_photo_error(notes, errors, path, exc)
+                conn.commit()
+                for path, photo, observations, err in executor.map(_infer_photo, pending):
+                    if err:
+                        _note_photo_error(notes, errors, path, detail=err)
+                        continue
+                    try:
+                        if observations:
+                            record_observations(
+                                conn, observations, run_id=RUN_ID, write_tagged=True
+                            )
+                            providers.append(_provider_of(observations[0]))
+                        else:
+                            providers.append("unknown")
+                        sync_tags_from_observations(conn, photo.photo_id)
+                    except Exception as exc:
+                        _note_photo_error(notes, errors, path, exc)
             elapsed = time.perf_counter() - t0
             try:
                 rss1, peak1 = rss_fn()
@@ -544,6 +625,8 @@ def run_pilot(
         log.exception("pilot failed")
         code = 1
     finally:
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=False)
         status = "complete" if aborted is None else f"aborted: {aborted}"
         if aborted:
             notes.append(aborted)
@@ -583,6 +666,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--store", type=Path, default=None)
     parser.add_argument("--no-cluster", action="store_true")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="NanoDet threads. Default is up to 4 on a real run.",
+    )
     return parser
 
 
@@ -599,6 +688,7 @@ def main(argv: list[str] | None = None) -> int:
             chunk=args.chunk,
             no_cluster=args.no_cluster,
             force=args.force,
+            workers=args.workers,
             command=command,
         )
     except Exception:

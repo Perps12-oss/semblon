@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import time
 
+import os
+
 from semblon.brain.observation import Observation, PhotoRef
-from semblon.brain.pilot import run_pilot
+from semblon.brain.pilot import _default_workers, run_pilot
 
 
 class _Tags:
@@ -31,6 +33,13 @@ def _corpus(tmp_path, n: int = 5):
     for i in range(n):
         (corpus / f"p{i}.jpg").write_bytes(b"jpg")
     return corpus
+
+
+def test_pilot_injected_observer_stays_single_threaded():
+    assert _default_workers(None, injected_observer=True) == 1
+    assert _default_workers(8, injected_observer=True) == 1
+    assert _default_workers(None, injected_observer=False) == min(4, os.cpu_count() or 1)
+    assert _default_workers(2, injected_observer=False) == 2
 
 
 def test_pilot_runs_on_small_fixture(tmp_path):
