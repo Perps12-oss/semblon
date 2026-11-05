@@ -68,11 +68,26 @@ def _label(category: str) -> str:
     return _LABELS.get(category, category)
 
 
-def decode_image(path: Path):
-    """Decode one still. None means the file could not be read."""
-    from semblon.ingest import _decode_bgr
+def decode_image(path: Path, *, expected_sha256: str | None = None):
+    """Decode one still from a single hashed buffer.
 
-    return _decode_bgr(None, Path(path))
+    Returns an image, or a failure token:
+    - ``None`` — unreadable / undecodable
+    - ``"source_changed"`` — bytes no longer match ``expected_sha256``
+    """
+    from semblon.source_integrity import (
+        SourceChanged,
+        SourceDecodeError,
+        load_source_bgr,
+    )
+
+    try:
+        img, _buf = load_source_bgr(Path(path), expected_sha256=expected_sha256)
+        return img
+    except SourceChanged:
+        return "source_changed"
+    except (OSError, SourceDecodeError):
+        return None
 
 
 def people_detect(img) -> list[dict]:
@@ -1002,7 +1017,7 @@ def run_category_backfill(store: Path, category: str, *, gate=None, on_event=Non
                     detail_done=detail_done,
                 )
                 conn.commit()
-            img = decode_image(path)
+            img = decode_image(path, expected_sha256=sha or None)
             if gate is not None and gate():
                 with writer_lock():
                     _save_coverage(
@@ -1021,7 +1036,16 @@ def run_category_backfill(store: Path, category: str, *, gate=None, on_event=Non
                     conn.commit()
                 stopped = True
                 break
-            if img is None:
+            if img == "source_changed":
+                from semblon.source_integrity import (
+                    SOURCE_CHANGED_MESSAGE,
+                    SOURCE_CHANGED_OUTCOME,
+                )
+
+                result = ItemResult(
+                    STATE_FAILED, SOURCE_CHANGED_OUTCOME, SOURCE_CHANGED_MESSAGE
+                )
+            elif img is None:
                 result = ItemResult(STATE_FAILED, "read_failure", "The photo could not be read.")
             elif category == CATEGORY_PEOPLE:
                 with writer_lock():

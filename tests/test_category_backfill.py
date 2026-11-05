@@ -74,7 +74,11 @@ def _install(monkeypatch, *, detect=None, objects=None, regions=None, words=None
     monkeypatch.setattr(backfill, "regions_prepare", regions_prepare)
     monkeypatch.setattr(backfill, "words_ocr", words_ocr)
     monkeypatch.setattr(backfill, "probe_category", probe or _probe())
-    monkeypatch.setattr(backfill, "decode_image", decode or (lambda path: object()))
+    monkeypatch.setattr(
+        backfill,
+        "decode_image",
+        decode or (lambda path, expected_sha256=None: object()),
+    )
 
     def boom(*_a, **_k):
         calls["ingest"] += 1
@@ -289,7 +293,7 @@ def test_ocr_states_stay_distinct(tmp_path, monkeypatch):
         def words(_img, payload=payload):
             return payload
 
-        def decode(path, available=available):
+        def decode(path, expected_sha256=None, available=available):
             if name == "read_failure":
                 return None
             return object()
@@ -649,7 +653,9 @@ def test_discover_separates_unavailable_failures_and_region_depth(tmp_path, monk
     (tmp_path / "c.jpg").unlink()
     calls = _install(
         monkeypatch,
-        decode=lambda path: None if __import__("pathlib").Path(path).name == "a.jpg" else object(),
+        decode=lambda path, expected_sha256=None: (
+            None if __import__("pathlib").Path(path).name == "a.jpg" else object()
+        ),
         words=lambda img: (_ for _ in ()).throw(RuntimeError("boom")),
     )
     rec = run_category_backfill(store, "words")
@@ -672,7 +678,10 @@ def test_discover_separates_unavailable_failures_and_region_depth(tmp_path, monk
         return {"text": "hello", "score": 1.0, "words": []}
 
     monkeypatch.setattr("semblon.category_backfill.words_ocr", words_ok)
-    monkeypatch.setattr("semblon.category_backfill.decode_image", lambda path: object())
+    monkeypatch.setattr(
+        "semblon.category_backfill.decode_image",
+        lambda path, expected_sha256=None: object(),
+    )
     again = run_category_backfill(store, "words")
     assert again["failed"] == 0 or coverage_report(store, "words")["read_failed"] == 0
     after = coverage_report(store, "words")

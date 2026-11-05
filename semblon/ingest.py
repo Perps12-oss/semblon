@@ -11,7 +11,6 @@ Video frames stay one stream. Opt-in --workers > 1 parallelizes hashing only
 
 from __future__ import annotations
 
-import hashlib
 import json
 import platform
 import signal
@@ -414,82 +413,26 @@ def _hash_path(path: Path, index: int) -> dict:
 
 def _read_and_hash(path: Path) -> tuple[str, bytes, int, int]:
     """One I/O: bytes + sha256 + mtime_ns + byte_size. Refuses oversized stills."""
-    st = path.stat()
-    size = int(st.st_size)
-    if size > MAX_STILL_BYTES:
-        raise OSError("still exceeds byte cap")
-    data = path.read_bytes()
-    digest = hashlib.sha256(data).hexdigest()
-    return (
-        digest,
-        data,
-        getattr(st, "st_mtime_ns", int(st.st_mtime * 1e9)),
-        size,
-    )
+    from semblon.source_integrity import read_source_buffer
 
-
-def _orient_display(image: np.ndarray, payload: bytes | None) -> np.ndarray:
-    """Match the shell's EXIF display so indexed boxes sit on the pixels the user sees.
-
-    OpenCV 5 applies the orientation tag inside imdecode and imread
-    (``IMREAD_IGNORE_ORIENTATION`` is what turns that off). Opening the same
-    bytes in Pillow and comparing every pixel decoded each still a second time,
-    which is a large part of why a hard-drive folder took days.
-    """
-    if image is None:
-        return image
-    if hasattr(cv2, "IMREAD_IGNORE_ORIENTATION"):
-        return image
-    if payload is None or not payload:
-        return image
-    try:
-        from io import BytesIO
-
-        from PIL import Image, ImageOps
-    except Exception:
-        return image
-    try:
-        with Image.open(BytesIO(payload)) as raw:
-            exif = raw.getexif()
-            orientation = exif.get(0x0112) if exif is not None else None
-            if orientation in (None, 0, 1):
-                return image
-            oriented = ImageOps.exif_transpose(raw)
-            rgb = np.asarray(oriented.convert("RGB"))
-    except Exception:
-        return image
-    if rgb.ndim != 3 or rgb.shape[2] < 3:
-        return image
-    return rgb[:, :, ::-1].copy()
+    buf = read_source_buffer(path)
+    return buf.digest, buf.data, buf.mtime_ns, buf.byte_size
 
 
 def _decode_bgr(data: bytes | None, path: Path):
+    """Decode BGR from a buffer. Path is only used when data is absent (one read).
+
+    Never falls back to a second filesystem decode after imdecode fails (I3).
+    """
+    from semblon.source_integrity import decode_bgr_buffer, read_source_buffer
+
     payload = data
     if not payload:
         try:
-            if path.stat().st_size > MAX_STILL_BYTES:
-                return None
-            payload = path.read_bytes()
+            payload = read_source_buffer(path).data
         except OSError:
-            return cv2.imread(str(path))
-    elif len(payload) > MAX_STILL_BYTES:
-        return None
-    pixels = _header_pixels(payload) if payload else None
-    if pixels is not None and pixels > MAX_IMAGE_PIXELS:
-        return None
-    img = None
-    if payload:
-        arr = np.frombuffer(payload, dtype=np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if img is None:
-        img = cv2.imread(str(path))
-    if img is None:
-        return None
-    img = _orient_display(img, payload)
-    height, width = img.shape[:2]
-    if int(height) * int(width) > MAX_IMAGE_PIXELS:
-        return None
-    return img
+            return None
+    return decode_bgr_buffer(payload)
 
 
 def _persist_faces(conn, *, obs_id: str, run_id: str, pack_id: str, faces: list) -> tuple[int, int, int, int]:
@@ -841,6 +784,7 @@ def ingest(
             force: bool = False,
             current: int | None = None,
             total: int | None = None,
+            message: str | None = None,
         ) -> None:
             nonlocal completed, last_emit
             completed += 1
@@ -867,9 +811,29 @@ def ingest(
                         path=str(path),
                         run_id=run_id,
                         outcome=outcome,
+                        message=message,
                         elapsed_s=now - t0,
                     ),
                 )
+
+        def _load_still_for_analysis(rec: dict):
+            """Decode the bytes that match the library digest, or signal a source race."""
+            from semblon.source_integrity import (
+                SOURCE_CHANGED_MESSAGE,
+                SOURCE_CHANGED_OUTCOME,
+                SourceChanged,
+                SourceDecodeError,
+                load_source_bgr,
+            )
+
+            expected = str(rec.get("sha256") or "").strip() or None
+            try:
+                img, _buf = load_source_bgr(rec["path"], expected_sha256=expected)
+                return img, None, None
+            except SourceChanged:
+                return None, SOURCE_CHANGED_OUTCOME, SOURCE_CHANGED_MESSAGE
+            except (OSError, SourceDecodeError):
+                return None, "failed", None
 
         def _stamp(rec: dict, bit: int, *, orientation: int | None = None, thumb: bytes | None = None) -> None:
             nonlocal dirty
@@ -1143,11 +1107,17 @@ def ingest(
                     cancelled = True
                     break
                 t_decode = time.perf_counter()
-                img0 = _decode_bgr(None, rec["path"])
+                img0, load_outcome, load_message = _load_still_for_analysis(rec)
                 phase_ms["decode_ms"] += (time.perf_counter() - t_decode) * 1000.0
                 if img0 is None:
-                    n_fail += 1
-                    tick(rec["path"], "failed", force=True)
+                    if load_outcome != "source_changed":
+                        n_fail += 1
+                    tick(
+                        rec["path"],
+                        load_outcome or "failed",
+                        force=True,
+                        message=load_message,
+                    )
                     continue
                 height, width = img0.shape[:2]
                 try:
@@ -1272,11 +1242,17 @@ def ingest(
                         tick(rec["path"], outcome, current=index, total=total)
                         continue
                 t_decode = time.perf_counter()
-                img0 = _decode_bgr(None, rec["path"])
+                img0, load_outcome, load_message = _load_still_for_analysis(rec)
                 phase_ms["decode_ms"] += (time.perf_counter() - t_decode) * 1000.0
                 if img0 is None:
-                    n_fail += 1
-                    tick(rec["path"], "failed", force=True)
+                    if load_outcome != "source_changed":
+                        n_fail += 1
+                    tick(
+                        rec["path"],
+                        load_outcome or "failed",
+                        force=True,
+                        message=load_message,
+                    )
                     continue
                 # Inference stays outside the writer lock. The lock only covers the commit.
                 t_dino = time.perf_counter()
