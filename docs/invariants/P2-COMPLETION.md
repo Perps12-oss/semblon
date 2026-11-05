@@ -9,7 +9,7 @@
 
 | Area | Behaviour |
 |---|---|
-| I2 people redo | `_clear_unnamed_faces` skips faces with human decisions; only clears machine `identify` rows on clearable faces |
+| I2 people redo | `_clear_unnamed_faces` clears all unnamed faces; human decisions detach (`face_id` NULL + `former_face_id`) — no stacking, no delete |
 | ErasureIntent | Caller type: requestor, scope (`person`\|`library`), reason, authorized_by, optional person/face allowlist |
 | DB enforcement | Schema-8 BEFORE DELETE triggers + `semblon_erasure_ok` on every `store.connect` / `init_db` |
 | Explicit erase | `delete_person` / `wipe_library` activate intent; originals never deleted |
@@ -38,7 +38,7 @@
 
 ## Known limits (not reopen triggers)
 
-- Rejected unnamed faces survive people redo and may sit beside a new detection for that photo (I2 over stacking).
-- Machine `identify` decisions and unnamed faces without human decisions remain clearable without ErasureIntent.
+- Detached human decisions keep history via `former_face_id`; they are not auto-rebound onto the next detection for that photo.
+- Machine `identify` decisions and unnamed faces remain clearable without ErasureIntent.
 - Writable connections that bypass `store.connect` / `init_db` fail closed on protected deletes (no function → trigger abort).
 - Level 3 release (full suite / dual-arch / packaging) is separate.

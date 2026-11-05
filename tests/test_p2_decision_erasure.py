@@ -221,7 +221,8 @@ def test_connection_without_guard_cannot_delete_protected_rows(tmp_path):
         raw.close()
 
 
-def test_clear_unnamed_preserves_human_reject(tmp_path):
+def test_clear_unnamed_detaches_human_reject_without_stacking(tmp_path):
+    """People redo must not leave a rejected unnamed face beside a new detection."""
     conn = _seed_store(tmp_path / "s.sqlite")
     try:
         conn.execute(
@@ -247,21 +248,48 @@ def test_clear_unnamed_preserves_human_reject(tmp_path):
         conn.commit()
         _clear_unnamed_faces(conn, "m1")
         conn.commit()
-        faces = {
-            r[0]
-            for r in conn.execute("SELECT face_id FROM faces").fetchall()
-        }
-        assert faces == {"f-reject"}
-        assert (
-            conn.execute(
-                "SELECT kind FROM decisions WHERE decision_id='d-reject'"
-            ).fetchone()[0]
-            == "reject"
-        )
+        assert conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0] == 0
+        row = conn.execute(
+            "SELECT kind, face_id, policy_json FROM decisions WHERE decision_id='d-reject'"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "reject"
+        assert row[1] is None
+        assert '"former_face_id":"f-reject"' in row[2].replace(" ", "")
         assert (
             conn.execute("SELECT COUNT(*) FROM decisions WHERE decision_id='d-id'").fetchone()[0]
             == 0
         )
+    finally:
+        conn.close()
+
+
+def test_clear_unnamed_keeps_named_faces(tmp_path):
+    conn = _seed_store(tmp_path / "s.sqlite")
+    try:
+        conn.execute(
+            "INSERT INTO persons(person_id, display_name, status) VALUES ('p1','Ada','active')"
+        )
+        conn.execute(
+            """INSERT INTO faces(face_id, observation_id, run_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+               det_score, face_w, face_h, size_band, status, person_id,
+               embedding, embedding_pack, embedding_dim)
+               VALUES ('f-named','o1','r1',0,0,1,1,0.9,10,10,'ok','ok','p1',?,'pack-a',2)""",
+            (_vector(),),
+        )
+        conn.execute(
+            """INSERT INTO faces(face_id, observation_id, run_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+               det_score, face_w, face_h, size_band, status)
+               VALUES ('f-unnamed','o1','r1',2,2,3,3,0.9,10,10,'ok','ok')"""
+        )
+        conn.commit()
+        _clear_unnamed_faces(conn, "m1")
+        conn.commit()
+        faces = {
+            r[0]
+            for r in conn.execute("SELECT face_id FROM faces").fetchall()
+        }
+        assert faces == {"f-named"}
     finally:
         conn.close()
 

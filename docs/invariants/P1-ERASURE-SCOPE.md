@@ -48,4 +48,4 @@ Register personal-data surfaces introduced by durable identify evaluation so P2 
 ## Out of scope here (closed by P2)
 
 - ErasureIntent DB enforcement — see `P2-COMPLETION.md`.
-- `_clear_unnamed_faces` preserves faces with human decisions; face FK `ON DELETE CASCADE` on evaluations unchanged.
+- `_clear_unnamed_faces` clears unnamed faces and detaches human decisions (`former_face_id`); face FK `ON DELETE CASCADE` on evaluations unchanged.
