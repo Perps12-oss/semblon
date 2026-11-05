@@ -78,7 +78,7 @@ Each job covers existing archive media, reports category-specific progress and c
 | Fail-closed identity compare / persist / durable UNKNOWN | **Done** | `docs/invariants/P1-COMPLETION.md`, schema 7 |
 | Re-embed + live writer lifecycle | **Done** | `semblon/reembed.py`, `semblon/live.py` + focused tests |
 | People Named / Not sure / Not checked yet (G1) | **Done** | `semblon/inbox.py`, People desk copy |
-| ErasureIntent DB (P2) | **Not started** | Wait for explicit P2 instruction |
+| ErasureIntent DB (P2) | **Done** | `docs/invariants/P2-COMPLETION.md`, schema 8 |
 | Release Level 3 (full suite / dual-arch / MSI) | **Open** | Not required to call P1 feature work done |
 
 ## Pass verdict

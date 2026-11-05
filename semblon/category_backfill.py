@@ -346,13 +346,21 @@ def _clear_items(conn, media_id: str, *, provider: str, kind: str) -> None:
 def _clear_unnamed_faces(conn, media_id: str) -> None:
     """Drop prior unnamed detections for this photo so a redo does not stack faces.
 
-    Faces with person_id set are human naming and must stay. Clustering links on
-    unnamed rows are cleared with the face; people backfill never re-clusters.
+    Faces with person_id set are human naming and must stay. Faces that carry a
+    human decision (name/reject/merge/split/note) also stay — automated redo
+    must not destroy those decisions (I2). Machine identify rows on clearable
+    faces may go with the face. Clustering links on cleared unnamed rows drop
+    with the face; people backfill never re-clusters.
     """
     face_rows = conn.execute(
         """SELECT f.face_id FROM faces f
            JOIN observations o ON o.observation_id = f.observation_id
-           WHERE o.media_id=? AND f.person_id IS NULL""",
+           WHERE o.media_id=? AND f.person_id IS NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM decisions d
+               WHERE d.face_id = f.face_id
+                 AND d.kind IN ('name', 'reject', 'merge', 'split', 'note')
+             )""",
         (media_id,),
     ).fetchall()
     face_ids = [str(row["face_id"]) for row in face_rows]
@@ -370,7 +378,11 @@ def _clear_unnamed_faces(conn, media_id: str) -> None:
         conn.execute(f"DELETE FROM track_members WHERE item_id IN ({imarks})", item_ids)
         conn.execute(f"DELETE FROM embeddings WHERE item_id IN ({imarks})", item_ids)
         conn.execute(f"DELETE FROM observation_items WHERE item_id IN ({imarks})", item_ids)
-    conn.execute(f"DELETE FROM decisions WHERE face_id IN ({marks})", face_ids)
+    # Only machine identify (and other non-human) rows on clearable faces.
+    conn.execute(
+        f"DELETE FROM decisions WHERE face_id IN ({marks}) AND kind = 'identify'",
+        face_ids,
+    )
     conn.execute(f"DELETE FROM faces WHERE face_id IN ({marks})", face_ids)
 
 

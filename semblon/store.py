@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "7"
+SCHEMA_VERSION = "8"
 
 DDL = """
 PRAGMA journal_mode=WAL;
@@ -179,6 +179,9 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
+    from semblon.erasure_intent import install_erasure_guard
+
+    install_erasure_guard(conn)
     return conn
 
 
@@ -481,6 +484,42 @@ CREATE INDEX IF NOT EXISTS ix_identify_evaluations_run
   ON identify_evaluations(run_id);
 """
 
+# P2: fail-closed deletes for persons, named faces, and human decisions.
+# Machine identify rows and unnamed faces stay clearable by maintenance.
+MIGRATION_8 = """
+CREATE TRIGGER IF NOT EXISTS trg_erasure_persons_bd
+BEFORE DELETE ON persons
+FOR EACH ROW
+BEGIN
+  SELECT CASE
+    WHEN semblon_erasure_ok('persons', NULL, OLD.person_id, NULL) = 1 THEN NULL
+    ELSE RAISE(ABORT, 'erasure intent required to delete person')
+  END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_erasure_faces_named_bd
+BEFORE DELETE ON faces
+FOR EACH ROW
+WHEN OLD.person_id IS NOT NULL
+BEGIN
+  SELECT CASE
+    WHEN semblon_erasure_ok('faces', NULL, OLD.person_id, OLD.face_id) = 1 THEN NULL
+    ELSE RAISE(ABORT, 'erasure intent required to delete named face')
+  END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_erasure_decisions_human_bd
+BEFORE DELETE ON decisions
+FOR EACH ROW
+WHEN OLD.kind IN ('name', 'reject', 'merge', 'split', 'note')
+BEGIN
+  SELECT CASE
+    WHEN semblon_erasure_ok('decisions', OLD.kind, OLD.person_id, OLD.face_id) = 1 THEN NULL
+    ELSE RAISE(ABORT, 'erasure intent required to delete human decision')
+  END;
+END;
+"""
+
 MIGRATIONS = (
     (2, MIGRATION_2),
     (3, MIGRATION_3),
@@ -488,6 +527,7 @@ MIGRATIONS = (
     (5, MIGRATION_5),
     (6, MIGRATION_6),
     (7, MIGRATION_7),
+    (8, MIGRATION_8),
 )
 
 
@@ -645,6 +685,10 @@ def init_db(conn: sqlite3.Connection) -> None:
     # invent an empty decisions table and hide the rows sitting in decisions_new.
     if _table_exists(conn, "decisions_new") and not _table_exists(conn, "decisions"):
         _apply_migration_4(conn, datetime.now(timezone.utc).isoformat())
+    from semblon.erasure_intent import install_erasure_guard
+
+    # Triggers from schema 8 call semblon_erasure_ok; register before DDL/migrate.
+    install_erasure_guard(conn)
     conn.executescript(DDL)
     apply_migrations(conn)
 

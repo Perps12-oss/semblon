@@ -469,7 +469,7 @@ def test_migration_keeps_existing_rows(tmp_path):
     conn.execute("DELETE FROM schema_migrations WHERE version=6")
     conn.execute("UPDATE schema_meta SET value='5' WHERE key='schema_version'")
     conn.commit()
-    assert apply_migrations(conn) == 7
+    assert apply_migrations(conn) == int(SCHEMA_VERSION)
     person = conn.execute("SELECT display_name FROM persons WHERE person_id='p1'").fetchone()[0]
     pid = conn.execute("SELECT person_id FROM faces WHERE face_id='f1'").fetchone()[0]
     media = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
@@ -478,6 +478,9 @@ def test_migration_keeps_existing_rows(tmp_path):
     assert media == 1
     assert conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='category_coverage'"
+    ).fetchone()
+    assert conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='trigger' AND name='trg_erasure_persons_bd'"
     ).fetchone()
     conn.close()
 

@@ -1,12 +1,16 @@
 """Erase biometric rows. This is not Reset, which keeps the library on purpose.
 
 Original photo and video files are never deleted. Names are not returned.
+
+Protected deletes (persons, named faces, human decisions) require an active
+ErasureIntent checked by schema-8 triggers. Maintenance must not present intent.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from semblon.erasure_intent import ErasureIntent, erasure_authorized
 from semblon.store import (
     LIBRARY_TABLES,
     connect,
@@ -56,7 +60,14 @@ def _clear_centroids_after_erasure(conn, cluster_ids: list[str]) -> None:
         )
 
 
-def delete_person(store: Path, person_id: str) -> dict:
+def delete_person(
+    store: Path,
+    person_id: str,
+    *,
+    requestor: str = "user",
+    reason: str = "erase person",
+    authorized_by: str = "erasure.delete_person",
+) -> dict:
     """Delete one person and the face templates, decisions, and links for them."""
     person_id = str(person_id or "").strip()
     if not person_id:
@@ -97,7 +108,15 @@ def delete_person(store: Path, person_id: str) -> dict:
                     face_ids,
                 )
             ]
-        with writer_lock():
+        intent = ErasureIntent(
+            requestor=requestor,
+            scope="person",
+            reason=reason,
+            authorized_by=authorized_by,
+            person_id=person_id,
+            face_ids=frozenset(str(fid) for fid in face_ids),
+        )
+        with writer_lock(), erasure_authorized(intent):
             conn.execute("DELETE FROM cluster_person WHERE person_id=?", (person_id,))
             conn.execute("DELETE FROM decisions WHERE person_id=?", (person_id,))
             conn.execute(
@@ -155,13 +174,25 @@ def delete_person(store: Path, person_id: str) -> dict:
         conn.close()
 
 
-def wipe_library(store: Path) -> dict:
+def wipe_library(
+    store: Path,
+    *,
+    requestor: str = "user",
+    reason: str = "clear library",
+    authorized_by: str = "erasure.wipe_library",
+) -> dict:
     """Delete library rows. Does not delete original files or reset preferences."""
     conn = connect(Path(store))
     init_db(conn)
     cleared: list[str] = []
+    intent = ErasureIntent(
+        requestor=requestor,
+        scope="library",
+        reason=reason,
+        authorized_by=authorized_by,
+    )
     try:
-        with writer_lock():
+        with writer_lock(), erasure_authorized(intent):
             conn.commit()
             previous = conn.isolation_level
             conn.isolation_level = None

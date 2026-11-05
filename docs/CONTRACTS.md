@@ -64,9 +64,11 @@ Schema **v2** (migration engine) adds `observation_items`, `embeddings`, `tracks
 | 1 | Base biometric + library tables | — |
 | 2 | `observation_items`, `embeddings`, tracks/groups/relationships/events | Face identity stays on `faces`; `embeddings.modality='face'` forbidden |
 | 3–5 | Work-queue / decisions rebuild / related (see `semblon/store.py` migrations) | No identity-threshold changes |
-| **6** | **`category_coverage`** — per-media, per-category (`people`\|`objects`\|`regions`\|`words`) check state for Discover backfill | People rows may write face detections/embeddings only. Never `persons`, never `faces.person_id`, never cluster. Not the shared observe tier. |
+| 6 | `category_coverage` — per-media, per-category (`people`\|`objects`\|`regions`\|`words`) check state for Discover backfill | People rows may write face detections/embeddings only. Never `persons`, never `faces.person_id`, never cluster. Not the shared observe tier. |
+| 7 | `identify_evaluations` — durable ACCEPT/UNKNOWN probe outcomes | Machine evaluations only; not a second identity store; naming stays human |
+| **8** | BEFORE DELETE triggers on `persons`, named `faces`, human `decisions` (`name`/`reject`/`merge`/`split`/`note`) calling `semblon_erasure_ok` | Fail-closed erasure; maintenance must not present ErasureIntent; thresholds / `decisions.kind` unchanged |
 
-`SCHEMA_VERSION` in `semblon/store.py` is **6**. Further tables or columns need a new stamped migration and an update here before merge.
+`SCHEMA_VERSION` in `semblon/store.py` is **8**. Further tables or columns need a new stamped migration and an update here before merge.
 
 Progress `on_event` kinds: `queued` / `started` / `progress` / `partial` / `completed` / `failed` / `cancelled` / `stalled`. Skip is an `outcome` on `progress` (`skipped_seen`, `skipped_same_run`), not a silent success. Cancel stamps `runs.finished_at` and `runs.notes=cancelled`. SIGINT is cooperative at file boundaries. Writer commits in batches (every N files or ~100 ms), not necessarily per file; cancelled work that already committed stays. Cancelled work must not emit `completed`. A stall watchdog may emit `stalled`; it does not kill the job. `process --resume` continues the latest unfinished run for that folder: same `run_id` for cancelled ingest (same-run skip), then cluster. It does not write `review.html`. Completed stages are skipped (`outcome=skipped_stage`). No new columns. Progress events carry wall-clock `clock`, `elapsed_s`, and `eta_s` only when files already done give a real rate. Stills percent is `files_processed/files_total` (0–100) with **monotonic** `files_processed`; never invent a denominator. Progress emits are time-throttled; the final tick for a file set is always emitted.
 

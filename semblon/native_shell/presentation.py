@@ -192,7 +192,7 @@ def decision_success(kind: str, detail: str = "") -> str:
     if lowered == "split":
         return "Split the selected faces into a new group."
     if lowered == "rule_out":
-        return "Marked this as not the same person."
+        return "We'll stop suggesting this match. Nothing was removed."
     return "Saved your decision."
 
 

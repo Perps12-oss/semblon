@@ -238,12 +238,19 @@ class Application:
     def erase_person(self, person_id: str) -> dict:
         from semblon.erasure import delete_person
 
-        return delete_person(self.store, person_id)
+        return delete_person(
+            self.store,
+            person_id,
+            authorized_by="application.erase_person",
+        )
 
     def wipe_library(self) -> dict:
         from semblon.erasure import wipe_library
 
-        return wipe_library(self.store)
+        return wipe_library(
+            self.store,
+            authorized_by="application.wipe_library",
+        )
 
     def control_states(self, *, resume_ready: bool = False) -> dict[str, str]:
         return home_control_states(

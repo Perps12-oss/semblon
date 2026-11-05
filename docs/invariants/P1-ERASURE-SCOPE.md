@@ -1,7 +1,7 @@
 # P1 erasure scope — `identify_evaluations`
 
 **Status:** Finalised with schema 7 / MIGRATION_7 (S3).  
-**P2 inherits:** ErasureIntent DB enforcement must cover this table; this file is the day-one registration.
+**P2:** ErasureIntent DB enforcement landed (schema 8). `identify_evaluations` remains clearable by maintenance and by authorised person/library erasure; it is not a human-decision table.
 
 ## Purpose
 
@@ -45,7 +45,7 @@ Register personal-data surfaces introduced by durable identify evaluation so P2 
 | `semblon/store.py` `delete_observation_tree` | Deletes by probe `face_id` before face removal |
 | `wipe_library` | Clears via `LIBRARY_TABLES` |
 
-## Out of scope here
+## Out of scope here (closed by P2)
 
-- Implementing ErasureIntent DB enforcement (P2).
-- Changing `_clear_unnamed_faces` SQL shape (P2); face FK uses `ON DELETE CASCADE` so unnamed clears do not IntegrityError.
+- ErasureIntent DB enforcement — see `P2-COMPLETION.md`.
+- `_clear_unnamed_faces` preserves faces with human decisions; face FK `ON DELETE CASCADE` on evaluations unchanged.

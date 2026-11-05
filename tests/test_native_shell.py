@@ -1038,7 +1038,9 @@ def test_people_desk_uses_review_and_returns_to_the_same_session(tmp_path, monke
     assert bridge.decide("split", "c1", "f1").startswith("Split")
     assert bridge.decide("ignore", "c1", "") == "Left this group unknown."
     assert bridge.decide("note", "c1", "keep") == "Saved your note."
-    assert bridge.decide("rule_out", "c1", "") == "Marked this as not the same person."
+    assert bridge.decide("rule_out", "c1", "") == (
+        "We'll stop suggesting this match. Nothing was removed."
+    )
     assert calls == ["name", "merge", "split", "ignore", "note", "rule_out"]
     bridge.closePeople()
     assert bridge.peopleOpen is False
@@ -1590,7 +1592,9 @@ def test_decision_success_outputs_remain_safe_and_stable():
     assert decision_success("note") == "Saved your note."
     assert decision_success("merge") == "Merged the selected groups."
     assert decision_success("split") == "Split the selected faces into a new group."
-    assert decision_success("rule_out") == "Marked this as not the same person."
+    assert decision_success("rule_out") == (
+        "We'll stop suggesting this match. Nothing was removed."
+    )
     assert decision_success("other") == "Saved your decision."
 
 

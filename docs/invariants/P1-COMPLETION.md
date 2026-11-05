@@ -1,8 +1,8 @@
 # P1 — Identity trust boundary
 
-**Status:** **P1 complete** (feature Level 2). P2 not started. Release Level 3 not claimed.  
+**Status:** **P1 complete** (feature Level 2). P2 separate — see `P2-COMPLETION.md`. Release Level 3 not claimed.  
 **Freeze base:** `50722efa8a9522867e37db352c30bc5d786ec1e2`  
-**Schema:** 7  
+**Schema at P1 land:** 7  
 
 ## How we verify (replace gate bureaucracy)
 
