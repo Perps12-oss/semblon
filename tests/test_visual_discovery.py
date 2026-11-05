@@ -102,7 +102,7 @@ def test_source_exclusion_dedupe_and_floor(tmp_path):
     _media(conn, "weak", "/c.jpg")
     pack = "region/test@1"
     strong = _vec(1.0)
-    weak = np.zeros(4, dtype=np.float32)
+    weak = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
     weak[0] = 1.0
     weak = (weak / np.linalg.norm(weak)).tobytes()
     _put_embedding(conn, item="self", obs="o-src", modality=MODALITY_REGION, pack=pack, blob=strong)

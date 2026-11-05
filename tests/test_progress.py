@@ -219,7 +219,7 @@ def test_discover_and_ingest_counters_are_truthful(tmp_path):
     assert [p.name for p in found] == ["a.jpg", "b.jpg"]
 
     events: list[ProgressEvent] = []
-    vec = np.zeros(4, dtype=np.float32)
+    vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
     def faces_for(path):
         n = 1 if path.name == "a.jpg" else 2
@@ -368,7 +368,7 @@ def test_ingest_cancel_emits_cancelled_not_completed(tmp_path):
 
     def faces_for(path):
         processed["n"] += 1
-        vec = np.zeros(4, dtype=np.float32)
+        vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
         return [
             {
                 "bbox": (0.0, 0.0, 100.0, 100.0),
@@ -594,7 +594,7 @@ def test_ingest_resume_reuses_run_id(tmp_path):
 
     def faces_for(path):
         processed["n"] += 1
-        vec = np.zeros(4, dtype=np.float32)
+        vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
         return [
             {
                 "bbox": (0.0, 0.0, 100.0, 100.0),

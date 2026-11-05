@@ -40,7 +40,7 @@ def _embed_patches(faces_for, imread=None):
 
 
 def _one_face(_path):
-    vec = np.zeros(4, dtype=np.float32)
+    vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
     return [
         {
             "bbox": (0.0, 0.0, 100.0, 100.0),

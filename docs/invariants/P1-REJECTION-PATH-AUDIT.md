@@ -1,21 +1,18 @@
-# P1 — Eight rejection-path audit (baseline evidence)
+# P1 — Eight rejection-path audit
 
-**Baseline:** `af0758537fdd4f5240439ef163918db14defea9d`  
-**Freeze commit:** `50722efa8a9522867e37db352c30bc5d786ec1e2`  
-**Detector tests:** `tests/test_p1_i1_baseline_detectors.py`  
-**Rule:** Code-reading is not enough. Each path has a test. Expected-red paths use `xfail(strict=True)`.
+**Baseline (pre-fix):** `af0758537fdd4f5240439ef163918db14defea9d`  
+**Post-fix detectors:** `tests/test_p1_i1_baseline_detectors.py`  
+**Implementation:** `semblon/compare.py` + `require_finite_threshold` / `validate_identity_embedding`
 
-| ID | Rejection path | Baseline result | Evidence |
+| ID | Rejection path | Status | Evidence |
 |---|---|---|---|
 | R1 | pack_id mismatch | **fail_closed** | `test_r1_pack_mismatch_already_fail_closed` |
 | R2 | dimension mismatch | **fail_closed** | `test_r2_dimension_mismatch_already_fail_closed` |
 | R3 | embedding length ≠ 4×dim | **fail_closed** | `test_r3_length_mismatch_already_fail_closed` |
-| R4 | NaN in payload | **baseline_defect** (P0 #6) | `test_r4_nan_must_not_produce_score` (xfail); `test_issue6_nan_score_is_currently_non_finite_acceptance_risk` |
-| R5 | Inf in payload | **baseline_defect** (P0 #6) | `test_r5_inf_must_not_produce_score` (xfail) |
-| R6 | L2 norm not enforced | **baseline_defect** | `test_r6_non_unit_l2_must_not_produce_score` (xfail) |
-| R7 | non-finite threshold | **baseline_defect** | `test_r7_non_finite_threshold_must_not_accept` (xfail) |
-| R8 | empty / unknown pack | **baseline_defect** | `test_r8_empty_pack_must_fail_closed` (xfail) |
+| R4 | NaN in payload | **fail_closed** (P1 A1) | `test_r4_nan_must_not_produce_score` |
+| R5 | Inf in payload | **fail_closed** (P1 A1) | `test_r5_inf_must_not_produce_score` |
+| R6 | L2 norm not ~1 | **fail_closed** (P1 A1) | `test_r6_non_unit_l2_must_not_produce_score` |
+| R7 | non-finite threshold | **fail_closed** (P1 A2) | `test_r7_non_finite_threshold_must_not_accept` |
+| R8 | empty / unknown pack | **fail_closed** (P1 A1) | `test_r8_empty_pack_must_fail_closed` |
 
-Same-dimension different-pack is covered by R1 (`test_same_dim_different_pack_already_fail_closed`).
-
-**A1 implication:** Fixes must target R4–R8. Do not “fix” R1–R3 as if they were open. When a defect is closed, remove its strict xfail and keep the assertion.
+Same-dimension different-pack remains R1.

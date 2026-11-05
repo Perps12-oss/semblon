@@ -1,11 +1,12 @@
 # P1a permit list (exact paths) — for S5 confirmation
 
 **Freeze base:** `50722efa8a9522867e37db352c30bc5d786ec1e2`  
-**List version:** 2026-11-05T02  
+**List version:** 2026-11-05T03 (post-CONFIRM fixture + erasure amendment)  
+**S5:** CONFIRMED 2026-11-05; amendment below records A5/A13 follow-ons only.
 
 Criteria (from review): exact file paths · one-line justification · `tools/p0/` absent from permits · list hashed · freeze exclusions justified with forward disposition.
 
-**Allow-list semantics:** Section B/S3/P1b paths may be edited only when the corresponding P1-PLAN work item requires them. Listing a path does not queue an edit.
+**Allow-list semantics:** Section B/S3/P1b paths may be edited only when the corresponding P1-PLAN work item requires them. Listing a path does not force an edit.
 
 ## A. Pre–Gate B (authorised now — detector + docs only)
 
@@ -17,7 +18,7 @@ Criteria (from review): exact file paths · one-line justification · `tools/p0/
 | `docs/invariants/P1-REJECTION-PATH-AUDIT.md` | Eight-path audit so A1 cannot “fix” closed paths |
 | `docs/invariants/P1-REVIEW-DISPOSITION.md` | S1–S5 decisions + privacy retention |
 | `docs/invariants/P0-COMPLETION-ADDENDUM.md` | Post-freeze append-only P0 sign-off / defects (frozen `P0-COMPLETION.md` untouched) |
-| `docs/invariants/P1-ERASURE-SCOPE.md` | Pre-Gate-B draft erasure registration for identify_evaluations |
+| `docs/invariants/P1-ERASURE-SCOPE.md` | Erasure registration for identify_evaluations |
 | `docs/invariants/README.md` | Index link updates only |
 | `artifacts/p0/MANIFEST.json` | Durable sha256 pointers for gitignored raw P0 artifacts |
 | `.gitignore` | Allow `artifacts/p0/MANIFEST.json` while keeping raw traces ignored |
@@ -27,9 +28,9 @@ Criteria (from review): exact file paths · one-line justification · `tools/p0/
 
 **Frozen file not editable:** `docs/invariants/P0-COMPLETION.md` (bytes restored to freeze `50722ef`; further P0 completion facts go only in the addendum).
 
-## B. P1a after Gate B (proposed — confirm or strike)
+## B. P1a after Gate B (CONFIRMED)
 
-No production edits until Gate B is recorded and this list is confirmed. Migration for `identify_evaluations` remains Gate-B-gated (S3).
+No production edits until Gate B is recorded and this list is confirmed. Migration for `identify_evaluations` remains Gate-B-gated (S3) — **now authorised**.
 
 | Path | Justification |
 |---|---|
@@ -39,9 +40,10 @@ No production edits until Gate B is recorded and this list is confirmed. Migrati
 | `semblon/eval.py` | A9 compare/threshold contract only; **no** `DEFAULT_THRESHOLD` value change |
 | `semblon/review.py` | Conditional on need for A7; not authorised unless P1-PLAN A7 requires a local refuse beyond `compare()` |
 | `semblon/search.py` | Conditional on need for A8; not authorised unless P1-PLAN A8 requires a local refuse beyond `compare()` |
+| `semblon/erasure.py` | A13 day-one: delete `identify_evaluations` on person/face erasure |
 | `tests/test_p1_i1_baseline_detectors.py` | Flip strict xfail → pass as defects close |
 | `tests/test_compare.py` | Conditional on need; create/edit only if detectors are split from this file |
-| `tests/test_identify.py` | Regressions for ACCEPT/UNKNOWN under contract |
+| `tests/test_identify.py` | Regressions for ACCEPT/UNKNOWN under contract + erasure of evaluations |
 | `docs/invariants/P1-EVIDENCE.md` | Generated/updated P1 evidence record |
 | `docs/invariants/P1-COMPLETION.md` | Gate fill-in at phase end |
 | `tools/p1/README.md` | Conditional on need; authorised only if a `tools/p1/` harness is added |
@@ -55,9 +57,26 @@ Migration plumbing lives in `semblon/store.py` (`MIGRATIONS` / `apply_migrations
 
 | Path | Justification |
 |---|---|
-| `semblon/store.py` | Additive `identify_evaluations` table + migration N+1 only; no ALTER of existing tables |
-| `tests/test_schema.py` | Migration up/down + `decisions.kind` untouched assertion |
-| `docs/invariants/P1-ERASURE-SCOPE.md` | Finalise pre-Gate-B draft alongside migration landing |
+| `semblon/store.py` | Additive `identify_evaluations` + observation-tree delete; no ALTER of existing tables |
+| `tests/test_schema.py` | Migration up + `decisions.kind` untouched assertion |
+| `docs/invariants/P1-ERASURE-SCOPE.md` | Finalise alongside migration landing |
+
+### Fixture amendment (A5 — unit L2 mocks / schema pin)
+
+Required so persist-gate + schema 7 do not false-fail existing fixtures. Not a production behaviour change beyond A5/A13.
+
+| Path | Justification |
+|---|---|
+| `tests/test_audit_regressions.py` | Replace zero embeddings with unit L2 |
+| `tests/test_scan_tiers.py` | Unit L2 mocks + SCHEMA_VERSION 7 pin |
+| `tests/test_ingest_workers.py` | Unit L2 mocks |
+| `tests/test_category_backfill.py` | Migration assert 6→7 |
+| `tests/test_ship_audit.py` | Unit L2 mocks where needed |
+| `tests/test_negative.py` | Unit L2 mocks |
+| `tests/test_fullstack.py` | Unit L2 mocks |
+| `tests/test_temporal.py` | Unit L2 mocks |
+| `tests/test_progress.py` | Unit L2 mocks |
+| `tests/test_visual_discovery.py` | Unit L2 mocks |
 
 ### P1b after B2 (not P1a)
 
@@ -116,4 +135,4 @@ print(hashlib.sha256(body).hexdigest())"
 
 The recorded hash is that digest. The hash line below is excluded from the hashed body.
 
-**Content SHA-256 (UTF-8, this revision):** `7b79744ea0eb7f1d39fd31dd364184adc6b4ba0c66b2334035da8abb99d3cc85`
+**Content SHA-256 (UTF-8, this revision):** `784b8717817aadca76e79893aa0e38d8ace7a34e67efe93fcb2a7c055f033a33`

@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "6"
+SCHEMA_VERSION = "7"
 
 DDL = """
 PRAGMA journal_mode=WAL;
@@ -206,6 +206,7 @@ LIBRARY_TABLES = (
     "work_items",
     "eval_pairs",
     "eval_sets",
+    "identify_evaluations",
     "decisions",
     "group_members",
     "relationships",
@@ -290,6 +291,10 @@ def delete_observation_tree(conn: sqlite3.Connection, observation_id: str) -> No
         if _table_exists(conn, "eval_pairs"):
             exec_in_chunks(conn, "DELETE FROM eval_pairs WHERE face_a IN", face_ids)
             exec_in_chunks(conn, "DELETE FROM eval_pairs WHERE face_b IN", face_ids)
+        if _table_exists(conn, "identify_evaluations"):
+            exec_in_chunks(
+                conn, "DELETE FROM identify_evaluations WHERE probe_face_id IN", face_ids
+            )
         exec_in_chunks(conn, "DELETE FROM decisions WHERE face_id IN", face_ids)
         exec_in_chunks(conn, "DELETE FROM faces WHERE face_id IN", face_ids)
     conn.execute("DELETE FROM observations WHERE observation_id=?", (observation_id,))
@@ -451,12 +456,38 @@ CREATE INDEX IF NOT EXISTS ix_category_coverage_cat_state
   ON category_coverage(category, state);
 """
 
+MIGRATION_7 = """
+CREATE TABLE IF NOT EXISTS identify_evaluations (
+  evaluation_id     TEXT PRIMARY KEY,
+  probe_face_id     TEXT REFERENCES faces(face_id) ON DELETE CASCADE,
+  embedding_pack    TEXT NOT NULL,
+  embedding_dim     INTEGER NOT NULL,
+  run_id            TEXT NOT NULL REFERENCES runs(run_id),
+  outcome           TEXT NOT NULL CHECK (outcome IN ('ACCEPT','UNKNOWN')),
+  reason            TEXT,
+  threshold         REAL NOT NULL,
+  policy_version    TEXT NOT NULL,
+  gallery_size      INTEGER,
+  score_top1        REAL,
+  score_top2        REAL,
+  margin            REAL,
+  person_id         TEXT REFERENCES persons(person_id) ON DELETE SET NULL,
+  source            TEXT NOT NULL,
+  created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_identify_evaluations_probe
+  ON identify_evaluations(probe_face_id);
+CREATE INDEX IF NOT EXISTS ix_identify_evaluations_run
+  ON identify_evaluations(run_id);
+"""
+
 MIGRATIONS = (
     (2, MIGRATION_2),
     (3, MIGRATION_3),
     (4, MIGRATION_4),
     (5, MIGRATION_5),
     (6, MIGRATION_6),
+    (7, MIGRATION_7),
 )
 
 

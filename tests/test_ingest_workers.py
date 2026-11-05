@@ -23,7 +23,7 @@ def _seed_images(folder: Path, names: list[str]) -> None:
 
 
 def _run(folder: Path, store: Path, workers: int, **kwargs) -> dict:
-    vec = np.zeros(4, dtype=np.float32)
+    vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
     def faces_for(_path):
         return [
@@ -179,7 +179,7 @@ def test_cancel_under_workers_stamps_cancelled(tmp_path):
     store = tmp_path / "s.sqlite"
     events: list[ProgressEvent] = []
     processed = {"n": 0}
-    vec = np.zeros(4, dtype=np.float32)
+    vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
     def faces_for(_app, _img):
         processed["n"] += 1
@@ -234,7 +234,7 @@ def test_pause_gate_under_workers_no_duplicate_media(tmp_path):
     cancel_ev = threading.Event()
     saw_pause = threading.Event()
     embed_threads: list[str] = []
-    vec = np.zeros(4, dtype=np.float32)
+    vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
     def gate() -> bool:
         if pause.is_set() and not cancel_ev.is_set():
@@ -323,7 +323,7 @@ def test_workers_hash_failure_counts(tmp_path):
                     "face_w": 100,
                     "face_h": 100,
                     "dim": 4,
-                    "embedding": np.zeros(4, dtype=np.float32),
+                    "embedding": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
                 }
             ],
         ),
@@ -378,7 +378,7 @@ def test_video_frames_streamed_not_listed(tmp_path):
                     "face_w": 10,
                     "face_h": 10,
                     "dim": 4,
-                    "embedding": np.zeros(4, dtype=np.float32),
+                    "embedding": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
                 }
             ],
         ),

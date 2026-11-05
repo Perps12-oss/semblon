@@ -3,9 +3,10 @@
 **Date:** 2026-11-05  
 **P1 authorizer / named P1 signer:** B.H  
 **Spot-checker:** D.S  
-**Adjudicator:** _pending_ (≠ B.H, ≠ D.S)  
+**Adjudicator:** C.G.T  
+**S5:** **CONFIRMED** (2026-11-05) — Section B / S3 authorised; fixture/erasure amendment in permit list T03  
 **Plan reviewed:** `P1-CONFIRMATION.md` + `P1-PLAN.md` (Task 1–2 accepted as reviewable baseline)  
-**Production code:** none authorised except as stated under S1  
+**Production code:** **PROCEED** authorised 2026-11-05 (Gate B + S5 + C.G.T) — see `P1-EVIDENCE.md` / `P1-COMPLETION.md`  
 
 ## Header note (freeze defect)
 
@@ -16,16 +17,16 @@ The review message opened with the words “P0 SIGNED” while **S1** states the
 | Ask | Disposition |
 |---|---|
 | S1 Sign P0 / exception | **No waiver of Gate B.** Narrow pre-sign-off exception: author and commit the **red detector** for P0 issue #6 (and the eight-path audit) only. No fix merged, no schema, no deploy until Gate B. |
-| S2 Name roles | P1 signer **B.H**; spot-checker **D.S**. Adjudicator still required before spot-check protocol closes. |
+| S2 Name roles | P1 signer **B.H**; spot-checker **D.S**; adjudicator **C.G.T**. |
 | S3 Durable UNKNOWN | **Grant** single additive migration exception for `identify_evaluations` (terms below). Migration itself **Gate B gated**. |
 | S4 A11 → P1b after B2 | **Confirmed.** Deferral register row required (see register). |
-| S5 §7.4 permit-list | Rev. T02: strikes 1–3 + R1–R5 addressed in `P1-PERMIT-LIST.md`. Awaiting confirm/strike on the revised list. |
+| S5 §7.4 permit-list | **CONFIRMED.** T03 adds fixture amendment + `erasure.py` for A13 day-one. |
 
 ### Gate B (recorded 2026-11-05)
 
 1. P0 sign-off — **B.H SIGNED** (see `P0-COMPLETION-ADDENDUM.md`)  
 2. Incident-defender (#11) — **B.H SIGNED**  
-3. Named P1 signer — **B.H**; spot-checker **D.S**; adjudicator still pending for protocol close
+3. Named P1 signer — **B.H**; spot-checker **D.S**; adjudicator **C.G.T** (protocol sample still for D.S)
 
 ### S3 migration terms
 
@@ -67,5 +68,5 @@ The review message opened with the words “P0 SIGNED” while **S1** states the
 
 ## Authorised now
 
-- Docs + permit list + manifest + baseline detectors (strict xfail for defects).  
-- **Not authorised:** compare() fix, schema migration, merge of behaviour change, Task 3 deferral closure until S3/S5 closure acknowledged and Gate B where required.
+- **PROCEED (2026-11-05):** P1a Section B + S3 — `compare()` fail-closed, persist gate, schema 7 `identify_evaluations`, fixture amendments, erasure day-one.  
+- **Still deferred:** A11/A12 until B2 (P1b). Spot-check sample under D.S not yet claimed.

@@ -31,10 +31,10 @@ If the manifest bytes change, append a new dated row here with the new hash and 
 | Incident defender (#11) | B.H | **SIGNED** |
 | P1 signer / authorizer | B.H | Named |
 | Spot-checker | D.S | Named |
-| Adjudicator | _pending_ | Still required before merge spot-check closes |
+| Adjudicator | C.G.T | Named (≠ B.H, ≠ D.S) |
 
-Gate B body (P0 + incident-defender + named P1 signer) is satisfied for authorising post-Gate-B Section B / S3 work **once** the permit list is confirmed (S5). Spot-check protocol still needs an adjudicator ≠ B.H and ≠ D.S before that protocol can close.
+Gate B body (P0 + incident-defender + named P1 signer) is satisfied. **S5 permit list CONFIRMED** (2026-11-05). Section B / S3 implementation authorised. **PROCEED** recorded 2026-11-05 with adjudicator **C.G.T** — see `P1-EVIDENCE.md` / `P1-COMPLETION.md`.
 
-### Narrow S1 exception (pre–list-confirm)
+### Narrow S1 exception (pre–list-confirm; superseded by PROCEED)
 
-Baseline I1 detectors (`tests/test_p1_i1_baseline_detectors.py`) and docs under the Section A permit list may land as evidence without behaviour change. No `compare()` fix and no schema until S5 confirm + this Gate B record.
+Baseline I1 detectors (`tests/test_p1_i1_baseline_detectors.py`) and docs under the Section A permit list may land as evidence without behaviour change. Superseded once S5 confirm + Gate B + PROCEED authorised behaviour/schema.

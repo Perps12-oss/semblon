@@ -104,8 +104,15 @@ def delete_person(store: Path, person_id: str) -> dict:
                 "DELETE FROM relationships WHERE src_person_id=?",
                 (person_id,),
             )
+            conn.execute(
+                "DELETE FROM identify_evaluations WHERE person_id=?",
+                (person_id,),
+            )
             if face_ids:
                 exec_in_chunks(conn, "DELETE FROM decisions WHERE face_id IN", face_ids)
+                exec_in_chunks(
+                    conn, "DELETE FROM identify_evaluations WHERE probe_face_id IN", face_ids
+                )
             # Other faces may share the observation. Delete only this person's faces.
             if face_ids:
                 item_ids = [

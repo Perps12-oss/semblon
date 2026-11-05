@@ -32,7 +32,7 @@ Each row is a **work item derived from** `P0-IDENTITY-COVERAGE.md`. No new ident
 | A9 | Eval compare | `eval.py` compare path same contract; no threshold retune | `eval.py` | No |
 | A10 | Cluster `compare()` use | **No change to clustering behaviour or `cluster.py` SQL/lifecycle.** Benefit only via A1 hardening of `compare()`. Disposition: `observed` via A1; module SQL `not_touched` | `cluster.py` — **do not edit** unless deferral B2 closed and signer allows | **Yes — B2** if edited |
 | A11 | Reembed rewrite | Harden embedding write contract | `reembed.py` | **Yes — B2** — close B2 first |
-| A12 | Live overlay delete/write | Only if treated as identity writer; prefer disposition `not_production_door` + no edit | `live.py` | **Yes — B2** if edited |
+| A12 | Live overlay delete/write | **Acceptance criterion for full I1 writer coverage** (not optional). Prefer disposition `not_production_door` + evidence; edit only if treated as identity writer. **Not** probe/gallery compatibility (that is A4). | `live.py` | **Yes — B2** if edited |
 | A13 | Durable UNKNOWN vs never evaluated | Additive `identify_evaluations` (S3 exception) | **Gate B then migrate**; erasure scope day one; `decisions.kind` untouched | Migration after Gate B |
 | A14 | Typed `IdentityVector` | Only if it fits without schema/API churn | Optional envelope around bytes+pack+dim in `compare.py` / identify | No |
 | A15 | G1 People: Named / Not sure peers | Inventory says directionally present; **no opportunistic GUI redesign**. Only copy/tests if A13/A3 leave a false confidence claim | QML/bridge only if evidence shows overclaim | No redesign |
@@ -114,7 +114,7 @@ Required on every change row (above). Unbounded-partial sites named for signer a
 | D4 | G1 automated translation detectors | Programme | G1 continuous | Before G1 PASS claim | Detector tests | Open (from P0) |
 | D5 | Lifecycle mutation suite | Programme | P6 | Before lifecycle “fully covered” claim | Mutation coverage report | Open (from P0) |
 | D6 | A11 reembed contract | P1 implementer | **P1b** | **B2 closed** | Detector + persist tests on `reembed.py` | **Registered** — blocked on B2 |
-| D7 | A12 live.py | P1 | P1b or never | If production identity write claimed | Trace + disposition | Prefer `not_production_door` |
+| D7 | A12 live.py | P1 | **P1b** | Before claiming full I1 writer coverage | Trace + disposition (`not_production_door` or harden) | **Acceptance criterion** — not probe/gallery (A4) |
 
 ### 7.4 Baseline-integrity check
 

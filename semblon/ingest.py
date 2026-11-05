@@ -494,6 +494,8 @@ def _decode_bgr(data: bytes | None, path: Path):
 
 def _persist_faces(conn, *, obs_id: str, run_id: str, pack_id: str, faces: list) -> tuple[int, int, int, int]:
     """Insert face rows. Returns (n_faces, n_ok, n_lq, n_rej)."""
+    from semblon.compare import CompareError, validate_identity_embedding
+
     n_faces = n_ok = n_lq = n_rej = 0
     for f in faces:
         fw, fh = f["face_w"], f["face_h"]
@@ -505,12 +507,19 @@ def _persist_faces(conn, *, obs_id: str, run_id: str, pack_id: str, faces: list)
         else:
             vec = np.asarray(f["embedding"], dtype=np.float32)
             blob, pack, dim = vec.tobytes(), pack_id, int(vec.size)
-            if min(fw, fh) < CLUSTER_MIN_SIDE:
-                status = "low_quality"
-                n_lq += 1
+            try:
+                validate_identity_embedding(pack_id, dim, blob)
+            except CompareError:
+                # Invalid contract must never become status=ok with a usable blob.
+                status, blob, pack, dim = "rejected", None, None, None
+                n_rej += 1
             else:
-                status = "ok"
-                n_ok += 1
+                if min(fw, fh) < CLUSTER_MIN_SIDE:
+                    status = "low_quality"
+                    n_lq += 1
+                else:
+                    status = "ok"
+                    n_ok += 1
         x1, y1, x2, y2 = f["bbox"]
         fid = uuid.uuid4().hex
         conn.execute(

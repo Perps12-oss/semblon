@@ -469,7 +469,7 @@ def test_migration_keeps_existing_rows(tmp_path):
     conn.execute("DELETE FROM schema_migrations WHERE version=6")
     conn.execute("UPDATE schema_meta SET value='5' WHERE key='schema_version'")
     conn.commit()
-    assert apply_migrations(conn) == 6
+    assert apply_migrations(conn) == 7
     person = conn.execute("SELECT display_name FROM persons WHERE person_id='p1'").fetchone()[0]
     pid = conn.execute("SELECT person_id FROM faces WHERE face_id='f1'").fetchone()[0]
     media = conn.execute("SELECT COUNT(*) FROM media").fetchone()[0]
@@ -862,7 +862,7 @@ def test_people_backfill_faces_stay_on_the_review_board_unnamed(tmp_path, monkey
             "det_score": 0.95,
             "face_w": 80,
             "face_h": 80,
-            "embedding": np.ones(8, dtype=np.float32),
+            "embedding": np.array([1.0]+[0.0]*7, dtype=np.float32),
         }]
 
     calls = _install(monkeypatch, detect=detect)

@@ -93,7 +93,7 @@ def test_embed_failure_is_retried(tmp_path):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("embed failed")
-        return [{"bbox": (0, 0, 10, 10), "det_score": 0.9, "face_w": 100, "face_h": 100, "dim": 4, "embedding": np.zeros(4, np.float32)}]
+        return [{"bbox": (0, 0, 10, 10), "det_score": 0.9, "face_w": 100, "face_h": 100, "dim": 4, "embedding": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)}]
 
     first = _run_ingest(folder, store, embed)
     assert first["failed"] == 1
@@ -136,7 +136,7 @@ def test_video_frame_failure_is_not_sampling_complete(tmp_path):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("frame embed failed")
-        return [{"bbox": (0, 0, 4, 4), "det_score": 0.9, "face_w": 100, "face_h": 100, "dim": 4, "embedding": np.zeros(4, np.float32)}]
+        return [{"bbox": (0, 0, 4, 4), "det_score": 0.9, "face_w": 100, "face_h": 100, "dim": 4, "embedding": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)}]
 
     with patch("semblon.ingest.iter_sampled_frames", side_effect=frames):
         first = _run_ingest(folder, store, embed)
@@ -160,7 +160,7 @@ def test_video_frame_failure_is_not_sampling_complete(tmp_path):
 
 def test_resume_refuses_pack_mismatch_and_closes(tmp_path):
     folder, store = _folder(tmp_path)
-    vec = [{"bbox": (0, 0, 8, 8), "det_score": 0.9, "face_w": 40, "face_h": 40, "dim": 4, "embedding": np.zeros(4, np.float32)}]
+    vec = [{"bbox": (0, 0, 8, 8), "det_score": 0.9, "face_w": 40, "face_h": 40, "dim": 4, "embedding": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)}]
     rec = _run_ingest(folder, store, lambda *_a: vec)
     conn = sqlite3.connect(str(store))
     conn.execute(
@@ -176,7 +176,7 @@ def test_resume_refuses_pack_mismatch_and_closes(tmp_path):
 
 def test_null_ort_and_missing_opencv_still_resume(tmp_path):
     folder, store = _folder(tmp_path)
-    vec = [{"bbox": (0, 0, 8, 8), "det_score": 0.9, "face_w": 40, "face_h": 40, "dim": 4, "embedding": np.zeros(4, np.float32)}]
+    vec = [{"bbox": (0, 0, 8, 8), "det_score": 0.9, "face_w": 40, "face_h": 40, "dim": 4, "embedding": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)}]
     rec = _run_ingest(folder, store, lambda *_a: vec)
     conn = sqlite3.connect(str(store))
     runtime = json.loads(conn.execute("SELECT runtime_json FROM runs WHERE run_id=?", (rec["run_id"],)).fetchone()[0])
@@ -380,7 +380,7 @@ def test_exif_offset_naive_and_malformed(tmp_path):
 
 
 def test_still_byte_and_pixel_caps_do_not_store_media(tmp_path, monkeypatch):
-    face = [{"bbox": (0, 0, 8, 8), "det_score": 0.9, "face_w": 40, "face_h": 40, "dim": 4, "embedding": np.zeros(4, np.float32)}]
+    face = [{"bbox": (0, 0, 8, 8), "det_score": 0.9, "face_w": 40, "face_h": 40, "dim": 4, "embedding": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)}]
     folder, store = _folder(tmp_path, payload=b"\xff\xd8\xff" + b"x" * 32)
     monkeypatch.setattr("semblon.ingest.MAX_STILL_BYTES", 8)
     rec = _run_ingest(folder, store, lambda *_a: face)
@@ -406,7 +406,7 @@ def test_still_byte_and_pixel_caps_do_not_store_media(tmp_path, monkeypatch):
 def test_ingest_restores_sigint_and_closes(tmp_path):
     folder, store = _folder(tmp_path)
     before = signal.getsignal(signal.SIGINT)
-    vec = [{"bbox": (0, 0, 8, 8), "det_score": 0.9, "face_w": 40, "face_h": 40, "dim": 4, "embedding": np.zeros(4, np.float32)}]
+    vec = [{"bbox": (0, 0, 8, 8), "det_score": 0.9, "face_w": 40, "face_h": 40, "dim": 4, "embedding": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)}]
     _run_ingest(folder, store, lambda *_a: vec)
     assert signal.getsignal(signal.SIGINT) == before
     store.unlink()
