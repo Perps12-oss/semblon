@@ -15,7 +15,7 @@ This is a **contract inventory**, not permission to redesign the shell. P0 does 
 | `stale` | Will update in background | Status line while reindexing | Partial: coverage notes exist (`scan_tiers.coverage_note`, category messages); no formal `stale` enum. |
 | `invalid` | Couldn’t read this file | Per-item status with retry | Partial: category `read_failure` / failed copy; not a unified per-item badge. |
 | `unavailable` capability | Optional feature not installed | Settings only | **Drift:** `surfaceState === "unavailable"` used broadly in shell (`Table.qml` treats as problem). Install suggestions exist. |
-| `incompatible` capability | Paused until update | Non-blocking capability banner | **Absent** as distinct from unavailable (P4). |
+| `incompatible` capability | Paused until update | Non-blocking capability banner | **Present (P4):** `capability_manifest` + Settings pause copy + bridge notice. |
 | Identity `UNKNOWN` | Not sure | People tab | **Present:** inbox + People copy; durable via `identify_evaluations`. |
 | `below_threshold` | *(no ordinary wording)* | Reason detail only when requested | Scores live in decisions/policy; ordinary UI does not show reason codes — OK-ish; no formal Details reason panel contract tests. |
 | `pack_mismatch` / `non_finite` | Recognition needs re-check | Banner when relevant | Backend refuses mismatch (tests); **no dedicated G1 banner copy** for non_finite (no check yet). |
@@ -38,7 +38,7 @@ Any newly discovered internal state must be added here **before** ordinary UI ex
 | People / Not sure | `People.qml` + adapter unresolved counts | UNKNOWN treated as navigable, not only error — **P1 GUI direction already partly met**. |
 | “Not this person” | `product_surface.VERB_LABEL_RULE_OUT` → review reject | Durable reject; confirm Undo reliability before advertising Undo (P2). |
 | Missing photo | `bridge._report_missing_original` | User-facing path reconnect guidance. |
-| Capability install | Settings / install actions | Maps missing optional packs; does not yet separate incompatible. |
+| Capability install | Settings / install actions | **P4:** missing = installable; incompatible = pause copy, not install. |
 
 ## Overstatement risks (acceptance gaps)
 
@@ -71,7 +71,7 @@ Intended narrative (programme) vs inventory:
 2. Scanning counts from durable work — progress events + category coverage partially; ingest counters are process events (verify vs durable in P6/P8).  
 3. Completion counts only if supported — needs audit against false cluster/person counts.  
 4. Background reindex sentence — coverage notes exist; not a single banner contract.  
-5. Capability incompatibility banner — **missing** (`incompatible` unused).  
+5. Capability incompatibility banner — **Present (P4)** via notice strip + Settings pause copy.  
 6. Empty search + coverage pointer — partially present.
 
 ## Per-phase GUI obligations (tracking)
@@ -81,7 +81,7 @@ Intended narrative (programme) vs inventory:
 | P1 | Named and Not sure peers; Not sure actionable | Directionally present in People.qml |
 | P2 | Reject confirms suggestion rejected; nothing removed; Undo only if real | Verb exists; copy/Undo audit pending |
 | P3 | Source mutation as retry | Not standardised |
-| P4 | Capability-specific non-blocking | unavailable ≠ incompatible today |
+| P4 | Capability-specific non-blocking | **Closed in P4** |
 | P5 | legacy_unverified in Details only | State absent |
 | P6 | What’s been indexed calm home | Discover text; dedicated view TBD |
 | P7 | Empty ≠ exhaustive if incomplete | Partial |

@@ -80,7 +80,8 @@ Each job covers existing archive media, reports category-specific progress and c
 | People Named / Not sure / Not checked yet (G1) | **Done** | `semblon/inbox.py`, People desk copy |
 | ErasureIntent DB (P2) | **Done** | `docs/invariants/P2-COMPLETION.md`, schema 8 |
 | Source integrity (P3) | **Done** | `docs/invariants/P3-COMPLETION.md` — single-buffer digest/decode |
-| Release Level 3 (full suite / dual-arch / MSI) | **Open** | Not required to call P1 feature work done |
+| Capability manifest (P4) | **Done** | `docs/invariants/P4-COMPLETION.md` — available / unavailable / incompatible |
+| Release Level 3 (full suite / dual-arch / MSI) | **Open** | Not required to call P1–P4 feature work done |
 
 ## Pass verdict
 

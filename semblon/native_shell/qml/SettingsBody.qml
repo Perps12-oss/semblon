@@ -11,6 +11,34 @@ Flickable {
 
     function spoken(row) {
         var id = row ? String(row.itemId || row.id || "") : ""
+        var status = row ? String(row.status || "") : ""
+        // P4: incompatible ≠ missing. Pause copy must not say “not installed”.
+        if (status === "incompatible") {
+            if (id === "face_pack")
+                return {
+                    title: "Recognising faces",
+                    body: "Face recognition paused until update. Photos will still be indexed for objects, text, and regions."
+                }
+            if (id === "region_pack")
+                return {
+                    title: "Finding a similar look",
+                    body: "Finding by look is paused until an update. Colour matching still works."
+                }
+            if (id === "object_pack")
+                return {
+                    title: "Things in pictures",
+                    body: "Naming things in pictures is paused until an update. It never decides who someone is."
+                }
+            if (id === "ocr")
+                return {
+                    title: "Words in pictures",
+                    body: "Reading words in pictures is paused until an update."
+                }
+            return {
+                title: row && row.name ? String(row.name) : "Something extra",
+                body: row && row.detail ? String(row.detail) : "Paused until an update."
+            }
+        }
         var known = {
             "region_pack": ["Finding a similar look", "The extra that matches a detail you point at is not on this computer yet. Colour matching still works."],
             "object_pack": ["Things in pictures", "Semblon cannot name things in pictures until this extra is added. It never decides who someone is."],

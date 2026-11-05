@@ -234,19 +234,37 @@ def _failed_probe(probe_id: str, name: str, purpose: str, kind: str, error: str)
 def _capability_rows(probes: dict) -> list[dict]:
     rows: list[dict] = []
 
+    def _model_status(ready: bool, note: str | None) -> str:
+        from semblon.capability_manifest import (
+            AVAILABLE,
+            INCOMPATIBLE,
+            UNAVAILABLE,
+            classify_readiness,
+        )
+
+        state = classify_readiness(bool(ready), note)
+        if state == AVAILABLE:
+            return "ready"
+        if state == INCOMPATIBLE:
+            return "incompatible"
+        if state == UNAVAILABLE:
+            return "missing"
+        return "missing"
+
     result, error = _invoke(probes["region"])
     if error is not None:
         rows.append(_failed_probe("region_pack", "Finding by look", "Semantic look of a selected area", "model", error))
     else:
         ready, note = result
+        status = _model_status(ready, note)
         rows.append(
             _row(
                 id="region_pack",
                 name="Finding by look",
                 purpose="Semantic look of a selected area",
                 kind="model",
-                status="ready" if ready else "missing",
-                installable=not ready,
+                status=status,
+                installable=status == "missing",
                 detail=(
                     "The pinned region model is installed."
                     if ready
@@ -257,7 +275,7 @@ def _capability_rows(probes: dict) -> list[dict]:
                     "Semblon will download a small add-on so it can find places that look like a detail you point at. "
                     "It does not change who anyone is, and your photos are not touched."
                 ),
-                downloads=not ready,
+                downloads=status == "missing",
             )
         )
 
@@ -266,14 +284,15 @@ def _capability_rows(probes: dict) -> list[dict]:
         rows.append(_failed_probe("object_pack", "Finding by object", "Object labels in a photo", "model", error))
     else:
         ready, note = result
+        status = _model_status(ready, note)
         rows.append(
             _row(
                 id="object_pack",
                 name="Finding by object",
                 purpose="Object labels in a photo",
                 kind="model",
-                status="ready" if ready else "missing",
-                installable=not ready,
+                status=status,
+                installable=status == "missing",
                 detail="The pinned object model is installed."
                 if ready
                 else (note or "Object model is missing."),
@@ -281,7 +300,7 @@ def _capability_rows(probes: dict) -> list[dict]:
                     "Semblon will download a small add-on so it can recognise things in pictures. "
                     "It does not change who anyone is, and your photos are not touched."
                 ),
-                downloads=not ready,
+                downloads=status == "missing",
             )
         )
 
@@ -378,13 +397,14 @@ def _capability_rows(probes: dict) -> list[dict]:
         )
     else:
         face_ok, face_note = result
+        face_status = _model_status(face_ok, face_note)
         rows.append(
         _row(
             id="face_pack",
             name="Face model",
             purpose="Detect faces and compare them on the active pack",
             kind="model",
-            status="ready" if face_ok else "missing",
+            status=face_status,
             installable=False,
             detail="YuNet and SFace are present and pinned."
             if face_ok
@@ -642,7 +662,10 @@ def capability_rows(**kwargs: object) -> list[dict]:
         row
         for row in collect_rows(**kwargs)  # type: ignore[arg-type]
         if row["status"] == "failed"
-        or (row["kind"] in {"model", "tool", "native"} and row["status"] != "ready")
+        or (
+            row["kind"] in {"model", "tool", "native"}
+            and row["status"] not in {"ready"}
+        )
     ]
 
 
