@@ -535,6 +535,10 @@ def run_pilot(
         error_total = sum(len(c.errors) for c in chunks)
         if error_total:
             notes.append(f"Photo errors: {error_total} (first 30 listed)")
+    except KeyboardInterrupt:
+        aborted = "interrupted"
+        code = 130
+        log.warning("pilot interrupted")
     except Exception:
         aborted = traceback.format_exc().strip()
         log.exception("pilot failed")
