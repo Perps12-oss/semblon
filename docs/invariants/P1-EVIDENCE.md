@@ -3,6 +3,7 @@
 **Status:** P1a implementation evidence (Gate B + S5 CONFIRMED + adjudicator C.G.T).  
 **P1 programme:** **NOT COMPLETE** — GUI (A15 / G1) and P1b (B2 → A11; A12 live disposition) remain open.  
 **Freeze base:** `50722efa8a9522867e37db352c30bc5d786ec1e2`  
+**Spot-check SHA:** `8f0484778d575e359b362b4ffadea716891987d3`  
 **Schema:** 7 (`identify_evaluations`)  
 **P0 tools modified:** no  
 

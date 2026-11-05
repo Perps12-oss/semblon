@@ -25,9 +25,9 @@ Do not treat focused pytest green counts as a P1-complete claim.
 | A4 gallery load validation | PASS — independent of probe; see evidence |
 | A11 / A12 | Deferred **P1b** after **B2** (A12 = live writer disposition, acceptance criterion) |
 | A15 GUI | **OPEN** — not A16 |
-| Baseline integrity vs permit list | Record at this commit (`git diff --name-only 50722ef <this>`) |
+| Baseline integrity vs permit list | Spot-check SHA `8f0484778d575e359b362b4ffadea716891987d3` (`git diff --name-only 50722ef 8f04847`) |
 | Privacy / no new p0 tools | PASS |
-| Spot-check protocol (K=12) | **Pending D.S** — check this commit SHA, not a moving tree |
+| Spot-check protocol (K=12) | **Pending D.S** — check SHA `8f04847`, not a moving tree |
 | Adjudicator close | C.G.T named; protocol close awaits spot-check |
 
 ## What shipped (P1a)
