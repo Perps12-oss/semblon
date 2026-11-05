@@ -1,9 +1,11 @@
-"""Measurement-only 100k pilot. No adoption, governor, checkpoint, or UI.
+"""BRAIN pilot. Tag photos, then the Inc 6–10 graph passes.
 
 Loop per chunk: NanoDet C1 observe, then ``sync_tags_from_observations`` for
 that photo. ``rebuild_object_clusters`` runs only when region embeddings have
-grown, and only if ``--no-cluster`` is off. One photo failure is logged and
-skipped. The markdown report is rewritten after every chunk.
+grown, and only if ``--no-cluster`` is off. This pilot does not write region
+crops. Inc 5 bounds workers, checkpoints the chunk, and records a live status
+line. One photo failure is logged and skipped. The markdown report is
+rewritten after every chunk.
 """
 
 from __future__ import annotations
@@ -31,6 +33,17 @@ from semblon.brain.graph import sync_tags_from_observations
 from semblon.brain.nanodet_observer import NanoDetObserver
 from semblon.brain.object_cluster import rebuild_object_clusters
 from semblon.brain.observation import Observation, PhotoRef
+from semblon.brain.resources import (
+    InputPriority,
+    ThroughputMeter,
+    checkpoint_path,
+    choose_execution_provider,
+    classify_pressure,
+    read_checkpoint,
+    status_line,
+    worker_cap,
+    write_checkpoint,
+)
 from semblon.erasure_intent import ErasureIntent, erasure_authorized
 from semblon.store import connect, init_db
 
@@ -371,6 +384,8 @@ def _render(
     swap_events: int | str,
     notes: list[str],
     status: str,
+    live: str = "",
+    rates: dict | None = None,
 ) -> None:
     photos = sum(c.photos for c in chunks)
     tag_s = sum(c.elapsed_s for c in chunks)
@@ -388,6 +403,7 @@ def _render(
         f"- Corpus: `{corpus}` — {selection}",
         f"- Command: `{command}`",
         f"- Status: {status}",
+        f"- Live: {live or 'n/a'}",
         "",
         "## Aggregate",
         f"- Total photos: {photos}",
@@ -397,11 +413,16 @@ def _render(
         f"- Peak RSS: {peak:.1f} MB",
         f"- Cluster runs: {len(cluster_runs)} totalling {_fmt_duration(cluster_s)}",
         f"- Swap events: {swap_events}",
+    ]
+    if rates:
+        rate_text = ", ".join(f"{name}={value:.1f}/min" for name, value in sorted(rates.items()))
+        lines.append(f"- Per-model throughput: {rate_text}")
+    lines.extend([
         "",
         "## Per-chunk",
         "| Chunk | Photos | Elapsed (s) | RSS peak (MB) | Cluster (s) | Throughput (ph/min) |",
         "|---|---|---|---|---|---|",
-    ]
+    ])
     for chunk in chunks:
         cluster = "" if chunk.cluster_s is None else f"{chunk.cluster_s:.1f}"
         lines.append(
@@ -416,6 +437,52 @@ def _render(
     lines.append("")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _close_graph(conn, notes: list[str]) -> None:
+    """Inc 6–10 once, after tags. Failures are notes. No region crops."""
+    from semblon.brain.cooccur import rebuild_cooccurs
+    from semblon.brain.face_link import link_faces
+    from semblon.brain.same_as import link_same_as
+    from semblon.brain.scene_link import brain_gaps, link_scenes
+    from semblon.brain.temporal import rebuild_temporal_next
+
+    steps = (
+        ("temporal", rebuild_temporal_next),
+        ("cooccur", rebuild_cooccurs),
+        ("same_as", link_same_as),
+        ("faces", link_faces),
+        ("scenes", link_scenes),
+    )
+    for name, fn in steps:
+        try:
+            notes.append(f"{name}: {fn(conn)}")
+        except Exception as exc:
+            notes.append(f"{name} failed: {type(exc).__name__}: {exc}")
+    try:
+        gaps = brain_gaps(conn)
+        notes.append(
+            "gaps: "
+            f"tag={gaps['tag']} scene={gaps['scene']} "
+            f"face={gaps['face']} face_unclustered={gaps['face_unclustered']}"
+        )
+    except Exception as exc:
+        notes.append(f"gaps failed: {type(exc).__name__}: {exc}")
+
+
+def _pressure_sample(pressure_fn, rss_fn, swap_fn) -> tuple[float, float]:
+    if pressure_fn is not None:
+        rss, available = pressure_fn()
+        return float(rss), float(available)
+    try:
+        rss, _peak = rss_fn()
+    except Exception:
+        rss = 0.0
+    sample = swap_fn()
+    available = sample.get("available_mb")
+    if not isinstance(available, (int, float)):
+        available = 10_000.0
+    return float(rss), float(available)
 
 
 def run_pilot(
@@ -433,6 +500,10 @@ def run_pilot(
     cluster_fn=None,
     rss_fn=None,
     swap_fn=None,
+    ep_probe=None,
+    pressure_fn=None,
+    priority: InputPriority | None = None,
+    wait_fn=None,
 ) -> PilotResult:
     corpus = Path(corpus)
     out = Path(out)
@@ -460,6 +531,33 @@ def run_pilot(
     ]
     if force:
         notes.append("force: existing C1 observations were replaced")
+    choice = choose_execution_provider(ep_probe)
+    notes.append(
+        f"EP: {choice.chosen} gpu={choice.gpu} identity={choice.identity_path}"
+    )
+    notes.append(
+        "Tag-only floor from the completed 10k run is 506.7 photos/min. "
+        "This run measures its own rate."
+    )
+    priority = priority if priority is not None else InputPriority()
+    meter = ThroughputMeter()
+    wait = wait_fn if wait_fn is not None else time.sleep
+    corpus_key = str(corpus.resolve())
+    ck_path = checkpoint_path(store_path)
+    prior = read_checkpoint(ck_path)
+    skipped = 0
+    skipped_chunks = 0
+    if (
+        prior is not None
+        and prior.get("corpus") == corpus_key
+        and prior.get("limit") == limit
+        and prior.get("selection") == selection
+    ):
+        skipped = min(int(prior["photos_done"]), len(paths))
+        skipped_chunks = int(prior["chunk_index"])
+        paths = paths[skipped:]
+        if skipped:
+            notes.append(f"Resumed at photo {skipped}")
 
     conn = connect(store_path)
     init_db(conn)
@@ -470,20 +568,70 @@ def run_pilot(
     aborted: str | None = None
     code = 0
     executor: ThreadPoolExecutor | None = None
-    if workers > 1:
-        import cv2
+    live = ""
+    done = skipped
+    groups = list(_chunks(paths, chunk))
 
-        # One DNN forward already uses more than one core. Leave the rest
-        # of the machine to the pilot's own threads.
-        cv2.setNumThreads(1)
-        executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="pilot-c1")
+    def _save(photos_done: int, chunk_index: int) -> None:
+        write_checkpoint(
+            ck_path,
+            {
+                "chunk_index": int(chunk_index),
+                "photos_done": int(photos_done),
+                "corpus": corpus_key,
+                "limit": limit,
+                "selection": selection,
+            },
+        )
+
+    def _paint(status: str) -> None:
+        _render(
+            out=out,
+            started=started,
+            machine=machine,
+            corpus=corpus,
+            selection=selection,
+            command=command or f"python -m semblon.brain.pilot --corpus {corpus} --out {out}",
+            arch=arch,
+            execution=execution,
+            ram_mb=ram_mb,
+            cpu=cpu,
+            chunks=chunks,
+            wall_s=time.perf_counter() - wall0,
+            swap_events=swap_events,
+            notes=notes,
+            status=status,
+            live=live,
+            rates=meter.snapshot(),
+        )
+
     try:
-        for index, group in enumerate(_chunks(paths, chunk), start=1):
+        cursor = 0
+        pauses = 0
+        while cursor < len(groups):
+            group = groups[cursor]
+            index = skipped_chunks + cursor + 1
+            rss_now, available = _pressure_sample(pressure_fn, rss_fn, swap_fn)
+            pressure = classify_pressure(rss_now, available)
+            yielding = priority.should_yield()
+            if pressure == "pause" and pauses < 3:
+                pauses += 1
+                notes.append(f"pause {pauses}: available RAM under 256 MB")
+                _save(done, skipped_chunks + cursor)
+                wait(0.05)
+                continue
+            if pressure == "pause" or yielding:
+                active = 1
+                if pressure == "pause":
+                    notes.append("pause held; chunk ran at 1 worker")
+            else:
+                active = worker_cap(workers, pressure)
+            pauses = 0
             rss0, _peak0 = rss_fn()
             t0 = time.perf_counter()
             providers: list[str] = []
             errors: list[str] = []
-            if workers == 1:
+            if active <= 1:
                 for path in group:
                     photo = _photo_ref(path)
                     try:
@@ -495,6 +643,14 @@ def run_pilot(
                     except Exception as exc:
                         _note_photo_error(notes, errors, path, exc)
             else:
+                if executor is None:
+                    import cv2
+
+                    # One DNN forward already uses more than one core.
+                    cv2.setNumThreads(1)
+                    executor = ThreadPoolExecutor(
+                        max_workers=workers, thread_name_prefix="pilot-c1"
+                    )
                 pending: list[Path] = []
                 for path in group:
                     photo = _photo_ref(path)
@@ -566,35 +722,34 @@ def run_pilot(
                 errors=errors,
             )
             chunks.append(measured)
+            meter.add("c1", len(group), elapsed)
+            if cluster_s:
+                meter.add("object_cluster", 1.0, cluster_s)
+            done += len(group)
+            cursor += 1
+            _save(done, skipped_chunks + cursor)
+            live = status_line(
+                photos=done,
+                rss_mb=measured.rss_peak_mb,
+                pressure=pressure,
+                ep=choice.chosen,
+                yielding=yielding,
+                rates=meter.snapshot(),
+                execution=execution,
+            )
             sample = swap_fn()
             if sample.get("status") != "measured":
                 swap_events = "unmeasured"
             elif sample.get("low_memory") and isinstance(swap_events, int):
                 swap_events += 1
-            _render(
-                out=out,
-                started=started,
-                machine=machine,
-                corpus=corpus,
-                selection=selection,
-                command=command or f"python -m semblon.brain.pilot --corpus {corpus} --out {out}",
-                arch=arch,
-                execution=execution,
-                ram_mb=ram_mb,
-                cpu=cpu,
-                chunks=chunks,
-                wall_s=time.perf_counter() - wall0,
-                swap_events=swap_events,
-                notes=notes,
-                status="running",
-            )
+            _paint("running")
             if measured.rss_peak_mb > RSS_ABORT_MB:
                 aborted = f"peak RSS {measured.rss_peak_mb:.0f} MB exceeded {RSS_ABORT_MB} MB"
                 code = 2
                 break
             if len(chunks) > MIN_CHUNKS_BEFORE_SLOW_ABORT:
-                prior = [c.elapsed_s for c in chunks[:-1]]
-                median = statistics.median(prior)
+                prior_elapsed = [c.elapsed_s for c in chunks[:-1]]
+                median = statistics.median(prior_elapsed)
                 if median > 0 and elapsed > SLOW_CHUNK_FACTOR * median:
                     aborted = (
                         f"chunk {index} took {elapsed:.1f}s, "
@@ -602,6 +757,8 @@ def run_pilot(
                     )
                     code = 2
                     break
+        if aborted is None:
+            _close_graph(conn, notes)
         tag_rows = conn.execute(
             """SELECT label, member_count, status FROM brain_nodes
                WHERE node_type='Tag' ORDER BY member_count DESC LIMIT 8"""
@@ -630,23 +787,7 @@ def run_pilot(
         status = "complete" if aborted is None else f"aborted: {aborted}"
         if aborted:
             notes.append(aborted)
-        _render(
-            out=out,
-            started=started,
-            machine=machine,
-            corpus=corpus,
-            selection=selection,
-            command=command or f"python -m semblon.brain.pilot --corpus {corpus} --out {out}",
-            arch=arch,
-            execution=execution,
-            ram_mb=ram_mb,
-            cpu=cpu,
-            chunks=chunks,
-            wall_s=time.perf_counter() - wall0,
-            swap_events=swap_events,
-            notes=notes,
-            status=status,
-        )
+        _paint(status)
         conn.close()
     return PilotResult(
         code=code,

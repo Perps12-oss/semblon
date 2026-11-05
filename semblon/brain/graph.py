@@ -11,7 +11,12 @@ from semblon.brain.confidence import (
     photo_confidence,
     tag_confidence,
 )
-from semblon.brain.edges import normalise_tag_label, require_edge_type, require_node_type
+from semblon.brain.edges import (
+    normalise_tag_label,
+    require_edge_type,
+    require_node_type,
+    require_status,
+)
 from semblon.erasure_intent import ErasureIntent, erasure_authorized
 
 
@@ -318,3 +323,112 @@ def clear_object_clusters(conn: sqlite3.Connection) -> None:
     with erasure_authorized(intent):
         conn.execute("DELETE FROM brain_nodes WHERE node_type='ObjectCluster'")
     conn.commit()
+
+
+def ensure_labeled_node(
+    conn: sqlite3.Connection,
+    node_type: str,
+    label: str,
+    *,
+    status: str = "candidate",
+    confidence: float = 1.0,
+) -> int:
+    """One node per (type, label). Photo and Tag keep their own writers."""
+    require_node_type(node_type)
+    require_status(status)
+    name = str(label).strip()
+    if not name:
+        raise ValueError("empty node label")
+    row = conn.execute(
+        "SELECT id FROM brain_nodes WHERE node_type=? AND label=?",
+        (node_type, name),
+    ).fetchone()
+    if row:
+        return int(row[0])
+    now = _now()
+    cur = conn.execute(
+        """INSERT INTO brain_nodes(
+             node_type, label, canonical_embedding, embedding_pack_hash,
+             confidence, status, first_seen, last_seen, member_count,
+             confidence_model_version, created_at, updated_at)
+           VALUES (?,?,NULL,NULL,?,?,?,?,0,?,?,?)""",
+        (
+            node_type,
+            name,
+            float(confidence),
+            status,
+            now,
+            now,
+            CONFIDENCE_MODEL_VERSION,
+            now,
+            now,
+        ),
+    )
+    return int(cur.lastrowid)
+
+
+def edge_exists(
+    conn: sqlite3.Connection,
+    source_id: int,
+    target_id: int,
+    edge_type: str,
+) -> bool:
+    require_edge_type(edge_type)
+    row = conn.execute(
+        """SELECT 1 FROM brain_edges
+           WHERE source_node_id=? AND target_node_id=? AND edge_type=?""",
+        (int(source_id), int(target_id), edge_type),
+    ).fetchone()
+    return row is not None
+
+
+def delete_edges_of_type(
+    conn: sqlite3.Connection,
+    edge_type: str,
+    *,
+    reason: str,
+    authorized_by: str,
+) -> None:
+    """Delete every edge of one reserved type. Caller commits."""
+    require_edge_type(edge_type)
+    intent = ErasureIntent(
+        requestor="system",
+        scope="library",
+        reason=reason,
+        authorized_by=authorized_by,
+    )
+    with erasure_authorized(intent):
+        conn.execute("DELETE FROM brain_edges WHERE edge_type=?", (edge_type,))
+
+
+def insert_counted_edge(
+    conn: sqlite3.Connection,
+    *,
+    source_id: int,
+    target_id: int,
+    edge_type: str,
+    confidence: float,
+    support_count: int,
+) -> int:
+    """Insert one edge with an explicit support count. Caller has cleared the type."""
+    require_edge_type(edge_type)
+    now = _now()
+    cur = conn.execute(
+        """INSERT INTO brain_edges(
+             source_node_id, target_node_id, edge_type, confidence,
+             support_count, contradict_count, first_seen, last_seen,
+             contradiction_state, created_at, updated_at)
+           VALUES (?,?,?,?,?,0,?,?, 'none',?,?)""",
+        (
+            int(source_id),
+            int(target_id),
+            edge_type,
+            float(confidence),
+            int(support_count),
+            now,
+            now,
+            now,
+            now,
+        ),
+    )
+    return int(cur.lastrowid)

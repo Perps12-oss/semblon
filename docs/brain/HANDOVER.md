@@ -3,7 +3,7 @@
 **Date:** 2026-11-05  
 **Branch:** `grok/p4-capability-manifest` (uncommitted BRAIN work sits on top of P4)  
 **Schema:** **12** (`semblon.store.SCHEMA_VERSION`)  
-**Owner intent:** Inc 1–4 accepted. Next work is **not** Inc 5 until the 100k pilot plan is explicit.
+**Owner intent:** Inc 1–4 accepted. Inc 5–11 are in the tree (schema still 12). The next run is the governed 2M tag pilot, not a fresh 10k and not a region-crop wiring.
 
 Read this file first, then `INC4.md` → `INC3.md` → `INVENTORY.md`. Do **not** invent OBS/SIM tickets or reopen identity thresholds.
 
@@ -28,8 +28,14 @@ P4 and BRAIN share the branch by accident of sequence. BRAIN raised schema 8→1
 | **2** | `brain_observations` / `brain_evidence`, NanoDet wrap, `tagged` outcome, erasure gate | **DONE** — schema 10 |
 | **3** | NanoDet C1 first-adoption (UNMEASURED), `FaceSuggestObserver`, `suggested` outcome, `suggest_floor=0.40` | **ACCEPTED** — schema 11; notes in `INC3.md` |
 | **4** | `brain_nodes` / `brain_edges`, Tag/Photo/ObjectCluster, batch DBSCAN, C5 `existing_object_dbscan` | **ACCEPTED** — schema 12; tag sync is delete-then-insert per photo; plan `INC4.md` |
-| **5+** | Temporal / re-ID / etc. | **NOT STARTED** |
-| **100k pilot** | Measure C1/C4 candidates + `suggest_floor` + latency | **DEFERRED** — between Inc 4 and Inc 5 |
+| **5** | EP probe, memory governor, input yield, chunk checkpoint, status line, per-model throughput | **IN TREE** — `resources.py`, wired in `pilot.py`. Identity stays OpenCV DNN. Azure is not chosen over CPU. |
+| **6** | `TEMPORAL_NEXT` by media mtime | **IN TREE** — `temporal.py` |
+| **7** | `CO_OCCURS` between tags on one photo | **IN TREE** — `cooccur.py` |
+| **8** | `SAME_AS` between ObjectCluster centroids | **IN TREE** — does not link Person and does not write `person_id` |
+| **9** | `HAS_FACE` from `faces.cluster_id` | **IN TREE** — read-only on `faces` |
+| **10** | `HAS_SCENE` from scene embeddings; `brain_gaps` is a query | **IN TREE** — no `brain_gaps` table |
+| **11** | `approximate_predict` against an ObjectCluster centroid | **IN TREE** — not called from product ingest |
+| **2M pilot** | Governed tag run, limit 2_000_000 | **NEXT** — no region crops; 10k is not re-run |
 
 ---
 
@@ -41,12 +47,12 @@ P4 and BRAIN share the branch by accident of sequence. BRAIN raised schema 8→1
 4. **Outcome casing:** P1 uppercase (`ACCEPT`, `UNKNOWN`); brain lowercase (`tagged`, `suggested`). Never ship `SUGGESTED`.
 5. **`edge_type` / `node_type` / `status` = TEXT**, enums in `semblon/brain/edges.py` frozensets — **no SQLite CHECK**. Avoids a migration per new edge type.
 6. **One Tag node per normalised label** (`dog`, not per-photo). Confidence aggregates support.
-7. **ObjectCluster = batch-only** via `rebuild_object_clusters(conn)`. No ingest `approximate_predict` (that is Inc 11).
+7. **ObjectCluster batch rebuild** stays `rebuild_object_clusters(conn)`. `approximate_predict` (Inc 11) assigns one vector to an existing centroid. Product ingest does not call it.
 8. **In-house DBSCAN**, not `hdbscan` package. Provider name: `existing_object_dbscan` (C5). HDBSCAN stays dormant.
 9. **Singleton `n=1` → ObjectCluster `candidate`**, not dropped.
 10. **No `identify_evaluations` row for clustering.** Graph state ≠ evaluation.
 11. **`confidence_model_version=1`** in `semblon/brain/confidence.py`.
-12. **Zero new inference models** through Inc 4. Region embeddings already in SQLite (`modality` `region` / `region_patch`).
+12. **Zero new inference models** through Inc 11. The pilot does not write region crops. Dense patch search stays the product path (`KNOWN-ISSUES.md`).
 
 ---
 
@@ -81,10 +87,13 @@ semblon/brain/
   confidence.py           # v1
   quantize.py             # mean L2 → int8
   graph.py                # sync_tags_from_observations, Photo/Tag/HAS_TAG
-  object_cluster.py       # rebuild_object_clusters (batch DBSCAN)
+  object_cluster.py       # rebuild_object_clusters + approximate_predict
+  resources.py            # Inc 5 governor, EP probe, checkpoint, status
+  temporal.py cooccur.py same_as.py face_link.py scene_link.py
+  pilot.py                # tag pilot; Inc 6–10 run once at the end
 
 docs/brain/
-  INVENTORY.md  INC3.md  INC4.md  HANDOVER.md  policy.yaml
+  INVENTORY.md  INC3.md  INC4.md  INC5.md  HANDOVER.md  policy.yaml  KNOWN-ISSUES.md
 
 tests/brain/              # primary gate for this work
 ```
@@ -154,19 +163,9 @@ Then re-run `pytest tests/brain`. Do not continue coding until that prints `12`.
 
 1. **Inc 4 is ACCEPTED** in `INC4.md`, including the tag-sync reconcile fix (delete-then-insert per photo, `support_count=1`).
 2. **Commit strategy:** prefer BRAIN commits separate from P4. Stop before push.
-3. **Do not start Inc 5** until the 100k pilot scope is agreed. Pass measures (from owner notes):
-
-   | Capability | Measure | Acceptance |
-   |---|---|---|
-   | C1 | NanoDet tag recall @150 | ≥ baseline |
-   | C4 | Face embed quality @150 | FaceKit baseline |
-   | C1 candidate | RAM++ vs NanoDet | adopt if > baseline+ε |
-   | C4 candidate | AdaFace vs FaceKit | adopt if > baseline+ε |
-   | `suggest_floor` | false-suggest rate | tune |
-   | latency | p50/p95 | fill UNMEASURED |
-
-4. **Inc 5** (temporal) only after that baseline exists.
-5. Never CHECK-constrain `edge_type` in a later migration “for cleanliness.”
+3. **Inc 5–11 are in the tree.** Do not wire `index_image_regions` or NanoDet crops into the pilot. Do not re-run the 10k. Do not retune `suggest_floor`.
+4. **2M pilot** is the governed tag run (`--limit 2000000`, workers 4, corpus `K:\LIBRARY`, store outside `docs/`). Yandex.Disk\DCIMaw\me stays held out. Checkpoint sits beside the store.
+5. Never CHECK-constrain `edge_type` in a later migration “for cleanliness.” RAM++ / AdaFace / the hdbscan package stay dormant.
 
 ---
 

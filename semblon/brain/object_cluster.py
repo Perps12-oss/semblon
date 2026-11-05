@@ -17,7 +17,12 @@ from semblon.brain.confidence import (
     object_cluster_status,
 )
 from semblon.brain.edges import require_node_type
-from semblon.brain.graph import clear_object_clusters, ensure_photo_node, upsert_edge
+from semblon.brain.graph import (
+    clear_object_clusters,
+    edge_exists,
+    ensure_photo_node,
+    upsert_edge,
+)
 from semblon.brain.quantize import mean_l2_int8
 from semblon.cluster import _dbscan_precomputed
 
@@ -156,4 +161,70 @@ def rebuild_object_clusters(
         "eps": eps,
         "min_samples": min_samples,
         "confidence_model_version": CONFIDENCE_MODEL_VERSION,
+    }
+
+
+def approximate_predict(
+    conn: sqlite3.Connection,
+    vector: bytes,
+    *,
+    media_id: str,
+    dim: int,
+    eps: float = OBJECT_DBSCAN_EPS,
+) -> dict:
+    """Assign one float32 L2 vector to the nearest ObjectCluster centroid.
+
+    Inc 11. Compares against the stored int8 centroid. Does not run DBSCAN,
+    does not write region embeddings, and does not hook product ingest.
+    """
+    query = np.frombuffer(vector, dtype=np.float32).copy()
+    if query.shape != (dim,):
+        raise ValueError(f"dim mismatch: expected {dim}, got {query.shape[0]}")
+    norm = float(np.linalg.norm(query))
+    if norm == 0.0:
+        return {"matched": False, "reason": "zero vector", "eps": eps}
+    query = query / norm
+    rows = conn.execute(
+        """
+        SELECT id, canonical_embedding, confidence
+          FROM brain_nodes
+         WHERE node_type='ObjectCluster'
+           AND canonical_embedding IS NOT NULL
+        """
+    ).fetchall()
+    best_id: int | None = None
+    best_dist: float | None = None
+    best_conf = 1.0
+    for node_id, blob, confidence in rows:
+        if blob is None or len(blob) != dim:
+            continue
+        centre = np.frombuffer(blob, dtype=np.int8).astype(np.float32) / 127.0
+        centre_norm = float(np.linalg.norm(centre))
+        if centre_norm == 0.0:
+            continue
+        dist = float(1.0 - float(np.dot(query, centre / centre_norm)))
+        if best_dist is None or dist < best_dist:
+            best_dist = dist
+            best_id = int(node_id)
+            best_conf = float(confidence)
+    if best_id is None or best_dist is None or best_dist > eps:
+        return {"matched": False, "distance": best_dist, "eps": eps}
+    photo_id = ensure_photo_node(conn, str(media_id))
+    created = False
+    if not edge_exists(conn, photo_id, best_id, "HAS_OBJECT"):
+        upsert_edge(
+            conn,
+            source_id=photo_id,
+            target_id=best_id,
+            edge_type="HAS_OBJECT",
+            confidence=best_conf,
+        )
+        created = True
+    conn.commit()
+    return {
+        "matched": True,
+        "cluster_id": best_id,
+        "distance": best_dist,
+        "created": created,
+        "eps": eps,
     }

@@ -61,6 +61,9 @@ def test_pilot_runs_on_small_fixture(tmp_path):
     assert "Total photos: 5" in text
     assert "| 1 | 2 |" in text
     assert "test-nanodet" in text or "Providers seen: test-nanodet" in text
+    assert "temporal failed" not in text
+    assert "cooccur failed" not in text
+    assert "'edges': 4" in text
 
 
 def test_pilot_skips_cluster_when_no_cluster_flag(tmp_path, monkeypatch):
