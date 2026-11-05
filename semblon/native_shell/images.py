@@ -256,6 +256,25 @@ def read_cached_thumb(
     return image
 
 
+def read_cached_thumb_any_tier(
+    path: str,
+    *,
+    cache_dir: Path | None,
+    prefer_tiny: bool = True,
+) -> QImage | object:
+    """Cache-only peek across both disk tiers (96 then 384, or reverse).
+
+    Ribbon bridge may accept a 384 hit while QML ``cs/`` prefers 96. Preview
+    tiles must still paint from whichever JPEG already exists — never decode.
+    """
+    order = (_TINY_DISK, _THUMB_DISK) if prefer_tiny else (_THUMB_DISK, _TINY_DISK)
+    for side in order:
+        frame = read_cached_thumb(path, side, cache_dir=cache_dir, require_disk=True)
+        if frame is not _MISS and frame is not None and not getattr(frame, "isNull", lambda: True)():
+            return frame
+    return _MISS
+
+
 def load_display_image(path: str, max_side: int, *, cache_dir: Path | None = None) -> QImage:
     """Thumbnails prefer a small JPEG beside the store. Focus frames stay in memory."""
     thumb = cache_dir is not None and max_side <= _THUMB_CEILING
@@ -328,8 +347,9 @@ class _Decode(QRunnable):
             self._response.finished.emit()
             return
         if self._cache_only:
-            image = read_cached_thumb(
-                self._path, self._max_side, cache_dir=self._cache_dir, require_disk=True
+            prefer_tiny = self._max_side <= _TINY_DISK
+            image = read_cached_thumb_any_tier(
+                self._path, cache_dir=self._cache_dir, prefer_tiny=prefer_tiny
             )
             if image is _MISS:
                 image = QImage()
@@ -367,8 +387,9 @@ class ArchiveImageResponse(QQuickImageResponse):
     def start(self) -> None:
         """Decode after Qt has connected ``finished``. An immediate thread can finish first."""
         if self._cache_only:
-            cached = read_cached_thumb(
-                self._path, self._max_side, cache_dir=self._cache_dir, require_disk=True
+            prefer_tiny = self._max_side <= _TINY_DISK
+            cached = read_cached_thumb_any_tier(
+                self._path, cache_dir=self._cache_dir, prefer_tiny=prefer_tiny
             )
             if cached is not _MISS:
                 self._image = cached

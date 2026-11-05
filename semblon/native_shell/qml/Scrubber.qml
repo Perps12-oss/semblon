@@ -38,8 +38,8 @@ Item {
     property string pressPeriodKind: ""   // year | month | day | undated | ""
     property string pressPeriodKey: ""
 
-    // Phase 3 — loupe presentation (ephemeral). Flag from bridge; default off.
-    property bool loupeEnabled: shell ? shell.loupeEnabled : false
+    // Phase 3 — loupe presentation (ephemeral). Flag from bridge; default on.
+    property bool loupeEnabled: shell ? shell.loupeEnabled : true
     property bool gutterHover: false
     property int hoverReadoutYear: -1
     property int hoverReadoutCount: 0
@@ -47,14 +47,12 @@ Item {
     property int pointerCalendarYear: -1   // authoritative empty-year label (not a detent)
     property bool pointerOverEmpty: false
     property bool loupeVisible: loupeEnabled && (mode === "tracking" || mode === "settling")
-    // When loupe is on, Phase 2 lens needs Shift — avoids competing with gutter HOVER.
-    property bool lensInspectHeld: false
 
     readonly property bool dragging: mode === "armed" || mode === "tracking"
     readonly property bool hovered: seek.containsMouse || dragging
+    // Spatial exclusivity: gutter → Phase 3 HOVER; ribbon → Phase 2 lens. Never both.
     readonly property bool lensOpen: mode === "idle" && lensYear >= 0 && !gutterHover
-            && (!loupeEnabled || lensInspectHeld)
-    readonly property bool phase3Hover: loupeEnabled && mode === "idle" && gutterHover && !lensInspectHeld
+    readonly property bool phase3Hover: loupeEnabled && mode === "idle" && gutterHover
     readonly property real innerTop: 14
     // Chronological dated track occupies the full inner strip. Undated lives in
     // the terminal padding below — outside the dated calendar coordinate system —
@@ -88,16 +86,8 @@ Item {
             }
             return
         }
-        // Phase 3: Shift holds the Phase 2 lens inspect mode (secondary activation).
-        if (loupeEnabled && mode === "idle" && event.key === Qt.Key_Shift) {
-            lensInspectHeld = true
-            if (gutterHover)
-                updateGutterHover(-1, -1)
-            if (hoverY >= 0)
-                updateLensFromHover(hoverY)
-            event.accepted = false
-            return
-        }
+        // Keyboard contract (production): arrows / Home / End step among populated
+        // years; Escape cancels armed/tracking/settling. Loupe follows settling.
         if (event.key === Qt.Key_Up) { stepYear(-1); event.accepted = true }
         else if (event.key === Qt.Key_Down) { stepYear(1); event.accepted = true }
         else if (event.key === Qt.Key_Home) { stepToEnd(true); event.accepted = true }
@@ -105,15 +95,6 @@ Item {
         else if (event.key === Qt.Key_Escape && mode !== "idle") {
             abortGesture(true)
             event.accepted = true
-        }
-    }
-    Keys.onReleased: function (event) {
-        if (event.key === Qt.Key_Shift && loupeEnabled && mode === "idle") {
-            lensInspectHeld = false
-            clearLens()
-            if (hoverX >= 0 && isGutterX(hoverX) && hoverY >= 0)
-                updateGutterHover(hoverX, hoverY)
-            event.accepted = false
         }
     }
 
@@ -241,7 +222,7 @@ Item {
     }
 
     function updateGutterHover(x, y) {
-        if (!loupeEnabled || mode !== "idle" || lensInspectHeld) {
+        if (!loupeEnabled || mode !== "idle") {
             gutterHover = false
             hoverReadoutYear = -1
             hoverReadoutCount = 0
@@ -281,9 +262,7 @@ Item {
     function updateLensFromHover(y) {
         if (mode !== "idle")
             return
-        // When loupe is on, Phase 2 lens is Shift-held only (secondary activation).
-        if (loupeEnabled && !lensInspectHeld)
-            return
+        // Gutter owns Phase 3 HOVER; ribbon owns Phase 2 lens.
         if (loupeEnabled && gutterHover)
             return
         if (y < 0) {
@@ -698,7 +677,6 @@ Item {
         gutterHover = false
         hoverReadoutYear = -1
         hoverReadoutCount = 0
-        lensInspectHeld = false
         pressPeriodKind = ""
         pressPeriodKey = ""
         // Refresh passive geometry after a gesture so the segment matches the new layout.
@@ -741,7 +719,6 @@ Item {
         pointerYearFrac = -1
         pointerCalendarYear = -1
         pointerOverEmpty = false
-        lensInspectHeld = false
         mode = "armed"
     }
 
@@ -767,15 +744,17 @@ Item {
         hoverY = y
         hoverX = pointerX
         if (mode === "armed") {
-            // Phase 3: click without drag is a no-op when loupe is enabled.
-            if (loupeEnabled) {
-                resetIdle()
-                return
-            }
-            // Click without drag: prefer magnified period; else Phase 1 year detent.
+            // Magnified period click (Phase 2) always navigates — loupe does not
+            // steal month/day targets captured under the ribbon lens.
             if (navigateToPressPeriod()) {
                 pressPeriodKind = ""
                 pressPeriodKey = ""
+                return
+            }
+            // Bare year-click without drag: with loupe on, require a scrub so the
+            // destination surface can show landing feedback first.
+            if (loupeEnabled) {
+                resetIdle()
                 return
             }
             selectAtY(y)
@@ -1231,19 +1210,25 @@ Item {
                         delegate: Item {
                             width: Math.floor((previewRow.width - 9) / 4)
                             height: Math.max(36, previewPane.height - previewLabel.height - 8)
+                            // Hide amber shell until a cache-only frame is Ready —
+                            // empty containers are not a loading affordance.
+                            visible: thumb.status === Image.Ready
+                            Image {
+                                id: thumb
+                                anchors.fill: parent
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                cache: true
+                                // Cache-only path: 96 preferred, 384 fallback; never decode.
+                                source: modelData ? ("image://archive/cs/" + modelData) : ""
+                            }
                             Rectangle {
                                 anchors.fill: parent
                                 radius: 3
-                                color: Theme.amberSoft
-                                clip: true
-                                Image {
-                                    anchors.fill: parent
-                                    fillMode: Image.PreserveAspectCrop
-                                    asynchronous: true
-                                    cache: true
-                                    // Cache-only tiny tier — never triggers an original decode.
-                                    source: modelData ? ("image://archive/cs/" + modelData) : ""
-                                }
+                                color: "transparent"
+                                border.width: 1
+                                border.color: Theme.amberSoft
+                                z: 1
                             }
                         }
                     }
@@ -1503,23 +1488,13 @@ Item {
                 // Pointer may leave the gutter mid-drag — Phase 1 continues; loupe follows.
                 edge.track(m.y)
             } else if (edge.mode === "idle") {
-                var shift = !!(m.modifiers & Qt.ShiftModifier)
-                edge.lensInspectHeld = edge.loupeEnabled && shift
-                if (edge.loupeEnabled) {
-                    if (edge.lensInspectHeld) {
-                        // Secondary activation: Shift+hover opens Phase 2 lens.
-                        if (edge.gutterHover)
-                            edge.updateGutterHover(-1, -1)
-                        edge.updateLensFromHover(m.y)
-                    } else if (edge.isGutterX(m.x)) {
-                        edge.updateGutterHover(m.x, m.y)
-                    } else {
-                        // Ribbon without Shift: neither surface (no flicker fight).
-                        if (edge.gutterHover)
-                            edge.updateGutterHover(-1, -1)
-                        edge.clearLens()
-                    }
+                if (edge.loupeEnabled && edge.isGutterX(m.x)) {
+                    // Gutter → Phase 3 HOVER only.
+                    edge.updateGutterHover(m.x, m.y)
                 } else {
+                    // Ribbon (or loupe off) → Phase 2 lens; clear gutter first.
+                    if (edge.gutterHover)
+                        edge.updateGutterHover(-1, -1)
                     edge.updateLensFromHover(m.y)
                 }
             }

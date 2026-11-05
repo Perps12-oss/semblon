@@ -397,18 +397,27 @@ Item {
         spacing: 3
         Repeater {
             model: loupe.sampleIds
-            delegate: Rectangle {
+            delegate: Item {
                 width: Theme.loupeThumb
                 height: Theme.loupeThumb
-                radius: 3
-                color: Theme.amberSoft
-                clip: true
+                // Only paint when cache-only decode succeeds — no empty amber tiles.
+                visible: loupeThumb.status === Image.Ready
                 Image {
+                    id: loupeThumb
                     anchors.fill: parent
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     cache: true
+                    // cs/ prefers 96, falls back to 384 on disk; never opens originals.
                     source: modelData ? ("image://archive/cs/" + modelData) : ""
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 3
+                    color: "transparent"
+                    border.width: 1
+                    border.color: Theme.amberSoft
+                    z: 1
                 }
             }
         }

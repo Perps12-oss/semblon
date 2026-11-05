@@ -98,7 +98,7 @@ This preview panel is Phase 2. Phase 3's precision loupe is a separate drag-dest
 ### Implementation
 
 - Sampling / cells: `semblon/native_shell/temporal_ribbon.py` (`year_cells`, `month_cells_for_year`, `day_cells_for_month`).
-- Cache gate: `thumb_on_disk` / `read_cached_thumb(..., require_disk=True)` — ribbon colour never keeps ghost frames after a deleted JPEG; preview uses `image://archive/cs/…` (cache-only, no original decode).
+- Cache gate: `thumb_on_disk` / `read_cached_thumb(..., require_disk=True)` / `read_cached_thumb_any_tier` — ribbon colour never keeps ghost frames after a deleted JPEG; preview uses `image://archive/cs/…` (cache-only, 96 preferred with 384 fallback, no original decode).
 - Sampling: `sampleIds` ranked by media-id hash (not DB/row order), stratified across months/days so a burst day cannot fill every preview slot. Stable under reorder **and** small inserts (adding one photograph replaces at most one representative). Summary work is O(periods × budget) after one generation-scoped id load; year/month payloads are cached per archive generation.
 - Hover: delayed lens leave + lens `MouseArea` so the pointer can move between strip and preview without the lens flickering shut. Hover still never moves `contentY`.
 - Acceptance: `tests/test_temporal_ribbon_acceptance.py` (cache-only `cs/`, deletion, burst/insert sampling, 100k bound, strip↔preview interaction).
@@ -117,27 +117,34 @@ Phase 3 shows **how far the user is jumping and where they will land** before po
 
 Density silhouette on the jump axis is decoration positioned by the same canonical chronology; it is never a coordinate source.
 
-### Interaction (flag `loupe_enabled`)
+### Interaction (flag `loupe_enabled`, default **on**)
 
 Modes stay Phase 1 (`idle | armed | tracking | settling`). Mapping: HOVER = idle + reserved gutter; DRAGGING = tracking; SETTLING unchanged.
 
 | Surface | Behaviour when loupe enabled |
 |---|---|
-| **Gutter hover** | Lightweight calendar year + count readout only. No thumbs, no jump, no `contentY` move. |
-| **Ribbon hover** | Idle without modifier: neither Phase 2 nor Phase 3 surface (no flicker fight). |
-| **Shift + hover** | Secondary activation for the Phase 2 lens/preview. Never simultaneous with gutter HOVER. |
-| **Click without drag** | No-op (returns to idle). Flag off restores Phase 1/2 click-nav. |
+| **Gutter hover** | Phase 3 HOVER: lightweight calendar year + count only. No thumbs, no jump, no `contentY` move. |
+| **Ribbon hover** | Phase 2 lens/preview (ordinary hover). Spatial exclusivity with gutter — never simultaneous. |
+| **Click without drag** | Magnified month/day under the Phase 2 lens still navigates. Bare year-click (no magnified period) is a no-op — year jumps use drag so the loupe can show landing feedback. `setLoupeEnabled(false)` restores bare year click-nav + destination pill. |
 | **Drag** | Loupe replaces destination pill; `contentY` unchanged until release commits through Roll navigate. Empty years show `YYYY is empty — will jump to ZZZZ` using the same resolved detent as commit (`Roll.navConsumedYear`). |
 | **Undated during drag** | Shows “Undated”; no jump axis / thumbs; release does not commit. |
+| **Keyboard** | ↑/↓ and Home/End step among **populated** years; Escape cancels armed/tracking/settling. Loupe follows settling chrome. |
 | **Escape** | Cancels drag (Phase 1 settling cancel preserved). |
 
-Default: `loupe_enabled=false` until usability acceptance (pill vs loupe). Tests enable the flag explicitly. A small usability study is a practical go/no-go signal, not proof of statistical significance — do not enable the production flag from automated tests alone.
+Cache-only thumbs (`image://archive/cs/…`): prefer disk tier 96, fall back to 384 if that is the only JPEG present; never decode originals. Tiles stay hidden until `Image.Ready` (no empty amber shells).
+
+### Release gates (owner machine)
+
+- Windows RTL layout: loupe stays inside the window.
+- OS Reduce Motion: loupe opacity / settle motion collapses to 0 duration.
+- Manual scrub on a large archive: destination copy matches land; thumbs paint when cache warm.
 
 ### Implementation
 
 - `qml/TemporalLoupe.qml`, loupe tokens on `Theme.qml`, `ShellBridge.loupeEnabled` / `setLoupeEnabled`.
 - Scrubber wires presentation only; detent / navigate / geometry stay Phase 1.
-- Acceptance: `tests/test_temporal_loupe.py`.
+- Thumb resolution: `read_cached_thumb_any_tier` shared by bridge ribbon peeks and `cs/`/`ct/` provider.
+- Acceptance: `tests/test_temporal_loupe.py`, `tests/test_thumb_cache.py`.
 
 ## Capture dates and the Recycle Bin
 
