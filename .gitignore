@@ -23,7 +23,8 @@ semblon/observatory/
 .pytest_tmp/
 
 # P0 SQL traces / reconcile dumps (regenerate via tools/p0/; docs/invariants/ is SoT)
-artifacts/p0/
+artifacts/p0/*
+!artifacts/p0/MANIFEST.json
 
 # Full small-object bench dumps (headline summary stays in docs/evidence/)
 docs/evidence/small-object-recall.raw.json

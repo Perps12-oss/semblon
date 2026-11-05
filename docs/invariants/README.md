@@ -9,8 +9,13 @@ Governing documentation for P0–P9. Scope is frozen. Do not add P10+.
 | [P0-LIFECYCLE.md](P0-LIFECYCLE.md) | Real `work_items` / `category_coverage` / run semantics |
 | [P0-IDENTITY-COVERAGE.md](P0-IDENTITY-COVERAGE.md) | First I1 coverage manifest |
 | [P0-GUI-STATE-TRANSLATION.md](P0-GUI-STATE-TRANSLATION.md) | G1 translation table and acceptance gaps |
-| [P0-COMPLETION.md](P0-COMPLETION.md) | P0 completion record (sign-off required) |
+| [P0-COMPLETION.md](P0-COMPLETION.md) | P0 completion record (Gate B still needs sign-off) |
+| [P1-CONFIRMATION.md](P1-CONFIRMATION.md) | P1 read-back of frozen P0 |
+| [P1-PLAN.md](P1-PLAN.md) | P1 plan + gate structure |
+| [P1-REVIEW-DISPOSITION.md](P1-REVIEW-DISPOSITION.md) | S1–S5 decisions (B.H) |
+| [P1-PERMIT-LIST.md](P1-PERMIT-LIST.md) | Exact path permit list for S5 |
+| [P1-REJECTION-PATH-AUDIT.md](P1-REJECTION-PATH-AUDIT.md) | Eight rejection-path baseline audit |
 
-**Authorised now:** P0 only. P1 implementation waits for explicit sign-off on `P0-COMPLETION.md`.
+**Authorised now:** baseline I1 detectors + docs (S1 narrow exception). **Not authorised:** P1 behaviour fix / schema until Gate B.
 
-**Instruments (observation only):** `tools/p0/`.
+**Frozen:** `tools/p0/` — do not modify. Raw P0 traces: `artifacts/p0/*` (gitignored); durable pointer `artifacts/p0/MANIFEST.json`.
