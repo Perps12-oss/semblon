@@ -28,7 +28,7 @@ def _face():
             "face_w": 100,
             "face_h": 100,
             "dim": 4,
-            "embedding": np.zeros(4, dtype=np.float32),
+            "embedding": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
         }
     ]
 
@@ -61,7 +61,7 @@ def test_schema_has_work_items(tmp_path):
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "work_items" in tables
     version = conn.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()[0]
-    assert version == SCHEMA_VERSION == "6"
+    assert version == SCHEMA_VERSION == "7"
     conn.close()
 
 

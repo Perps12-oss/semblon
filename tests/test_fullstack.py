@@ -102,7 +102,7 @@ def test_watch_once(tmp_path):
     events = []
     fake_if = type("m", (), {"__version__": "0.test"})()
     fake_ort = type("m", (), {"__version__": "0.test"})()
-    vec = np.zeros(4, dtype=np.float32)
+    vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
     def faces(_app, _img):
         return [

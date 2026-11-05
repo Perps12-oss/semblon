@@ -116,6 +116,7 @@ _SAFE_PRIMARY_PATTERNS = (
     re.compile(r"^Reset finished\. [^\n]+\.$"),
     re.compile(r"^Activity: [^\n]+\.$"),
     re.compile(r"^Unresolved: [^\n]+\.$"),
+    re.compile(r"^People: [^\n]+\.$"),
     re.compile(r"^Review counts: [^\n]+\.$"),
     re.compile(r"^Duplicates: [^\n]+\.$"),
     re.compile(r"^GPU: [^\n]+\.$"),
@@ -191,7 +192,7 @@ def decision_success(kind: str, detail: str = "") -> str:
     if lowered == "split":
         return "Split the selected faces into a new group."
     if lowered == "rule_out":
-        return "Marked this as not the same person."
+        return "We'll stop suggesting this match. Nothing was removed."
     return "Saved your decision."
 
 

@@ -417,27 +417,40 @@ class ArchiveAdapter:
             if "unknown run" in text or "store not found" in text or "no run" in text:
                 return Result("empty", "Unresolved: none yet.", {"counts": {}})
             return Result("unavailable", "Unresolved: could not be read.", {})
+        from semblon.inbox import people_identity_copy
+
         counts = dict(rec.get("counts") or {})
         shown = {
             "UNKNOWN": int(counts.get("UNKNOWN") or 0),
+            "NOT_CHECKED": int(counts.get("NOT_CHECKED") or 0),
             "REVIEW_REQUIRED": int(counts.get("REVIEW_REQUIRED") or 0),
+            "KNOWN": int(counts.get("KNOWN") or 0),
         }
         if include_rejected:
             shown["REJECTED"] = int(counts.get("REJECTED") or 0)
         faces = []
         for item in rec.get("items") or []:
             bucket = str(item.get("bucket") or "")
-            if bucket not in shown:
-                continue
             if bucket == "REJECTED" and not include_rejected:
                 continue
+            if bucket not in {"UNKNOWN", "NOT_CHECKED", "REVIEW_REQUIRED"} and not (
+                include_rejected and bucket == "REJECTED"
+            ):
+                continue
             faces.append({"face_id": str(item.get("face_id") or ""), "bucket": bucket})
-        total = sum(shown.values())
-        if total <= 0:
-            return Result("empty", "Unresolved: none yet.", {"counts": shown, "faces": []})
+        open_count = (
+            shown["UNKNOWN"] + shown["NOT_CHECKED"] + shown["REVIEW_REQUIRED"]
+            + (shown.get("REJECTED") or 0)
+        )
+        if open_count <= 0:
+            return Result(
+                "empty",
+                people_identity_copy(counts),
+                {"counts": shown, "faces": []},
+            )
         return Result(
             "ready",
-            f"Unresolved: {shown['UNKNOWN']} unknown, {shown['REVIEW_REQUIRED']} to review.",
+            people_identity_copy(counts),
             {"counts": shown, "faces": faces},
         )
 

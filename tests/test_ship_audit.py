@@ -716,7 +716,7 @@ def test_parallel_hash_decodes_the_same_bytes(tmp_path):
         "face_w": 40,
         "face_h": 40,
         "dim": 4,
-        "embedding": np.zeros(4, np.float32),
+        "embedding": np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     }]
     fake_if = type("m", (), {"__version__": "0.test"})()
     fake_ort = type("m", (), {"__version__": "0.test"})()

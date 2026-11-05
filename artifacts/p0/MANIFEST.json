@@ -1,0 +1,44 @@
+{
+  "baseline_head": "af0758537fdd4f5240439ef163918db14defea9d",
+  "freeze_commit": "50722efa8a9522867e37db352c30bc5d786ec1e2",
+  "generated_at_utc": "2026-11-05T01:48:09.891918+00:00",
+  "note": "Raw JSON stays gitignored; this manifest is the durable pointer.",
+  "artifacts": [
+    {
+      "path": "artifacts\\p0\\pytest_focused.log",
+      "sha256": "60e4970937fdc1868ef2d6215993e67ab47646db4698c1309937985595352084",
+      "bytes": 642,
+      "mtime_utc": "2026-11-05T00:57:22.890910+00:00"
+    },
+    {
+      "path": "artifacts\\p0\\reconcile.json",
+      "sha256": "c9b286a610500c4532cb1e3ce888425a4883d063b4d5a9569434ca3965414662",
+      "bytes": 21359,
+      "mtime_utc": "2026-11-05T00:58:13.135626+00:00"
+    },
+    {
+      "path": "artifacts\\p0\\sql_runtime_trace.json",
+      "sha256": "6c8caa3223499c81099027fd7b69e587ddedb6ecff43aa24ba27bff3ad5b5816",
+      "bytes": 116860446,
+      "mtime_utc": "2026-11-05T00:57:20.142692+00:00"
+    },
+    {
+      "path": "artifacts\\p0\\sql_static_inventory.json",
+      "sha256": "4be00069a59e8497335592bc6b771685b8c4958d99fba5aab03933cbb2a5b039",
+      "bytes": 411151,
+      "mtime_utc": "2026-11-05T00:48:35.382242+00:00"
+    },
+    {
+      "path": "artifacts\\p0\\workflow_smoke.json",
+      "sha256": "4823874f6683317eee5d8e90ed032cec140213fff518d7505b4eeec7b6124621",
+      "bytes": 6094,
+      "mtime_utc": "2026-11-05T00:51:14.437207+00:00"
+    },
+    {
+      "path": "artifacts\\p0\\workflow_smoke_sql_trace.json",
+      "sha256": "b396db07ce198ba9c0327a70889b5adfafd46a3913b256d60e8072781541f753",
+      "bytes": 1032694,
+      "mtime_utc": "2026-11-05T00:51:14.410022+00:00"
+    }
+  ]
+}

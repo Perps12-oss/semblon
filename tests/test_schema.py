@@ -31,12 +31,17 @@ def test_init(tmp_path):
     conn = _conn(tmp_path)
     ver = conn.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()
     assert ver[0] == SCHEMA_VERSION
+    assert SCHEMA_VERSION == "8"
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "observation_items" in tables
     assert "embeddings" in tables
     assert "tracks" in tables
     assert "relationships" in tables
     assert "events" in tables
+    assert "identify_evaluations" in tables
+    assert "7" in {
+        str(r[0]) for r in conn.execute("SELECT version FROM schema_migrations")
+    }
 
 
 def test_duplicate_sha256(tmp_path):

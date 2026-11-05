@@ -118,7 +118,7 @@ def test_ingest_video_uses_sampled_observations(tmp_path):
     (folder / "a.jpg").write_bytes(b"still")
     (folder / "clip.mp4").write_bytes(b"video-bytes")
     store = tmp_path / "store.sqlite"
-    vec = np.zeros(4, dtype=np.float32)
+    vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
     sampled = [
         (0, 0, np.zeros((80, 80, 3), dtype=np.uint8)),
         (25, 1000, np.zeros((80, 80, 3), dtype=np.uint8)),
@@ -171,7 +171,7 @@ def test_ingest_skips_seen_video_hash(tmp_path):
     folder.mkdir()
     (folder / "clip.mp4").write_bytes(b"same-video")
     store = tmp_path / "store.sqlite"
-    vec = np.zeros(4, dtype=np.float32)
+    vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
     sampled = [(0, 0, np.zeros((80, 80, 3), dtype=np.uint8))]
     fake_if = type("m", (), {"__version__": "0.test"})()
     fake_ort = type("m", (), {"__version__": "0.test"})()

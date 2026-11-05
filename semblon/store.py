@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = "6"
+SCHEMA_VERSION = "8"
 
 DDL = """
 PRAGMA journal_mode=WAL;
@@ -179,6 +179,9 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
+    from semblon.erasure_intent import install_erasure_guard
+
+    install_erasure_guard(conn)
     return conn
 
 
@@ -206,6 +209,7 @@ LIBRARY_TABLES = (
     "work_items",
     "eval_pairs",
     "eval_sets",
+    "identify_evaluations",
     "decisions",
     "group_members",
     "relationships",
@@ -290,6 +294,10 @@ def delete_observation_tree(conn: sqlite3.Connection, observation_id: str) -> No
         if _table_exists(conn, "eval_pairs"):
             exec_in_chunks(conn, "DELETE FROM eval_pairs WHERE face_a IN", face_ids)
             exec_in_chunks(conn, "DELETE FROM eval_pairs WHERE face_b IN", face_ids)
+        if _table_exists(conn, "identify_evaluations"):
+            exec_in_chunks(
+                conn, "DELETE FROM identify_evaluations WHERE probe_face_id IN", face_ids
+            )
         exec_in_chunks(conn, "DELETE FROM decisions WHERE face_id IN", face_ids)
         exec_in_chunks(conn, "DELETE FROM faces WHERE face_id IN", face_ids)
     conn.execute("DELETE FROM observations WHERE observation_id=?", (observation_id,))
@@ -451,12 +459,75 @@ CREATE INDEX IF NOT EXISTS ix_category_coverage_cat_state
   ON category_coverage(category, state);
 """
 
+MIGRATION_7 = """
+CREATE TABLE IF NOT EXISTS identify_evaluations (
+  evaluation_id     TEXT PRIMARY KEY,
+  probe_face_id     TEXT REFERENCES faces(face_id) ON DELETE CASCADE,
+  embedding_pack    TEXT NOT NULL,
+  embedding_dim     INTEGER NOT NULL,
+  run_id            TEXT NOT NULL REFERENCES runs(run_id),
+  outcome           TEXT NOT NULL CHECK (outcome IN ('ACCEPT','UNKNOWN')),
+  reason            TEXT,
+  threshold         REAL NOT NULL,
+  policy_version    TEXT NOT NULL,
+  gallery_size      INTEGER,
+  score_top1        REAL,
+  score_top2        REAL,
+  margin            REAL,
+  person_id         TEXT REFERENCES persons(person_id) ON DELETE SET NULL,
+  source            TEXT NOT NULL,
+  created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_identify_evaluations_probe
+  ON identify_evaluations(probe_face_id);
+CREATE INDEX IF NOT EXISTS ix_identify_evaluations_run
+  ON identify_evaluations(run_id);
+"""
+
+# P2: fail-closed deletes for persons, named faces, and human decisions.
+# Machine identify rows and unnamed faces stay clearable by maintenance.
+MIGRATION_8 = """
+CREATE TRIGGER IF NOT EXISTS trg_erasure_persons_bd
+BEFORE DELETE ON persons
+FOR EACH ROW
+BEGIN
+  SELECT CASE
+    WHEN semblon_erasure_ok('persons', NULL, OLD.person_id, NULL) = 1 THEN NULL
+    ELSE RAISE(ABORT, 'erasure intent required to delete person')
+  END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_erasure_faces_named_bd
+BEFORE DELETE ON faces
+FOR EACH ROW
+WHEN OLD.person_id IS NOT NULL
+BEGIN
+  SELECT CASE
+    WHEN semblon_erasure_ok('faces', NULL, OLD.person_id, OLD.face_id) = 1 THEN NULL
+    ELSE RAISE(ABORT, 'erasure intent required to delete named face')
+  END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_erasure_decisions_human_bd
+BEFORE DELETE ON decisions
+FOR EACH ROW
+WHEN OLD.kind IN ('name', 'reject', 'merge', 'split', 'note')
+BEGIN
+  SELECT CASE
+    WHEN semblon_erasure_ok('decisions', OLD.kind, OLD.person_id, OLD.face_id) = 1 THEN NULL
+    ELSE RAISE(ABORT, 'erasure intent required to delete human decision')
+  END;
+END;
+"""
+
 MIGRATIONS = (
     (2, MIGRATION_2),
     (3, MIGRATION_3),
     (4, MIGRATION_4),
     (5, MIGRATION_5),
     (6, MIGRATION_6),
+    (7, MIGRATION_7),
+    (8, MIGRATION_8),
 )
 
 
@@ -614,6 +685,10 @@ def init_db(conn: sqlite3.Connection) -> None:
     # invent an empty decisions table and hide the rows sitting in decisions_new.
     if _table_exists(conn, "decisions_new") and not _table_exists(conn, "decisions"):
         _apply_migration_4(conn, datetime.now(timezone.utc).isoformat())
+    from semblon.erasure_intent import install_erasure_guard
+
+    # Triggers from schema 8 call semblon_erasure_ok; register before DDL/migrate.
+    install_erasure_guard(conn)
     conn.executescript(DDL)
     apply_migrations(conn)
 

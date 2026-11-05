@@ -1,3 +1,38 @@
+## Current branch addendum — Invariant hardening P2 (2026-11-05)
+
+**Branch:** `grok/p2-decision-erasure` · **Schema:** 8 · **From P1 tip:** `56990af`.
+
+**P2 human decision preservation + ErasureIntent DB — implemented (Level 2).** People redo no longer deletes faces that carry human decisions; schema-8 BEFORE DELETE triggers + `semblon_erasure_ok` fail closed without ErasureIntent; `delete_person` / `wipe_library` present authorised intent; rule-out copy says nothing was removed. Status: `docs/invariants/P2-COMPLETION.md`.
+
+Focused P2 verification (Windows):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q `
+  tests/test_p2_decision_erasure.py tests/test_schema.py tests/test_identify.py `
+  tests/test_reembed.py tests/test_people_identity_g1.py tests/test_face005.py `
+  tests/test_critique_p0.py tests/test_live.py tests/test_category_backfill.py `
+  tests/test_ship_audit.py tests/test_review.py --basetemp=.pytest-tmp-p2
+```
+
+**Result at land:** **138 passed**. `tools/p0/` unchanged. Thresholds and `decisions.kind` unchanged. **P3 not started.**
+
+## Current branch addendum — Invariant hardening P1 (2026-11-05)
+
+**Branch:** `grok/p0-invariant-evidence` · **Schema:** 7 · **Freeze base:** `50722ef`.
+
+**P1 identity trust boundary — implemented (Level 2).** Fail-closed compare/persist; gallery load validation; durable `identify_evaluations`; re-embed invalidates stale evaluations; live retention/identify writes evaluations and never auto-assigns `person_id`; People/inbox wording distinguishes Named / Not sure / Not checked yet (machine ACCEPT ≠ named). Status: `docs/invariants/P1-COMPLETION.md`.
+
+Focused P1 verification (Windows):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q `
+  tests/test_identify.py tests/test_p1_i1_baseline_detectors.py tests/test_schema.py `
+  tests/test_reembed.py tests/test_people_identity_g1.py tests/test_face005.py `
+  tests/test_critique_p0.py tests/test_live.py
+```
+
+**Result at land:** see commit message / `P1-EVIDENCE.md` (57 passed on the P1-focused set including live). `tools/p0/` unchanged vs freeze. Thresholds and `decisions.kind` unchanged. **Superseded for active work by P2 addendum above.**
+
 ## Current branch addendum — A→B→C→D evidence lock (retrieval + match geometry + release ops)
 
 **Branch:** `cursor/abc-then-d-fb3d`. Evidence from this checkout’s code and docs. Not Gate C / Gate L PASS. Not a PhotoDisco rebuild.

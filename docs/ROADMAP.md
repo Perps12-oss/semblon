@@ -71,6 +71,16 @@ The Discover category chooser is a presentation/routing change. Targeted full-li
 
 Each job covers existing archive media, reports category-specific progress and coverage, supports cooperative pause/cancel/resume through `JobEngine`, and skips coverage that is still valid for the same file and provider version. See `docs/decisions/2026-10-27-category-backfill.md`. Targeted tests passed (34). The full suite has not been run in the environment that landed this slice.
 
+## Identity trust (P1)
+
+| Outcome | Status | Evidence |
+|---|---|---|
+| Fail-closed identity compare / persist / durable UNKNOWN | **Done** | `docs/invariants/P1-COMPLETION.md`, schema 7 |
+| Re-embed + live writer lifecycle | **Done** | `semblon/reembed.py`, `semblon/live.py` + focused tests |
+| People Named / Not sure / Not checked yet (G1) | **Done** | `semblon/inbox.py`, People desk copy |
+| ErasureIntent DB (P2) | **Done** | `docs/invariants/P2-COMPLETION.md`, schema 8 |
+| Release Level 3 (full suite / dual-arch / MSI) | **Open** | Not required to call P1 feature work done |
+
 ## Pass verdict
 
 Milestones **1–4 are COMPLETE** on the evidence already in BUILD-STATUS.  

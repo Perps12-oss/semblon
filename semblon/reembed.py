@@ -33,6 +33,7 @@ from semblon.identity_config import (
     EXPECTED_FACE_DIM,
     PACK_FAMILY,
 )
+from semblon.compare import CompareError, validate_identity_embedding
 from semblon.ingest import size_band
 from semblon.observers import ensure_face_item
 from semblon.store import connect, init_db, writer_lock
@@ -80,6 +81,29 @@ def _status_for(face: dict) -> str:
     if min(face["face_w"], face["face_h"]) < CLUSTER_MIN_SIDE:
         return "low_quality"
     return "ok"
+
+
+def _contract_blob(pack: str, face: dict) -> tuple[str, bytes | None, str | None, int | None]:
+    """Fail-closed embedding write. Invalid contract → rejected with cleared blob."""
+    status = _status_for(face)
+    if status == "rejected":
+        return status, None, None, None
+    vec = np.asarray(face["embedding"], dtype=np.float32)
+    blob, dim = vec.tobytes(), int(vec.size)
+    try:
+        validate_identity_embedding(pack, dim, blob)
+    except CompareError:
+        return "rejected", None, None, None
+    return status, blob, pack, dim
+
+
+def _invalidate_evaluations(conn, face_ids: list[str]) -> None:
+    """Stale identify rows must not outlive a rewritten embedding."""
+    if not face_ids:
+        return
+    from semblon.store import exec_in_chunks
+
+    exec_in_chunks(conn, "DELETE FROM identify_evaluations WHERE probe_face_id IN", face_ids)
 
 
 def reembed_stills(
@@ -221,11 +245,7 @@ def reembed_stills(
                 used_old.add(fid)
                 used_new.add(i)
                 det = detected[i]
-                status = _status_for(det)
-                vec = np.asarray(det["embedding"], dtype=np.float32)
-                blob = None if status == "rejected" else vec.tobytes()
-                pack = None if status == "rejected" else pid
-                dim = None if status == "rejected" else int(vec.size)
+                status, blob, pack, dim = _contract_blob(pid, det)
                 x1, y1, x2, y2 = det["bbox"]
                 fw, fh = det["face_w"], det["face_h"]
                 conn.execute(
@@ -240,30 +260,30 @@ def reembed_stills(
                         blob, pack, dim, status, fid,
                     ),
                 )
+                _invalidate_evaluations(conn, [fid])
                 n_matched += 1
                 n_faces += 1
                 if status == "ok":
                     n_ok += 1
 
+            unmatched = []
             for old in old_faces:
                 fid = str(old["face_id"])
                 if fid in used_old:
                     continue
+                unmatched.append(fid)
                 conn.execute(
                     """UPDATE faces SET status='rejected', embedding=NULL,
                        embedding_pack=NULL, embedding_dim=NULL, cluster_id=NULL
                        WHERE face_id=?""",
                     (fid,),
                 )
+            _invalidate_evaluations(conn, unmatched)
 
             for i, det in enumerate(detected):
                 if i in used_new:
                     continue
-                status = _status_for(det)
-                vec = np.asarray(det["embedding"], dtype=np.float32)
-                blob = None if status == "rejected" else vec.tobytes()
-                pack = None if status == "rejected" else pid
-                dim = None if status == "rejected" else int(vec.size)
+                status, blob, pack, dim = _contract_blob(pid, det)
                 x1, y1, x2, y2 = det["bbox"]
                 fw, fh = det["face_w"], det["face_h"]
                 fid = uuid.uuid4().hex

@@ -34,7 +34,9 @@ Item {
         wrapMode: Text.WordWrap
         text: shell.peopleEmpty
               ? "No faces to look at yet. Add a folder and faces will appear here."
-              : "These are faces that look alike. Pick one, then give it a name, or leave it as unknown."
+              : (shell.unresolvedText
+                 ? shell.unresolvedText + " Named people are people you named. Not sure means Semblon checked and could not tell. Not checked yet means no check yet. A group is not a person until you name it."
+                 : "These are faces that look alike. Pick one, then give it a name, or leave it as not sure.")
         font.family: Theme.ui
         font.pixelSize: Theme.body
         color: Theme.muted
