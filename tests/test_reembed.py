@@ -57,7 +57,18 @@ def test_reembed_invalidates_identify_evaluations(tmp_path, monkeypatch):
     monkeypatch.setattr("semblon.reembed.discover_weight_hashes", lambda: {})
     monkeypatch.setattr("semblon.reembed.pack_id", lambda *a, **k: "pack-re")
     monkeypatch.setattr("semblon.reembed.embed_bgr", fake_embed)
-    monkeypatch.setattr("semblon.reembed.cv2.imread", lambda *_a, **_k: np.zeros((20, 20, 3), np.uint8))
+
+    from semblon.source_integrity import SourceBuffer
+
+    def fake_load(path, *, expected_sha256=None):
+        return np.zeros((20, 20, 3), np.uint8), SourceBuffer(
+            digest=str(expected_sha256 or "x"),
+            data=b"\x00",
+            mtime_ns=0,
+            byte_size=1,
+        )
+
+    monkeypatch.setattr("semblon.source_integrity.load_source_bgr", fake_load)
     photos = tmp_path / "photos"
     photos.mkdir()
     a = photos / "a.jpg"

@@ -20,7 +20,7 @@ This is a **contract inventory**, not permission to redesign the shell. P0 does 
 | `below_threshold` | *(no ordinary wording)* | Reason detail only when requested | Scores live in decisions/policy; ordinary UI does not show reason codes — OK-ish; no formal Details reason panel contract tests. |
 | `pack_mismatch` / `non_finite` | Recognition needs re-check | Banner when relevant | Backend refuses mismatch (tests); **no dedicated G1 banner copy** for non_finite (no check yet). |
 | `unsupported` | File type not supported | Per-item coverage details | Backend: `skipped`+`outcome=unsupported`. Discover coverage text explains categories; not always per-item in Field. |
-| `SOURCE_CHANGED` | Changed during scan — will retry | Transient status | **Absent** as named state. Ingest uses mtime/size/hash; path re-read gaps are I3 (P3). |
+| `SOURCE_CHANGED` | Changed during scan — will retry | Transient status | **Present (P3):** `source_changed` outcome + message; ingest/category verify sha256 before analysis. |
 | Missing original | Original file missing | Per-item coverage | Backend + bridge `_report_missing_original` copy exists. |
 | Interrupted job | Resuming… | Transient status | Resume paths exist (`resume`, recover_interrupted). Copy is not uniformly “Resuming…”. |
 | Recovered interrupted job | Picking up where we left off | Status; never automatic “Error” | **Gap:** recoverable interrupt can still surface failed/unavailable depending on path; needs P8 + copy audit. |
@@ -51,7 +51,7 @@ Any newly discovered internal state must be added here **before** ordinary UI ex
 | Coverage complete implication on home | Discover text is careful; home must stay calm (no red badge) | P6 |
 | Empty search = exhaustive absence | Partial mitigation via coverage clauses; needs contract tests | P7 |
 | Reject implies deletion | Need copy audit for “Nothing was removed” | P2 |
-| Source race as modal error | Path re-read exists in `_decode_bgr`; GUI wording for retry not standardised | P3 |
+| Source race as modal error | **Closed in P3:** no imread fallback; digest mismatch → retry copy | P3 done |
 | Interrupt as Error | Job failed mapping exists; recovered interrupt copy not locked | P8 |
 
 ## Required G1 tests (not yet present — P0 gap list)

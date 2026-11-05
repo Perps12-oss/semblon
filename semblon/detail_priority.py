@@ -73,10 +73,14 @@ def lacking_detail(store: Path, media_ids: list[str]) -> list[str]:
         conn.close()
 
 
-def _default_decode(path: Path):
-    from semblon.ingest import _decode_bgr
+def _default_decode(path: Path, *, expected_sha256: str | None = None):
+    from semblon.source_integrity import SourceChanged, SourceDecodeError, load_source_bgr
 
-    return _decode_bgr(None, path)
+    try:
+        img, _buf = load_source_bgr(path, expected_sha256=expected_sha256)
+        return img
+    except (OSError, SourceChanged, SourceDecodeError):
+        return None
 
 
 def _blank_phases() -> dict:
@@ -145,6 +149,7 @@ def promote(
         prepare_region_index,
     )
 
+    custom_decode = decode is not None
     decode = decode or _default_decode
     out = {
         "requested": len(media_ids),
@@ -192,7 +197,18 @@ def promote(
                     out["failed"] += 1
                     continue
                 t_decode = time.perf_counter()
-                img = decode(Path(row[0]))
+                if custom_decode:
+                    img = decode(Path(row[0]))
+                else:
+                    media = conn.execute(
+                        "SELECT sha256 FROM media WHERE media_id=?",
+                        (media_id,),
+                    ).fetchone()
+                    expected = str(media[0] or "").strip() if media is not None else ""
+                    img = decode(
+                        Path(row[0]),
+                        expected_sha256=expected or None,
+                    )
                 _add_phases(out["phases_ms"], {"decode_ms": (time.perf_counter() - t_decode) * 1000.0})
                 if img is None:
                     out["failed"] += 1

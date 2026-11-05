@@ -183,12 +183,14 @@ def reembed_stills(
             conn.commit()
 
         rows = conn.execute(
-            """SELECT m.media_id, m.path, o.observation_id
+            """SELECT m.media_id, m.path, m.sha256, o.observation_id
                FROM media m
                JOIN observations o ON o.media_id = m.media_id
                WHERE m.source_type = 'folder'
                ORDER BY m.path"""
         ).fetchall()
+
+        from semblon.source_integrity import SourceChanged, SourceDecodeError, load_source_bgr
 
         n_media = n_faces = n_ok = n_skip = n_missing = n_matched = n_new = 0
         for row in rows:
@@ -206,8 +208,15 @@ def reembed_stills(
                     {"done_media": sorted(done), "run_id": run_id, "pack_id": pid},
                 )
                 continue
-            img = cv2.imread(str(path))
-            if img is None:
+            try:
+                img, _buf = load_source_bgr(
+                    path, expected_sha256=str(row["sha256"] or "") or None
+                )
+            except SourceChanged:
+                # Do not rewrite faces from mismatched bytes; leave for a later pass.
+                n_skip += 1
+                continue
+            except (OSError, SourceDecodeError):
                 n_missing += 1
                 done.add(media_id)
                 _save_checkpoint(

@@ -1,3 +1,20 @@
+## Current branch addendum — Invariant hardening P3 (2026-11-05)
+
+**Branch:** `grok/p3-source-integrity` · **Schema:** 8 · **Base:** merged P0–P2 on `main`.
+
+**P3 source integrity — implemented (Level 2).** Single-buffer read→hash→decode; no `cv2.imread` fallback after imdecode failure; ingest observe/semantic + category/reembed/detail verify library sha256 before analysis; mismatch → `source_changed` / “Changed during scan — will retry.” Status: `docs/invariants/P3-COMPLETION.md`.
+
+Focused P3 verification (Windows):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q `
+  tests/test_p3_source_integrity.py tests/test_ingest_workers.py `
+  tests/test_category_backfill.py tests/test_reembed.py tests/test_scan_tiers.py `
+  --basetemp=.pytest-tmp-p3
+```
+
+**Result at land:** **58 passed**. `tools/p0/` unchanged. Thresholds and `decisions.kind` unchanged. **P4 not started.**
+
 ## Current branch addendum — Invariant hardening P2 (2026-11-05)
 
 **Branch:** `grok/p2-decision-erasure` · **Schema:** 8 · **From P1 tip:** `56990af`.
@@ -14,7 +31,7 @@ Focused P2 verification (Windows):
   tests/test_ship_audit.py tests/test_review.py --basetemp=.pytest-tmp-p2
 ```
 
-**Result at land:** **138 passed**. `tools/p0/` unchanged. Thresholds and `decisions.kind` unchanged. **P3 not started.**
+**Result at land:** **138 passed**. `tools/p0/` unchanged. Thresholds and `decisions.kind` unchanged. **Superseded for active work by P3 addendum above.**
 
 ## Current branch addendum — Invariant hardening P1 (2026-11-05)
 
