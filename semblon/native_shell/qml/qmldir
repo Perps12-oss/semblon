@@ -7,6 +7,7 @@ TemporalLoupe 1.0 TemporalLoupe.qml
 Viewer 1.0 Viewer.qml
 LightTable 1.0 LightTable.qml
 People 1.0 People.qml
+Related 1.0 Related.qml
 Tidy 1.0 Tidy.qml
 CommandPalette 1.0 CommandPalette.qml
 Sheet 1.0 Sheet.qml

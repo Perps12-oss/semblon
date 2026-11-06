@@ -1,3 +1,28 @@
+## Current branch addendum — Related to this photo (2026-11-05)
+
+**Branch:** `grok/related-to-photo` · **Schema:** **12** · **Base:** `da5b0c2` (PR #221).
+
+**Related to this photo — implemented on the production shell.** A focused photograph opens it from More… and from Ctrl+K. The sheet reads that photo's `HAS_TAG`, `HAS_OBJECT`, `HAS_FACE`, `CO_OCCURS`, and `SAME_AS` rows. Object same/different writes one human `H-OBJ` observation, one `brain_evidence` row, and one `SAME_AS` edge. A later model rebuild keeps edges that carry `human:` evidence. People open on the existing People desk. Person decisions go through `decide` → `review_board`. No new schema, viewer, or ingest path. Detail: `docs/brain/RELATED.md`.
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/brain tests/test_contact_sheet.py tests/test_shell_visible.py -q --basetemp="$env:TEMP\pytest-related-ui"
+.\.venv\Scripts\python.exe -m pytest tests/test_related_shell.py tests/test_local_lens.py::test_name_this_area_leaves_the_matches -q --basetemp="$env:TEMP\pytest-related-lens"
+```
+
+**Result:** brain + contact sheet + shell visible: **120 passed, 1 skipped, 1 failed**. The failure is pre-existing `test_no_engine_words_in_anything_a_person_reads` on unchanged `SettingsBody.qml` ("indexed"). Related shell tests and `test_name_this_area_leaves_the_matches` passed.
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_related_shell.py tests/test_contact_sheet.py::test_photo_view_keeps_four_actions_in_view_and_no_debug_text tests/test_contact_sheet.py::test_more_menu_opens_from_keyboard_and_the_palette_offers_the_same_actions tests/test_local_lens.py::test_name_this_area_leaves_the_matches -q --basetemp="$env:TEMP\pytest-related-shell"
+```
+
+**Result (2026-11-06):** **9 passed**. The production overlay shows the object card ("Similar object", "Possible visual match").
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_related_journey.py -q --basetemp="$env:TEMP\pytest-related-journey"
+```
+
+**Result (2026-11-06):** **1 passed** in 12.89s. One sqlite file, four shells. Same survives a new shell. Different keeps the contradiction. `link_same_as` on identical centroids adds no edge and does not clear it. Naming goes through `decide` and is still "Ada" when Related opens again. A late read of the previous photo does not replace the current one. Schema stays 12. Not run: the full default suite, or this journey on a personal photo library.
+
 ## Current branch addendum — BRAIN Inc 1–4 (2026-11-05)
 
 **Branch:** `grok/p4-capability-manifest` · **Schema:** **12** · **Cold start:** `docs/brain/HANDOVER.md`.
