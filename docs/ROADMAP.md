@@ -90,6 +90,10 @@ Milestone **7** synthetic rank bar is **PASS 5/5** (`docs/evidence/lens-retrieva
 Gate B is **green on commit `558cbb2`**, which is on `main` via PR #184. That merge is not a release.  
 The product is **NOT COMPLETE** and **NOT READY** for release. Gate C signed MSI smoke has not been run.
 
+## Related to this photo
+
+Landed on the production PySide6 shell. From one photograph: More… or Ctrl+K → Related → an object or person → its photographs, oldest first, opened in the existing viewer. Object same/different is a human graph decision. Person corrections stay on the People desk and the existing P2 path. Schema stays 12. Opening Related does not cluster the archive or run region ingest. Empty and partial graphs say so. `docs/brain/DISCOVER-DESIGN.md` was not added. Status: `docs/BUILD-STATUS.md`, `docs/brain/RELATED.md`.
+
 ## Rule
 
 A completed slice updates BUILD-STATUS with behaviour, test, command, and result. It does not edit PRODUCT.md unless the intended experience itself changed via `docs/decisions/`.

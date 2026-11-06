@@ -9,8 +9,9 @@ import sqlite3
 
 import numpy as np
 
-from semblon.brain.graph import delete_edges_of_type, insert_counted_edge
+from semblon.brain.graph import insert_counted_edge
 from semblon.brain.object_cluster import OBJECT_DBSCAN_EPS
+from semblon.erasure_intent import ErasureIntent, erasure_authorized
 
 # Pairwise int8 dots stay in memory only under this count.
 PAIR_CAP = 2000
@@ -28,14 +29,53 @@ def _distance(left: bytes, right: bytes) -> float | None:
     return float(1.0 - np.dot(a, b) / (na * nb))
 
 
-def link_same_as(conn: sqlite3.Connection, *, eps: float = OBJECT_DBSCAN_EPS) -> dict:
-    """Candidate links between object clusters inside eps. Persons are ignored."""
-    delete_edges_of_type(
-        conn,
-        "SAME_AS",
+def _drop_unprotected_same_as(conn: sqlite3.Connection) -> None:
+    """Drop model SAME_AS edges. Edges with human: evidence stay."""
+    intent = ErasureIntent(
+        requestor="system",
+        scope="library",
         reason="rebuild object SAME_AS links",
         authorized_by="brain.same_as.link_same_as",
     )
+    with erasure_authorized(intent):
+        conn.execute(
+            """
+            DELETE FROM brain_edges
+             WHERE edge_type='SAME_AS'
+               AND id NOT IN (
+                    SELECT e.id
+                      FROM brain_edges e
+                      JOIN brain_evidence ev ON ev.edge_id = e.id
+                     WHERE e.edge_type='SAME_AS'
+                       AND ev.claim_key LIKE 'human:%'
+               )
+            """
+        )
+
+
+def _protected_pairs(conn: sqlite3.Connection) -> set[tuple[int, int]]:
+    pairs: set[tuple[int, int]] = set()
+    rows = conn.execute(
+        """
+        SELECT source_node_id, target_node_id
+          FROM brain_edges
+         WHERE edge_type='SAME_AS'
+        """
+    ).fetchall()
+    for src, tgt in rows:
+        left, right = int(src), int(tgt)
+        pairs.add((left, right) if left < right else (right, left))
+    return pairs
+
+
+def link_same_as(conn: sqlite3.Connection, *, eps: float = OBJECT_DBSCAN_EPS) -> dict:
+    """Candidate links between object clusters inside eps. Persons are ignored.
+
+    A human same or different decision is evidence, not a distance. Those
+    edges are kept, and the model does not write a new link over that pair.
+    """
+    _drop_unprotected_same_as(conn)
+    protected = _protected_pairs(conn)
     rows = conn.execute(
         """
         SELECT id, canonical_embedding
@@ -56,6 +96,8 @@ def link_same_as(conn: sqlite3.Connection, *, eps: float = OBJECT_DBSCAN_EPS) ->
     edges = 0
     for i, (left_id, left_blob) in enumerate(rows):
         for right_id, right_blob in rows[i + 1 :]:
+            if (int(left_id), int(right_id)) in protected:
+                continue
             dist = _distance(left_blob, right_blob)
             if dist is None or dist > eps:
                 continue

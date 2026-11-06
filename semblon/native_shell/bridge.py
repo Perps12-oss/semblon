@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -268,6 +269,7 @@ class _TaskThread(QThread):
 
 
 _NO_MATCHES = object()
+_log = logging.getLogger(__name__)
 
 
 class ShellBridge(QObject):
@@ -287,6 +289,7 @@ class ShellBridge(QObject):
     indexChanged = Signal()
     keepsChanged = Signal()
     peopleChanged = Signal()
+    relatedChanged = Signal()
     surfaceChanged = Signal()
     editorialChanged = Signal()
     screenQueryChanged = Signal()
@@ -396,6 +399,22 @@ class ShellBridge(QObject):
         self._point_source = ""
         self._people = PeopleModel()
         self._people_open = False
+        self._related_open = False
+        self._related_return = False
+        self._related_gen = 0
+        self._related_origin = ""
+        self._related_media = ""
+        self._related_view = "home"
+        self._related_note = ""
+        self._related_coverage = ""
+        self._related_objects_note = ""
+        self._related_people_note = ""
+        self._related_relationships_note = ""
+        self._related_item_title = ""
+        self._related_objects: list[dict] = []
+        self._related_people: list[dict] = []
+        self._related_relationships: list[dict] = []
+        self._related_photos: list[dict] = []
         self._people_note = ""
         self._selected_subject = ""
         self._evidence_id = ""
@@ -3432,6 +3451,62 @@ class ShellBridge(QObject):
     def peopleEmpty(self) -> bool:
         return self._people.rowCount() == 0
 
+    @Property(bool, notify=relatedChanged)
+    def relatedOpen(self) -> bool:
+        return self._related_open
+
+    @Property(bool, notify=relatedChanged)
+    def relatedReturn(self) -> bool:
+        return self._related_return
+
+    @Property(str, notify=relatedChanged)
+    def relatedView(self) -> str:
+        return self._related_view
+
+    @Property(str, notify=relatedChanged)
+    def relatedNote(self) -> str:
+        return self._related_note
+
+    @Property(str, notify=relatedChanged)
+    def relatedCoverage(self) -> str:
+        return self._related_coverage
+
+    @Property(str, notify=relatedChanged)
+    def relatedObjectsNote(self) -> str:
+        return self._related_objects_note
+
+    @Property(str, notify=relatedChanged)
+    def relatedPeopleNote(self) -> str:
+        return self._related_people_note
+
+    @Property(str, notify=relatedChanged)
+    def relatedRelationshipsNote(self) -> str:
+        return self._related_relationships_note
+
+    @Property(str, notify=relatedChanged)
+    def relatedItemTitle(self) -> str:
+        return self._related_item_title
+
+    @Property(str, notify=relatedChanged)
+    def relatedOriginId(self) -> str:
+        return self._related_origin
+
+    @Property("QVariantList", notify=relatedChanged)
+    def relatedObjects(self):
+        return self._related_objects
+
+    @Property("QVariantList", notify=relatedChanged)
+    def relatedPeople(self):
+        return self._related_people
+
+    @Property("QVariantList", notify=relatedChanged)
+    def relatedRelationships(self):
+        return self._related_relationships
+
+    @Property("QVariantList", notify=relatedChanged)
+    def relatedPhotos(self):
+        return self._related_photos
+
     @Slot()
     def openPeople(self) -> None:
         self._refresh_people()
@@ -3492,6 +3567,249 @@ class ShellBridge(QObject):
         self._split_faces = []
         self._person_days = []
         self.peopleChanged.emit()
+
+    def _find_related_item(self, key: str) -> dict | None:
+        for row in self._related_objects + self._related_people:
+            if str(row.get("key") or "") == key:
+                return row
+        return None
+
+    def _drop_related_return(self) -> None:
+        """Leave Related when the photo itself is closed. Does not restore focus."""
+        if not (self._related_open or self._related_return or self._related_origin):
+            return
+        self._related_open = False
+        self._related_return = False
+        self._related_origin = ""
+        self._related_media = ""
+        self._related_view = "home"
+        self._related_gen += 1
+        self.relatedChanged.emit()
+
+    def _load_related(self, media_id: str, token: int) -> None:
+        try:
+            from semblon.brain.related import related_for_media
+            from semblon.store import connect_readonly
+
+            conn = connect_readonly(self._jobs.store)
+            try:
+                payload = related_for_media(conn, media_id)
+            finally:
+                conn.close()
+        except Exception:
+            _log.exception("related read failed")
+            if token != self._related_gen:
+                return
+            self._related_objects = []
+            self._related_people = []
+            self._related_relationships = []
+            self._related_photos = []
+            self._related_coverage = ""
+            self._related_objects_note = ""
+            self._related_people_note = ""
+            self._related_relationships_note = ""
+            self._related_note = "Related items could not be read."
+            self._related_view = "home"
+            self.relatedChanged.emit()
+            return
+        if token != self._related_gen:
+            return
+        thumb = f"image://archive/t/{media_id}"
+        objects = []
+        for row in payload.get("objects") or []:
+            item = dict(row)
+            item["thumb"] = thumb
+            objects.append(item)
+        people = []
+        for row in payload.get("people") or []:
+            item = dict(row)
+            face_id = str(item.get("faceId") or "")
+            item["thumb"] = f"image://face/{face_id}" if face_id else thumb
+            people.append(item)
+        self._related_objects = objects
+        self._related_people = people
+        self._related_relationships = list(payload.get("relationships") or [])
+        self._related_coverage = str(payload.get("coverage") or "")
+        self._related_objects_note = str(payload.get("objectsNote") or "")
+        self._related_people_note = str(payload.get("peopleNote") or "")
+        self._related_relationships_note = str(payload.get("relationshipsNote") or "")
+        self._related_note = ""
+        self._related_view = "home"
+        self.relatedChanged.emit()
+
+    @Slot()
+    def openRelated(self) -> None:
+        media = str(self._session.focus_id or "")
+        if not media:
+            return
+        self._related_gen += 1
+        token = self._related_gen
+        self._related_origin = media
+        self._related_media = media
+        self._related_return = False
+        self._related_open = True
+        self._load_related(media, token)
+
+    @Slot()
+    def closeRelated(self) -> None:
+        origin = self._related_origin
+        current = str(self._session.focus_id or "")
+        self._related_open = False
+        self._related_return = False
+        self._related_gen += 1
+        self._related_origin = ""
+        self._related_media = ""
+        self._related_view = "home"
+        self._related_photos = []
+        if origin and current and current != origin:
+            self._open_focus_keep_results(origin)
+        self.relatedChanged.emit()
+
+    @Slot()
+    def backRelated(self) -> None:
+        if self._related_view == "photos":
+            self._related_view = "home"
+            self._related_note = ""
+            self.relatedChanged.emit()
+            return
+        self.closeRelated()
+
+    @Slot(str)
+    def openRelatedItem(self, key: str) -> None:
+        item = self._find_related_item(str(key or ""))
+        if not item:
+            return
+        self._related_gen += 1
+        token = self._related_gen
+        title = str(item.get("title") or "")
+        try:
+            from semblon.brain.related import photos_for_related
+            from semblon.store import connect_readonly
+
+            conn = connect_readonly(self._jobs.store)
+            try:
+                photos = photos_for_related(conn, item)
+            finally:
+                conn.close()
+        except Exception:
+            _log.exception("related photos failed")
+            if token != self._related_gen:
+                return
+            self._related_note = "Related items could not be read."
+            self._related_photos = []
+            self.relatedChanged.emit()
+            return
+        if token != self._related_gen:
+            return
+        self._related_photos = [
+            {"mediaId": str(row.get("mediaId") or "")}
+            for row in photos
+            if row.get("mediaId")
+        ]
+        self._related_item_title = title
+        self._related_view = "photos"
+        self._related_note = ""
+        self.relatedChanged.emit()
+
+    @Slot(str)
+    def openRelatedPhoto(self, media_id: str) -> None:
+        media_id = str(media_id or "").strip()
+        if not media_id:
+            return
+        if not self._related_origin:
+            self._related_origin = str(self._session.focus_id or media_id)
+        self._related_open = False
+        self._related_return = True
+        self._open_focus_keep_results(media_id)
+        self.relatedChanged.emit()
+
+    @Slot()
+    def returnToRelated(self) -> None:
+        origin = self._related_origin
+        if origin and self._session.focus_id != origin:
+            self._open_focus_keep_results(origin)
+        self._related_open = True
+        self._related_return = False
+        self.relatedChanged.emit()
+
+    def _confirm_object(self, key: str, *, same: bool) -> str:
+        item = self._find_related_item(str(key or ""))
+        partner = int(item.get("partnerId") or 0) if item else 0
+        node = int(item.get("nodeId") or 0) if item else 0
+        media = self._related_media or self._related_origin
+        if not item or not item.get("canCorrect") or not partner or not node or not media:
+            self._related_note = "That correction is not available."
+            self.relatedChanged.emit()
+            return self._related_note
+        try:
+            from semblon.brain.object_decisions import (
+                ObjectDecisionError,
+                confirm_different,
+                confirm_same,
+            )
+            from semblon.store import connect
+
+            conn = connect(self._jobs.store)
+            try:
+                if same:
+                    confirm_same(conn, media_id=media, left_id=node, right_id=partner)
+                else:
+                    confirm_different(conn, media_id=media, left_id=node, right_id=partner)
+            finally:
+                conn.close()
+        except ObjectDecisionError as exc:
+            _log.exception("object correction refused")
+            self._related_note = str(exc)
+            self.relatedChanged.emit()
+            return self._related_note
+        except Exception:
+            _log.exception("object correction failed")
+            self._related_note = "That correction could not be saved."
+            self.relatedChanged.emit()
+            return self._related_note
+        self._related_gen += 1
+        self._load_related(media, self._related_gen)
+        if self._related_note:
+            return self._related_note
+        self._related_note = "Saved."
+        self.relatedChanged.emit()
+        return self._related_note
+
+    @Slot(str, result=str)
+    def confirmSameObject(self, key: str) -> str:
+        return self._confirm_object(key, same=True)
+
+    @Slot(str, result=str)
+    def confirmDifferentObject(self, key: str) -> str:
+        return self._confirm_object(key, same=False)
+
+    @Slot(str)
+    def openRelatedPerson(self, subject: str) -> None:
+        """Open the existing People desk. Does not create a person or assign a face."""
+        subject = str(subject or "").strip()
+        if not subject:
+            return
+        self._refresh_people()
+        row = self._people.row(subject)
+        self._people_open = True
+        self._selected_subject = subject if row else ""
+        self._evidence_id = str(row["mediaId"]) if row else ""
+        self._merge_target_subject = ""
+        self._split_faces = []
+        if row and row.get("named"):
+            note = "Opened this person."
+        elif row:
+            note = "Opened the candidate group for this face."
+        else:
+            note = "That group is no longer here."
+        self._people_note = note
+        self._reload_person_days()
+        self.peopleChanged.emit()
+
+    @Slot(str, str, str, result=str)
+    def relatedPersonDecision(self, kind: str, subject: str, text: str) -> str:
+        """Person corrections stay on the P2 path. This only forwards to decide."""
+        return self.decide(kind, subject, text)
 
     @Slot(str)
     def selectGroup(self, subject: str) -> None:
@@ -3962,6 +4280,7 @@ class ShellBridge(QObject):
             self.cancelSimilar()
             return
         if self._session.focus_id and self._people_open:
+            self._drop_related_return()
             self._session.escape()
             self._clear_query()
             self._clear_focus_boxes()
@@ -3975,6 +4294,7 @@ class ShellBridge(QObject):
             self.closeActivity()
             return
         if self._session.focus_id:
+            self._drop_related_return()
             self._session.escape()
             self._clear_query()
             self._clear_focus_boxes()
@@ -4017,6 +4337,7 @@ class ShellBridge(QObject):
             self._person_days = []
             self.peopleChanged.emit()
         if not keep_focus and self._session.focus_id:
+            self._drop_related_return()
             self._session.escape()
             self._clear_query()
             self._clear_focus_boxes()

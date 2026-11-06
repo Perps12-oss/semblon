@@ -398,6 +398,7 @@ Item {
         y: Theme.pad
         spacing: Theme.gap
         Tool { label: "Back to photos"; visible: viewer.previewId === ""; onActivated: { shell.escape(); viewer.closed() } }
+        Tool { objectName: "returnToRelated"; label: "Back to related"; visible: viewer.previewId === "" && shell.relatedReturn; primary: true; onActivated: shell.returnToRelated() }
         Tool { objectName: "returnFromPreview"; label: "Return to original"; visible: viewer.previewId !== ""; onActivated: viewer.returnFromPreview() }
         Tool { objectName: "previewThisPhoto"; label: "Open this photo"; visible: viewer.previewId !== ""; primary: true; onActivated: viewer.openPreviewAsFocus() }
         Tool { label: "Previous"; visible: viewer.previewId === ""; onActivated: shell.focusPrev() }
@@ -506,6 +507,7 @@ Item {
             x: 8; y: 8
             width: parent.width - 16
             spacing: 4
+            Tool { objectName: "relatedAction"; width: menuCol.width; label: "Related to this photo"; hint: "Objects and people in other photos"; visible: viewer.previewId === ""; onActivated: moreMenu.pick(function () { shell.openRelated() }) }
             Tool { objectName: "backDiscovery"; width: menuCol.width; label: "Back to the previous find"; visible: shell.canBackDiscovery; onActivated: moreMenu.pick(function () { viewer.previewId = ""; shell.backToDiscovery() }) }
             Tool { objectName: "keepDiscovery"; width: menuCol.width; label: "Keep this find"; visible: shell.similarState === "ready" && shell.selectionOnFocus; onActivated: moreMenu.pick(function () { shell.keepDiscovery() }) }
             Tool { objectName: "seeThisDay"; width: menuCol.width; label: "See this day"; visible: viewer.previewId === ""; onActivated: moreMenu.pick(function () { shell.showDayAroundFocus(); if (shell.scopeKind === "day") { shell.escape(); viewer.closed() } }) }

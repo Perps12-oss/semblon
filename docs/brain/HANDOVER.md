@@ -5,6 +5,8 @@
 **Schema:** **12** (`semblon.store.SCHEMA_VERSION`)  
 **Owner intent:** Inc 1–4 accepted. Inc 5–11 are in the tree (schema still 12). The 2M pilot was skipped on 2026-11-05 before any chunk report. It is not a measurement. Do not resume it. Do not re-run the 10k. Do not wire region crops.
 
+**Related (2026-11-05):** `grok/related-to-photo` adds Related on the production shell. See `docs/brain/RELATED.md`. Schema still 12. Do not resume 2M. Do not wire region crops.
+
 Read this file first, then `INC4.md` → `INC3.md` → `INVENTORY.md`. Do **not** invent OBS/SIM tickets or reopen identity thresholds.
 
 ---
@@ -36,6 +38,7 @@ P4 and BRAIN share the branch by accident of sequence. BRAIN raised schema 8→1
 | **10** | `HAS_SCENE` from scene embeddings; `brain_gaps` is a query | **IN TREE** — no `brain_gaps` table |
 | **11** | `approximate_predict` against an ObjectCluster centroid | **IN TREE** — not called from product ingest |
 | **2M pilot** | Governed tag run, limit 2_000_000 | **SKIPPED** — started 2026-11-05 and stopped before a chunk report. Not a measurement. Partial store discarded. |
+| **Related** | One photograph → related objects and people | **IN TREE** — `docs/brain/RELATED.md`. Does not cluster on open. |
 
 ---
 

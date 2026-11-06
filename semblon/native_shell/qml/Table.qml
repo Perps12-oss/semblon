@@ -70,6 +70,7 @@ Window {
         else if (id === "zoomout") rollView.zoomBy(0.7)
         else if (id === "dark") shell.setAtmosphere("mica_dark")
         else if (id === "light") shell.setAtmosphere("light")
+        else if (id === "v-related") shell.openRelated()
         else if (id === "v-detail") { viewer.loupeOn = true }
         else if (id === "v-like") shell.findSimilarWhole()
         else if (id === "v-area") shell.findSimilar()
@@ -105,7 +106,7 @@ Window {
         visible: rollView.count > 0
         width: visible ? Theme.edge : 0
         // Pictures and people use the full width; the edge comes back with the roll.
-        opacity: viewer.active || people.active || tidy.active ? 0 : 1
+        opacity: viewer.active || people.active || tidy.active || related.active ? 0 : 1
         enabled: opacity > 0.5
         Behavior on opacity { NumberAnimation { duration: Theme.fast } }
     }
@@ -115,7 +116,7 @@ Window {
         anchors.left: parent.left
         anchors.right: scrub.left
         anchors.bottom: parent.bottom
-        visible: !viewer.active && !people.active && !tidy.active
+        visible: !viewer.active && !people.active && !tidy.active && !related.active
         receded: rollView.scrolling
         onPeopleRequested: shell.openPeople()
         onMomentsRequested: { shell.setFacet("moments"); win.momentsOpen = true }
@@ -144,7 +145,7 @@ Window {
         anchors.top: parent.top
         anchors.margins: Theme.pad
         spacing: Theme.gap
-        visible: !viewer.active && !people.active && !tidy.active
+        visible: !viewer.active && !people.active && !tidy.active && !related.active
         Tool {
             objectName: "discoverButton"
             label: "Discover"
@@ -293,6 +294,14 @@ Window {
     }
 
     Viewer { id: viewer; anchors.fill: parent; onClosed: rollView.forceActiveFocus() }
+    Related {
+        id: related
+        anchors.fill: parent
+        onClosed: {
+            if (viewer.active) viewer.forceActiveFocus()
+            else rollView.forceActiveFocus()
+        }
+    }
     People { id: people; anchors.fill: parent; onClosed: rollView.forceActiveFocus() }
 
     Sheet {
@@ -371,6 +380,7 @@ Window {
         anchors.fill: parent
         // With nothing added yet, only the actions that work right now are offered.
         actions: viewer.active ? [
+            { id: "v-related", label: "Related to this photo" },
             { id: "v-detail", label: "Find this part again" },
             { id: "v-like", label: "Find photos like this one" },
             { id: "v-area", label: "Find the picked area elsewhere" },
