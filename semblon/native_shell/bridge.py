@@ -727,7 +727,7 @@ class ShellBridge(QObject):
             return ""
         for box in self._focus_boxes:
             if str(box.get("id") or "") == wanted and str(box.get("kind") or "") == "text":
-                return str(box.get("tag") or "").strip()
+                return str(box.get("text") or box.get("tag") or "").strip()
         return ""
 
     @Slot(str)
@@ -742,7 +742,7 @@ class ShellBridge(QObject):
             if str(box.get("kind") or "") != "text":
                 return
             self._selected_observation = wanted
-            text = str(box.get("tag") or "").strip()
+            text = str(box.get("text") or box.get("tag") or "").strip()
             self.setRegion(
                 float(box.get("nx") or 0),
                 float(box.get("ny") or 0),
@@ -782,7 +782,12 @@ class ShellBridge(QObject):
             return _done(note or "The text reader is not available.")
         result = None
         try:
-            from semblon.category_backfill import probe_category, process_words
+            from semblon.category_backfill import (
+                _ensure_observation,
+                _open_run,
+                probe_category,
+                process_words,
+            )
             from semblon.store import connect
 
             import cv2
@@ -795,8 +800,13 @@ class ShellBridge(QObject):
                 probe = probe_category("words")
                 if not probe.available:
                     return _done(probe.reason or "The text reader is not available.")
-                observation_id = f"ocr-{media_id}"
-                run_id = f"focus-ocr-{media_id}"
+                run_id = _open_run(
+                    conn,
+                    pack_id=probe.provider_id or "words",
+                    dim=0,
+                    category="words",
+                )
+                observation_id = _ensure_observation(conn, media_id, run_id)
                 result = process_words(
                     conn,
                     img,
@@ -3289,7 +3299,16 @@ class ShellBridge(QObject):
         if width <= 0 or height <= 0:
             return
         try:
+            from semblon.canvas_data import text_boxes_for_media
+
             boxes = overlay_boxes_for_media(self._jobs.store, media_id)
+            # Words may live on a separate run from faces — merge text overlays.
+            seen = {str(box.get("id") or "") for box in boxes}
+            for text_box in text_boxes_for_media(self._jobs.store, media_id):
+                tid = str(text_box.get("id") or "")
+                if tid and tid not in seen:
+                    boxes.append(text_box)
+                    seen.add(tid)
         except Exception:
             return
         for box in boxes:
@@ -3315,6 +3334,7 @@ class ShellBridge(QObject):
                     "source": source,
                     "snap": click_adopts_box(kind, source),
                     "tag": str(box.get("tag") or ""),
+                    "text": str(box.get("text") or "").strip(),
                     "color": str(box.get("color") or "#2e8b57"),
                     "nx": max(0.0, min(1.0, x1 / width)),
                     "ny": max(0.0, min(1.0, y1 / height)),

@@ -286,7 +286,12 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
         if payload.get("display") is False:
             continue
         lane = lane_by_item.get(it.get("item_id"))
-        tag = it.get("provider") or it.get("kind") or "item"
+        kind = str(it.get("kind") or "")
+        # OCR words store the token in payload.text; provider is not the label.
+        if kind == "text":
+            tag = str(payload.get("text") or "").strip() or str(it.get("provider") or "text")
+        else:
+            tag = it.get("provider") or kind or "item"
         if lane:
             tag = f"{tag} lane={lane}"
         boxes.append(
@@ -295,11 +300,45 @@ def overlay_boxes(board: dict, media_id: str) -> list[dict]:
                 "id": it.get("item_id"),
                 "bbox": [it.get("bbox_x1"), it.get("bbox_y1"), it.get("bbox_x2"), it.get("bbox_y2")],
                 "tag": tag,
+                "text": str(payload.get("text") or "").strip() if kind == "text" else "",
                 "color": "#c47a1a",
-                "source": str(payload.get("source") or ""),
+                "source": str(payload.get("source") or it.get("provider") or ""),
             }
         )
     return boxes
+
+
+def text_boxes_for_media(store: Path, media_id: str) -> list[dict]:
+    """OCR/text boxes for one photo across runs (Words may not share the face run)."""
+    store = Path(store)
+    if not media_id or not store.is_file():
+        return []
+    conn = connect_readonly(store.resolve())
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA busy_timeout=80")
+        items = conn.execute(
+            """SELECT i.item_id, i.kind, i.provider, i.bbox_x1, i.bbox_y1, i.bbox_x2, i.bbox_y2,
+                      i.score, i.payload_json, o.media_id
+               FROM observation_items i
+               JOIN observations o ON o.observation_id = i.observation_id
+               WHERE o.media_id=? AND i.kind='text' AND i.bbox_x1 IS NOT NULL""",
+            (media_id,),
+        ).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        conn.close()
+    parsed = []
+    for item in items:
+        raw = dict(item)
+        try:
+            payload = json.loads(raw.get("payload_json") or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        raw["payload"] = payload if isinstance(payload, dict) else {}
+        parsed.append(raw)
+    return overlay_boxes({"faces": [], "items": parsed, "track_lane_by_face": {}, "track_lane_by_item": {}}, media_id)
 
 def _cluster_status_map(board: dict) -> dict[str, str]:
     out: dict[str, str] = {}
