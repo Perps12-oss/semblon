@@ -2227,11 +2227,30 @@ class ShellBridge(QObject):
 
     @Slot(str)
     def openDiscoveryHit(self, media_id: str) -> None:
-        """Open a visual result without replacing the result set or the day scope."""
+        """Open a visual result without replacing the result set or the day scope.
+
+        Adopts the scored match box as the sticky query region on the opened
+        photo so Find Similar can continue from that crop (result-to-canvas).
+        """
         if not media_id:
             return
+        # Fence any in-flight search before the sticky adopt changes query
+        # metadata. Keep the current strip; do not publish empty/cancelled.
+        if self._search_busy:
+            self._stop_search(publish=False)
+        match = self._match_for_media(media_id)
+        # Preserve search understanding across the sticky adopt (setRegion would
+        # otherwise overwrite it with "Drawn region.").
+        note = self._selection_note
         self._push_discovery()
         self._open_focus_keep_results(media_id)
+        mx, my, mw, mh = match
+        if mw > 0 and mh > 0:
+            # Sticky query on the hit — selectionOnFocus + refine handles.
+            self.setRegion(mx, my, mw, mh)
+            if note:
+                self._selection_note = note
+                self.selectionChanged.emit()
         self.focusMatchZoomRequested.emit()
 
     @Slot()

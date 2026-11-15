@@ -117,16 +117,22 @@ def test_selection_survives_restore_and_states_are_distinct(tmp_path, monkeypatc
         assert bridge.similarCount == 1
         bridge.openDiscoveryHit("m2")
         assert bridge.focusId == "m2"
-        assert bridge.selectionOnFocus is False
-        assert bridge.matchW > 0
+        # Result-to-canvas: scored match becomes sticky query on the opened photo.
+        assert bridge.selectionOnFocus is True
+        assert abs(bridge.selectionX - 0.1) < 1e-6
+        assert abs(bridge.selectionY - 0.2) < 1e-6
+        assert abs(bridge.selectionW - 0.3) < 1e-6
+        assert abs(bridge.selectionH - 0.4) < 1e-6
         assert bridge.keepDiscovery() == "Kept this find."
         assert bridge.resultText == "Kept this find."
+        # Keep stores the sticky query on the opened hit (result-to-canvas).
         bridge.openFocus("m1")
         bridge.openKept(0)
-        assert bridge.focusId == "m1"
+        assert bridge.focusId == "m2"
         assert bridge.selectionOnFocus is True
-        assert abs(bridge.selectionH - 0.25) < 1e-6
+        assert abs(bridge.selectionH - 0.4) < 1e-6
         kept = json.loads((tmp_path / "s.discoveries.json").read_text(encoding="utf-8"))
+        assert kept[0]["query_media_id"] == "m2"
         assert kept[0]["region"][2] == pytest.approx(0.3)
     finally:
         shutdown_shell(engine)
@@ -162,6 +168,76 @@ def test_search_can_be_cancelled_before_it_finishes(tmp_path, monkeypatch):
             time.sleep(0.02)
         assert bridge.similarCount == 0
         assert bridge.similarState == "empty"
+    finally:
+        gate.set()
+        shutdown_shell(engine)
+
+
+def test_open_interim_hit_fences_search_without_corrupting_persist(tmp_path, monkeypatch):
+    """Opening a first-look hit must not let the late final rewrite query metadata."""
+    import threading
+
+    from semblon.application import Application
+    from semblon.native_shell.adapter import Result
+    from semblon.native_shell.host import shutdown_shell
+
+    monkeypatch.delenv("SEMBLON_SEARCH_SYNC", raising=False)
+    gate = threading.Event()
+    app, engine, bridge = _shell(tmp_path, monkeypatch)
+
+    def slow(self, media_id, x, y, w, h, **kwargs):
+        gate.wait(2)
+        # Final would be a different hit — must not land after adopt.
+        return _hit("m3")
+
+    monkeypatch.setattr(Application, "remember_and_find_region", slow)
+    try:
+        bridge.findSimilar()
+        assert bridge.searchBusy is True
+        bridge._publish_similar_result(
+            Result(
+                "ready",
+                "Similar (Similar look): first look, still refining.",
+                {
+                    "basis": "region",
+                    "basis_label": "Similar look",
+                    "search_phase": "first",
+                    "items": [
+                        {
+                            "media_id": "m2",
+                            "score": 0.5,
+                            "match_nx": 0.1,
+                            "match_ny": 0.2,
+                            "match_nw": 0.3,
+                            "match_nh": 0.4,
+                        }
+                    ],
+                },
+            ),
+            interim=True,
+        )
+        assert bridge.similarCount == 1
+        assert bridge.similarId(0) == "m2"
+        assert bridge.queryFocusId == "m1"
+        bridge.openDiscoveryHit("m2")
+        assert bridge.searchBusy is False
+        assert bridge.focusId == "m2"
+        assert bridge.selectionOnFocus is True
+        assert bridge.queryFocusId == "m2"
+        assert bridge.similarId(0) == "m2"
+        gate.set()
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            app.processEvents()
+            time.sleep(0.02)
+        # Late final for m3 must not replace the adopted strip or query.
+        assert bridge.similarCount == 1
+        assert bridge.similarId(0) == "m2"
+        assert bridge.queryFocusId == "m2"
+        bridge._persist_discovery()
+        saved = json.loads((tmp_path / "s.visual-discovery.json").read_text(encoding="utf-8"))
+        assert saved["query_media_id"] == "m2"
+        assert saved["items"][0]["media_id"] == "m2"
     finally:
         gate.set()
         shutdown_shell(engine)

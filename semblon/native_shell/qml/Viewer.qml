@@ -33,6 +33,9 @@ Item {
         var target = previewId
         previewId = ""
         shell.openDiscoveryHit(target)
+        // Sticky match box is rectangular with refine handles (not the loupe circle).
+        loupeOn = false
+        syncSelectionFromShell()
     }
     // Zoom toward a point in the stage so the detail under the cursor stays put.
     function zoomAt(px, py, factor) {
@@ -50,6 +53,8 @@ Item {
     property real previewMatchY: 0
     property real previewMatchW: 0
     property real previewMatchH: 0
+    // Re-run zoom once the new focus photo has painted dimensions.
+    property bool pendingMatchZoom: false
     onShownIdChanged: { resetZoom(); spots.clearTap(); spots.shimmer() }
     onPreviewIdChanged: {
         resetZoom()
@@ -67,7 +72,13 @@ Item {
         previewMatchX = n[0]; previewMatchY = n[1]; previewMatchW = n[2]; previewMatchH = n[3]
     }
     function syncSelectionFromShell() {
-        if (!shell || !shell.selectionOnFocus || photo.paintedWidth <= 0)
+        // Normalized shell region is authoritative. Clear pixel coords when the
+        // sticky query is not on this focus (e.g. back to a whole-photo search).
+        if (!shell || !shell.selectionOnFocus) {
+            lx = 0; ly = 0; lw = 0; lh = 0
+            return
+        }
+        if (photo.paintedWidth <= 0)
             return
         lx = shell.selectionX * photo.paintedWidth
         ly = shell.selectionY * photo.paintedHeight
@@ -75,11 +86,16 @@ Item {
         lh = shell.selectionH * photo.paintedHeight
     }
     function zoomToMatchIfNeeded() {
-        if (!shell || photo.paintedWidth <= 0)
+        if (!shell || photo.paintedWidth <= 0) {
+            pendingMatchZoom = true
             return
+        }
         var nx = shell.matchX, ny = shell.matchY, nw = shell.matchW, nh = shell.matchH
-        if (nw <= 0 || nh <= 0)
+        if (nw <= 0 || nh <= 0) {
+            pendingMatchZoom = false
             return
+        }
+        pendingMatchZoom = false
         var z = Math.min(8, Math.max(1.8, 0.85 / Math.max(nw, nh)))
         var cx = ((photo.width - photo.paintedWidth) / 2) + (nx + nw / 2) * photo.paintedWidth
         var cy = ((photo.height - photo.paintedHeight) / 2) + (ny + nh / 2) * photo.paintedHeight
@@ -172,6 +188,17 @@ Item {
             sourceSize.width: Math.max(1, Math.round(stage.width * Screen.devicePixelRatio))
             sourceSize.height: Math.max(1, Math.round(stage.height * Screen.devicePixelRatio))
             Accessible.ignored: true
+            // Sticky crop is stored normalized on the bridge; recompute pixels when
+            // the new focus photo finishes loading (async) or changes aspect.
+            onPaintedWidthChanged: viewer.syncSelectionFromShell()
+            onPaintedHeightChanged: viewer.syncSelectionFromShell()
+            onStatusChanged: {
+                if (status !== Image.Ready)
+                    return
+                viewer.syncSelectionFromShell()
+                if (viewer.pendingMatchZoom)
+                    viewer.zoomToMatchIfNeeded()
+            }
 
             Item {
                 id: canvas
@@ -655,8 +682,16 @@ Item {
                 width: 84; height: 84
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
-                Accessible.name: "Preview match " + (index + 1)
-                Keys.onReturnPressed: { viewer.previewId = mediaId; viewer.forceActiveFocus() }
+                Accessible.name: "Open match " + (index + 1)
+                // Primary: open the match as Focus with sticky crop (result-to-canvas).
+                // Shift: preview in place without changing Focus (hover-peek path).
+                Keys.onReturnPressed: {
+                    viewer.previewId = ""
+                    shell.openDiscoveryHit(mediaId)
+                    viewer.loupeOn = false
+                    viewer.syncSelectionFromShell()
+                    viewer.forceActiveFocus()
+                }
                 Image {
                     id: thumb
                     anchors.fill: parent
@@ -683,7 +718,21 @@ Item {
                 }
                 Rectangle { anchors.fill: parent; color: "transparent"; border.width: parent.activeFocus ? 3 : 0; border.color: Theme.amber }
                 Rectangle { anchors.fill: parent; color: viewer.previewId === mediaId ? Theme.amber : "transparent"; opacity: viewer.previewId === mediaId ? 0.14 : 0; border.width: viewer.previewId === mediaId ? 2 : 0; border.color: Theme.amber }
-                MouseArea { anchors.fill: parent; onClicked: { viewer.previewId = mediaId; viewer.forceActiveFocus() } }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: function (mouse) {
+                        if (mouse.modifiers & Qt.ShiftModifier) {
+                            viewer.previewId = mediaId
+                            viewer.forceActiveFocus()
+                            return
+                        }
+                        viewer.previewId = ""
+                        shell.openDiscoveryHit(mediaId)
+                        viewer.loupeOn = false
+                        viewer.syncSelectionFromShell()
+                        viewer.forceActiveFocus()
+                    }
+                }
             }
         }
         Row {
