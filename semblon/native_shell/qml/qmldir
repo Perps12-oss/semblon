@@ -5,6 +5,7 @@ Roll 1.0 Roll.qml
 Scrubber 1.0 Scrubber.qml
 TemporalLoupe 1.0 TemporalLoupe.qml
 Viewer 1.0 Viewer.qml
+SynthesisDrawer 1.0 SynthesisDrawer.qml
 LightTable 1.0 LightTable.qml
 People 1.0 People.qml
 Related 1.0 Related.qml
