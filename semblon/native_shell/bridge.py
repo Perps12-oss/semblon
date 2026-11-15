@@ -4980,6 +4980,29 @@ class ShellBridge(QObject):
         return self._similar.media_id(int(row))
 
     @Slot(str, result=str)
+    def mediaBadgeFor(self, media_id: str) -> str:
+        """Dims + source name for a match tile badge (Yandex-style strip)."""
+        item = self._jobs.media(str(media_id or ""))
+        if item is None:
+            return ""
+        parts: list[str] = []
+        if item.width and item.height:
+            parts.append(f"{int(item.width)}×{int(item.height)}")
+        name = str(item.name or "").strip()
+        if name:
+            parts.append(name)
+        return " · ".join(parts)
+
+    @Slot(str)
+    def askAboutSelection(self, prompt: str = "") -> None:
+        """Composer Enter: describe the sticky crop (VLM / name action boundary)."""
+        text = str(prompt or "").strip()
+        if text:
+            self._result_text = text
+            self.resultChanged.emit()
+        self.nameSelection()
+
+    @Slot(str, result=str)
     def thumbFor(self, media_id: str) -> str:
         if not media_id:
             return ""

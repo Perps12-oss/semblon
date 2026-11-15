@@ -55,7 +55,13 @@ Item {
     property real previewMatchH: 0
     // Re-run zoom once the new focus photo has painted dimensions.
     property bool pendingMatchZoom: false
-    onShownIdChanged: { resetZoom(); spots.clearTap(); spots.shimmer() }
+    // Contextual Synthesis Drawer — open with sticky selection / active search.
+    property bool drawerForcedClosed: false
+    readonly property bool drawerWanted: active && !drawerForcedClosed
+        && (shell.selectionOnFocus || shell.similarState === "ready"
+            || shell.similarState === "loading" || shell.similarState === "empty")
+    readonly property bool drawerOpen: drawerWanted
+    onShownIdChanged: { resetZoom(); spots.clearTap(); spots.shimmer(); drawerForcedClosed = false }
     onPreviewIdChanged: {
         resetZoom()
         spots.clearTap()
@@ -116,13 +122,19 @@ Item {
                         lw / photo.paintedWidth, lh / photo.paintedHeight)
         shell.findSimilar()
     }
-    onActiveChanged: if (!active) reset()
+    onActiveChanged: {
+        if (!active) {
+            drawerForcedClosed = false
+            reset()
+        }
+    }
 
     Rectangle { anchors.fill: parent; color: Theme.bg; opacity: 0.97 }
 
     Keys.onEscapePressed: {
         if (previewId !== "") returnFromPreview()
         else if (moreMenu.shown) moreMenu.shown = false
+        else if (viewer.drawerOpen) drawerForcedClosed = true
         else { shell.escape(); viewer.closed() }
     }
     // While the loupe is on, arrows steer the circle instead of changing photo.
@@ -163,10 +175,17 @@ Item {
 
     Item {
         id: stage
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
         anchors.margins: Theme.pad
-        anchors.bottomMargin: 150
+        anchors.bottomMargin: viewer.drawerOpen ? Theme.pad : 150
         anchors.topMargin: 104
+        // Contextual split: media shifts left when the Synthesis Drawer docks.
+        width: viewer.drawerOpen
+               ? Math.max(280, parent.width * 0.55 - Theme.pad)
+               : parent.width - Theme.pad * 2
+        Behavior on width { NumberAnimation { duration: Theme.medium; easing.type: Theme.easing } }
 
         Item {
             id: zoomLayer
@@ -224,21 +243,63 @@ Item {
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: shell.selectObservation(modelData.id) }
                     }
                 }
+                // Outside dim (scrim) while a sticky rectangular crop is active.
+                Item {
+                    id: cropScrim
+                    objectName: "cropScrim"
+                    anchors.fill: parent
+                    visible: viewer.previewId === "" && shell && shell.selectionOnFocus
+                             && !viewer.loupeOn && viewer.lw > 0
+                    readonly property color dim: Qt.rgba(0, 0, 0, 0.55)
+                    Rectangle { x: 0; y: 0; width: parent.width; height: Math.max(0, viewer.ly); color: cropScrim.dim }
+                    Rectangle {
+                        x: 0; y: viewer.ly + viewer.lh
+                        width: parent.width; height: Math.max(0, parent.height - y); color: cropScrim.dim
+                    }
+                    Rectangle {
+                        x: 0; y: viewer.ly; width: Math.max(0, viewer.lx); height: viewer.lh; color: cropScrim.dim
+                    }
+                    Rectangle {
+                        x: viewer.lx + viewer.lw; y: viewer.ly
+                        width: Math.max(0, parent.width - x); height: viewer.lh; color: cropScrim.dim
+                    }
+                }
                 Rectangle {
                     id: selectionBox
                     objectName: "selectionBox"
                     // Integer Repeater model + edge lookup — avoids JS string-array models
                     // (fragile with required modelData on some Windows Qt builds; same class as #206).
                     readonly property var edges: ["tl", "t", "tr", "l", "r", "bl", "b", "br"]
+                    readonly property bool sticky: shell && shell.selectionOnFocus && !viewer.loupeOn
                     visible: viewer.previewId === "" && viewer.lw > 0
                     x: viewer.lx; y: viewer.ly; width: viewer.lw; height: viewer.lh
-                    // Loupe drag stays circular; after a find the box is rectangular with handles.
-                    radius: (viewer.loupeOn || !(shell && shell.selectionOnFocus)) ? Math.min(width, height) / 2 : 0
+                    // Loupe drag stays circular; sticky query is a rounded L-bracket box.
+                    radius: viewer.loupeOn ? Math.min(width, height) / 2 : (sticky ? 8 : Math.min(width, height) / 2)
                     color: "transparent"
-                    border.width: 3
+                    border.width: sticky ? 2 : 3
                     border.color: Theme.amber
-                    Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.amber; opacity: 0.12 }
-                    // Post-query refine: drag an edge or corner, then re-search on release.
+                    Rectangle { anchors.fill: parent; radius: parent.radius; color: Theme.amber; opacity: sticky ? 0.06 : 0.12 }
+                    // Google-Lens style L-brackets at the four corners (sticky only).
+                    Repeater {
+                        model: selectionBox.sticky ? 4 : 0
+                        delegate: Item {
+                            required property int index
+                            readonly property bool leftSide: index === 0 || index === 2
+                            readonly property bool topSide: index === 0 || index === 1
+                            width: 18; height: 18
+                            x: leftSide ? -1 : selectionBox.width - width + 1
+                            y: topSide ? -1 : selectionBox.height - height + 1
+                            Rectangle {
+                                width: parent.width; height: 3; color: Theme.amber
+                                y: parent.topSide ? 0 : parent.height - height
+                            }
+                            Rectangle {
+                                width: 3; height: parent.height; color: Theme.amber
+                                x: parent.leftSide ? 0 : parent.width - width
+                            }
+                        }
+                    }
+                    // Post-query refine: drag an edge or corner, then re-search on release (tier 1).
                     Repeater {
                         model: (shell && shell.selectionOnFocus && !viewer.loupeOn && viewer.previewId === "")
                                ? selectionBox.edges.length : 0
@@ -253,6 +314,7 @@ Item {
                             color: Theme.amber
                             border.width: 1
                             border.color: Theme.bg
+                            opacity: selectionBox.sticky ? 0.92 : 1
                             x: edge.indexOf("l") >= 0 ? -width / 2
                                : edge.indexOf("r") >= 0 ? selectionBox.width - width / 2
                                : (selectionBox.width - width) / 2
@@ -289,6 +351,7 @@ Item {
                                 }
                                 onReleased: {
                                     if (!shell) return
+                                    // Tier 1: mouseup → fast appearance / region search.
                                     shell.commitSelectionPixels(
                                         viewer.lx, viewer.ly, viewer.lw, viewer.lh,
                                         canvas.width, canvas.height
@@ -636,7 +699,37 @@ Item {
         horizontalAlignment: Text.AlignRight
     }
 
+    // Contextual Synthesis Drawer — docks right while sticky crop / search is live.
+    SynthesisDrawer {
+        id: synth
+        objectName: "synthesisDrawerHost"
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        anchors.topMargin: Theme.pad
+        anchors.bottomMargin: Theme.pad
+        anchors.rightMargin: Theme.pad
+        width: viewer.drawerOpen ? Math.max(260, parent.width * 0.42 - Theme.pad) : 0
+        Behavior on width { NumberAnimation { duration: Theme.medium; easing.type: Theme.easing } }
+        open: viewer.drawerOpen
+        focusId: shell.focusId
+        cropX: shell.selectionOnFocus ? shell.selectionX : 0
+        cropY: shell.selectionOnFocus ? shell.selectionY : 0
+        cropW: shell.selectionOnFocus ? shell.selectionW : 0
+        cropH: shell.selectionOnFocus ? shell.selectionH : 0
+        onCloseRequested: viewer.drawerForcedClosed = true
+        onAskSubmitted: function (prompt) { shell.askAboutSelection(prompt) }
+        onHitOpened: function (mediaId) {
+            viewer.previewId = ""
+            shell.openDiscoveryHit(mediaId)
+            viewer.loupeOn = false
+            viewer.syncSelectionFromShell()
+            viewer.forceActiveFocus()
+        }
+    }
+
     // Matches from the loupe, as a strip of small prints under the photo.
+    // Hidden while the Synthesis Drawer owns the 4-tile strip.
     Item {
         id: strip
         objectName: "similarStrip"
@@ -644,7 +737,7 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: 130
-        visible: viewer.loupeOn || shell.similarState !== "idle"
+        visible: !viewer.drawerOpen && (viewer.loupeOn || shell.similarState !== "idle")
         Rectangle { anchors.fill: parent; color: Theme.surface; Rectangle { width: parent.width; height: 1; color: Theme.line } }
         Text {
             objectName: "matchHonesty"
