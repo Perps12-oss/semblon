@@ -309,6 +309,12 @@ Item {
                 onActivated: shell.askAboutSelection("")
             }
             Tool {
+                objectName: "chipAskText"
+                label: "Ask about selected text"
+                visible: shell.selectedText !== ""
+                onActivated: shell.askAboutSelection("About this text: " + shell.selectedText)
+            }
+            Tool {
                 objectName: "chipTopMatch"
                 label: "Open top match"
                 visible: shell.similarCount > 0

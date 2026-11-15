@@ -715,6 +715,122 @@ class ShellBridge(QObject):
         return list(self._focus_boxes)
 
     @Property("QVariantList", notify=focusChanged)
+    def focusTextBoxes(self):
+        """OCR / text observation boxes for Select Text mode (non-identity)."""
+        return [box for box in self._focus_boxes if str(box.get("kind") or "") == "text"]
+
+    @Property(str, notify=selectionChanged)
+    def selectedText(self) -> str:
+        """Plain text from the selected OCR box, if any."""
+        wanted = self._selected_observation
+        if not wanted:
+            return ""
+        for box in self._focus_boxes:
+            if str(box.get("id") or "") == wanted and str(box.get("kind") or "") == "text":
+                return str(box.get("text") or box.get("tag") or "").strip()
+        return ""
+
+    @Slot(str)
+    def selectTextBox(self, observation_id: str) -> None:
+        """Select Text mode: snap sticky crop to a word/line without auto-search."""
+        wanted = str(observation_id or "").strip()
+        if not wanted:
+            return
+        for box in self._focus_boxes:
+            if str(box.get("id") or "") != wanted:
+                continue
+            if str(box.get("kind") or "") != "text":
+                return
+            self._selected_observation = wanted
+            text = str(box.get("text") or box.get("tag") or "").strip()
+            self.setRegion(
+                float(box.get("nx") or 0),
+                float(box.get("ny") or 0),
+                float(box.get("nw") or 0),
+                float(box.get("nh") or 0),
+            )
+            self._selection_kind = "text"
+            self._selection_note = text or "Text in the selection."
+            if text:
+                self._result_text = text
+                self.resultChanged.emit()
+            self.focusChanged.emit()
+            self.similarChanged.emit()
+            return
+
+    @Slot(result=str)
+    def ensureTextOverlay(self) -> str:
+        """Run a one-shot OCR pass for the open still when no text boxes exist."""
+
+        def _done(message: str) -> str:
+            self._set_result(message)
+            return message
+
+        media_id = self._session.focus_id or ""
+        if not media_id:
+            return _done("Open a photo first.")
+        if any(str(box.get("kind") or "") == "text" for box in self._focus_boxes):
+            n = sum(1 for b in self._focus_boxes if b.get("kind") == "text")
+            return _done(f"{n} text regions ready.")
+        item = self._jobs.media(media_id)
+        if item is None or not item.path:
+            return _done("Photo unavailable.")
+        from semblon.observers import probe_ocr_status
+
+        ready, note = probe_ocr_status()
+        if not ready:
+            return _done(note or "The text reader is not available.")
+        result = None
+        try:
+            from semblon.category_backfill import (
+                _ensure_observation,
+                _open_run,
+                probe_category,
+                process_words,
+            )
+            from semblon.store import connect
+
+            import cv2
+
+            img = cv2.imread(str(item.path))
+            if img is None:
+                return _done("Could not read this photo.")
+            conn = connect(self._jobs.store)
+            try:
+                probe = probe_category("words")
+                if not probe.available:
+                    return _done(probe.reason or "The text reader is not available.")
+                run_id = _open_run(
+                    conn,
+                    pack_id=probe.provider_id or "words",
+                    dim=0,
+                    category="words",
+                )
+                observation_id = _ensure_observation(conn, media_id, run_id)
+                result = process_words(
+                    conn,
+                    img,
+                    media_id=media_id,
+                    observation_id=observation_id,
+                    run_id=run_id,
+                    probe=probe,
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as exc:  # noqa: BLE001
+            return _done(f"Text pass failed: {type(exc).__name__}")
+        self._load_focus_boxes(media_id)
+        self.focusChanged.emit()
+        count = sum(1 for b in self._focus_boxes if b.get("kind") == "text")
+        if count:
+            return _done(f"{count} text regions ready.")
+        extra = ""
+        if result is not None:
+            extra = str(getattr(result, "error", "") or getattr(result, "outcome", "") or "")
+        return _done(extra or "No text found in this photo.")
+
+    @Property("QVariantList", notify=focusChanged)
     def hotspots(self):
         """A few well-spaced tap targets for the open picture. Cheap: no disk, no detector."""
         from semblon.hotspots import rank_hotspots
@@ -3183,7 +3299,16 @@ class ShellBridge(QObject):
         if width <= 0 or height <= 0:
             return
         try:
+            from semblon.canvas_data import text_boxes_for_media
+
             boxes = overlay_boxes_for_media(self._jobs.store, media_id)
+            # Words may live on a separate run from faces — merge text overlays.
+            seen = {str(box.get("id") or "") for box in boxes}
+            for text_box in text_boxes_for_media(self._jobs.store, media_id):
+                tid = str(text_box.get("id") or "")
+                if tid and tid not in seen:
+                    boxes.append(text_box)
+                    seen.add(tid)
         except Exception:
             return
         for box in boxes:
@@ -3209,6 +3334,7 @@ class ShellBridge(QObject):
                     "source": source,
                     "snap": click_adopts_box(kind, source),
                     "tag": str(box.get("tag") or ""),
+                    "text": str(box.get("text") or "").strip(),
                     "color": str(box.get("color") or "#2e8b57"),
                     "nx": max(0.0, min(1.0, x1 / width)),
                     "ny": max(0.0, min(1.0, y1 / height)),
