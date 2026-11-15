@@ -143,12 +143,35 @@ Item {
                     visible: index < 4
                     width: visible ? Math.floor((tileRow.width - 18) / 4) : 0
                     height: visible ? Math.floor(width * 0.75) : 0
+                    activeFocusOnTab: visible
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Open match " + (index + 1)
+                    Accessible.onPressAction: drawer.hitOpened(mediaId)
+                    Keys.onReturnPressed: drawer.hitOpened(mediaId)
+                    Keys.onEnterPressed: drawer.hitOpened(mediaId)
                     Image {
                         id: hitThumb
                         anchors.fill: parent
+                        // Fit (not crop) so the normalized match box stays on the pictured region.
                         source: "image://archive/t/" + mediaId
-                        fillMode: Image.PreserveAspectCrop
+                        fillMode: Image.PreserveAspectFit
                         asynchronous: true
+                    }
+                    Item {
+                        anchors.centerIn: hitThumb
+                        width: hitThumb.paintedWidth
+                        height: hitThumb.paintedHeight
+                        visible: matchW > 0 && matchH > 0
+                        Rectangle {
+                            objectName: "drawerStripMatchBox"
+                            x: matchX * parent.width
+                            y: matchY * parent.height
+                            width: Math.max(2, matchW * parent.width)
+                            height: Math.max(2, matchH * parent.height)
+                            color: "transparent"
+                            border.width: 2
+                            border.color: Theme.amber
+                        }
                     }
                     Rectangle {
                         anchors.left: parent.left
@@ -173,16 +196,17 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         color: "transparent"
-                        border.width: 1
-                        border.color: Theme.line
+                        border.width: parent.activeFocus ? 2 : 1
+                        border.color: parent.activeFocus ? Theme.amber : Theme.line
                     }
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: drawer.hitOpened(mediaId)
+                        onClicked: {
+                            drawer.hitOpened(mediaId)
+                            parent.forceActiveFocus()
+                        }
                     }
-                    Accessible.role: Accessible.Button
-                    Accessible.name: "Open match " + (index + 1)
                 }
             }
         }

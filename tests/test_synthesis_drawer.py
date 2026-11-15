@@ -19,6 +19,9 @@ def test_synthesis_drawer_qml_contract():
     assert "liveCropThumb" in drawer
     assert "composerInput" in drawer
     assert "drawerMatchStrip" in drawer
+    assert "drawerStripMatchBox" in drawer
+    assert "activeFocusOnTab" in drawer
+    assert "Accessible.onPressAction" in drawer
     assert "reasoningAccordion" in drawer
 
 
