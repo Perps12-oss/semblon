@@ -301,6 +301,7 @@ class ShellBridge(QObject):
     loupeChanged = Signal()
     # QML zooms once when a discovery hit becomes Focus (not on every similar refresh).
     focusMatchZoomRequested = Signal()
+    synthesisChanged = Signal()
 
     def __init__(self, model: ArchiveModel, jobs: Application):
         super().__init__()
@@ -310,6 +311,11 @@ class ShellBridge(QObject):
         # Phase 3 loupe — on for production; setLoupeEnabled(false) restores the pill.
         self._loupe_enabled = True
         self._archive_generation = 0
+        # Turn-bound crop history for the Synthesis Drawer (UI state, not a new table).
+        self._synthesis_turns: list[dict] = []
+        self._pending_turn_prompt = ""
+        self._pending_turn_media = ""
+        self._pending_turn_region: list[float] | None = None
         self._ribbon_ids_gen = -1
         self._ribbon_ids_cache: list[str] = []
         self._ribbon_payload_gen = -1
@@ -5000,7 +5006,40 @@ class ShellBridge(QObject):
         if text:
             self._result_text = text
             self.resultChanged.emit()
+        # Freeze the active crop with this turn so the drawer can snap back later.
+        self._pending_turn_prompt = text or "Describe this area"
+        self._pending_turn_media = self._session.focus_id or ""
+        self._pending_turn_region = list(self._region_norm) if self._region_norm else None
         self.nameSelection()
+
+    @Property("QVariantList", notify=synthesisChanged)
+    def synthesisTurns(self):
+        """Composer turns with frozen crop coords for turn-bound history."""
+        return list(self._synthesis_turns)
+
+    @Slot(int)
+    def restoreSynthesisTurn(self, index: int) -> None:
+        """Snap the sticky L-bracket back to the crop from an earlier turn."""
+        if index < 0 or index >= len(self._synthesis_turns):
+            return
+        turn = self._synthesis_turns[index]
+        media_id = str(turn.get("media_id") or "")
+        region = turn.get("region")
+        if media_id and media_id != (self._session.focus_id or ""):
+            self._open_focus_keep_results(media_id)
+        if isinstance(region, (list, tuple)) and len(region) == 4:
+            self.setRegion(float(region[0]), float(region[1]), float(region[2]), float(region[3]))
+        note = str(turn.get("prompt") or "").strip()
+        reply = str(turn.get("reply") or "").strip()
+        if note:
+            self._selection_note = note
+            self._result_text = note
+            self.resultChanged.emit()
+        if reply:
+            self._name_note = reply
+            self.nameChanged.emit()
+        self.selectionChanged.emit()
+        self.focusMatchZoomRequested.emit()
 
     @Slot(str, result=str)
     def thumbFor(self, media_id: str) -> str:
@@ -6430,12 +6469,35 @@ class ShellBridge(QObject):
             text = str(payload.get("understanding") or text)
             confidence = _confidence_label(payload.get("confidence"))
         self._set_name(text, busy=False, confidence=confidence)
+        self._append_synthesis_turn(text)
 
     @Slot(int, str)
     def _on_name_failed(self, generation: int, _message: str) -> None:
         if generation != self._identify_generation:
             return
         self._set_name("This area could not be named.", busy=False)
+        self._append_synthesis_turn("This area could not be named.")
+
+    def _append_synthesis_turn(self, reply: str) -> None:
+        media_id = self._pending_turn_media
+        region = self._pending_turn_region
+        prompt = self._pending_turn_prompt
+        self._pending_turn_media = ""
+        self._pending_turn_region = None
+        self._pending_turn_prompt = ""
+        if not media_id or not region or len(region) != 4:
+            return
+        self._synthesis_turns.append(
+            {
+                "media_id": media_id,
+                "region": [float(v) for v in region],
+                "prompt": prompt or "Describe this area",
+                "reply": str(reply or "").strip(),
+            }
+        )
+        if len(self._synthesis_turns) > 24:
+            self._synthesis_turns = self._synthesis_turns[-24:]
+        self.synthesisChanged.emit()
 
     @Slot()
     def findSimilar(self) -> None:
