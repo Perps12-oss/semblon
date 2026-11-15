@@ -155,7 +155,7 @@ Item {
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
                         height: badge.implicitHeight + 6
-                        color: "#cc0e0b09"
+                        color: Theme.scrim
                         Text {
                             id: badge
                             objectName: "matchBadge"
