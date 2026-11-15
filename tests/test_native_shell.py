@@ -580,6 +580,8 @@ def test_viewer_keeps_the_strip_and_a_primary_similar_action():
     assert "shell.openDiscoveryHit(target)" in viewer
     assert "shell.openDiscoveryHit(mediaId)" in viewer
     assert "Qt.ShiftModifier" in viewer
+    assert "onPaintedWidthChanged: viewer.syncSelectionFromShell()" in viewer
+    assert "pendingMatchZoom" in viewer
     assert 'objectName: "primaryModeButton"' in (qml_root / "SettingsBody.qml").read_text(encoding="utf-8")
     host = (
         Path(__file__).resolve().parents[1] / "semblon" / "native_shell" / "host.py"

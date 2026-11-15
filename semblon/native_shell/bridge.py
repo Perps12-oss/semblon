@@ -2234,6 +2234,10 @@ class ShellBridge(QObject):
         """
         if not media_id:
             return
+        # Fence any in-flight search before the sticky adopt changes query
+        # metadata. Keep the current strip; do not publish empty/cancelled.
+        if self._search_busy:
+            self._stop_search(publish=False)
         match = self._match_for_media(media_id)
         # Preserve search understanding across the sticky adopt (setRegion would
         # otherwise overwrite it with "Drawn region.").

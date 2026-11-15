@@ -793,3 +793,7 @@ def test_discovery_preview_has_explicit_navigation_and_escape_return():
     # Primary strip click opens the hit; Shift keeps preview-in-place.
     assert "shell.openDiscoveryHit(mediaId)" in qml
     assert "Qt.ShiftModifier" in qml
+    # Sticky crop resyncs after async load; clear pixels when selection leaves focus.
+    assert "onPaintedWidthChanged: viewer.syncSelectionFromShell()" in qml
+    assert "pendingMatchZoom" in qml
+    assert "if (!shell || !shell.selectionOnFocus)" in qml
