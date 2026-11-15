@@ -5019,12 +5019,20 @@ class ShellBridge(QObject):
 
     @Slot(int)
     def restoreSynthesisTurn(self, index: int) -> None:
-        """Snap the sticky L-bracket back to the crop from an earlier turn."""
+        """Snap the sticky L-bracket back to the crop from an earlier turn.
+
+        Clears the current match strip so Keep cannot pair this crop with a
+        later search's hits. Re-run Find Similar to refresh matches.
+        """
         if index < 0 or index >= len(self._synthesis_turns):
             return
         turn = self._synthesis_turns[index]
         media_id = str(turn.get("media_id") or "")
         region = turn.get("region")
+        if self._search_busy:
+            self._stop_search(publish=False)
+        # Drop mismatched strip rows before the crop changes.
+        self._clear_similar()
         if media_id and media_id != (self._session.focus_id or ""):
             self._open_focus_keep_results(media_id)
         if isinstance(region, (list, tuple)) and len(region) == 4:
@@ -5881,6 +5889,11 @@ class ShellBridge(QObject):
             self._apply_result(Result("error", "The library could not be cleared."))
             return
         self._discovery_trail.clear()
+        self._synthesis_turns = []
+        self._pending_turn_prompt = ""
+        self._pending_turn_media = ""
+        self._pending_turn_region = None
+        self.synthesisChanged.emit()
         for path in (self._discovery_file(), self._keeps_file()):
             try:
                 path.unlink(missing_ok=True)
