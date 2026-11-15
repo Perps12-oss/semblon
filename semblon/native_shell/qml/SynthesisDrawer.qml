@@ -211,44 +211,114 @@ Item {
             }
         }
 
-        // Stream / synthesis body
+        // Stream / synthesis body — turn-bound history with frozen crops.
         Flickable {
             id: stream
             width: parent.width
-            height: Math.max(80, drawer.height - y - composer.height - Theme.pad * 3)
+            height: Math.max(80, drawer.height - y - chipsRow.height - composer.height - Theme.pad * 4)
             contentHeight: streamCol.height
             clip: true
             Column {
                 id: streamCol
+                objectName: "synthesisTurnList"
                 width: stream.width
                 spacing: Theme.gap
                 Text {
                     width: parent.width
-                    visible: shell.resultText !== ""
-                    text: shell.resultText
-                    wrapMode: Text.WordWrap
-                    font.family: Theme.ui
-                    font.pixelSize: Theme.small
-                    color: Theme.muted
-                }
-                Text {
-                    width: parent.width
-                    visible: shell.nameNote !== ""
-                    text: shell.nameNote
-                    wrapMode: Text.WordWrap
-                    font.family: Theme.display
-                    font.pixelSize: Theme.body
-                    color: Theme.text
-                }
-                Text {
-                    width: parent.width
-                    visible: shell.nameNote === "" && shell.similarState === "ready"
+                    visible: shell.synthesisTurns.length === 0 && shell.similarState === "ready"
                     text: "Ask about the selected region, or open a match on the left."
                     wrapMode: Text.WordWrap
                     font.family: Theme.ui
                     font.pixelSize: Theme.small
                     color: Theme.faint
                 }
+                Repeater {
+                    model: shell.synthesisTurns
+                    delegate: Rectangle {
+                        required property var modelData
+                        required property int index
+                        width: streamCol.width
+                        height: turnCol.height + Theme.gap
+                        radius: Theme.radius
+                        color: Theme.raised
+                        border.width: 1
+                        border.color: Theme.line
+                        Column {
+                            id: turnCol
+                            width: parent.width - Theme.gap * 2
+                            x: Theme.gap
+                            y: Theme.gap / 2
+                            spacing: 4
+                            Row {
+                                spacing: 6
+                                // Frozen 40×40 crop from this turn.
+                                Item {
+                                    width: 36; height: 36; clip: true
+                                    Rectangle { anchors.fill: parent; radius: 6; color: Theme.bg }
+                                    Image {
+                                        visible: modelData.media_id && modelData.region
+                                        source: modelData.media_id ? "image://archive/f/" + modelData.media_id : ""
+                                        asynchronous: true
+                                        width: modelData.region[2] > 0 ? parent.width / modelData.region[2] : parent.width
+                                        height: modelData.region[3] > 0 ? parent.height / modelData.region[3] : parent.height
+                                        x: modelData.region ? -modelData.region[0] * width : 0
+                                        y: modelData.region ? -modelData.region[1] * height : 0
+                                        fillMode: Image.Stretch
+                                    }
+                                }
+                                Text {
+                                    width: turnCol.width - 48
+                                    text: modelData.prompt || "Describe this area"
+                                    wrapMode: Text.WordWrap
+                                    font.family: Theme.ui
+                                    font.pixelSize: Theme.small
+                                    color: Theme.muted
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                text: modelData.reply || ""
+                                wrapMode: Text.WordWrap
+                                font.family: Theme.display
+                                font.pixelSize: Theme.body
+                                color: Theme.text
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: shell.restoreSynthesisTurn(index)
+                        }
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Restore crop from turn " + (index + 1)
+                    }
+                }
+            }
+        }
+
+        // Zero-prompt starter chips — fire archive / describe actions without typing.
+        Flow {
+            id: chipsRow
+            objectName: "starterChips"
+            width: parent.width
+            spacing: 6
+            visible: shell.selectionOnFocus && !shell.searchBusy
+            Tool {
+                objectName: "chipDescribe"
+                label: "Describe this area"
+                onActivated: shell.askAboutSelection("")
+            }
+            Tool {
+                objectName: "chipTopMatch"
+                label: "Open top match"
+                visible: shell.similarCount > 0
+                onActivated: drawer.hitOpened(shell.similarId(0))
+            }
+            Tool {
+                objectName: "chipKeep"
+                label: "Keep this find"
+                visible: shell.similarState === "ready" && shell.similarCount > 0
+                onActivated: shell.keepDiscovery()
             }
         }
 
