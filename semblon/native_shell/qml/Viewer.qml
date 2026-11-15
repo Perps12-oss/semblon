@@ -57,6 +57,7 @@ Item {
     property bool pendingMatchZoom: false
     // Contextual Synthesis Drawer — open with sticky selection / active search.
     property bool drawerForcedClosed: false
+    property bool textSelectOn: false
     readonly property bool drawerWanted: active && !drawerForcedClosed
         && (shell.selectionOnFocus || shell.similarState === "ready"
             || shell.similarState === "loading" || shell.similarState === "empty")
@@ -147,6 +148,11 @@ Item {
     Keys.onPressed: function (e) {
         if (e.key === Qt.Key_Period && (e.modifiers & Qt.ControlModifier)) { moreMenu.shown = !moreMenu.shown; e.accepted = true }
         else if (e.key === Qt.Key_L) { loupeOn = !loupeOn; e.accepted = true }
+        else if (e.key === Qt.Key_T) {
+            textSelectOn = !textSelectOn
+            if (textSelectOn) shell.ensureTextOverlay()
+            e.accepted = true
+        }
         else if (e.key === Qt.Key_D && !(e.modifiers & Qt.ControlModifier)) { dotsOn = !dotsOn; e.accepted = true }
     }
     // Keyboard-only loupe: arrows move the circle, Shift+arrows resize it, Enter searches.
@@ -241,6 +247,29 @@ Item {
                         Accessible.role: Accessible.Button
                         Accessible.name: "Pick " + (modelData.tag || "this area")
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: shell.selectObservation(modelData.id) }
+                    }
+                }
+                // Select Text mode: show OCR word/line overlays for tap-to-select.
+                Repeater {
+                    model: viewer.textSelectOn ? shell.focusTextBoxes : []
+                    delegate: Rectangle {
+                        required property var modelData
+                        objectName: "textOverlay"
+                        x: modelData.nx * canvas.width
+                        y: modelData.ny * canvas.height
+                        width: Math.max(2, modelData.nw * canvas.width)
+                        height: Math.max(2, modelData.nh * canvas.height)
+                        color: shell.selectedObservationId === modelData.id ? Theme.amberSoft : "#33ffa63d"
+                        border.width: shell.selectedObservationId === modelData.id ? 2 : 1
+                        border.color: Theme.amber
+                        visible: viewer.previewId === "" && !viewer.loupeOn
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Select text " + (modelData.tag || "")
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.IBeamCursor
+                            onClicked: shell.selectTextBox(modelData.id)
+                        }
                     }
                 }
                 // Outside dim (scrim) while a sticky rectangular crop is active.
@@ -597,6 +626,18 @@ Item {
             x: 8; y: 8
             width: parent.width - 16
             spacing: 4
+            Tool {
+                objectName: "selectTextMode"
+                width: menuCol.width
+                label: viewer.textSelectOn ? "Hide text selection" : "Select text in photo"
+                hint: "Shortcut T · OCR overlay"
+                visible: viewer.previewId === ""
+                onActivated: moreMenu.pick(function () {
+                    viewer.textSelectOn = !viewer.textSelectOn
+                    if (viewer.textSelectOn)
+                        shell.ensureTextOverlay()
+                })
+            }
             Tool { objectName: "relatedAction"; width: menuCol.width; label: "Related to this photo"; hint: "Objects and people in other photos"; visible: viewer.previewId === ""; onActivated: moreMenu.pick(function () { shell.openRelated() }) }
             Tool { objectName: "backDiscovery"; width: menuCol.width; label: "Back to the previous find"; visible: shell.canBackDiscovery; onActivated: moreMenu.pick(function () { viewer.previewId = ""; shell.backToDiscovery() }) }
             Tool { objectName: "keepDiscovery"; width: menuCol.width; label: "Keep this find"; visible: shell.similarState === "ready" && shell.selectionOnFocus; onActivated: moreMenu.pick(function () { shell.keepDiscovery() }) }
