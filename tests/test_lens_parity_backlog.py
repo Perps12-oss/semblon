@@ -214,6 +214,7 @@ def test_low_info_and_escalate_flags(tmp_path, monkeypatch):
         )
         assert bridge.lowInfoRecovery is True
         assert bridge.canEscalateWhole is False
+        # Empty strip: no match box to adopt — focus moves, query stays on source.
         bridge.openDiscoveryHit("m2")
         assert bridge.focusId == "m2"
         assert bridge.selectionOnFocus is False

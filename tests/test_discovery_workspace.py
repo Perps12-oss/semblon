@@ -117,16 +117,22 @@ def test_selection_survives_restore_and_states_are_distinct(tmp_path, monkeypatc
         assert bridge.similarCount == 1
         bridge.openDiscoveryHit("m2")
         assert bridge.focusId == "m2"
-        assert bridge.selectionOnFocus is False
-        assert bridge.matchW > 0
+        # Result-to-canvas: scored match becomes sticky query on the opened photo.
+        assert bridge.selectionOnFocus is True
+        assert abs(bridge.selectionX - 0.1) < 1e-6
+        assert abs(bridge.selectionY - 0.2) < 1e-6
+        assert abs(bridge.selectionW - 0.3) < 1e-6
+        assert abs(bridge.selectionH - 0.4) < 1e-6
         assert bridge.keepDiscovery() == "Kept this find."
         assert bridge.resultText == "Kept this find."
+        # Keep stores the sticky query on the opened hit (result-to-canvas).
         bridge.openFocus("m1")
         bridge.openKept(0)
-        assert bridge.focusId == "m1"
+        assert bridge.focusId == "m2"
         assert bridge.selectionOnFocus is True
-        assert abs(bridge.selectionH - 0.25) < 1e-6
+        assert abs(bridge.selectionH - 0.4) < 1e-6
         kept = json.loads((tmp_path / "s.discoveries.json").read_text(encoding="utf-8"))
+        assert kept[0]["query_media_id"] == "m2"
         assert kept[0]["region"][2] == pytest.approx(0.3)
     finally:
         shutdown_shell(engine)

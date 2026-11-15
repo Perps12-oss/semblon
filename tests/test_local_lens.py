@@ -212,16 +212,21 @@ def test_keep_discovery_and_match_overlay(tmp_path, monkeypatch):
         assert bridge.similarCount == 1
         assert abs(bridge.matchX - 0.2) < 1e-6
         assert abs(bridge.matchW - 0.25) < 1e-6
+        # Sticky adopt: selection lands on the scored match; understanding kept.
+        assert bridge.selectionOnFocus is True
+        assert abs(bridge.selectionX - 0.2) < 1e-6
+        assert "Unlabelled" in bridge.selectionNote
         assert bridge.canBackDiscovery is True
         assert bridge.keepDiscovery() == "Kept this find."
         assert bridge.keptCount == 1
         assert "Unlabelled" in bridge.keptLabel(0)
         kept = json.loads((tmp_path / "s.discoveries.json").read_text(encoding="utf-8"))
-        assert kept[0]["query_media_id"] == "m1"
+        # Keep follows the sticky query on the opened hit.
+        assert kept[0]["query_media_id"] == "m2"
         assert kept[0]["items"][0]["media_id"] == "m2"
         bridge.openFocus("m1")
         bridge.openKept(0)
-        assert bridge.focusId == "m1"
+        assert bridge.focusId == "m2"
         assert bridge.similarCount == 1
         bridge.backToDiscovery()
     finally:

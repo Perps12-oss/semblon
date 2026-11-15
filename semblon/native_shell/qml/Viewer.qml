@@ -33,6 +33,9 @@ Item {
         var target = previewId
         previewId = ""
         shell.openDiscoveryHit(target)
+        // Sticky match box is rectangular with refine handles (not the loupe circle).
+        loupeOn = false
+        syncSelectionFromShell()
     }
     // Zoom toward a point in the stage so the detail under the cursor stays put.
     function zoomAt(px, py, factor) {
@@ -655,8 +658,16 @@ Item {
                 width: 84; height: 84
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
-                Accessible.name: "Preview match " + (index + 1)
-                Keys.onReturnPressed: { viewer.previewId = mediaId; viewer.forceActiveFocus() }
+                Accessible.name: "Open match " + (index + 1)
+                // Primary: open the match as Focus with sticky crop (result-to-canvas).
+                // Shift: preview in place without changing Focus (hover-peek path).
+                Keys.onReturnPressed: {
+                    viewer.previewId = ""
+                    shell.openDiscoveryHit(mediaId)
+                    viewer.loupeOn = false
+                    viewer.syncSelectionFromShell()
+                    viewer.forceActiveFocus()
+                }
                 Image {
                     id: thumb
                     anchors.fill: parent
@@ -683,7 +694,21 @@ Item {
                 }
                 Rectangle { anchors.fill: parent; color: "transparent"; border.width: parent.activeFocus ? 3 : 0; border.color: Theme.amber }
                 Rectangle { anchors.fill: parent; color: viewer.previewId === mediaId ? Theme.amber : "transparent"; opacity: viewer.previewId === mediaId ? 0.14 : 0; border.width: viewer.previewId === mediaId ? 2 : 0; border.color: Theme.amber }
-                MouseArea { anchors.fill: parent; onClicked: { viewer.previewId = mediaId; viewer.forceActiveFocus() } }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: function (mouse) {
+                        if (mouse.modifiers & Qt.ShiftModifier) {
+                            viewer.previewId = mediaId
+                            viewer.forceActiveFocus()
+                            return
+                        }
+                        viewer.previewId = ""
+                        shell.openDiscoveryHit(mediaId)
+                        viewer.loupeOn = false
+                        viewer.syncSelectionFromShell()
+                        viewer.forceActiveFocus()
+                    }
+                }
             }
         }
         Row {
