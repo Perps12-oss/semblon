@@ -259,7 +259,9 @@ Item {
                         y: modelData.ny * canvas.height
                         width: Math.max(2, modelData.nw * canvas.width)
                         height: Math.max(2, modelData.nh * canvas.height)
-                        color: shell.selectedObservationId === modelData.id ? Theme.amberSoft : "#33ffa63d"
+                        color: shell.selectedObservationId === modelData.id
+                               ? Theme.amberSoft
+                               : Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.2)
                         border.width: shell.selectedObservationId === modelData.id ? 2 : 1
                         border.color: Theme.amber
                         visible: viewer.previewId === "" && !viewer.loupeOn
